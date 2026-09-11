@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 

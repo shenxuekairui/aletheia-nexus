@@ -1,4 +1,4 @@
-﻿import re
+import re
 
 
 DOI_PATTERN = re.compile(
