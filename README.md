@@ -348,9 +348,7 @@ URL 百分号编码
 ```python
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
-doi = normalize_doi(
-    "https://doi.org/10.1038/NPHYS1170"
-)
+doi = normalize_doi("https://doi.org/10.1038/NPHYS1170")
 
 print(doi)
 ```
@@ -714,9 +712,7 @@ python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```python
 from aletheia_nexus.acquire.metadata import get_metadata
 
-paper = get_metadata(
-    "10.1038/nphys1170"
-)
+paper = get_metadata("10.1038/nphys1170")
 
 print(paper.doi)
 print(paper.title)
@@ -750,9 +746,7 @@ from aletheia_nexus.acquire.metadata import (
     get_doi_agency,
 )
 
-agency = get_doi_agency(
-    "10.1038/nphys1170"
-)
+agency = get_doi_agency("10.1038/nphys1170")
 
 print(agency)
 ```
