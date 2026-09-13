@@ -1,0 +1,1234 @@
+{
+  "normalize_doi": [
+    {
+      "id": "ND001",
+      "input": "10.1038/nphys1170",
+      "expected": "10.1038/nphys1170",
+      "category": "real_standard",
+      "real_or_synthetic": "real",
+      "note": "Nature DOI，标准裸 DOI。"
+    },
+    {
+      "id": "ND002",
+      "input": "10.1103/PhysRevLett.116.061102",
+      "expected": "10.1103/physrevlett.116.061102",
+      "category": "real_mixed_case",
+      "real_or_synthetic": "real",
+      "note": "APS DOI，验证常见 ASCII 大小写归一。"
+    },
+    {
+      "id": "ND003",
+      "input": "   10.1371/journal.pone.0000308   ",
+      "expected": "10.1371/journal.pone.0000308",
+      "category": "outer_whitespace",
+      "real_or_synthetic": "real",
+      "note": "复制粘贴常见前后空格。"
+    },
+    {
+      "id": "ND004",
+      "input": " 10.1038/nphys1170 ",
+      "expected": "10.1038/nphys1170",
+      "category": "nbsp_whitespace",
+      "real_or_synthetic": "real",
+      "note": "网页复制常见 NBSP（不换行空格）。"
+    },
+    {
+      "id": "ND005",
+      "input": "DOI:10.1371/journal.pone.0000308",
+      "expected": "10.1371/journal.pone.0000308",
+      "category": "doi_label",
+      "real_or_synthetic": "real",
+      "note": "参考文献常见 DOI: 前缀。"
+    },
+    {
+      "id": "ND006",
+      "input": "doi: 10.1056/NEJMoa2034577",
+      "expected": "10.1056/nejmoa2034577",
+      "category": "doi_label",
+      "real_or_synthetic": "real",
+      "note": "小写 doi: 前缀与空格。"
+    },
+    {
+      "id": "ND007",
+      "input": "DOI：10.1038/nphys1170",
+      "expected": "10.1038/nphys1170",
+      "category": "cjk_doi_label",
+      "real_or_synthetic": "real",
+      "note": "中文排版中 DOI 后使用全角冒号。"
+    },
+    {
+      "id": "ND008",
+      "input": "https://doi.org/10.1038/nphys1170",
+      "expected": "10.1038/nphys1170",
+      "category": "resolver_https",
+      "real_or_synthetic": "real",
+      "note": "当前推荐的 doi.org HTTPS URL。"
+    },
+    {
+      "id": "ND009",
+      "input": "http://doi.org/10.1038/nphys1170",
+      "expected": "10.1038/nphys1170",
+      "category": "resolver_http",
+      "real_or_synthetic": "real",
+      "note": "历史 HTTP resolver 形式仍可能出现在旧文献中。"
+    },
+    {
+      "id": "ND010",
+      "input": "https://dx.doi.org/10.1038/nphys1170",
+      "expected": "10.1038/nphys1170",
+      "category": "legacy_dx_resolver",
+      "real_or_synthetic": "real",
+      "note": "旧式 dx.doi.org 链接。"
+    },
+    {
+      "id": "ND011",
+      "input": "doi.org/10.1038/nphys1170",
+      "expected": "10.1038/nphys1170",
+      "category": "resolver_without_scheme",
+      "real_or_synthetic": "real",
+      "note": "复制文本中常见省略协议的 doi.org/。"
+    },
+    {
+      "id": "ND012",
+      "input": "\"10.1038/nphys1170\"",
+      "expected": "10.1038/nphys1170",
+      "category": "ascii_quotes",
+      "real_or_synthetic": "real",
+      "note": "双引号包裹。"
+    },
+    {
+      "id": "ND013",
+      "input": "'10.1038/nphys1170'",
+      "expected": "10.1038/nphys1170",
+      "category": "ascii_quotes",
+      "real_or_synthetic": "real",
+      "note": "单引号包裹。"
+    },
+    {
+      "id": "ND014",
+      "input": "[10.1038/nphys1170]",
+      "expected": "10.1038/nphys1170",
+      "category": "ascii_brackets",
+      "real_or_synthetic": "real",
+      "note": "方括号包装。"
+    },
+    {
+      "id": "ND015",
+      "input": "(10.1038/nphys1170)",
+      "expected": "10.1038/nphys1170",
+      "category": "ascii_parentheses",
+      "real_or_synthetic": "real",
+      "note": "圆括号包装。"
+    },
+    {
+      "id": "ND016",
+      "input": "（10.1038/nphys1170）",
+      "expected": "10.1038/nphys1170",
+      "category": "cjk_parentheses",
+      "real_or_synthetic": "real",
+      "note": "中文全角圆括号包装。"
+    },
+    {
+      "id": "ND017",
+      "input": "【10.1038/nphys1170】",
+      "expected": "10.1038/nphys1170",
+      "category": "cjk_brackets",
+      "real_or_synthetic": "real",
+      "note": "中文方头括号包装。"
+    },
+    {
+      "id": "ND018",
+      "input": "“10.1038/NPHYS1170”",
+      "expected": "10.1038/nphys1170",
+      "category": "cjk_quotes",
+      "real_or_synthetic": "real",
+      "note": "中文弯引号包装。"
+    },
+    {
+      "id": "ND019",
+      "input": "10.1038/nphys1170.",
+      "expected": "10.1038/nphys1170",
+      "category": "sentence_punctuation",
+      "real_or_synthetic": "real",
+      "note": "从英文参考文献复制时常带句末句点。"
+    },
+    {
+      "id": "ND020",
+      "input": "10.1038/nphys1170,",
+      "expected": "10.1038/nphys1170",
+      "category": "sentence_punctuation",
+      "real_or_synthetic": "real",
+      "note": "正文中 DOI 后紧跟逗号。"
+    },
+    {
+      "id": "ND021",
+      "input": "10.1038/nphys1170。",
+      "expected": "10.1038/nphys1170",
+      "category": "cjk_sentence_punctuation",
+      "real_or_synthetic": "real",
+      "note": "中文正文中 DOI 后紧跟句号。"
+    },
+    {
+      "id": "ND022",
+      "input": "10.1016/S0140-6736(20)30183-5",
+      "expected": "10.1016/s0140-6736(20)30183-5",
+      "category": "real_internal_parentheses",
+      "real_or_synthetic": "real",
+      "note": "Lancet DOI，内部圆括号属于 DOI 自身，不能误删。"
+    },
+    {
+      "id": "ND023",
+      "input": "10.1002/(SICI)1099-0844(199912)17:4<290::AID-CBF849>3.0.CO;2-P",
+      "expected": "10.1002/(sici)1099-0844(199912)17:4<290::aid-cbf849>3.0.co;2-p",
+      "category": "real_legacy_wiley",
+      "real_or_synthetic": "real",
+      "note": "真实旧 Wiley DOI，包含 ()<>:; 等历史特殊字符。"
+    },
+    {
+      "id": "ND024",
+      "input": "10.1002/(SICI)1521-3951(199911)216:1<135::AID-PSSB135>3.0.CO;2-#",
+      "expected": "10.1002/(sici)1521-3951(199911)216:1<135::aid-pssb135>3.0.co;2-#",
+      "category": "real_legacy_hash",
+      "real_or_synthetic": "real",
+      "note": "Crossref 文档给出的真实历史 DOI，suffix 含 #。裸 DOI 中 # 必须保留。"
+    },
+    {
+      "id": "ND025",
+      "input": "https://doi.org/10.1002/(SICI)1521-3951(199911)216:1%3C135::AID-PSSB135%3E3.0.CO;2-%23",
+      "expected": "10.1002/(sici)1521-3951(199911)216:1<135::aid-pssb135>3.0.co;2-#",
+      "category": "real_legacy_encoded_url",
+      "real_or_synthetic": "real",
+      "note": "真实旧 DOI 以 resolver URL 表示时，< > # 可能需要百分号编码。"
+    },
+    {
+      "id": "ND026",
+      "input": "https://doi.org/10.1056/NEJMoa2034577?utm_source=test#section",
+      "expected": "10.1056/nejmoa2034577",
+      "category": "resolver_query_fragment",
+      "real_or_synthetic": "real",
+      "note": "网页追踪 query（查询参数）和 fragment（片段）不是 DOI name。"
+    },
+    {
+      "id": "ND027",
+      "input": "10.5061/dryad.m62gj",
+      "expected": "10.5061/dryad.m62gj",
+      "category": "real_datacite_style",
+      "real_or_synthetic": "real",
+      "note": "DataCite 展示指南中的真实 Dryad DOI。"
+    },
+    {
+      "id": "ND028",
+      "input": "10.5281/ZENODO.31780",
+      "expected": "10.5281/zenodo.31780",
+      "category": "real_datacite_case",
+      "real_or_synthetic": "real",
+      "note": "Zenodo/DataCite DOI，验证大小写归一。"
+    },
+    {
+      "id": "ND029",
+      "input": "10.1246/bcsj.26.232",
+      "expected": "10.1246/bcsj.26.232",
+      "category": "real_old_japanese_journal",
+      "real_or_synthetic": "real",
+      "note": "较早期日本期刊 DOI，覆盖旧文献但普通字符 suffix。"
+    },
+    {
+      "id": "ND030",
+      "input": "",
+      "expected": null,
+      "category": "empty",
+      "real_or_synthetic": "synthetic",
+      "note": "实际批量数据中可能出现空单元格。",
+      "expected_exception": "ValueError"
+    },
+    {
+      "id": "ND031",
+      "input": "not a doi",
+      "expected": null,
+      "category": "ordinary_text",
+      "real_or_synthetic": "synthetic",
+      "note": "普通文本误传入 DOI 字段。",
+      "expected_exception": "ValueError"
+    },
+    {
+      "id": "ND032",
+      "input": null,
+      "expected": null,
+      "category": "non_string",
+      "real_or_synthetic": "synthetic",
+      "note": "缺失值在 Python/JSON 中常表现为 None/null。",
+      "expected_exception": "TypeError"
+    },
+    {
+      "id": "ND033",
+      "input": 12345,
+      "expected": null,
+      "category": "non_string",
+      "real_or_synthetic": "synthetic",
+      "note": "表格类型推断错误时可能读成数字。",
+      "expected_exception": "TypeError"
+    },
+    {
+      "id": "ND034",
+      "input": "10.1234",
+      "expected": null,
+      "category": "missing_suffix",
+      "real_or_synthetic": "synthetic",
+      "note": "现实复制中可能截断为只有 prefix。",
+      "expected_exception": "ValueError"
+    },
+    {
+      "id": "ND035",
+      "input": "10.1234/",
+      "expected": null,
+      "category": "empty_suffix",
+      "real_or_synthetic": "synthetic",
+      "note": "截断 DOI，slash 后没有 suffix。",
+      "expected_exception": "ValueError"
+    },
+    {
+      "id": "ND036",
+      "input": "https://doi.org/10.1234%252Fdouble-encoded",
+      "expected": null,
+      "category": "double_encoded_url",
+      "real_or_synthetic": "synthetic",
+      "note": "现实网页跳转可能造成双重编码；V0.2 只解码一次，避免隐式反复解码。",
+      "expected_exception": "ValueError"
+    }
+  ],
+  "normalize_dois": [
+    {
+      "id": "NDS001",
+      "input": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "basic_batch",
+      "real_or_synthetic": "real",
+      "note": "两个真实 DOI，保持输入顺序。"
+    },
+    {
+      "id": "NDS002",
+      "input": [
+        "10.1038/nphys1170",
+        "10.1038/nphys1170"
+      ],
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "exact_duplicate",
+      "real_or_synthetic": "real",
+      "note": "完全重复 DOI 去重。"
+    },
+    {
+      "id": "NDS003",
+      "input": [
+        "10.1103/PhysRevLett.116.061102",
+        "https://doi.org/10.1103/physrevlett.116.061102"
+      ],
+      "expected": [
+        "10.1103/physrevlett.116.061102"
+      ],
+      "category": "duplicate_after_normalization",
+      "real_or_synthetic": "real",
+      "note": "不同表示形式标准化后去重。"
+    },
+    {
+      "id": "NDS004",
+      "input": [
+        "doi:10.1371/journal.pone.0000308",
+        "10.1038/nphys1170",
+        "DOI: 10.1371/JOURNAL.PONE.0000308"
+      ],
+      "expected": [
+        "10.1371/journal.pone.0000308",
+        "10.1038/nphys1170"
+      ],
+      "category": "stable_order",
+      "real_or_synthetic": "real",
+      "note": "稳定去重，保留首次出现位置而不是排序。"
+    },
+    {
+      "id": "NDS005",
+      "input": [],
+      "expected": [],
+      "category": "empty_batch",
+      "real_or_synthetic": "synthetic",
+      "note": "空批次返回空列表。"
+    },
+    {
+      "id": "NDS006",
+      "input": [
+        "https://doi.org/10.1371/journal.pone.0000308",
+        "doi.org/10.1371/JOURNAL.PONE.0000308"
+      ],
+      "expected": [
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "url_duplicate",
+      "real_or_synthetic": "real",
+      "note": "URL 与大小写差异在标准化后合并。"
+    },
+    {
+      "id": "NDS007",
+      "input": [
+        "10.1038/nphys1170.",
+        "[10.1038/nphys1170]",
+        "（10.1038/nphys1170）"
+      ],
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "wrapper_duplicate",
+      "real_or_synthetic": "real",
+      "note": "实际复制中的句点、ASCII/中文包装差异去重。"
+    },
+    {
+      "id": "NDS008",
+      "input": [
+        "10.1002/(SICI)1099-0844(199912)17:4<290::AID-CBF849>3.0.CO;2-P",
+        "10.1016/S0140-6736(20)30183-5"
+      ],
+      "expected": [
+        "10.1002/(sici)1099-0844(199912)17:4<290::aid-cbf849>3.0.co;2-p",
+        "10.1016/s0140-6736(20)30183-5"
+      ],
+      "category": "legacy_batch",
+      "real_or_synthetic": "real",
+      "note": "旧式复杂 DOI 与现代 DOI 混合。"
+    },
+    {
+      "id": "NDS009",
+      "input": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "deduplicate_false",
+      "real_or_synthetic": "real",
+      "note": "关闭去重时不同 DOI 不受影响。",
+      "options": {
+        "deduplicate": false
+      }
+    },
+    {
+      "id": "NDS010",
+      "input": [
+        "10.1038/nphys1170",
+        "10.1038/NPHYS1170"
+      ],
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1038/nphys1170"
+      ],
+      "category": "deduplicate_false_duplicates",
+      "real_or_synthetic": "real",
+      "note": "关闭去重后，相同 DOI 标准化后仍保留两项。",
+      "options": {
+        "deduplicate": false
+      }
+    },
+    {
+      "id": "NDS011",
+      "input": [
+        "not a doi",
+        "10.1038/nphys1170"
+      ],
+      "expected": null,
+      "category": "strict_invalid_member",
+      "real_or_synthetic": "synthetic",
+      "note": "严格批量模式：任何成员无效则整批报错。",
+      "expected_exception": "ValueError"
+    },
+    {
+      "id": "NDS012",
+      "input": [
+        "",
+        "10.1038/nphys1170"
+      ],
+      "expected": null,
+      "category": "strict_empty_member",
+      "real_or_synthetic": "synthetic",
+      "note": "空单元格不能被静默丢弃。",
+      "expected_exception": "ValueError"
+    },
+    {
+      "id": "NDS013",
+      "input": [
+        null,
+        "10.1038/nphys1170"
+      ],
+      "expected": null,
+      "category": "strict_none_member",
+      "real_or_synthetic": "synthetic",
+      "note": "批量输入中缺失值应明确报 TypeError。",
+      "expected_exception": "TypeError"
+    },
+    {
+      "id": "NDS014",
+      "input": null,
+      "expected": null,
+      "category": "non_iterable",
+      "real_or_synthetic": "synthetic",
+      "note": "整个批量参数为 None。",
+      "expected_exception": "TypeError"
+    },
+    {
+      "id": "NDS015",
+      "input": "10.1038/nphys1170",
+      "expected": null,
+      "category": "single_string_not_batch",
+      "real_or_synthetic": "real",
+      "note": "字符串本身可迭代，但不应被误当作 DOI 列表。",
+      "expected_exception": "TypeError"
+    },
+    {
+      "id": "NDS016",
+      "input": [
+        "DOI：10.1038/NPHYS1170",
+        "（10.1038/nphys1170）",
+        "【10.1038/nphys1170】"
+      ],
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_wrappers_batch",
+      "real_or_synthetic": "real",
+      "note": "中文科研文本复制出的多种包装形式统一去重。"
+    }
+  ],
+  "extract_dois": [
+    {
+      "id": "ED001",
+      "input": "See 10.1038/nphys1170 for details.",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "english_single",
+      "real_or_synthetic": "real",
+      "note": "英文正文中的单个裸 DOI。"
+    },
+    {
+      "id": "ED002",
+      "input": "DOI: 10.1371/journal.pone.0000308",
+      "expected": [
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "english_label",
+      "real_or_synthetic": "real",
+      "note": "参考文献常见 DOI: 标签。"
+    },
+    {
+      "id": "ED003",
+      "input": "Available at https://doi.org/10.1056/NEJMoa2034577.",
+      "expected": [
+        "10.1056/nejmoa2034577"
+      ],
+      "category": "resolver_url",
+      "real_or_synthetic": "real",
+      "note": "doi.org URL 后带英文句号。"
+    },
+    {
+      "id": "ED004",
+      "input": "Legacy resolver: https://dx.doi.org/10.1038/171737a0",
+      "expected": [
+        "10.1038/171737a0"
+      ],
+      "category": "legacy_resolver",
+      "real_or_synthetic": "real",
+      "note": "旧 dx.doi.org URL。"
+    },
+    {
+      "id": "ED005",
+      "input": "Link: doi.org/10.1103/PhysRevLett.116.061102",
+      "expected": [
+        "10.1103/physrevlett.116.061102"
+      ],
+      "category": "resolver_without_scheme",
+      "real_or_synthetic": "real",
+      "note": "省略协议的 doi.org/。"
+    },
+    {
+      "id": "ED006",
+      "input": "Refs: 10.1038/nphys1170; 10.1371/journal.pone.0000308.",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "multiple_english",
+      "real_or_synthetic": "real",
+      "note": "多个 DOI 以英文分号和空格分隔。"
+    },
+    {
+      "id": "ED007",
+      "input": "First https://doi.org/10.1038/nphys1170, then DOI:10.1371/journal.pone.0000308.",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "multiple_mixed_forms",
+      "real_or_synthetic": "real",
+      "note": "URL 和 DOI: 标签混合。"
+    },
+    {
+      "id": "ED008",
+      "input": "10.1038/nphys1170 and https://doi.org/10.1038/NPHYS1170 and DOI: 10.1038/nphys1170.",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "deduplicate_extracted",
+      "real_or_synthetic": "real",
+      "note": "同一个 DOI 多种表示只返回一次。"
+    },
+    {
+      "id": "ED009",
+      "input": "Quoted \"10.1038/nphys1170\", bracketed [10.1371/journal.pone.0000308].",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "ascii_wrappers",
+      "real_or_synthetic": "real",
+      "note": "引号和方括号包装。"
+    },
+    {
+      "id": "ED010",
+      "input": "The identifier (10.1038/nphys1170) appears in parentheses.",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "ascii_parentheses",
+      "real_or_synthetic": "real",
+      "note": "外围圆括号不进入 DOI。"
+    },
+    {
+      "id": "ED011",
+      "input": "Lancet DOI 10.1016/S0140-6736(20)30183-5.",
+      "expected": [
+        "10.1016/s0140-6736(20)30183-5"
+      ],
+      "category": "internal_parentheses",
+      "real_or_synthetic": "real",
+      "note": "内部括号属于真实 DOI。"
+    },
+    {
+      "id": "ED012",
+      "input": "Old Wiley: 10.1002/(SICI)1099-0844(199912)17:4<290::AID-CBF849>3.0.CO;2-P.",
+      "expected": [
+        "10.1002/(sici)1099-0844(199912)17:4<290::aid-cbf849>3.0.co;2-p"
+      ],
+      "category": "legacy_wiley",
+      "real_or_synthetic": "real",
+      "note": "真实旧 Wiley 复杂 DOI 完整提取。"
+    },
+    {
+      "id": "ED013",
+      "input": "Special DOI 10.1002/(SICI)1521-3951(199911)216:1<135::AID-PSSB135>3.0.CO;2-#",
+      "expected": [
+        "10.1002/(sici)1521-3951(199911)216:1<135::aid-pssb135>3.0.co;2-#"
+      ],
+      "category": "legacy_hash",
+      "real_or_synthetic": "real",
+      "note": "真实历史 DOI 中 # 是 suffix 的一部分。"
+    },
+    {
+      "id": "ED014",
+      "input": "Encoded old DOI: https://doi.org/10.1002/(SICI)1521-3951(199911)216:1%3C135::AID-PSSB135%3E3.0.CO;2-%23",
+      "expected": [
+        "10.1002/(sici)1521-3951(199911)216:1<135::aid-pssb135>3.0.co;2-#"
+      ],
+      "category": "legacy_encoded_url",
+      "real_or_synthetic": "real",
+      "note": "resolver URL 中历史特殊字符经过百分号编码。"
+    },
+    {
+      "id": "ED015",
+      "input": "Resolver with tracking: https://doi.org/10.1056/NEJMoa2034577?utm_source=test#section",
+      "expected": [
+        "10.1056/nejmoa2034577"
+      ],
+      "category": "query_fragment",
+      "real_or_synthetic": "real",
+      "note": "query 和 fragment 不属于 DOI。"
+    },
+    {
+      "id": "ED016",
+      "input": "Two lines:\n10.1038/nphys1170\nDOI: 10.1371/journal.pone.0000308",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "multiline",
+      "real_or_synthetic": "real",
+      "note": "从复制的多行参考文献中提取。"
+    },
+    {
+      "id": "ED017",
+      "input": "Tabs:\t10.1038/nphys1170\tand\t10.1371/journal.pone.0000308",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "tabs",
+      "real_or_synthetic": "real",
+      "note": "表格/剪贴板文本常包含制表符。"
+    },
+    {
+      "id": "ED018",
+      "input": "There is no DOI here, only https://example.com/a/b and ISBN 978-3-16-148410-0.",
+      "expected": [],
+      "category": "no_doi_noise",
+      "real_or_synthetic": "synthetic",
+      "note": "普通 URL、ISBN 和正文不能产生假阳性。"
+    },
+    {
+      "id": "ED019",
+      "input": "",
+      "expected": [],
+      "category": "empty_text",
+      "real_or_synthetic": "synthetic",
+      "note": "空文本返回空列表。"
+    },
+    {
+      "id": "ED020",
+      "input": null,
+      "expected": null,
+      "category": "non_string",
+      "real_or_synthetic": "synthetic",
+      "note": "非字符串文本参数应明确报错。",
+      "expected_exception": "TypeError"
+    },
+    {
+      "id": "ED021",
+      "input": "Broken 10.1234 and 10.1234/ ; valid 10.1038/nphys1170.",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "broken_candidates",
+      "real_or_synthetic": "synthetic",
+      "note": "实际 OCR/复制文本可能含截断 DOI；不能影响后续真实 DOI。"
+    },
+    {
+      "id": "ED022",
+      "input": "Email-like user10.1038/nphys1170@example.com should not count; DOI 10.1371/journal.pone.0000308 should.",
+      "expected": [
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "embedded_ascii_false_positive",
+      "real_or_synthetic": "synthetic",
+      "note": "嵌在邮箱/ASCII 字符串中的 DOI 样式片段应拒绝。"
+    },
+    {
+      "id": "ED023",
+      "input": "abc10.1038/nphys1170 xyz; standalone 10.1371/journal.pone.0000308",
+      "expected": [
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "left_boundary_false_positive",
+      "real_or_synthetic": "synthetic",
+      "note": "紧贴 ASCII 字母数字串时更可能是普通 token 的一部分。"
+    },
+    {
+      "id": "ED024",
+      "input": "这篇论文的DOI是10.1038/nphys1170，下一篇稍后整理。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_no_space_comma",
+      "real_or_synthetic": "real",
+      "note": "中文正文没有空格是最常见真实场景；中文逗号终止 DOI。"
+    },
+    {
+      "id": "ED025",
+      "input": "DOI：10.1038/nphys1170。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_label_period",
+      "real_or_synthetic": "real",
+      "note": "全角冒号标签与中文句号。"
+    },
+    {
+      "id": "ED026",
+      "input": "参考文献（10.1038/nphys1170）。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_parentheses",
+      "real_or_synthetic": "real",
+      "note": "中文全角圆括号包装。"
+    },
+    {
+      "id": "ED027",
+      "input": "参考文献【10.1038/nphys1170】已核对。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_brackets",
+      "real_or_synthetic": "real",
+      "note": "中文方头括号包装。"
+    },
+    {
+      "id": "ED028",
+      "input": "“10.1038/nphys1170”是这篇文章的DOI。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_quotes",
+      "real_or_synthetic": "real",
+      "note": "中文弯引号包装。"
+    },
+    {
+      "id": "ED029",
+      "input": "第一篇10.1038/nphys1170；第二篇10.1371/journal.pone.0000308。",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "cjk_multiple_semicolon",
+      "real_or_synthetic": "real",
+      "note": "中文全角分号分隔多个真实 DOI。"
+    },
+    {
+      "id": "ED030",
+      "input": "第一篇10.1038/nphys1170、第二篇10.1371/journal.pone.0000308。",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "cjk_ideographic_comma",
+      "real_or_synthetic": "real",
+      "note": "中文顿号分隔多个 DOI。"
+    },
+    {
+      "id": "ED031",
+      "input": "可见10.1038/nphys1170！后文略。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_exclamation",
+      "real_or_synthetic": "real",
+      "note": "中文感叹号应作为正文边界。"
+    },
+    {
+      "id": "ED032",
+      "input": "可见10.1038/nphys1170？是否正确待核对。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_question",
+      "real_or_synthetic": "real",
+      "note": "中文问号应作为正文边界。"
+    },
+    {
+      "id": "ED033",
+      "input": "链接：https://doi.org/10.1056/NEJMoa2034577，已记录。",
+      "expected": [
+        "10.1056/nejmoa2034577"
+      ],
+      "category": "cjk_resolver_comma",
+      "real_or_synthetic": "real",
+      "note": "resolver URL 后直接跟中文逗号。"
+    },
+    {
+      "id": "ED034",
+      "input": "链接：https://doi.org/10.1056/NEJMoa2034577?utm_source=test#section，已记录。",
+      "expected": [
+        "10.1056/nejmoa2034577"
+      ],
+      "category": "cjk_query_fragment",
+      "real_or_synthetic": "real",
+      "note": "query/fragment 后再接中文标点。"
+    },
+    {
+      "id": "ED035",
+      "input": "旧文献（10.1016/S0140-6736(20)30183-5），请保留DOI内部括号。",
+      "expected": [
+        "10.1016/s0140-6736(20)30183-5"
+      ],
+      "category": "cjk_outer_vs_internal_parentheses",
+      "real_or_synthetic": "real",
+      "note": "外围中文括号与 DOI 内部 ASCII 括号必须区分。"
+    },
+    {
+      "id": "ED036",
+      "input": "Wiley旧式：10.1002/(SICI)1099-0844(199912)17:4<290::AID-CBF849>3.0.CO;2-P；下一条。",
+      "expected": [
+        "10.1002/(sici)1099-0844(199912)17:4<290::aid-cbf849>3.0.co;2-p"
+      ],
+      "category": "cjk_legacy_semicolon",
+      "real_or_synthetic": "real",
+      "note": "DOI 内部 ASCII 分号要保留，末尾全角分号作为正文边界。"
+    },
+    {
+      "id": "ED037",
+      "input": "重复：10.1038/nphys1170；又写成https://doi.org/10.1038/NPHYS1170。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_duplicate",
+      "real_or_synthetic": "real",
+      "note": "中文连续文本中的重复 DOI 标准化后去重。"
+    },
+    {
+      "id": "ED038",
+      "input": "伪 DOI：abc10.1038/nphys1170；真 DOI：10.1371/journal.pone.0000308。",
+      "expected": [
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "cjk_embedded_false_positive",
+      "real_or_synthetic": "synthetic",
+      "note": "中文标签不影响对 ASCII 嵌入式假阳性的拒绝。"
+    },
+    {
+      "id": "ED039",
+      "input": "全角字符１０.１０３８/nphys1170和10.1038／nphys1170都不是标准ASCII结构；有效的是10.1038/nphys1170。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "fullwidth_confusables",
+      "real_or_synthetic": "synthetic",
+      "note": "OCR/输入法可能产生全角数字、点或斜杠；不能静默纠正为 DOI。"
+    },
+    {
+      "id": "ED040",
+      "input": "编号A10.1038/nphys1170不应匹配；但DOI为10.1371/journal.pone.0000308，应匹配。",
+      "expected": [
+        "10.1371/journal.pone.0000308"
+      ],
+      "category": "ascii_vs_cjk_left_boundary",
+      "real_or_synthetic": "synthetic",
+      "note": "ASCII 字母紧贴 DOI 时拒绝；中文正文紧贴 DOI 则允许。"
+    },
+    {
+      "id": "ED041",
+      "input": "DOI为10.1038/nphys1170）后文继续。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_closing_parenthesis",
+      "real_or_synthetic": "real",
+      "note": "只有右全角括号时也应视为正文包装边界。"
+    },
+    {
+      "id": "ED042",
+      "input": "DOI为《10.1038/nphys1170》，后文继续。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_book_title_brackets",
+      "real_or_synthetic": "synthetic",
+      "note": "中文书名号可能被用户用作强调/包装，不能进入 DOI。"
+    },
+    {
+      "id": "ED043",
+      "input": "DOI为10.1038/nphys1170……后文继续。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_ellipsis",
+      "real_or_synthetic": "real",
+      "note": "中文省略号在自然语言中作为正文边界。"
+    },
+    {
+      "id": "ED044",
+      "input": "DOI为10.1038/nphys1170：后文是说明。",
+      "expected": [
+        "10.1038/nphys1170"
+      ],
+      "category": "cjk_colon_boundary",
+      "real_or_synthetic": "real",
+      "note": "全角冒号在中文正文中作为提取边界。"
+    },
+    {
+      "id": "ED045",
+      "input": "Nature 10.1038/nphys1170；PLOS 10.1371/journal.pone.0000308；APS 10.1103/PhysRevLett.116.061102。",
+      "expected": [
+        "10.1038/nphys1170",
+        "10.1371/journal.pone.0000308",
+        "10.1103/physrevlett.116.061102"
+      ],
+      "category": "cjk_three_real_dois",
+      "real_or_synthetic": "real",
+      "note": "中文连续文本中三个不同出版社真实 DOI。"
+    },
+    {
+      "id": "ED046",
+      "input": "Data DOI: 10.5061/dryad.m62gj; Zenodo DOI: 10.5281/ZENODO.31780.",
+      "expected": [
+        "10.5061/dryad.m62gj",
+        "10.5281/zenodo.31780"
+      ],
+      "category": "datacite_real_dois",
+      "real_or_synthetic": "real",
+      "note": "覆盖研究数据/仓储 DOI，不局限于期刊论文。"
+    },
+    {
+      "id": "ED047",
+      "input": "日本旧文献 DOI：10.1246/bcsj.26.232，已记录。",
+      "expected": [
+        "10.1246/bcsj.26.232"
+      ],
+      "category": "japanese_journal_in_cjk_text",
+      "real_or_synthetic": "real",
+      "note": "真实日本期刊 DOI 出现在中文正文中。"
+    }
+  ],
+  "looks_like_doi": [
+    {
+      "id": "LD001",
+      "input": "10.1038/nphys1170",
+      "expected": true,
+      "category": "real_standard",
+      "real_or_synthetic": "real",
+      "note": "标准裸 DOI。"
+    },
+    {
+      "id": "LD002",
+      "input": "10.1103/PhysRevLett.116.061102",
+      "expected": true,
+      "category": "real_mixed_case",
+      "real_or_synthetic": "real",
+      "note": "大小写不影响 DOI-like 判断。"
+    },
+    {
+      "id": "LD003",
+      "input": "10.1016/S0140-6736(20)30183-5",
+      "expected": true,
+      "category": "real_parentheses",
+      "real_or_synthetic": "real",
+      "note": "真实 Lancet DOI。"
+    },
+    {
+      "id": "LD004",
+      "input": "10.1002/(SICI)1099-0844(199912)17:4<290::AID-CBF849>3.0.CO;2-P",
+      "expected": true,
+      "category": "real_legacy_wiley",
+      "real_or_synthetic": "real",
+      "note": "真实旧 Wiley DOI。"
+    },
+    {
+      "id": "LD005",
+      "input": "10.1002/(SICI)1521-3951(199911)216:1<135::AID-PSSB135>3.0.CO;2-#",
+      "expected": true,
+      "category": "real_legacy_hash",
+      "real_or_synthetic": "real",
+      "note": "真实历史 DOI，# 属于 suffix。"
+    },
+    {
+      "id": "LD006",
+      "input": "10.5061/dryad.m62gj",
+      "expected": true,
+      "category": "real_datacite",
+      "real_or_synthetic": "real",
+      "note": "DataCite/Dryad DOI。"
+    },
+    {
+      "id": "LD007",
+      "input": "10.5281/zenodo.31780",
+      "expected": true,
+      "category": "real_datacite",
+      "real_or_synthetic": "real",
+      "note": "Zenodo DOI。"
+    },
+    {
+      "id": "LD008",
+      "input": "10.1246/bcsj.26.232",
+      "expected": true,
+      "category": "real_old_journal",
+      "real_or_synthetic": "real",
+      "note": "旧日本期刊 DOI。"
+    },
+    {
+      "id": "LD009",
+      "input": " 10.1038/nphys1170 ",
+      "expected": false,
+      "category": "raw_whitespace",
+      "real_or_synthetic": "real",
+      "note": "looks_like_doi 只检查当前字符串本身，不先 trim。"
+    },
+    {
+      "id": "LD010",
+      "input": "DOI:10.1038/nphys1170",
+      "expected": false,
+      "category": "label_not_bare",
+      "real_or_synthetic": "real",
+      "note": "带标签不是裸 DOI。"
+    },
+    {
+      "id": "LD011",
+      "input": "DOI：10.1038/nphys1170",
+      "expected": false,
+      "category": "cjk_label_not_bare",
+      "real_or_synthetic": "real",
+      "note": "中文全角标签也不是裸 DOI。"
+    },
+    {
+      "id": "LD012",
+      "input": "https://doi.org/10.1038/nphys1170",
+      "expected": false,
+      "category": "url_not_bare",
+      "real_or_synthetic": "real",
+      "note": "完整 resolver URL 不是裸 DOI。"
+    },
+    {
+      "id": "LD013",
+      "input": "doi.org/10.1038/nphys1170",
+      "expected": false,
+      "category": "domain_not_bare",
+      "real_or_synthetic": "real",
+      "note": "带 doi.org 域名不是裸 DOI。"
+    },
+    {
+      "id": "LD014",
+      "input": "(10.1038/nphys1170)",
+      "expected": false,
+      "category": "wrapped_not_bare",
+      "real_or_synthetic": "real",
+      "note": "ASCII 外围括号不属于 DOI 自身。"
+    },
+    {
+      "id": "LD015",
+      "input": "（10.1038/nphys1170）",
+      "expected": false,
+      "category": "cjk_wrapped_not_bare",
+      "real_or_synthetic": "real",
+      "note": "中文外围括号不属于裸 DOI。"
+    },
+    {
+      "id": "LD016",
+      "input": "10.1038/nphys1170.",
+      "expected": false,
+      "category": "trailing_sentence_period",
+      "real_or_synthetic": "real",
+      "note": "V0.2 面向科研文本的实用谓词：已知 DOI 后的句末点号视为包装，不算裸 DOI。"
+    },
+    {
+      "id": "LD017",
+      "input": "10.1038/nphys1170。",
+      "expected": false,
+      "category": "cjk_trailing_period",
+      "real_or_synthetic": "real",
+      "note": "中文句号明显属于正文，不算裸 DOI。"
+    },
+    {
+      "id": "LD018",
+      "input": "10.1234",
+      "expected": false,
+      "category": "missing_suffix",
+      "real_or_synthetic": "synthetic",
+      "note": "prefix 被截断。"
+    },
+    {
+      "id": "LD019",
+      "input": "10.1234/",
+      "expected": false,
+      "category": "empty_suffix",
+      "real_or_synthetic": "synthetic",
+      "note": "suffix 为空。"
+    },
+    {
+      "id": "LD020",
+      "input": "11.1234/abc",
+      "expected": false,
+      "category": "wrong_directory",
+      "real_or_synthetic": "synthetic",
+      "note": "DOI 必须处于 10. namespace。"
+    },
+    {
+      "id": "LD021",
+      "input": "1234/abc",
+      "expected": false,
+      "category": "missing_10_prefix",
+      "real_or_synthetic": "synthetic",
+      "note": "缺少 10.。"
+    },
+    {
+      "id": "LD022",
+      "input": "10.ABCD/xyz",
+      "expected": false,
+      "category": "non_numeric_prefix",
+      "real_or_synthetic": "synthetic",
+      "note": "prefix registrant 部分必须是数字。"
+    },
+    {
+      "id": "LD023",
+      "input": "10.12 34/abc",
+      "expected": false,
+      "category": "prefix_space",
+      "real_or_synthetic": "synthetic",
+      "note": "prefix 中不能夹普通空格。"
+    },
+    {
+      "id": "LD024",
+      "input": "10.1038/nphys 1170",
+      "expected": false,
+      "category": "suffix_space",
+      "real_or_synthetic": "synthetic",
+      "note": "主流科研 DOI 不应包含普通空格。"
+    },
+    {
+      "id": "LD025",
+      "input": "not a doi",
+      "expected": false,
+      "category": "ordinary_text",
+      "real_or_synthetic": "synthetic",
+      "note": "普通文本。"
+    },
+    {
+      "id": "LD026",
+      "input": "",
+      "expected": false,
+      "category": "empty",
+      "real_or_synthetic": "synthetic",
+      "note": "空字符串。"
+    },
+    {
+      "id": "LD027",
+      "input": null,
+      "expected": false,
+      "category": "non_string",
+      "real_or_synthetic": "synthetic",
+      "note": "谓词对 None 安全返回 false。"
+    },
+    {
+      "id": "LD028",
+      "input": 12345,
+      "expected": false,
+      "category": "non_string",
+      "real_or_synthetic": "synthetic",
+      "note": "谓词对整数安全返回 false。"
+    },
+    {
+      "id": "LD029",
+      "input": "abc10.1038/nphys1170",
+      "expected": false,
+      "category": "embedded_ascii",
+      "real_or_synthetic": "synthetic",
+      "note": "整个字符串并不是 DOI，只是内部含 DOI 样式片段。"
+    },
+    {
+      "id": "LD030",
+      "input": "１０.１０３８/nphys1170",
+      "expected": false,
+      "category": "fullwidth_confusable",
+      "real_or_synthetic": "synthetic",
+      "note": "输入法/OCR 全角字符不能静默当作 ASCII DOI。"
+    },
+    {
+      "id": "LD031",
+      "input": "10.1038／nphys1170",
+      "expected": false,
+      "category": "fullwidth_slash",
+      "real_or_synthetic": "synthetic",
+      "note": "全角斜杠不是 DOI 的 ASCII '/' 分隔符。"
+    }
+  ]
+}
