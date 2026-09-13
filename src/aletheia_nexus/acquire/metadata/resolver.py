@@ -1,22 +1,19 @@
 from enum import StrEnum
 from urllib.parse import quote
 
-import httpx
-
-from aletheia_nexus.acquire.metadata.crossref import get_crossref_metadata
-from aletheia_nexus.acquire.metadata.datacite import get_datacite_metadata
+from aletheia_nexus.acquire.metadata.crossref import (
+    get_crossref_metadata,
+)
+from aletheia_nexus.acquire.metadata.datacite import (
+    get_datacite_metadata,
+)
 from aletheia_nexus.acquire.metadata.exceptions import (
-    MetadataNetworkError,
-    MetadataNotFoundError,
     MetadataParseError,
-    MetadataRequestError,
-    MetadataServiceError,
-    RateLimitError,
     UnsupportedAgencyError,
 )
+from aletheia_nexus.acquire.metadata.transport import get_json
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.models import PaperMetadata
-
 
 CROSSREF_API = "https://api.crossref.org/v1"
 
@@ -37,56 +34,14 @@ def get_doi_agency(
 
     doi = normalize_doi(doi)
 
-    params = {}
-    if mailto:
-        params["mailto"] = mailto
+    params = {"mailto": mailto} if mailto else None
 
-    try:
-        response = httpx.get(
-            f"{CROSSREF_API}/works/{quote(doi, safe='')}/agency",
-            params=params,
-            headers={
-                "User-Agent": "Aletheia-Nexus/0.3",
-            },
-            timeout=10.0,
-        )
-
-    except httpx.TimeoutException as exc:
-        raise MetadataNetworkError(
-            f"Timed out while identifying DOI agency: {doi}"
-        ) from exc
-
-    except httpx.RequestError as exc:
-        raise MetadataNetworkError(
-            f"Network error while identifying DOI agency: {doi}"
-        ) from exc
-
-    if response.status_code == 404:
-        raise MetadataNotFoundError(
-            f"DOI registration agency not found: {doi}"
+    data = get_json(
+        (f"{CROSSREF_API}/works/{quote(doi, safe='')}/agency"),
+        context=f"DOI agency lookup for {doi}",
+        params=params,
+        mailto=mailto,
     )
-
-    if response.status_code == 429:
-        raise RateLimitError(
-            f"Rate limit exceeded while identifying DOI agency: {doi}"
-    )
-
-    if 400 <= response.status_code < 500:
-        raise MetadataRequestError(
-            f"Agency lookup request failed with HTTP {response.status_code} for DOI: {doi}"
-    )
-
-    if 500 <= response.status_code < 600:
-        raise MetadataServiceError(
-            f"Agency lookup server error {response.status_code} for DOI: {doi}"
-    )
-
-    try:
-        data = response.json()
-    except ValueError as exc:
-        raise MetadataParseError(
-            f"Agency lookup returned invalid JSON for DOI: {doi}"
-        ) from exc
 
     try:
         agency_id = data["message"]["agency"]["id"]
@@ -104,9 +59,10 @@ def get_doi_agency(
 
     try:
         return DoiAgency(agency_id)
+
     except ValueError as exc:
         raise UnsupportedAgencyError(
-            f"Unsupported DOI registration agency '{agency_id}' for DOI: {doi}"
+            (f"Unsupported DOI registration agency '{agency_id}' for DOI: {doi}")
         ) from exc
 
 
@@ -115,7 +71,7 @@ def get_metadata(
     *,
     mailto: str | None = None,
 ) -> PaperMetadata:
-    """Retrieve metadata from the correct provider for one DOI."""
+    """Retrieve metadata from the correct provider."""
 
     doi = normalize_doi(doi)
 
@@ -135,6 +91,5 @@ def get_metadata(
             doi,
             mailto=mailto,
         )
-    raise UnsupportedAgencyError(
-        f"Unsupported DOI registration agency for DOI: {doi}"
-    )
+
+    raise UnsupportedAgencyError(f"Unsupported DOI registration agency for DOI: {doi}")

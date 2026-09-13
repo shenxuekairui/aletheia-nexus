@@ -1,16 +1,11 @@
-﻿import json
+import json
 from pathlib import Path
 
 import pytest
 
 from aletheia_nexus.core.identifiers import doi as doi_module
 
-
-SPEC_FILE = (
-    Path(__file__).parents[2]
-    / "data"
-    / "doi_v0_2_spec_cases.json"
-)
+SPEC_FILE = Path(__file__).parents[2] / "data" / "doi_v0_2_spec_cases.json"
 
 with SPEC_FILE.open(encoding="utf-8") as file:
     CASES = json.load(file)
@@ -25,9 +20,7 @@ EXCEPTION_TYPES = {
 def _run_case(function_name, case):
     function = getattr(doi_module, function_name, None)
 
-    assert callable(function), (
-        f"{function_name}() is not implemented"
-    )
+    assert callable(function), f"{function_name}() is not implemented"
 
     options = case.get("options", {})
     expected_exception = case.get("expected_exception")

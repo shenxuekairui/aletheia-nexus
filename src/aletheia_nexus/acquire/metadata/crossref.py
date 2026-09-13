@@ -1,34 +1,25 @@
 from urllib.parse import quote
 
-import httpx
-
 from aletheia_nexus.acquire.metadata.exceptions import (
-    MetadataNetworkError,
-    MetadataNotFoundError,
     MetadataParseError,
-    MetadataRequestError,
-    MetadataServiceError,
-    RateLimitError,
 )
+from aletheia_nexus.acquire.metadata.transport import get_json
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.models import PaperMetadata
-
 
 CROSSREF_API = "https://api.crossref.org/v1"
 
 
-def _first(
+def _first_text(
     value: object,
 ) -> str | None:
-    """Return the first text item from a Crossref list."""
+    """Return the first text value from a Crossref list."""
 
     if value is None:
         return None
 
     if not isinstance(value, list):
-        raise TypeError(
-            "Crossref list field must be a list"
-        )
+        raise TypeError("Crossref list field must be a list")
 
     if not value:
         return None
@@ -36,85 +27,70 @@ def _first(
     first = value[0]
 
     if not isinstance(first, str):
-        raise TypeError(
-            "Crossref list field must contain strings"
-        )
+        raise TypeError("Crossref list field must contain strings")
 
     return first or None
+
+
+def _optional_text(
+    work: dict,
+    field: str,
+) -> str | None:
+    """Return one optional Crossref text field."""
+
+    value = work.get(field)
+
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise TypeError(f"Crossref {field} must be a string")
+
+    return value or None
 
 
 def _author_name(
     author: object,
 ) -> str:
-    """Convert one Crossref author record into a readable name."""
+    """Convert one Crossref author object into a readable name."""
 
     if not isinstance(author, dict):
-        raise TypeError(
-            "Crossref author must be an object"
-        )
+        raise TypeError("Crossref author must be an object")
 
-    name = author.get("name")
+    literal_name = author.get("name")
 
-    if name is not None:
-        if not isinstance(name, str):
-            raise TypeError(
-                "Crossref author name must be a string"
-            )
+    if literal_name is not None:
+        if not isinstance(literal_name, str):
+            raise TypeError("Crossref author name must be a string")
 
-        return name
+        return literal_name
 
     given = author.get("given")
     family = author.get("family")
 
-    if given is not None and not isinstance(
-        given,
-        str,
-    ):
-        raise TypeError(
-            "Crossref author given name must be a string"
-        )
+    if given is not None and not isinstance(given, str):
+        raise TypeError("Crossref author given name must be a string")
 
-    if family is not None and not isinstance(
-        family,
-        str,
-    ):
-        raise TypeError(
-            "Crossref author family name must be a string"
-        )
+    if family is not None and not isinstance(family, str):
+        raise TypeError("Crossref author family name must be a string")
 
-    return " ".join(
-        part
-        for part in (
-            given,
-            family,
-        )
-        if part
-    )
+    return " ".join(part for part in (given, family) if part)
 
 
 def _authors(
     work: dict,
 ) -> tuple[str, ...]:
-    """Return validated Crossref author names."""
+    """Return normalized Crossref author names."""
 
-    value = work.get(
-        "author",
-        [],
-    )
+    authors = work.get("author", [])
 
-    if value is None:
+    if authors is None:
         return ()
 
-    if not isinstance(value, list):
-        raise TypeError(
-            "Crossref author field must be a list"
-        )
+    if not isinstance(authors, list):
+        raise TypeError("Crossref author field must be a list")
 
-    return tuple(
-        name
-        for author in value
-        if (name := _author_name(author))
-    )
+    return tuple(name for author in authors if (name := _author_name(author)))
 
 
 def _issn(
@@ -122,34 +98,24 @@ def _issn(
 ) -> tuple[str, ...]:
     """Return validated Crossref ISSN values."""
 
-    value = work.get(
-        "ISSN",
-        [],
-    )
+    values = work.get("ISSN", [])
 
-    if value is None:
+    if values is None:
         return ()
 
-    if not isinstance(value, list):
-        raise TypeError(
-            "Crossref ISSN must be a list"
-        )
+    if not isinstance(values, list):
+        raise TypeError("Crossref ISSN must be a list")
 
-    if not all(
-        isinstance(item, str)
-        for item in value
-    ):
-        raise TypeError(
-            "Crossref ISSN must contain strings"
-        )
+    if not all(isinstance(value, str) for value in values):
+        raise TypeError("Crossref ISSN must contain strings")
 
-    return tuple(value)
+    return tuple(values)
 
 
 def _publication_date(
     work: dict,
 ) -> tuple[str | None, int | None]:
-    """Extract the best available publication date."""
+    """Extract the best available Crossref publication date."""
 
     for field in (
         "published",
@@ -157,59 +123,38 @@ def _publication_date(
         "published-print",
         "issued",
     ):
-        date_record = work.get(field)
+        record = work.get(field)
 
-        if date_record is None:
+        if record is None:
             continue
 
-        if not isinstance(
-            date_record,
-            dict,
-        ):
-            raise TypeError(
-                f"Crossref {field} field must be an object"
-            )
+        if not isinstance(record, dict):
+            raise TypeError(f"Crossref {field} must be an object")
 
-        date_parts = date_record.get(
-            "date-parts"
-        )
+        date_parts = record.get("date-parts")
 
         if not date_parts:
             continue
 
         if (
             not isinstance(date_parts, list)
-            or not isinstance(
-                date_parts[0],
-                list,
-            )
+            or not date_parts
+            or not isinstance(date_parts[0], list)
             or not date_parts[0]
         ):
-            raise TypeError(
-                f"Crossref {field} date-parts "
-                "must contain a non-empty list"
-            )
+            raise TypeError(f"Crossref {field} date-parts are invalid")
 
         parts = date_parts[0]
 
         if not all(
-            isinstance(part, int)
-            and not isinstance(part, bool)
-            for part in parts
+            isinstance(part, int) and not isinstance(part, bool) for part in parts
         ):
-            raise TypeError(
-                f"Crossref {field} date-parts "
-                "must contain integers"
-            )
+            raise TypeError(f"Crossref {field} date-parts must contain integers")
 
         year = parts[0]
 
         date = "-".join(
-            (
-                str(part)
-                if index == 0
-                else f"{part:02d}"
-            )
+            str(part) if index == 0 else f"{part:02d}"
             for index, part in enumerate(parts)
         )
 
@@ -221,51 +166,45 @@ def _publication_date(
 def parse_crossref_work(
     work: dict,
 ) -> PaperMetadata:
-    """Convert a Crossref work record into PaperMetadata."""
+    """Convert one Crossref work record into PaperMetadata."""
 
     if not isinstance(work, dict):
-        raise MetadataParseError(
-            "Crossref work record must be an object"
-        )
+        raise MetadataParseError("Crossref work record must be an object")
 
     try:
-        published_date, year = (
-            _publication_date(work)
-        )
+        published_date, year = _publication_date(work)
 
         return PaperMetadata(
-            doi=normalize_doi(
-                work["DOI"]
-            ),
-            title=_first(
-                work.get("title")
-            ),
+            doi=normalize_doi(work["DOI"]),
+            title=_first_text(work.get("title")),
             authors=_authors(work),
-            journal=_first(
-                work.get(
-                    "container-title"
-                )
-            ),
+            journal=_first_text(work.get("container-title")),
             issn=_issn(work),
             published_date=published_date,
             year=year,
-            publisher=work.get(
-                "publisher"
+            publisher=_optional_text(
+                work,
+                "publisher",
             ),
-            work_type=work.get(
-                "type"
+            work_type=_optional_text(
+                work,
+                "type",
             ),
-            volume=work.get(
-                "volume"
+            volume=_optional_text(
+                work,
+                "volume",
             ),
-            issue=work.get(
-                "issue"
+            issue=_optional_text(
+                work,
+                "issue",
             ),
-            pages=work.get(
-                "page"
+            pages=_optional_text(
+                work,
+                "page",
             ),
-            url=work.get(
-                "URL"
+            url=_optional_text(
+                work,
+                "URL",
             ),
         )
 
@@ -287,90 +226,22 @@ def get_crossref_metadata(
 ) -> PaperMetadata:
     """Retrieve metadata for one DOI from Crossref."""
 
-    doi = normalize_doi(
-        doi
+    doi = normalize_doi(doi)
+
+    params = {"mailto": mailto} if mailto else None
+
+    data = get_json(
+        (f"{CROSSREF_API}/works/{quote(doi, safe='')}"),
+        context=f"Crossref metadata for DOI {doi}",
+        params=params,
+        mailto=mailto,
     )
 
-    params = {}
+    message = data.get("message")
 
-    if mailto:
-        params["mailto"] = mailto
-
-    try:
-        response = httpx.get(
-            (
-                f"{CROSSREF_API}/works/"
-                f"{quote(doi, safe='')}"
-            ),
-            params=params,
-            headers={
-                "User-Agent": (
-                    "Aletheia-Nexus/0.3"
-                ),
-            },
-            timeout=10.0,
-        )
-
-    except httpx.TimeoutException as exc:
-        raise MetadataNetworkError(
-            f"Timed out while requesting "
-            f"Crossref metadata for DOI: {doi}"
-        ) from exc
-
-    except httpx.RequestError as exc:
-        raise MetadataNetworkError(
-            f"Network error while requesting "
-            f"Crossref metadata for DOI: {doi}"
-        ) from exc
-
-    if response.status_code == 404:
-        raise MetadataNotFoundError(
-            f"Crossref metadata not found "
-            f"for DOI: {doi}"
-        )
-
-    if response.status_code == 429:
-        raise RateLimitError(
-            f"Crossref rate limit exceeded "
-            f"for DOI: {doi}"
-        )
-
-    if 400 <= response.status_code < 500:
-        raise MetadataRequestError(
-            f"Crossref request failed with HTTP "
-            f"{response.status_code} "
-            f"for DOI: {doi}"
-        )
-
-    if 500 <= response.status_code < 600:
-        raise MetadataServiceError(
-            f"Crossref server error "
-            f"{response.status_code} "
-            f"for DOI: {doi}"
-        )
-
-    try:
-        data = response.json()
-
-    except ValueError as exc:
+    if not isinstance(message, dict):
         raise MetadataParseError(
-            f"Crossref returned invalid JSON "
-            f"for DOI: {doi}"
-        ) from exc
-
-    if (
-        not isinstance(data, dict)
-        or "message" not in data
-        or not isinstance(
-            data["message"],
-            dict,
-        )
-    ):
-        raise MetadataParseError(
-            f"Crossref response has invalid "
-            f"structure for DOI: {doi}"
+            f"Crossref response has invalid structure for DOI: {doi}"
         )
 
-    return parse_crossref_work(
-        data["message"]
-    )
+    return parse_crossref_work(message)

@@ -2,7 +2,6 @@ import re
 from collections.abc import Iterable
 from urllib.parse import unquote, urlsplit
 
-
 DOI_PREFIX = r"10\.\d{4,9}"
 
 DOI_PATTERN = re.compile(
@@ -63,7 +62,7 @@ def _clean(value: str) -> str:
 
         for left, right in WRAPPERS:
             if value.startswith(left) and value.endswith(right):
-                value = value[len(left):-len(right)].strip()
+                value = value[len(left) : -len(right)].strip()
                 break
 
         # Remove only unmatched closing ASCII wrappers.

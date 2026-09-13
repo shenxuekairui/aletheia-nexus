@@ -12,8 +12,8 @@ from aletheia_nexus.acquire.metadata.exceptions import (
     UnsupportedAgencyError,
 )
 from aletheia_nexus.acquire.metadata.retry import (
-    _validate_retry_config,
     get_metadata_with_retry,
+    validate_retry_config,
 )
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.models import PaperMetadata
@@ -54,20 +54,13 @@ def get_metadata_batch(
 ) -> list[MetadataLookupResult]:
     """Retrieve metadata for multiple DOI inputs."""
 
-    if (
-        isinstance(values, (str, bytes))
-        or not isinstance(values, Iterable)
-    ):
-        raise TypeError(
-            "get_metadata_batch() expects an iterable of DOI values"
-        )
+    if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+        raise TypeError("get_metadata_batch() expects an iterable of DOI values")
 
     if not isinstance(deduplicate, bool):
-        raise TypeError(
-            "deduplicate must be a boolean"
-        )
+        raise TypeError("deduplicate must be a boolean")
 
-    _validate_retry_config(
+    validate_retry_config(
         max_attempts,
         backoff_base,
     )

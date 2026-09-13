@@ -50,9 +50,7 @@ def test_batch_handles_mixed_inputs_and_preserves_order(
         backoff_base=1.0,
     ):
         if doi == "10.9999/not-real-doi":
-            raise MetadataNotFoundError(
-                "Not found"
-            )
+            raise MetadataNotFoundError("Not found")
 
         return _paper(doi)
 
@@ -209,9 +207,7 @@ def test_batch_maps_metadata_errors_to_statuses(
         max_attempts=3,
         backoff_base=1.0,
     ):
-        raise exception_type(
-            "Test error"
-        )
+        raise exception_type("Test error")
 
     monkeypatch.setattr(
         batch_module,
@@ -219,9 +215,7 @@ def test_batch_maps_metadata_errors_to_statuses(
         fake_get_metadata_with_retry,
     )
 
-    result = get_metadata_batch(
-        ["10.1038/nphys1170"]
-    )[0]
+    result = get_metadata_batch(["10.1038/nphys1170"])[0]
 
     assert result.status == expected_status
     assert result.metadata is None
@@ -294,9 +288,7 @@ def test_batch_rejects_non_collection_input(
     """The batch itself must be a collection, not one DOI value."""
 
     with pytest.raises(TypeError):
-        get_metadata_batch(
-            invalid_batch
-        )
+        get_metadata_batch(invalid_batch)
 
 
 def test_batch_forwards_retry_configuration(
@@ -364,15 +356,10 @@ def test_batch_success_contains_metadata(
     monkeypatch.setattr(
         batch_module,
         "get_metadata_with_retry",
-        lambda doi,
-        mailto=None,
-        max_attempts=3,
-        backoff_base=1.0: _paper(doi),
+        lambda doi, mailto=None, max_attempts=3, backoff_base=1.0: _paper(doi),
     )
 
-    result = get_metadata_batch(
-        ["10.1038/nphys1170"]
-    )[0]
+    result = get_metadata_batch(["10.1038/nphys1170"])[0]
 
     assert result.status == MetadataStatus.SUCCESS
     assert result.metadata is not None
@@ -391,9 +378,7 @@ def test_batch_failure_preserves_original_input(
         max_attempts=3,
         backoff_base=1.0,
     ):
-        raise MetadataNotFoundError(
-            "Not found"
-        )
+        raise MetadataNotFoundError("Not found")
 
     monkeypatch.setattr(
         batch_module,
@@ -401,17 +386,14 @@ def test_batch_failure_preserves_original_input(
         fake_get_metadata_with_retry,
     )
 
-    original = (
-        "https://doi.org/10.9999/NOT-REAL-DOI"
-    )
+    original = "https://doi.org/10.9999/NOT-REAL-DOI"
 
-    result = get_metadata_batch(
-        [original]
-    )[0]
+    result = get_metadata_batch([original])[0]
 
     assert result.input_value == original
     assert result.doi == "10.9999/not-real-doi"
     assert result.status == MetadataStatus.NOT_FOUND
+
 
 def test_batch_validates_retry_config_before_processing():
     with pytest.raises(ValueError):

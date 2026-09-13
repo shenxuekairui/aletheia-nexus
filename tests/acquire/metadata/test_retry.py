@@ -57,9 +57,7 @@ def test_success_returns_without_retry(
         fake_get_metadata,
     )
 
-    paper = get_metadata_with_retry(
-        "10.1038/nphys1170"
-    )
+    paper = get_metadata_with_retry("10.1038/nphys1170")
 
     assert paper.doi == "10.1038/nphys1170"
     assert len(attempts) == 1
@@ -89,9 +87,7 @@ def test_retryable_errors_can_recover(
         attempts.append(doi)
 
         if len(attempts) < 3:
-            raise exception_type(
-                "Temporary failure"
-            )
+            raise exception_type("Temporary failure")
 
         return _paper(doi)
 
@@ -140,9 +136,7 @@ def test_non_retryable_errors_fail_immediately(
     ):
         attempts.append(doi)
 
-        raise exception_type(
-            "Permanent failure"
-        )
+        raise exception_type("Permanent failure")
 
     monkeypatch.setattr(
         retry_module,
@@ -173,9 +167,7 @@ def test_retry_stops_at_max_attempts(
     ):
         attempts.append(doi)
 
-        raise MetadataNetworkError(
-            "Still offline"
-        )
+        raise MetadataNetworkError("Still offline")
 
     monkeypatch.setattr(
         retry_module,
@@ -213,9 +205,7 @@ def test_retry_uses_exponential_backoff(
         *,
         mailto=None,
     ):
-        raise RateLimitError(
-            "Rate limited"
-        )
+        raise RateLimitError("Rate limited")
 
     monkeypatch.setattr(
         retry_module,
@@ -255,9 +245,7 @@ def test_retry_respects_custom_backoff_base(
         *,
         mailto=None,
     ):
-        raise MetadataServiceError(
-            "Temporary server error"
-        )
+        raise MetadataServiceError("Temporary server error")
 
     monkeypatch.setattr(
         retry_module,
@@ -299,9 +287,7 @@ def test_retry_forwards_mailto(
         received.append(mailto)
 
         if len(received) == 1:
-            raise MetadataNetworkError(
-                "Temporary failure"
-            )
+            raise MetadataNetworkError("Temporary failure")
 
         return _paper(doi)
 
@@ -371,6 +357,7 @@ def test_retry_rejects_invalid_backoff_base(
             backoff_base=backoff_base,
         )
 
+
 @pytest.mark.parametrize(
     "backoff_base",
     [
@@ -383,15 +370,9 @@ def test_retry_rejects_invalid_backoff_base(
 def test_retry_rejects_unsafe_backoff_values(
     backoff_base,
 ):
-    expected_exception = (
-        TypeError
-        if isinstance(backoff_base, bool)
-        else ValueError
-    )
+    expected_exception = TypeError if isinstance(backoff_base, bool) else ValueError
 
-    with pytest.raises(
-        expected_exception
-    ):
+    with pytest.raises(expected_exception):
         get_metadata_with_retry(
             "10.1038/nphys1170",
             backoff_base=backoff_base,

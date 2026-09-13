@@ -1,15 +1,10 @@
-import httpx
 import pytest
 
 import aletheia_nexus.acquire.metadata.resolver as resolver_module
 from aletheia_nexus.acquire.metadata.exceptions import (
     MetadataNetworkError,
-    MetadataNotFoundError,
     MetadataParseError,
-    MetadataServiceError,
-    RateLimitError,
     UnsupportedAgencyError,
-    MetadataRequestError,
 )
 from aletheia_nexus.acquire.metadata.resolver import (
     DoiAgency,
@@ -19,9 +14,9 @@ from aletheia_nexus.acquire.metadata.resolver import (
 from aletheia_nexus.core.models import PaperMetadata
 
 
-def _paper(doi: str) -> PaperMetadata:
-    """Create simple metadata for resolver tests."""
-
+def _paper(
+    doi: str,
+) -> PaperMetadata:
     return PaperMetadata(
         doi=doi,
         title="Test Paper",
@@ -42,8 +37,18 @@ def _paper(doi: str) -> PaperMetadata:
 @pytest.mark.parametrize(
     ("agency_id", "expected"),
     [
-        ("crossref", DoiAgency.CROSSREF),
-        ("datacite", DoiAgency.DATACITE),
+        (
+            "crossref",
+            DoiAgency.CROSSREF,
+        ),
+        (
+            "datacite",
+            DoiAgency.DATACITE,
+        ),
+        (
+            "CROSSREF",
+            DoiAgency.CROSSREF,
+        ),
     ],
 )
 def test_get_doi_agency_recognizes_supported_agencies(
@@ -51,128 +56,61 @@ def test_get_doi_agency_recognizes_supported_agencies(
     agency_id,
     expected,
 ):
-    """Supported agency IDs should map to DoiAgency values."""
-
-    def fake_get(*args, **kwargs):
-        return httpx.Response(
-            200,
-            json={
-                "message": {
-                    "agency": {
-                        "id": agency_id,
-                    }
+    monkeypatch.setattr(
+        resolver_module,
+        "get_json",
+        lambda *args, **kwargs: {
+            "message": {
+                "agency": {
+                    "id": agency_id,
                 }
-            },
-        )
-
-    monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
+            }
+        },
     )
 
-    assert (
-        get_doi_agency("10.1038/nphys1170")
-        == expected
-    )
+    assert get_doi_agency("10.1038/nphys1170") == expected
 
 
-@pytest.mark.parametrize(
-    ("status_code", "expected_exception"),
-    [
-        (404, MetadataNotFoundError),
-        (429, RateLimitError),
-        (400, MetadataRequestError),
-        (503, MetadataServiceError),
-    ],
-)
-def test_get_doi_agency_maps_http_errors(
-    monkeypatch,
-    status_code,
-    expected_exception,
-):
-    """HTTP failures should map to Aletheia metadata exceptions."""
-
-    def fake_get(*args, **kwargs):
-        return httpx.Response(status_code)
-
-    monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
-    )
-
-    with pytest.raises(expected_exception):
-        get_doi_agency(
-            "10.1038/nphys1170"
-        )
-
-
-@pytest.mark.parametrize(
-    "network_exception",
-    [
-        httpx.TimeoutException(
-            "Timed out",
-            request=httpx.Request(
-                "GET",
-                "https://api.crossref.org",
-            ),
-        ),
-        httpx.ConnectError(
-            "Connection failed",
-            request=httpx.Request(
-                "GET",
-                "https://api.crossref.org",
-            ),
-        ),
-    ],
-    ids=[
-        "timeout",
-        "connection-error",
-    ],
-)
-def test_get_doi_agency_maps_network_errors(
-    monkeypatch,
-    network_exception,
-):
-    """Network failures should become MetadataNetworkError."""
-
-    def fake_get(*args, **kwargs):
-        raise network_exception
-
-    monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
-    )
-
-    with pytest.raises(MetadataNetworkError):
-        get_doi_agency(
-            "10.1038/nphys1170"
-        )
-
-
-def test_get_doi_agency_rejects_invalid_json(
+def test_get_doi_agency_builds_correct_request(
     monkeypatch,
 ):
-    """Invalid JSON should become MetadataParseError."""
+    captured = {}
 
-    def fake_get(*args, **kwargs):
-        return httpx.Response(
-            200,
-            content=b"not valid json",
-        )
+    def fake_get_json(
+        url,
+        **kwargs,
+    ):
+        captured["url"] = url
+        captured.update(kwargs)
+
+        return {
+            "message": {
+                "agency": {
+                    "id": "crossref",
+                }
+            }
+        }
 
     monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
+        resolver_module,
+        "get_json",
+        fake_get_json,
     )
 
-    with pytest.raises(MetadataParseError):
-        get_doi_agency(
-            "10.1038/nphys1170"
-        )
+    agency = get_doi_agency(
+        "https://doi.org/10.1038/NPHYS1170",
+        mailto="test@example.com",
+    )
+
+    assert agency == DoiAgency.CROSSREF
+
+    assert captured["url"].endswith("/works/10.1038%2Fnphys1170/agency")
+
+    assert captured["params"] == {
+        "mailto": "test@example.com",
+    }
+
+    assert captured["mailto"] == "test@example.com"
 
 
 @pytest.mark.parametrize(
@@ -187,132 +125,73 @@ def test_get_doi_agency_rejects_invalid_json(
                 "agency": {},
             }
         },
+        {
+            "message": {
+                "agency": {
+                    "id": 123,
+                }
+            }
+        },
     ],
 )
 def test_get_doi_agency_rejects_invalid_structure(
     monkeypatch,
     payload,
 ):
-    """Missing agency fields should become MetadataParseError."""
-
-    def fake_get(*args, **kwargs):
-        return httpx.Response(
-            200,
-            json=payload,
-        )
-
     monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
+        resolver_module,
+        "get_json",
+        lambda *args, **kwargs: payload,
     )
 
     with pytest.raises(MetadataParseError):
-        get_doi_agency(
-            "10.1038/nphys1170"
-        )
-
-
-def test_get_doi_agency_rejects_invalid_agency_type(
-    monkeypatch,
-):
-    """Agency ID must be a string."""
-
-    def fake_get(*args, **kwargs):
-        return httpx.Response(
-            200,
-            json={
-                "message": {
-                    "agency": {
-                        "id": 123,
-                    }
-                }
-            },
-        )
-
-    monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
-    )
-
-    with pytest.raises(MetadataParseError):
-        get_doi_agency(
-            "10.1038/nphys1170"
-        )
+        get_doi_agency("10.1038/nphys1170")
 
 
 def test_get_doi_agency_rejects_unsupported_agency(
     monkeypatch,
 ):
-    """Known but unsupported agencies should not appear as NOT_FOUND."""
-
-    def fake_get(*args, **kwargs):
-        return httpx.Response(
-            200,
-            json={
-                "message": {
-                    "agency": {
-                        "id": "medra",
-                    }
-                }
-            },
-        )
-
     monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
+        resolver_module,
+        "get_json",
+        lambda *args, **kwargs: {
+            "message": {
+                "agency": {
+                    "id": "medra",
+                }
+            }
+        },
     )
 
     with pytest.raises(UnsupportedAgencyError):
-        get_doi_agency(
-            "10.1038/nphys1170"
-        )
+        get_doi_agency("10.1038/nphys1170")
 
 
-def test_get_doi_agency_sends_mailto(
+def test_get_doi_agency_preserves_transport_errors(
     monkeypatch,
 ):
-    """mailto should be forwarded to the Crossref agency request."""
-
-    captured = {}
-
-    def fake_get(*args, **kwargs):
-        captured.update(kwargs)
-
-        return httpx.Response(
-            200,
-            json={
-                "message": {
-                    "agency": {
-                        "id": "crossref",
-                    }
-                }
-            },
-        )
+    def fake_get_json(
+        *args,
+        **kwargs,
+    ):
+        raise MetadataNetworkError("Test transport failure")
 
     monkeypatch.setattr(
-        resolver_module.httpx,
-        "get",
-        fake_get,
+        resolver_module,
+        "get_json",
+        fake_get_json,
     )
 
-    get_doi_agency(
-        "10.1038/nphys1170",
-        mailto="test@example.com",
-    )
-
-    assert captured["params"] == {
-        "mailto": "test@example.com",
-    }
+    with pytest.raises(
+        MetadataNetworkError,
+        match="Test transport failure",
+    ):
+        get_doi_agency("10.1038/nphys1170")
 
 
-def test_get_metadata_routes_only_to_crossref(
+def test_get_metadata_routes_to_crossref(
     monkeypatch,
 ):
-    """Crossref DOI should call Crossref and not DataCite."""
-
     monkeypatch.setattr(
         resolver_module,
         "get_doi_agency",
@@ -325,10 +204,11 @@ def test_get_metadata_routes_only_to_crossref(
         lambda doi, mailto=None: _paper(doi),
     )
 
-    def should_not_be_called(*args, **kwargs):
-        raise AssertionError(
-            "DataCite should not be called"
-        )
+    def should_not_be_called(
+        *args,
+        **kwargs,
+    ):
+        raise AssertionError("DataCite should not be called")
 
     monkeypatch.setattr(
         resolver_module,
@@ -336,18 +216,14 @@ def test_get_metadata_routes_only_to_crossref(
         should_not_be_called,
     )
 
-    paper = get_metadata(
-        "10.1038/nphys1170"
-    )
+    paper = get_metadata("10.1038/nphys1170")
 
     assert paper.doi == "10.1038/nphys1170"
 
 
-def test_get_metadata_routes_only_to_datacite(
+def test_get_metadata_routes_to_datacite(
     monkeypatch,
 ):
-    """DataCite DOI should call DataCite and not Crossref."""
-
     monkeypatch.setattr(
         resolver_module,
         "get_doi_agency",
@@ -360,10 +236,11 @@ def test_get_metadata_routes_only_to_datacite(
         lambda doi, mailto=None: _paper(doi),
     )
 
-    def should_not_be_called(*args, **kwargs):
-        raise AssertionError(
-            "Crossref should not be called"
-        )
+    def should_not_be_called(
+        *args,
+        **kwargs,
+    ):
+        raise AssertionError("Crossref should not be called")
 
     monkeypatch.setattr(
         resolver_module,
@@ -371,18 +248,14 @@ def test_get_metadata_routes_only_to_datacite(
         should_not_be_called,
     )
 
-    paper = get_metadata(
-        "10.5281/zenodo.31780"
-    )
+    paper = get_metadata("10.5281/zenodo.31780")
 
     assert paper.doi == "10.5281/zenodo.31780"
 
 
-def test_get_metadata_normalizes_doi_before_routing(
+def test_get_metadata_normalizes_before_routing(
     monkeypatch,
 ):
-    """Resolver should pass normalized DOI values downstream."""
-
     received = []
 
     def fake_get_doi_agency(
@@ -390,20 +263,16 @@ def test_get_metadata_normalizes_doi_before_routing(
         *,
         mailto=None,
     ):
-        received.append(
-            ("agency", doi)
-        )
+        received.append(("agency", doi))
 
         return DoiAgency.CROSSREF
 
-    def fake_get_crossref_metadata(
+    def fake_crossref(
         doi,
         *,
         mailto=None,
     ):
-        received.append(
-            ("crossref", doi)
-        )
+        received.append(("crossref", doi))
 
         return _paper(doi)
 
@@ -416,12 +285,10 @@ def test_get_metadata_normalizes_doi_before_routing(
     monkeypatch.setattr(
         resolver_module,
         "get_crossref_metadata",
-        fake_get_crossref_metadata,
+        fake_crossref,
     )
 
-    paper = get_metadata(
-        "https://doi.org/10.1038/NPHYS1170"
-    )
+    paper = get_metadata("https://doi.org/10.1038/NPHYS1170")
 
     assert paper.doi == "10.1038/nphys1170"
 
@@ -440,8 +307,6 @@ def test_get_metadata_normalizes_doi_before_routing(
 def test_get_metadata_forwards_mailto(
     monkeypatch,
 ):
-    """mailto should reach both agency lookup and metadata provider."""
-
     received = []
 
     def fake_get_doi_agency(
@@ -449,20 +314,16 @@ def test_get_metadata_forwards_mailto(
         *,
         mailto=None,
     ):
-        received.append(
-            ("agency", mailto)
-        )
+        received.append(("agency", mailto))
 
         return DoiAgency.CROSSREF
 
-    def fake_get_crossref_metadata(
+    def fake_crossref(
         doi,
         *,
         mailto=None,
     ):
-        received.append(
-            ("crossref", mailto)
-        )
+        received.append(("crossref", mailto))
 
         return _paper(doi)
 
@@ -475,7 +336,7 @@ def test_get_metadata_forwards_mailto(
     monkeypatch.setattr(
         resolver_module,
         "get_crossref_metadata",
-        fake_get_crossref_metadata,
+        fake_crossref,
     )
 
     get_metadata(
@@ -495,15 +356,14 @@ def test_get_metadata_forwards_mailto(
     ]
 
 
-def test_get_metadata_rejects_invalid_doi_before_network(
+def test_get_metadata_rejects_invalid_doi_before_routing(
     monkeypatch,
 ):
-    """Invalid DOI input should fail before agency lookup."""
-
-    def should_not_be_called(*args, **kwargs):
-        raise AssertionError(
-            "Network routing should not start for an invalid DOI"
-        )
+    def should_not_be_called(
+        *args,
+        **kwargs,
+    ):
+        raise AssertionError("Routing should not start for an invalid DOI")
 
     monkeypatch.setattr(
         resolver_module,
@@ -512,41 +372,33 @@ def test_get_metadata_rejects_invalid_doi_before_network(
     )
 
     with pytest.raises(ValueError):
-        get_metadata(
-            "not a doi"
-        )
+        get_metadata("not a doi")
 
 
 def test_get_metadata_preserves_provider_errors(
     monkeypatch,
 ):
-    """Provider errors should propagate to the caller unchanged."""
-
     monkeypatch.setattr(
         resolver_module,
         "get_doi_agency",
         lambda doi, mailto=None: DoiAgency.CROSSREF,
     )
 
-    def fake_get_crossref_metadata(
+    def fake_crossref(
         doi,
         *,
         mailto=None,
     ):
-        raise MetadataNetworkError(
-            "Test network error"
-        )
+        raise MetadataNetworkError("Provider failure")
 
     monkeypatch.setattr(
         resolver_module,
         "get_crossref_metadata",
-        fake_get_crossref_metadata,
+        fake_crossref,
     )
 
     with pytest.raises(
         MetadataNetworkError,
-        match="Test network error",
+        match="Provider failure",
     ):
-        get_metadata(
-            "10.1038/nphys1170"
-        )
+        get_metadata("10.1038/nphys1170")

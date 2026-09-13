@@ -25,7 +25,6 @@ from aletheia_nexus.acquire.metadata.retry import (
 )
 from aletheia_nexus.core.models import PaperMetadata
 
-
 __all__ = [
     "PaperMetadata",
     "MetadataLookupResult",

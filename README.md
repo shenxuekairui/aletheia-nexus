@@ -301,9 +301,7 @@ python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```python
 from aletheia_nexus.acquire.metadata import get_metadata
 
-paper = get_metadata(
-    "10.1038/nphys1170"
-)
+paper = get_metadata("10.1038/nphys1170")
 
 print(paper.title)
 print(paper.authors)
