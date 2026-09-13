@@ -370,3 +370,29 @@ def test_retry_rejects_invalid_backoff_base(
             "10.1038/nphys1170",
             backoff_base=backoff_base,
         )
+
+@pytest.mark.parametrize(
+    "backoff_base",
+    [
+        True,
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+    ],
+)
+def test_retry_rejects_unsafe_backoff_values(
+    backoff_base,
+):
+    expected_exception = (
+        TypeError
+        if isinstance(backoff_base, bool)
+        else ValueError
+    )
+
+    with pytest.raises(
+        expected_exception
+    ):
+        get_metadata_with_retry(
+            "10.1038/nphys1170",
+            backoff_base=backoff_base,
+        )

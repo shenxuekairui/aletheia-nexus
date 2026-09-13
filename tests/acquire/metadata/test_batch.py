@@ -412,3 +412,18 @@ def test_batch_failure_preserves_original_input(
     assert result.input_value == original
     assert result.doi == "10.9999/not-real-doi"
     assert result.status == MetadataStatus.NOT_FOUND
+
+def test_batch_validates_retry_config_before_processing():
+    with pytest.raises(ValueError):
+        get_metadata_batch(
+            [],
+            max_attempts=0,
+        )
+
+
+def test_batch_rejects_non_boolean_deduplicate():
+    with pytest.raises(TypeError):
+        get_metadata_batch(
+            [],
+            deduplicate="yes",
+        )

@@ -12,6 +12,7 @@ from aletheia_nexus.acquire.metadata.exceptions import (
     UnsupportedAgencyError,
 )
 from aletheia_nexus.acquire.metadata.retry import (
+    _validate_retry_config,
     get_metadata_with_retry,
 )
 from aletheia_nexus.core.identifiers.doi import normalize_doi
@@ -53,10 +54,23 @@ def get_metadata_batch(
 ) -> list[MetadataLookupResult]:
     """Retrieve metadata for multiple DOI inputs."""
 
-    if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+    if (
+        isinstance(values, (str, bytes))
+        or not isinstance(values, Iterable)
+    ):
         raise TypeError(
             "get_metadata_batch() expects an iterable of DOI values"
         )
+
+    if not isinstance(deduplicate, bool):
+        raise TypeError(
+            "deduplicate must be a boolean"
+        )
+
+    _validate_retry_config(
+        max_attempts,
+        backoff_base,
+    )
 
     results: list[MetadataLookupResult] = []
     seen: set[str] = set()
@@ -64,6 +78,7 @@ def get_metadata_batch(
     for value in values:
         try:
             doi = normalize_doi(value)
+
         except (TypeError, ValueError) as exc:
             results.append(
                 MetadataLookupResult(
@@ -89,74 +104,32 @@ def get_metadata_batch(
             )
 
         except MetadataNotFoundError as exc:
-            results.append(
-                MetadataLookupResult(
-                    input_value=value,
-                    doi=doi,
-                    status=MetadataStatus.NOT_FOUND,
-                    error=str(exc),
-                )
-            )
+            status = MetadataStatus.NOT_FOUND
+            error = str(exc)
 
         except UnsupportedAgencyError as exc:
-            results.append(
-                MetadataLookupResult(
-                    input_value=value,
-                    doi=doi,
-                    status=MetadataStatus.UNSUPPORTED_AGENCY,
-                    error=str(exc),
-                )
-            )
+            status = MetadataStatus.UNSUPPORTED_AGENCY
+            error = str(exc)
 
         except MetadataRequestError as exc:
-            results.append(
-                MetadataLookupResult(
-                    input_value=value,
-                    doi=doi,
-                    status=MetadataStatus.REQUEST_ERROR,
-                    error=str(exc),
-                )
-            )
+            status = MetadataStatus.REQUEST_ERROR
+            error = str(exc)
 
         except MetadataNetworkError as exc:
-            results.append(
-                MetadataLookupResult(
-                    input_value=value,
-                    doi=doi,
-                    status=MetadataStatus.NETWORK_ERROR,
-                    error=str(exc),
-                )
-            )
+            status = MetadataStatus.NETWORK_ERROR
+            error = str(exc)
 
         except RateLimitError as exc:
-            results.append(
-                MetadataLookupResult(
-                    input_value=value,
-                    doi=doi,
-                    status=MetadataStatus.RATE_LIMITED,
-                    error=str(exc),
-                )
-            )
+            status = MetadataStatus.RATE_LIMITED
+            error = str(exc)
 
         except MetadataServiceError as exc:
-            results.append(
-                MetadataLookupResult(
-                    input_value=value,
-                    doi=doi,
-                    status=MetadataStatus.SERVICE_ERROR,
-                    error=str(exc),
-                )
-            )
+            status = MetadataStatus.SERVICE_ERROR
+            error = str(exc)
 
         except MetadataParseError as exc:
-            results.append(
-                MetadataLookupResult(
-                    input_value=value,
-                    doi=doi,
-                    status=MetadataStatus.PARSE_ERROR,
-                    error=str(exc),
-                )
-            )
+            status = MetadataStatus.PARSE_ERROR
+            error = str(exc)
 
         else:
             results.append(
@@ -167,5 +140,15 @@ def get_metadata_batch(
                     metadata=metadata,
                 )
             )
+            continue
+
+        results.append(
+            MetadataLookupResult(
+                input_value=value,
+                doi=doi,
+                status=status,
+                error=error,
+            )
+        )
 
     return results

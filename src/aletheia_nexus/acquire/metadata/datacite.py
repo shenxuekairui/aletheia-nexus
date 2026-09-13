@@ -23,8 +23,12 @@ def _title(attributes: dict) -> str | None:
     titles = attributes.get("titles", [])
 
     for item in titles:
+        if not isinstance(item, dict):
+            continue
+
         title = item.get("title")
-        if title:
+
+        if isinstance(title, str) and title:
             return title
 
     return None
@@ -33,6 +37,11 @@ def _title(attributes: dict) -> str | None:
 def _creator_name(creator: dict) -> str:
     """Convert one DataCite creator into a readable name."""
 
+    if not isinstance(creator, dict):
+        raise TypeError(
+            "DataCite creator must be an object"
+        )
+
     given = creator.get("givenName")
     family = creator.get("familyName")
 
@@ -40,13 +49,17 @@ def _creator_name(creator: dict) -> str:
         return " ".join(
             part
             for part in (given, family)
-            if part
+            if isinstance(part, str) and part
         )
 
-    return creator.get("name", "")
+    name = creator.get("name")
+
+    return name if isinstance(name, str) else ""
 
 
-def _publisher_name(attributes: dict) -> str | None:
+def _publisher_name(
+    attributes: dict,
+) -> str | None:
     """Return the publisher name."""
 
     publisher = attributes.get("publisher")
@@ -55,7 +68,8 @@ def _publisher_name(attributes: dict) -> str | None:
         return publisher
 
     if isinstance(publisher, dict):
-        return publisher.get("name")
+        name = publisher.get("name")
+        return name if isinstance(name, str) else None
 
     return None
 
@@ -67,64 +81,215 @@ def _publication_date(
 
     dates = attributes.get("dates", [])
 
-    for item in dates:
-        if item.get("dateType") == "Issued":
+    if isinstance(dates, list):
+        for item in dates:
+            if not isinstance(item, dict):
+                continue
+
+            if item.get("dateType") != "Issued":
+                continue
+
             date = item.get("date")
 
-            if date:
-                try:
-                    year = int(date[:4])
-                except (TypeError, ValueError):
-                    year = None
+            if not isinstance(date, str) or not date:
+                continue
 
-                return date, year
+            try:
+                year = int(date[:4])
+            except ValueError:
+                year = None
+
+            return date, year
 
     year = attributes.get("publicationYear")
 
-    if isinstance(year, int):
+    if isinstance(year, int) and not isinstance(year, bool):
         return str(year), year
 
     return None, None
 
 
-def _container_field(
+def _published_in_item(
+    attributes: dict,
+) -> dict | None:
+    """Return the primary IsPublishedIn related item."""
+
+    related_items = attributes.get(
+        "relatedItems",
+        [],
+    )
+
+    if not isinstance(related_items, list):
+        return None
+
+    for item in related_items:
+        if (
+            isinstance(item, dict)
+            and item.get("relationType") == "IsPublishedIn"
+        ):
+            return item
+
+    return None
+
+
+def _legacy_container(
+    attributes: dict,
+) -> dict:
+    """Return the legacy/convenience container object."""
+
+    container = attributes.get("container")
+
+    return container if isinstance(container, dict) else {}
+
+
+def _related_title(item: dict) -> str | None:
+    """Return the first title from a related item."""
+
+    titles = item.get("titles", [])
+
+    if not isinstance(titles, list):
+        return None
+
+    for title_item in titles:
+        if not isinstance(title_item, dict):
+            continue
+
+        title = title_item.get("title")
+
+        if isinstance(title, str) and title:
+            return title
+
+    return None
+
+
+def _publication_field(
     attributes: dict,
     field: str,
 ) -> str | None:
-    """Return one field from the DataCite container."""
+    """Return a publication field from relatedItems or container."""
 
-    container = attributes.get("container")
+    related_item = _published_in_item(
+        attributes
+    )
 
-    if not isinstance(container, dict):
+    if related_item:
+        value = related_item.get(field)
+
+        if value is not None:
+            return str(value)
+
+    value = _legacy_container(
+        attributes
+    ).get(field)
+
+    if value is None:
         return None
 
-    value = container.get(field)
-
-    return value if value else None
+    return str(value)
 
 
-def _issn(attributes: dict) -> tuple[str, ...]:
-    """Return an ISSN from the container when available."""
+def _journal(
+    attributes: dict,
+) -> str | None:
+    """Return the journal or publication container title."""
 
-    container = attributes.get("container")
+    related_item = _published_in_item(
+        attributes
+    )
 
-    if not isinstance(container, dict):
-        return ()
+    if related_item:
+        title = _related_title(
+            related_item
+        )
+
+        if title:
+            return title
+
+    title = _legacy_container(
+        attributes
+    ).get("title")
+
+    return title if isinstance(title, str) else None
+
+
+def _issn(
+    attributes: dict,
+) -> tuple[str, ...]:
+    """Return publication ISSN when available."""
+
+    related_item = _published_in_item(
+        attributes
+    )
+
+    if related_item:
+        identifier = related_item.get(
+            "relatedItemIdentifier"
+        )
+
+        if isinstance(identifier, dict):
+            identifier_type = identifier.get(
+                "relatedItemIdentifierType"
+            )
+
+            value = identifier.get(
+                "relatedItemIdentifier"
+            )
+
+            if (
+                isinstance(identifier_type, str)
+                and identifier_type.upper() == "ISSN"
+                and isinstance(value, str)
+                and value
+            ):
+                return (value,)
+
+    container = _legacy_container(
+        attributes
+    )
 
     identifier = container.get("identifier")
-    identifier_type = container.get("identifierType")
+    identifier_type = container.get(
+        "identifierType"
+    )
 
     if (
-        identifier
-        and isinstance(identifier_type, str)
+        isinstance(identifier_type, str)
         and identifier_type.upper() == "ISSN"
+        and isinstance(identifier, str)
+        and identifier
     ):
         return (identifier,)
 
     return ()
 
 
-def _work_type(attributes: dict) -> str | None:
+def _pages(
+    attributes: dict,
+) -> str | None:
+    """Return complete page range when available."""
+
+    first_page = _publication_field(
+        attributes,
+        "firstPage",
+    )
+
+    last_page = _publication_field(
+        attributes,
+        "lastPage",
+    )
+
+    if first_page and last_page:
+        if first_page == last_page:
+            return first_page
+
+        return f"{first_page}-{last_page}"
+
+    return first_page or last_page
+
+
+def _work_type(
+    attributes: dict,
+) -> str | None:
     """Return the best available DataCite resource type."""
 
     types = attributes.get("types")
@@ -143,53 +308,67 @@ def parse_datacite_attributes(
 ) -> PaperMetadata:
     """Convert DataCite attributes into PaperMetadata."""
 
+    if not isinstance(attributes, dict):
+        raise MetadataParseError(
+            "DataCite attributes must be an object"
+        )
+
     try:
-        doi = normalize_doi(attributes["doi"])
+        doi = normalize_doi(
+            attributes["doi"]
+        )
+
+        creators = attributes.get(
+            "creators",
+            [],
+        )
+
+        if not isinstance(creators, list):
+            raise TypeError(
+                "DataCite creators must be a list"
+            )
 
         authors = tuple(
             name
-            for creator in attributes.get("creators", [])
+            for creator in creators
             if (name := _creator_name(creator))
         )
 
-        published_date, year = _publication_date(
-            attributes
+        published_date, year = (
+            _publication_date(attributes)
         )
 
         return PaperMetadata(
             doi=doi,
             title=_title(attributes),
             authors=authors,
-            journal=_container_field(
-                attributes,
-                "title",
-            ),
+            journal=_journal(attributes),
             issn=_issn(attributes),
             published_date=published_date,
             year=year,
-            publisher=_publisher_name(attributes),
-            work_type=_work_type(attributes),
-            volume=_container_field(
+            publisher=_publisher_name(
+                attributes
+            ),
+            work_type=_work_type(
+                attributes
+            ),
+            volume=_publication_field(
                 attributes,
                 "volume",
             ),
-            issue=_container_field(
+            issue=_publication_field(
                 attributes,
                 "issue",
             ),
-            pages=_container_field(
-                attributes,
-                "firstPage",
-            ),
+            pages=_pages(attributes),
             url=attributes.get("url"),
         )
 
-    except KeyError as exc:
-        raise MetadataParseError(
-            f"DataCite response is missing required field: {exc}"
-        ) from exc
-
-    except Exception as exc:
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
         raise MetadataParseError(
             f"Failed to parse DataCite metadata: {exc}"
         ) from exc
@@ -231,22 +410,22 @@ def get_datacite_metadata(
     if response.status_code == 404:
         raise MetadataNotFoundError(
             f"DataCite metadata not found for DOI: {doi}"
-    )
+        )
 
     if response.status_code == 429:
         raise RateLimitError(
             f"DataCite rate limit exceeded for DOI: {doi}"
-    )
+        )
 
     if 400 <= response.status_code < 500:
         raise MetadataRequestError(
             f"DataCite request failed with HTTP {response.status_code} for DOI: {doi}"
-    )
+        )
 
     if 500 <= response.status_code < 600:
         raise MetadataServiceError(
             f"DataCite server error {response.status_code} for DOI: {doi}"
-    )
+        )
 
     try:
         data = response.json()
@@ -262,9 +441,6 @@ def get_datacite_metadata(
             f"DataCite response has invalid structure for DOI: {doi}"
         ) from exc
 
-    if not isinstance(attributes, dict):
-        raise MetadataParseError(
-            f"DataCite response has invalid attributes for DOI: {doi}"
-        )
-
-    return parse_datacite_attributes(attributes)
+    return parse_datacite_attributes(
+        attributes
+    )
