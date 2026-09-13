@@ -268,12 +268,15 @@ def run_acceptance_checks(
         if result.doi
     ]
 
-    # 1. Duplicate Nature DOI should appear only once.
+
+    # 1. Duplicate Nature DOI should appear only once and succeed.
     checks.append(
         (
-            "Normalized duplicate DOI was removed",
-            returned_dois.count(
-                "10.1038/171737a0"
+            "Normalized duplicate DOI was removed and resolved",
+            sum(
+                result.doi == "10.1038/171737a0"
+                and result.status == MetadataStatus.SUCCESS
+                for result in results
             )
             == 1,
         )
@@ -343,6 +346,20 @@ def run_acceptance_checks(
                 result.input_value is None
                 and result.status
                 == MetadataStatus.INVALID_DOI
+                for result in results
+            ),
+        )
+    )
+
+    # 7. Syntactically valid but nonexistent DOI should be NOT_FOUND.
+    checks.append(
+        (
+            "Nonexistent DOI was reported as NOT_FOUND",
+            any(
+                result.doi
+                == "10.9999/this-doi-should-not-exist-20260913"
+                and result.status
+                == MetadataStatus.NOT_FOUND
                 for result in results
             ),
         )

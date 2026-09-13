@@ -266,17 +266,52 @@ def _issn(
 def _pages(
     attributes: dict,
 ) -> str | None:
-    """Return complete page range when available."""
+    """Return page information without mixing metadata sources."""
 
-    first_page = _publication_field(
-        attributes,
-        "firstPage",
+    related_item = _published_in_item(
+        attributes
     )
 
-    last_page = _publication_field(
-        attributes,
-        "lastPage",
+    if related_item:
+        first_page = related_item.get(
+            "firstPage"
+        )
+        last_page = related_item.get(
+            "lastPage"
+        )
+
+        if first_page is not None:
+            first_page = str(first_page)
+
+        if last_page is not None:
+            last_page = str(last_page)
+
+        if first_page or last_page:
+            if (
+                first_page
+                and last_page
+                and first_page != last_page
+            ):
+                return f"{first_page}-{last_page}"
+
+            return first_page or last_page
+
+    container = _legacy_container(
+        attributes
     )
+
+    first_page = container.get(
+        "firstPage"
+    )
+    last_page = container.get(
+        "lastPage"
+    )
+
+    if first_page is not None:
+        first_page = str(first_page)
+
+    if last_page is not None:
+        last_page = str(last_page)
 
     if first_page and last_page:
         if first_page == last_page:
