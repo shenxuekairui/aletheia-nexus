@@ -143,14 +143,21 @@ def _print_counter(title: str, counter: Counter) -> None:
 
 
 def _print_work_coverage(results) -> None:
-    discoveries = [result.discovery for result in results if result.discovery is not None]
+    discoveries = [
+        result.discovery for result in results if result.discovery is not None
+    ]
 
     def has_candidate(predicate) -> int:
-        return sum(any(predicate(candidate) for candidate in result.candidates) for result in discoveries)
+        return sum(
+            any(predicate(candidate) for candidate in result.candidates)
+            for result in discoveries
+        )
 
     print()
     print("work-level discovery coverage")
-    print(f"  works with candidates       {sum(bool(r.candidates) for r in discoveries)}")
+    print(
+        f"  works with candidates       {sum(bool(r.candidates) for r in discoveries)}"
+    )
     print(
         "  works with OA candidate     "
         f"{has_candidate(lambda c: c.access_type == AccessType.OPEN_ACCESS)}"
@@ -170,7 +177,9 @@ def _print_work_coverage(results) -> None:
 
 
 def _print_provider_contributions(results) -> None:
-    discoveries = [result.discovery for result in results if result.discovery is not None]
+    discoveries = [
+        result.discovery for result in results if result.discovery is not None
+    ]
     contributions = summarize_provider_contributions(discoveries)
 
     print()
@@ -184,23 +193,19 @@ def _print_provider_contributions(results) -> None:
         print(f"    candidate routes          {contribution.candidate_routes}")
         print(f"    unique routes             {contribution.unique_routes}")
         print(f"    shared routes             {contribution.shared_routes}")
-        print(
-            "    exclusive metadata       "
-            f"{contribution.exclusive_metadata_total}"
-        )
+        print(f"    exclusive metadata       {contribution.exclusive_metadata_total}")
         print(f"      access_type             {contribution.exclusive_access_type}")
         print(f"      version                 {contribution.exclusive_version}")
         print(f"      host_type               {contribution.exclusive_host_type}")
         print(f"      license                 {contribution.exclusive_license}")
         print(f"      source_name             {contribution.exclusive_source_name}")
         print(f"      is_best                 {contribution.exclusive_is_best}")
-        print(
-            "    metadata disagreements   "
-            f"{contribution.metadata_disagreements}"
-        )
+        print(f"    metadata disagreements   {contribution.metadata_disagreements}")
 
 
-def _print_timing(results, batch_elapsed: float, baseline_seconds: float | None) -> None:
+def _print_timing(
+    results, batch_elapsed: float, baseline_seconds: float | None
+) -> None:
     item_times = [result.elapsed_seconds for result in results]
     print()
     print(f"batch elapsed:             {batch_elapsed:.3f} s")
@@ -242,7 +247,9 @@ def _print_timing(results, batch_elapsed: float, baseline_seconds: float | None)
         if active_times:
             critical = max(active_times)
             provider_critical_path += critical
-            coordination_estimate += max(0.0, result.discovery.elapsed_seconds - critical)
+            coordination_estimate += max(
+                0.0, result.discovery.elapsed_seconds - critical
+            )
 
     batch_wrapper_overhead = max(0.0, batch_elapsed - sum(item_times))
 
