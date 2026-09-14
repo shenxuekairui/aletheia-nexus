@@ -44,6 +44,46 @@ def test_merge_preserves_complementary_non_conflicting_metadata():
     assert result.is_best is True
 
 
+def test_merge_does_not_fill_conflicting_secondary_metadata():
+    url = "https://example.org/paper"
+    chosen = FullTextCandidate(
+        doi="10.1000/test",
+        url=url,
+        provenance=(DiscoveryProvider.OPENALEX,),
+        url_type=CandidateUrlType.PDF,
+        access_type=AccessType.OPEN_ACCESS,
+        version=FullTextVersion.ACCEPTED,
+        host_type=HostType.REPOSITORY,
+    )
+    second = FullTextCandidate(
+        doi="10.1000/test",
+        url=url,
+        provenance=(DiscoveryProvider.UNPAYWALL,),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        access_type=AccessType.OPEN_ACCESS,
+        version=FullTextVersion.SUBMITTED,
+        host_type=HostType.REPOSITORY,
+        license="cc-by",
+        source_name="Repository A",
+    )
+    third = FullTextCandidate(
+        doi="10.1000/test",
+        url=url,
+        provenance=(DiscoveryProvider.OPENALEX,),
+        url_type=CandidateUrlType.UNKNOWN,
+        access_type=AccessType.OPEN_ACCESS,
+        version=FullTextVersion.SUBMITTED,
+        host_type=HostType.REPOSITORY,
+        license="cc0",
+        source_name="Repository B",
+    )
+
+    result = merge_and_rank_candidates([chosen, second, third])[0]
+
+    assert result.license is None
+    assert result.source_name is None
+
+
 def test_acquisition_priority_prefers_pdf_over_published_landing_page():
     published_landing = FullTextCandidate(
         doi="10.1000/test",
