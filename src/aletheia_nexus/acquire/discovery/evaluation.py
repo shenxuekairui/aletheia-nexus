@@ -131,7 +131,9 @@ def summarize_provider_contributions(
                     canonicalize_candidate_url(candidate.url),
                 )
                 accumulator.route_keys.add(key)
-                provider_candidates = routes.setdefault(key, {}).setdefault(provider, [])
+                provider_candidates = routes.setdefault(key, {}).setdefault(
+                    provider, []
+                )
                 provider_candidates.append(candidate)
 
     for providers_for_route in routes.values():
