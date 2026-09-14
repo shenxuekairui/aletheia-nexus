@@ -6,9 +6,9 @@ from aletheia_nexus.acquire.discovery.exceptions import (
     DiscoveryNetworkError,
     DiscoveryNotFoundError,
     DiscoveryParseError,
+    DiscoveryRateLimitError,
     DiscoveryRequestError,
     DiscoveryServiceError,
-    DiscoveryRateLimitError,
 )
 from aletheia_nexus.acquire.discovery.models import (
     AccessType,
