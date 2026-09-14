@@ -74,9 +74,7 @@ def discover_full_text(
     )
 
     clean_unpaywall_email = (
-        unpaywall_email.strip()
-        if isinstance(unpaywall_email, str)
-        else None
+        unpaywall_email.strip() if isinstance(unpaywall_email, str) else None
     )
 
     if clean_unpaywall_email:
@@ -100,9 +98,7 @@ def discover_full_text(
         )
 
     candidates = [
-        candidate
-        for result in provider_results
-        for candidate in result.candidates
+        candidate for result in provider_results for candidate in result.candidates
     ]
 
     return DiscoveryResult(

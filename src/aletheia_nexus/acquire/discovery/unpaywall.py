@@ -161,9 +161,7 @@ def discover_unpaywall(
         raise DiscoveryParseError("Unpaywall returned an invalid DOI identity") from exc
 
     if response_doi != normalized_doi:
-        raise DiscoveryParseError(
-            "Unpaywall returned metadata for a different DOI"
-        )
+        raise DiscoveryParseError("Unpaywall returned metadata for a different DOI")
 
     locations = data.get("oa_locations", [])
     if not isinstance(locations, list):

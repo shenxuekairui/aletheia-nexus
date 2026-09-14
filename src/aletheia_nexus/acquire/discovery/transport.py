@@ -57,26 +57,22 @@ def get_json(
     except httpx.TimeoutException as exc:
         raise DiscoveryNetworkError(f"Timed out while requesting {context}") from exc
     except httpx.RequestError as exc:
-        raise DiscoveryNetworkError(f"Network error while requesting {context}") from exc
+        raise DiscoveryNetworkError(
+            f"Network error while requesting {context}"
+        ) from exc
 
     status_code = response.status_code
 
     if status_code == 404:
         raise DiscoveryNotFoundError(f"{context} not found")
     if status_code == 429:
-        raise DiscoveryRateLimitError(
-            f"Rate limit exceeded while requesting {context}"
-        )
+        raise DiscoveryRateLimitError(f"Rate limit exceeded while requesting {context}")
     if 400 <= status_code < 500:
-        raise DiscoveryRequestError(
-            f"{context} request failed with HTTP {status_code}"
-        )
+        raise DiscoveryRequestError(f"{context} request failed with HTTP {status_code}")
     if 500 <= status_code < 600:
         raise DiscoveryServiceError(f"{context} service returned HTTP {status_code}")
     if not 200 <= status_code < 300:
-        raise DiscoveryServiceError(
-            f"{context} returned unexpected HTTP {status_code}"
-        )
+        raise DiscoveryServiceError(f"{context} returned unexpected HTTP {status_code}")
 
     try:
         data = response.json()

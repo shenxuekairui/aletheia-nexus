@@ -36,9 +36,7 @@ def _clean_optional_url(value: object, *, field_name: str) -> str | None:
     try:
         return normalize_candidate_url(text)
     except (TypeError, ValueError) as exc:
-        raise DiscoveryParseError(
-            f"OpenAlex returned an invalid {field_name}"
-        ) from exc
+        raise DiscoveryParseError(f"OpenAlex returned an invalid {field_name}") from exc
 
 
 def _host_type(location: Mapping[str, object]) -> HostType:
@@ -101,9 +99,7 @@ def _candidate_from_url(
         FullTextVersion.UNKNOWN,
     )
     access_type = (
-        AccessType.OPEN_ACCESS
-        if location.get("is_oa") is True
-        else AccessType.UNKNOWN
+        AccessType.OPEN_ACCESS if location.get("is_oa") is True else AccessType.UNKNOWN
     )
 
     return FullTextCandidate(

@@ -58,9 +58,7 @@ def merge_and_rank_candidates(
         chosen = max(group, key=candidate_sort_key)
         provenance = tuple(
             dict.fromkeys(
-                provider
-                for candidate in group
-                for provider in candidate.provenance
+                provider for candidate in group for provider in candidate.provenance
             )
         )
         merged.append(replace(chosen, url=url, provenance=provenance))
