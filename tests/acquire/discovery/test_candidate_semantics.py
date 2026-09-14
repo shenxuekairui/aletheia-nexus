@@ -44,6 +44,30 @@ def test_merge_preserves_complementary_non_conflicting_metadata():
     assert result.is_best is True
 
 
+def test_merge_collapses_equivalent_handle_resolver_routes():
+    first = FullTextCandidate(
+        doi="10.1000/test",
+        url="http://hdl.handle.net/21.11116/0000-0001-B9B9-E",
+        provenance=(DiscoveryProvider.OPENALEX,),
+        host_type=HostType.RESOLVER,
+    )
+    second = FullTextCandidate(
+        doi="10.1000/test",
+        url="https://hdl.handle.net/21.11116/0000-0001-B9B9-E",
+        provenance=(DiscoveryProvider.UNPAYWALL,),
+        host_type=HostType.RESOLVER,
+    )
+
+    result = merge_and_rank_candidates([first, second])
+
+    assert len(result) == 1
+    assert result[0].url == "https://hdl.handle.net/21.11116/0000-0001-B9B9-E"
+    assert result[0].provenance == (
+        DiscoveryProvider.OPENALEX,
+        DiscoveryProvider.UNPAYWALL,
+    )
+
+
 def test_merge_does_not_fill_conflicting_secondary_metadata():
     url = "https://example.org/paper"
     chosen = FullTextCandidate(
