@@ -12,9 +12,7 @@ from aletheia_nexus.acquire.discovery import (
     discover_full_text_batch,
 )
 
-DEFAULT_DOIS = (
-    "10.1038/nphys1170",
-)
+DEFAULT_DOIS = ("10.1038/nphys1170",)
 
 
 def _build_parser() -> argparse.ArgumentParser:
