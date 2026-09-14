@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable
 
 from aletheia_nexus.acquire.discovery.exceptions import (
@@ -64,7 +65,7 @@ def _run_provider(
     backoff_base: float,
 ) -> ProviderDiscoveryResult:
     try:
-        candidates, attempts = call_with_retry(
+        candidates, attempts, elapsed_seconds = call_with_retry(
             call,
             max_attempts=max_attempts,
             backoff_base=backoff_base,
@@ -76,6 +77,7 @@ def _run_provider(
             candidates=(),
             error=str(exc.error),
             attempts=exc.attempts,
+            elapsed_seconds=exc.elapsed_seconds,
         )
 
     status = (
@@ -88,6 +90,7 @@ def _run_provider(
         status=status,
         candidates=candidates,
         attempts=attempts,
+        elapsed_seconds=elapsed_seconds,
     )
 
 
@@ -111,6 +114,7 @@ def discover_full_text(
         openalex_api_key,
         name="openalex_api_key",
     )
+    started_at = time.perf_counter()
     normalized_doi = normalize_doi(doi)
 
     provider_results: list[ProviderDiscoveryResult] = []
@@ -147,6 +151,7 @@ def discover_full_text(
                 candidates=(),
                 error="Unpaywall requires an email parameter",
                 attempts=0,
+                elapsed_seconds=0.0,
             )
         )
 
@@ -158,4 +163,5 @@ def discover_full_text(
         doi=normalized_doi,
         candidates=merge_and_rank_candidates(candidates),
         providers=tuple(provider_results),
+        elapsed_seconds=time.perf_counter() - started_at,
     )

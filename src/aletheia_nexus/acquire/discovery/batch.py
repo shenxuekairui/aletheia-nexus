@@ -1,3 +1,4 @@
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -25,13 +26,14 @@ class DiscoveryStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class DiscoveryLookupResult:
-    """Batch discovery result preserving both input and normalized identity."""
+    """Batch discovery result preserving input, identity, and runtime."""
 
     input_value: object
     doi: str | None
     status: DiscoveryStatus
     discovery: DiscoveryResult | None = None
     error: str | None = None
+    elapsed_seconds: float = 0.0
 
 
 _FAILURE_STATUSES = {
@@ -131,6 +133,8 @@ def discover_full_text_batch(
     seen: set[str] = set()
 
     for value in values:
+        item_started_at = time.perf_counter()
+
         try:
             doi = normalize_doi(value)
         except (TypeError, ValueError) as exc:
@@ -140,6 +144,7 @@ def discover_full_text_batch(
                     doi=None,
                     status=DiscoveryStatus.INVALID_DOI,
                     error=str(exc),
+                    elapsed_seconds=time.perf_counter() - item_started_at,
                 )
             )
             continue
@@ -164,6 +169,7 @@ def discover_full_text_batch(
                     doi=doi,
                     status=DiscoveryStatus.ERROR,
                     error=str(exc),
+                    elapsed_seconds=time.perf_counter() - item_started_at,
                 )
             )
             continue
@@ -176,6 +182,7 @@ def discover_full_text_batch(
                 status=status,
                 discovery=discovery,
                 error=_summarize_error(discovery, status),
+                elapsed_seconds=time.perf_counter() - item_started_at,
             )
         )
 

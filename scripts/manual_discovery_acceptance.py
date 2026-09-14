@@ -6,6 +6,9 @@ real provider APIs and is useful for validating behavior against live data.
 
 import argparse
 import os
+import time
+from collections import Counter, defaultdict
+from statistics import mean, median
 
 from aletheia_nexus.acquire.discovery import (
     DiscoveryStatus,
@@ -56,21 +59,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _print_result(result) -> None:
     print("=" * 80)
-    print(f"input:  {result.input_value}")
-    print(f"doi:    {result.doi}")
-    print(f"status: {result.status}")
+    print(f"input:   {result.input_value}")
+    print(f"doi:     {result.doi}")
+    print(f"status:  {result.status}")
+    print(f"elapsed: {result.elapsed_seconds:.3f} s")
 
     if result.error:
-        print(f"error:  {result.error}")
+        print(f"error:   {result.error}")
 
     if result.discovery is None:
         return
 
+    print(f"discovery elapsed: {result.discovery.elapsed_seconds:.3f} s")
     print("providers:")
     for provider in result.discovery.providers:
         line = (
             f"  - {provider.provider.value}: {provider.status} "
-            f"(attempts={provider.attempts})"
+            f"(attempts={provider.attempts}, elapsed={provider.elapsed_seconds:.3f} s)"
         )
         print(line)
         if provider.error:
@@ -90,12 +95,82 @@ def _print_result(result) -> None:
             f"version={candidate.version} host={candidate.host_type} "
             f"provenance={provenance}"
         )
+        print(
+            "    "
+            f"source={candidate.source_name or '-'} "
+            f"license={candidate.license or '-'} is_best={candidate.is_best}"
+        )
+
+
+def _print_summary(results, batch_elapsed: float) -> None:
+    print()
+    print("=" * 80)
+    print("DISCOVERY BENCHMARK SUMMARY")
+    print("=" * 80)
+
+    status_counts = Counter(result.status.value for result in results)
+    print(f"returned results: {len(results)}")
+    for status in DiscoveryStatus:
+        count = status_counts.get(status.value, 0)
+        if count:
+            print(f"{status.value:<20} {count}")
+
+    candidates = [
+        candidate
+        for result in results
+        if result.discovery is not None
+        for candidate in result.discovery.candidates
+    ]
+    print(f"candidates:       {len(candidates)}")
+    print(
+        "open access:      "
+        f"{sum(candidate.access_type.value == 'open_access' for candidate in candidates)}"
+    )
+    print(
+        "pdf candidates:   "
+        f"{sum(candidate.url_type.value == 'pdf' for candidate in candidates)}"
+    )
+
+    item_times = [result.elapsed_seconds for result in results]
+    print()
+    print(f"batch elapsed:    {batch_elapsed:.3f} s")
+    if item_times:
+        print(f"mean / result:    {mean(item_times):.3f} s")
+        print(f"median / result:  {median(item_times):.3f} s")
+        print(f"max / result:     {max(item_times):.3f} s")
+
+    provider_times = defaultdict(list)
+    provider_statuses = defaultdict(Counter)
+    provider_attempts = Counter()
+
+    for result in results:
+        if result.discovery is None:
+            continue
+        for provider in result.discovery.providers:
+            provider_statuses[provider.provider.value][provider.status.value] += 1
+            provider_attempts[provider.provider.value] += provider.attempts
+            if provider.attempts > 0:
+                provider_times[provider.provider.value].append(provider.elapsed_seconds)
+
+    for provider_name in sorted(provider_statuses):
+        print()
+        print(provider_name)
+        for status, count in sorted(provider_statuses[provider_name].items()):
+            print(f"  {status:<18} {count}")
+        print(f"  attempts           {provider_attempts[provider_name]}")
+
+        times = provider_times[provider_name]
+        if times:
+            print(f"  mean elapsed       {mean(times):.3f} s")
+            print(f"  median elapsed     {median(times):.3f} s")
+            print(f"  max elapsed        {max(times):.3f} s")
 
 
 def main() -> int:
     args = _build_parser().parse_args()
     dois = args.dois or list(DEFAULT_DOIS)
 
+    batch_started_at = time.perf_counter()
     results = discover_full_text_batch(
         dois,
         unpaywall_email=args.unpaywall_email,
@@ -104,9 +179,12 @@ def main() -> int:
         max_attempts=args.max_attempts,
         backoff_base=args.backoff_base,
     )
+    batch_elapsed = time.perf_counter() - batch_started_at
 
     for result in results:
         _print_result(result)
+
+    _print_summary(results, batch_elapsed)
 
     severe = {
         DiscoveryStatus.INVALID_DOI,

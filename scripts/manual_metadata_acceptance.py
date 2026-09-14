@@ -1,4 +1,6 @@
+import time
 from collections import Counter
+from statistics import mean, median
 
 from aletheia_nexus.acquire.metadata import (
     MetadataStatus,
@@ -50,13 +52,16 @@ def print_results(
     """Print a compact result table."""
 
     print()
-    print("=" * 120)
+    print("=" * 132)
     print("Aletheia Nexus — Metadata Manual Acceptance Test")
-    print("=" * 120)
+    print("=" * 132)
 
-    print(f"{'#':<3} {'STATUS':<19} {'DOI':<38} {'YEAR':<6} {'TYPE':<18} {'TITLE':<30}")
+    print(
+        f"{'#':<3} {'STATUS':<19} {'DOI':<38} {'TIME(s)':<9} "
+        f"{'YEAR':<6} {'TYPE':<18} {'TITLE':<30}"
+    )
 
-    print("-" * 120)
+    print("-" * 132)
 
     for index, result in enumerate(
         results,
@@ -74,12 +79,13 @@ def print_results(
             f"{index:<3} "
             f"{result.status.value:<19} "
             f"{shorten(result.doi, 38):<38} "
+            f"{result.elapsed_seconds:<9.3f} "
             f"{shorten(year, 6):<6} "
             f"{shorten(work_type, 18):<18} "
             f"{shorten(title, 30):<30}"
         )
 
-    print("-" * 120)
+    print("-" * 132)
 
 
 def find_result(
@@ -198,6 +204,13 @@ def run_checks(
         )
     )
 
+    checks.append(
+        (
+            "Runtime recorded for every returned result",
+            all(result.elapsed_seconds >= 0 for result in results),
+        )
+    )
+
     print()
     print("ACCEPTANCE CHECKS")
     print("=" * 80)
@@ -212,8 +225,9 @@ def run_checks(
 
 def print_summary(
     results,
+    batch_elapsed: float,
 ) -> None:
-    """Print result counts."""
+    """Print result counts and runtime statistics."""
 
     counts = Counter(result.status.value for result in results)
 
@@ -238,19 +252,30 @@ def print_summary(
         if count:
             print(f"{status.value:<20} {count}")
 
+    print()
+    print(f"Batch elapsed:    {batch_elapsed:.3f} s")
+
+    times = [result.elapsed_seconds for result in results]
+    if times:
+        print(f"Mean / result:    {mean(times):.3f} s")
+        print(f"Median / result:  {median(times):.3f} s")
+        print(f"Max / result:     {max(times):.3f} s")
+
 
 def main() -> None:
     print("Running real-network metadata acceptance test...")
 
+    batch_started_at = time.perf_counter()
     results = get_metadata_batch(
         TEST_INPUTS,
         deduplicate=True,
         max_attempts=3,
         backoff_base=0.5,
     )
+    batch_elapsed = time.perf_counter() - batch_started_at
 
     print_results(results)
-    print_summary(results)
+    print_summary(results, batch_elapsed)
 
     passed = run_checks(results)
 

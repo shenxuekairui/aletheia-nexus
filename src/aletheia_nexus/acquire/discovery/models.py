@@ -82,6 +82,7 @@ class ProviderDiscoveryResult:
     candidates: tuple[FullTextCandidate, ...]
     error: str | None = None
     attempts: int = 0
+    elapsed_seconds: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,3 +92,4 @@ class DiscoveryResult:
     doi: str
     candidates: tuple[FullTextCandidate, ...]
     providers: tuple[ProviderDiscoveryResult, ...]
+    elapsed_seconds: float = 0.0
