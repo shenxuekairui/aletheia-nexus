@@ -110,9 +110,9 @@ def discover_full_text_batch(
 ) -> list[DiscoveryLookupResult]:
     """Discover possible full-text routes for multiple DOI inputs.
 
-    Processing is intentionally sequential in v0.4.1. Correctness, stable
-    failure semantics, and reproducibility are prioritized before introducing
-    concurrency or rate-control complexity.
+    Batch items remain intentionally sequential in v0.4.2. Within each DOI,
+    independent Discovery providers may overlap their network waits through the
+    bounded provider-level concurrency implemented by ``discover_full_text``.
     """
 
     if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):

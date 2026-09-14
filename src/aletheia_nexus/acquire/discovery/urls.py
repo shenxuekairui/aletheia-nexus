@@ -6,6 +6,18 @@ _MARKDOWN_LINK_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_RESOLVER_HOST_ALIASES = {
+    "dx.doi.org": "doi.org",
+    "www.doi.org": "doi.org",
+}
+
+_HTTPS_RESOLVER_HOSTS = {
+    "doi.org",
+    "dx.doi.org",
+    "www.doi.org",
+    "hdl.handle.net",
+}
+
 
 def _unwrap_candidate_url(value: str) -> str:
     """Remove safe whole-value wrappers around a candidate URL."""
@@ -30,6 +42,23 @@ def _unwrap_candidate_url(value: str) -> str:
     return value
 
 
+def _canonical_netloc(parts) -> tuple[str, str]:
+    """Return canonical scheme/netloc for known persistent resolvers."""
+
+    hostname = (parts.hostname or "").lower().rstrip(".")
+    canonical_host = _RESOLVER_HOST_ALIASES.get(hostname, hostname)
+
+    if hostname not in _HTTPS_RESOLVER_HOSTS:
+        return parts.scheme.lower(), parts.netloc.lower()
+
+    if parts.port is None:
+        netloc = canonical_host
+    else:
+        netloc = f"{canonical_host}:{parts.port}"
+
+    return "https", netloc
+
+
 def normalize_candidate_url(value: str) -> str:
     """Return a clean, absolute HTTP(S) candidate URL.
 
@@ -37,6 +66,10 @@ def normalize_candidate_url(value: str) -> str:
     be normalized and validated before they become acquisition inputs.
     URL fragments are removed because they are not sent to the server and
     should not make otherwise identical candidates distinct.
+
+    Real-corpus evidence also shows persistent resolvers can expose equivalent
+    HTTP/HTTPS or legacy DOI hosts. Only the proven resolver hosts are
+    canonicalized more aggressively; ordinary websites retain their scheme.
     """
 
     if not isinstance(value, str):
@@ -66,10 +99,12 @@ def normalize_candidate_url(value: str) -> str:
     if parts.username is not None or parts.password is not None:
         raise ValueError("Candidate URL must not contain embedded credentials")
 
+    canonical_scheme, canonical_netloc = _canonical_netloc(parts)
+
     return urlunsplit(
         (
-            scheme,
-            parts.netloc.lower(),
+            canonical_scheme,
+            canonical_netloc,
             parts.path,
             parts.query,
             "",

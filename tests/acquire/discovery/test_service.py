@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 
 import aletheia_nexus.acquire.discovery.retry as retry_module
@@ -54,6 +56,59 @@ def test_discover_full_text_isolates_provider_failure(monkeypatch):
     assert result.providers[1].status == ProviderDiscoveryStatus.SUCCESS
     assert result.providers[1].attempts == 1
     assert result.providers[1].elapsed_seconds >= 0
+
+
+def test_discover_full_text_runs_configured_providers_concurrently(monkeypatch):
+    barrier = threading.Barrier(2, timeout=3)
+
+    def synchronized_provider(*args, **kwargs):
+        barrier.wait()
+        return ()
+
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.discovery.service.discover_openalex",
+        synchronized_provider,
+    )
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.discovery.service.discover_unpaywall",
+        synchronized_provider,
+    )
+
+    result = discover_full_text(
+        "10.1000/test",
+        unpaywall_email="person@example.org",
+        max_attempts=1,
+    )
+
+    assert [provider.provider for provider in result.providers] == [
+        DiscoveryProvider.OPENALEX,
+        DiscoveryProvider.UNPAYWALL,
+    ]
+    assert all(
+        provider.status == ProviderDiscoveryStatus.NO_CANDIDATES
+        for provider in result.providers
+    )
+
+
+def test_discover_full_text_propagates_programming_error_from_worker(monkeypatch):
+    def broken_openalex(*args, **kwargs):
+        raise ValueError("programming bug")
+
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.discovery.service.discover_openalex",
+        broken_openalex,
+    )
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.discovery.service.discover_unpaywall",
+        lambda *args, **kwargs: (),
+    )
+
+    with pytest.raises(ValueError, match="programming bug"):
+        discover_full_text(
+            "10.1000/test",
+            unpaywall_email="person@example.org",
+            max_attempts=1,
+        )
 
 
 def test_discover_full_text_retries_temporary_provider_failure(monkeypatch):

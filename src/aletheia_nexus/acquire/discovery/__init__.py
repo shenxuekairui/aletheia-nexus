@@ -5,6 +5,10 @@ from aletheia_nexus.acquire.discovery.batch import (
     DiscoveryStatus,
     discover_full_text_batch,
 )
+from aletheia_nexus.acquire.discovery.evaluation import (
+    ProviderContribution,
+    summarize_provider_contributions,
+)
 from aletheia_nexus.acquire.discovery.exceptions import (
     DiscoveryConfigurationError,
     DiscoveryError,
@@ -48,10 +52,12 @@ __all__ = [
     "FullTextCandidate",
     "FullTextVersion",
     "HostType",
+    "ProviderContribution",
     "ProviderDiscoveryResult",
     "ProviderDiscoveryStatus",
     "discover_full_text",
     "discover_full_text_batch",
     "discover_openalex",
     "discover_unpaywall",
+    "summarize_provider_contributions",
 ]

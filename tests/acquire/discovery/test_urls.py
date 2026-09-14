@@ -16,6 +16,33 @@ def test_normalize_candidate_url_removes_fragment_and_normalizes_host():
 
 
 @pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (
+            "http://hdl.handle.net/21.11116/0000-0001-B9B9-E",
+            "https://hdl.handle.net/21.11116/0000-0001-B9B9-E",
+        ),
+        (
+            "https://dx.doi.org/10.1000/Example",
+            "https://doi.org/10.1000/Example",
+        ),
+        (
+            "http://www.doi.org/10.1000/Example",
+            "https://doi.org/10.1000/Example",
+        ),
+    ],
+)
+def test_normalize_candidate_url_canonicalizes_known_resolvers(value, expected):
+    assert normalize_candidate_url(value) == expected
+
+
+def test_normalize_candidate_url_does_not_force_https_for_ordinary_hosts():
+    value = "http://example.org/paper.pdf"
+
+    assert normalize_candidate_url(value) == value
+
+
+@pytest.mark.parametrize(
     "value",
     [
         "example.org/paper.pdf",
