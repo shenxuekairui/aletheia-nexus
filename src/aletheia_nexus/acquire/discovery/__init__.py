@@ -1,5 +1,10 @@
 """Full-text candidate discovery for Aletheia Nexus."""
 
+from aletheia_nexus.acquire.discovery.batch import (
+    DiscoveryLookupResult,
+    DiscoveryStatus,
+    discover_full_text_batch,
+)
 from aletheia_nexus.acquire.discovery.exceptions import (
     DiscoveryConfigurationError,
     DiscoveryError,
@@ -30,6 +35,7 @@ __all__ = [
     "CandidateUrlType",
     "DiscoveryConfigurationError",
     "DiscoveryError",
+    "DiscoveryLookupResult",
     "DiscoveryNetworkError",
     "DiscoveryNotFoundError",
     "DiscoveryParseError",
@@ -38,12 +44,14 @@ __all__ = [
     "DiscoveryRequestError",
     "DiscoveryResult",
     "DiscoveryServiceError",
+    "DiscoveryStatus",
     "FullTextCandidate",
     "FullTextVersion",
     "HostType",
     "ProviderDiscoveryResult",
     "ProviderDiscoveryStatus",
     "discover_full_text",
+    "discover_full_text_batch",
     "discover_openalex",
     "discover_unpaywall",
 ]
