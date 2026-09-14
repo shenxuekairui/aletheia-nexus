@@ -25,7 +25,7 @@ def test_call_with_retry_recovers_from_temporary_failures(monkeypatch):
 
     monkeypatch.setattr(retry_module.time, "sleep", delays.append)
 
-    value, attempts = call_with_retry(
+    value, attempts, elapsed_seconds = call_with_retry(
         flaky_call,
         max_attempts=3,
         backoff_base=0.25,
@@ -33,6 +33,7 @@ def test_call_with_retry_recovers_from_temporary_failures(monkeypatch):
 
     assert value == "ok"
     assert attempts == 3
+    assert elapsed_seconds >= 0
     assert calls == 3
     assert delays == [0.25, 0.5]
 
@@ -57,6 +58,7 @@ def test_call_with_retry_does_not_retry_permanent_discovery_error(monkeypatch):
 
     assert isinstance(exc_info.value.error, DiscoveryParseError)
     assert exc_info.value.attempts == 1
+    assert exc_info.value.elapsed_seconds >= 0
     assert calls == 1
     assert delays == []
 

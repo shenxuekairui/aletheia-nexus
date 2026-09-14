@@ -82,6 +82,7 @@ def test_batch_handles_mixed_inputs_and_preserves_order(
         "10.9999/not-real-doi",
         None,
     ]
+    assert all(result.elapsed_seconds >= 0 for result in results)
 
 
 def test_batch_deduplicates_normalized_dois(
@@ -220,6 +221,7 @@ def test_batch_maps_metadata_errors_to_statuses(
     assert result.status == expected_status
     assert result.metadata is None
     assert result.error == "Test error"
+    assert result.elapsed_seconds >= 0
 
 
 @pytest.mark.parametrize(
@@ -264,6 +266,7 @@ def test_batch_marks_invalid_members_without_stopping(
 
     assert results[0].status == MetadataStatus.INVALID_DOI
     assert results[0].metadata is None
+    assert results[0].elapsed_seconds >= 0
 
     assert results[1].status == MetadataStatus.SUCCESS
     assert results[1].doi == "10.1038/nphys1170"
@@ -351,7 +354,7 @@ def test_batch_forwards_retry_configuration(
 def test_batch_success_contains_metadata(
     monkeypatch,
 ):
-    """Successful results should contain metadata and no error."""
+    """Successful results should contain metadata and runtime data."""
 
     monkeypatch.setattr(
         batch_module,
@@ -364,6 +367,7 @@ def test_batch_success_contains_metadata(
     assert result.status == MetadataStatus.SUCCESS
     assert result.metadata is not None
     assert result.error is None
+    assert result.elapsed_seconds >= 0
 
 
 def test_batch_failure_preserves_original_input(

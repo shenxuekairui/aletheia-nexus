@@ -103,6 +103,7 @@ def test_batch_handles_mixed_inputs_and_preserves_order(monkeypatch):
         "10.1000/not-found",
         None,
     ]
+    assert all(result.elapsed_seconds >= 0 for result in results)
 
 
 def test_batch_deduplicates_normalized_dois(monkeypatch):
@@ -217,6 +218,7 @@ def test_batch_classifies_provider_outcomes(
 
     assert result.status == expected_status
     assert result.discovery is not None
+    assert result.elapsed_seconds >= 0
 
     if expected_status in {DiscoveryStatus.PARTIAL_SUCCESS, DiscoveryStatus.ERROR}:
         assert result.error is not None

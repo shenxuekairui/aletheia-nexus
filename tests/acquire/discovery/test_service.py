@@ -47,10 +47,13 @@ def test_discover_full_text_isolates_provider_failure(monkeypatch):
     )
 
     assert result.candidates == (candidate,)
+    assert result.elapsed_seconds >= 0
     assert result.providers[0].status == ProviderDiscoveryStatus.NETWORK_ERROR
     assert result.providers[0].attempts == 1
+    assert result.providers[0].elapsed_seconds >= 0
     assert result.providers[1].status == ProviderDiscoveryStatus.SUCCESS
     assert result.providers[1].attempts == 1
+    assert result.providers[1].elapsed_seconds >= 0
 
 
 def test_discover_full_text_retries_temporary_provider_failure(monkeypatch):
@@ -80,6 +83,7 @@ def test_discover_full_text_retries_temporary_provider_failure(monkeypatch):
     assert delays == [0.25, 0.5]
     assert result.providers[0].status == ProviderDiscoveryStatus.NO_CANDIDATES
     assert result.providers[0].attempts == 3
+    assert result.providers[0].elapsed_seconds >= 0
 
 
 def test_discover_full_text_does_not_retry_parse_failure(monkeypatch):
@@ -106,6 +110,7 @@ def test_discover_full_text_does_not_retry_parse_failure(monkeypatch):
     assert delays == []
     assert result.providers[0].status == ProviderDiscoveryStatus.PARSE_ERROR
     assert result.providers[0].attempts == 1
+    assert result.providers[0].elapsed_seconds >= 0
 
 
 def test_discover_full_text_skips_unpaywall_without_email(monkeypatch):
@@ -119,6 +124,7 @@ def test_discover_full_text_skips_unpaywall_without_email(monkeypatch):
     assert result.providers[1].provider == DiscoveryProvider.UNPAYWALL
     assert result.providers[1].status == ProviderDiscoveryStatus.SKIPPED
     assert result.providers[1].attempts == 0
+    assert result.providers[1].elapsed_seconds == 0.0
 
 
 def test_discover_full_text_skips_unpaywall_with_whitespace_email(monkeypatch):
