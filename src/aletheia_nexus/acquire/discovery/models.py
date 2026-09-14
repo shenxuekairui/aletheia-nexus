@@ -10,7 +10,7 @@ class DiscoveryProvider(StrEnum):
 
 
 class CandidateUrlType(StrEnum):
-    """Kind of URL exposed by a discovery source."""
+    """Provider-reported kind of candidate route, not verified file content."""
 
     PDF = "pdf"
     LANDING_PAGE = "landing_page"
@@ -18,14 +18,14 @@ class CandidateUrlType(StrEnum):
 
 
 class AccessType(StrEnum):
-    """Known access mode for a candidate."""
+    """Known access mode reported for a candidate."""
 
     OPEN_ACCESS = "open_access"
     UNKNOWN = "unknown"
 
 
 class FullTextVersion(StrEnum):
-    """Scholarly version represented by a candidate."""
+    """Provider-reported scholarly version represented by a candidate."""
 
     PUBLISHED = "published"
     ACCEPTED = "accepted"
@@ -34,10 +34,12 @@ class FullTextVersion(StrEnum):
 
 
 class HostType(StrEnum):
-    """Kind of host serving a candidate."""
+    """Kind of access host or route represented by a candidate URL."""
 
     PUBLISHER = "publisher"
     REPOSITORY = "repository"
+    INDEX = "index"
+    RESOLVER = "resolver"
     UNKNOWN = "unknown"
 
 
@@ -59,7 +61,12 @@ class ProviderDiscoveryStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class FullTextCandidate:
-    """Normalized possible route to scholarly full text."""
+    """Normalized possible route to scholarly full text.
+
+    Discovery records what providers report. ``url_type`` and ``version`` are
+    therefore candidate metadata rather than verified file facts. Actual PDF
+    validation and file identity checking belong to Acquisition.
+    """
 
     doi: str
     url: str
@@ -75,7 +82,7 @@ class FullTextCandidate:
 
 @dataclass(frozen=True, slots=True)
 class ProviderDiscoveryResult:
-    """Outcome from one discovery provider."""
+    """Outcome from one discovery provider, including runtime metadata."""
 
     provider: DiscoveryProvider
     status: ProviderDiscoveryStatus

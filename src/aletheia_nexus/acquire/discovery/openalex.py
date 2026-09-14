@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 
 from aletheia_nexus.acquire.discovery.exceptions import DiscoveryParseError
+from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import (
     AccessType,
     CandidateUrlType,
@@ -39,7 +40,7 @@ def _clean_optional_url(value: object, *, field_name: str) -> str | None:
         raise DiscoveryParseError(f"OpenAlex returned an invalid {field_name}") from exc
 
 
-def _host_type(location: Mapping[str, object]) -> HostType:
+def _reported_host_type(location: Mapping[str, object]) -> HostType:
     source = location.get("source")
     if not isinstance(source, Mapping):
         return HostType.UNKNOWN
@@ -101,6 +102,7 @@ def _candidate_from_url(
     access_type = (
         AccessType.OPEN_ACCESS if location.get("is_oa") is True else AccessType.UNKNOWN
     )
+    reported_host = _reported_host_type(location)
 
     return FullTextCandidate(
         doi=doi,
@@ -109,7 +111,7 @@ def _candidate_from_url(
         url_type=url_type,
         access_type=access_type,
         version=version,
-        host_type=_host_type(location),
+        host_type=refine_host_type(url, reported_host),
         license=_clean_optional_text(location.get("license")),
         source_name=_source_name(location),
         is_best=is_best,

@@ -102,6 +102,15 @@ def _print_result(result) -> None:
         )
 
 
+def _print_counter(title: str, counter: Counter) -> None:
+    print(title)
+    if not counter:
+        print("  - none")
+        return
+    for key, count in sorted(counter.items()):
+        print(f"  {key:<20} {count}")
+
+
 def _print_summary(results, batch_elapsed: float) -> None:
     print()
     print("=" * 80)
@@ -131,6 +140,10 @@ def _print_summary(results, batch_elapsed: float) -> None:
         f"{sum(candidate.url_type.value == 'pdf' for candidate in candidates)}"
     )
 
+    print()
+    _print_counter("candidate host types", Counter(c.host_type.value for c in candidates))
+    _print_counter("candidate versions", Counter(c.version.value for c in candidates))
+
     item_times = [result.elapsed_seconds for result in results]
     print()
     print(f"batch elapsed:    {batch_elapsed:.3f} s")
@@ -142,6 +155,7 @@ def _print_summary(results, batch_elapsed: float) -> None:
     provider_times = defaultdict(list)
     provider_statuses = defaultdict(Counter)
     provider_attempts = Counter()
+    total_provider_elapsed = 0.0
 
     for result in results:
         if result.discovery is None:
@@ -151,6 +165,18 @@ def _print_summary(results, batch_elapsed: float) -> None:
             provider_attempts[provider.provider.value] += provider.attempts
             if provider.attempts > 0:
                 provider_times[provider.provider.value].append(provider.elapsed_seconds)
+                total_provider_elapsed += provider.elapsed_seconds
+
+    if batch_elapsed > 0:
+        print(f"provider time:     {total_provider_elapsed:.3f} s")
+        print(
+            "provider / batch:  "
+            f"{100 * total_provider_elapsed / batch_elapsed:.1f}%"
+        )
+        print(
+            "non-provider time: "
+            f"{max(0.0, batch_elapsed - total_provider_elapsed):.3f} s"
+        )
 
     for provider_name in sorted(provider_statuses):
         print()
@@ -161,6 +187,7 @@ def _print_summary(results, batch_elapsed: float) -> None:
 
         times = provider_times[provider_name]
         if times:
+            print(f"  total elapsed      {sum(times):.3f} s")
             print(f"  mean elapsed       {mean(times):.3f} s")
             print(f"  median elapsed     {median(times):.3f} s")
             print(f"  max elapsed        {max(times):.3f} s")

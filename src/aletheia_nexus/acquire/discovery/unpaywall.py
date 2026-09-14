@@ -4,6 +4,7 @@ from aletheia_nexus.acquire.discovery.exceptions import (
     DiscoveryConfigurationError,
     DiscoveryParseError,
 )
+from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import (
     AccessType,
     CandidateUrlType,
@@ -60,7 +61,7 @@ def _candidate_from_url(
         location.get("version"),
         FullTextVersion.UNKNOWN,
     )
-    host_type = _HOST_MAP.get(
+    reported_host = _HOST_MAP.get(
         location.get("host_type"),
         HostType.UNKNOWN,
     )
@@ -72,7 +73,7 @@ def _candidate_from_url(
         url_type=url_type,
         access_type=AccessType.OPEN_ACCESS,
         version=version,
-        host_type=host_type,
+        host_type=refine_host_type(url, reported_host),
         license=_clean_optional_text(location.get("license")),
         is_best=location.get("is_best") is True,
     )

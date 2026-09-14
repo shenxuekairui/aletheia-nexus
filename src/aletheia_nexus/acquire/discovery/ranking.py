@@ -17,8 +17,10 @@ _VERSION_RANK = {
 }
 
 _HOST_RANK = {
-    HostType.PUBLISHER: 2,
-    HostType.REPOSITORY: 1,
+    HostType.PUBLISHER: 4,
+    HostType.REPOSITORY: 3,
+    HostType.RESOLVER: 2,
+    HostType.INDEX: 1,
     HostType.UNKNOWN: 0,
 }
 
@@ -30,7 +32,7 @@ def canonicalize_candidate_url(url: str) -> str:
 
 
 def candidate_sort_key(candidate: FullTextCandidate) -> tuple[int, int, int, int, int]:
-    """Return a deterministic acquisition-oriented ranking key."""
+    """Return deterministic acquisition priority, not scholarly authority."""
 
     return (
         int(candidate.access_type == AccessType.OPEN_ACCESS),
@@ -41,10 +43,22 @@ def candidate_sort_key(candidate: FullTextCandidate) -> tuple[int, int, int, int
     )
 
 
+def _first_text(group: list[FullTextCandidate], field: str) -> str | None:
+    for candidate in group:
+        value = getattr(candidate, field)
+        if value:
+            return value
+    return None
+
+
 def merge_and_rank_candidates(
     candidates: list[FullTextCandidate],
 ) -> tuple[FullTextCandidate, ...]:
-    """Deduplicate candidate URLs, preserve provenance, and rank the result."""
+    """Deduplicate routes and order them by acquisition priority.
+
+    Ranking answers "which route should Acquisition try first?". It does not
+    assert that the first candidate is the most authoritative scholarly version.
+    """
 
     grouped: dict[str, list[FullTextCandidate]] = {}
 
@@ -61,7 +75,16 @@ def merge_and_rank_candidates(
                 provider for candidate in group for provider in candidate.provenance
             )
         )
-        merged.append(replace(chosen, url=url, provenance=provenance))
+        merged.append(
+            replace(
+                chosen,
+                url=url,
+                provenance=provenance,
+                license=chosen.license or _first_text(group, "license"),
+                source_name=chosen.source_name or _first_text(group, "source_name"),
+                is_best=any(candidate.is_best for candidate in group),
+            )
+        )
 
     return tuple(
         sorted(
