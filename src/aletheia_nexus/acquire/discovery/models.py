@@ -48,6 +48,12 @@ class ProviderDiscoveryStatus(StrEnum):
     NO_CANDIDATES = "NO_CANDIDATES"
     NOT_FOUND = "NOT_FOUND"
     SKIPPED = "SKIPPED"
+    CONFIGURATION_ERROR = "CONFIGURATION_ERROR"
+    REQUEST_ERROR = "REQUEST_ERROR"
+    NETWORK_ERROR = "NETWORK_ERROR"
+    RATE_LIMITED = "RATE_LIMITED"
+    SERVICE_ERROR = "SERVICE_ERROR"
+    PARSE_ERROR = "PARSE_ERROR"
     ERROR = "ERROR"
 
 
@@ -75,6 +81,7 @@ class ProviderDiscoveryResult:
     status: ProviderDiscoveryStatus
     candidates: tuple[FullTextCandidate, ...]
     error: str | None = None
+    attempts: int = 0
 
 
 @dataclass(frozen=True, slots=True)
