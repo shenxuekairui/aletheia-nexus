@@ -13,6 +13,7 @@ from aletheia_nexus.acquire.discovery.models import (
     HostType,
 )
 from aletheia_nexus.acquire.discovery.transport import DEFAULT_TIMEOUT, get_json
+from aletheia_nexus.acquire.discovery.urls import normalize_candidate_url
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 UNPAYWALL_API = "https://api.unpaywall.org/v2"
@@ -35,6 +36,19 @@ def _clean_optional_text(value: object) -> str | None:
     return None
 
 
+def _clean_optional_url(value: object, *, field_name: str) -> str | None:
+    text = _clean_optional_text(value)
+    if text is None:
+        return None
+
+    try:
+        return normalize_candidate_url(text)
+    except (TypeError, ValueError) as exc:
+        raise DiscoveryParseError(
+            f"Unpaywall returned an invalid {field_name}"
+        ) from exc
+
+
 def _candidate_from_url(
     *,
     doi: str,
@@ -53,7 +67,7 @@ def _candidate_from_url(
 
     return FullTextCandidate(
         doi=doi,
-        url=url.strip(),
+        url=url,
         provenance=(DiscoveryProvider.UNPAYWALL,),
         url_type=url_type,
         access_type=AccessType.OPEN_ACCESS,
@@ -70,8 +84,14 @@ def _parse_location(
 ) -> list[FullTextCandidate]:
     candidates: list[FullTextCandidate] = []
 
-    pdf_url = _clean_optional_text(location.get("url_for_pdf"))
-    landing_url = _clean_optional_text(location.get("url_for_landing_page"))
+    pdf_url = _clean_optional_url(
+        location.get("url_for_pdf"),
+        field_name="oa_locations.url_for_pdf",
+    )
+    landing_url = _clean_optional_url(
+        location.get("url_for_landing_page"),
+        field_name="oa_locations.url_for_landing_page",
+    )
 
     if pdf_url:
         candidates.append(
@@ -94,7 +114,10 @@ def _parse_location(
         )
 
     if not candidates:
-        fallback_url = _clean_optional_text(location.get("url"))
+        fallback_url = _clean_optional_url(
+            location.get("url"),
+            field_name="oa_locations.url",
+        )
         if fallback_url:
             candidates.append(
                 _candidate_from_url(

@@ -1,5 +1,4 @@
 from dataclasses import replace
-from urllib.parse import urlsplit, urlunsplit
 
 from aletheia_nexus.acquire.discovery.models import (
     AccessType,
@@ -8,6 +7,7 @@ from aletheia_nexus.acquire.discovery.models import (
     FullTextVersion,
     HostType,
 )
+from aletheia_nexus.acquire.discovery.urls import normalize_candidate_url
 
 _VERSION_RANK = {
     FullTextVersion.PUBLISHED: 3,
@@ -24,18 +24,9 @@ _HOST_RANK = {
 
 
 def canonicalize_candidate_url(url: str) -> str:
-    """Normalize URL identity without changing path or query semantics."""
+    """Normalize URL identity for deduplication."""
 
-    parts = urlsplit(url.strip())
-    return urlunsplit(
-        (
-            parts.scheme.lower(),
-            parts.netloc.lower(),
-            parts.path,
-            parts.query,
-            "",
-        )
-    )
+    return normalize_candidate_url(url)
 
 
 def candidate_sort_key(candidate: FullTextCandidate) -> tuple[int, int, int, int, int]:

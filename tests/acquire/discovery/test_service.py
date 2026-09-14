@@ -50,3 +50,15 @@ def test_discover_full_text_skips_unpaywall_without_email(monkeypatch):
 
     assert result.providers[1].provider == DiscoveryProvider.UNPAYWALL
     assert result.providers[1].status == ProviderDiscoveryStatus.SKIPPED
+
+
+def test_discover_full_text_skips_unpaywall_with_whitespace_email(monkeypatch):
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.discovery.service.discover_openalex",
+        lambda *args, **kwargs: (),
+    )
+
+    result = discover_full_text("10.1000/test", unpaywall_email="   ")
+
+    assert result.providers[1].provider == DiscoveryProvider.UNPAYWALL
+    assert result.providers[1].status == ProviderDiscoveryStatus.SKIPPED

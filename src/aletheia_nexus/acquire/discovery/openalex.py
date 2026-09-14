@@ -10,6 +10,7 @@ from aletheia_nexus.acquire.discovery.models import (
     HostType,
 )
 from aletheia_nexus.acquire.discovery.transport import DEFAULT_TIMEOUT, get_json
+from aletheia_nexus.acquire.discovery.urls import normalize_candidate_url
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 OPENALEX_API = "https://api.openalex.org/works"
@@ -25,6 +26,19 @@ def _clean_optional_text(value: object) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _clean_optional_url(value: object, *, field_name: str) -> str | None:
+    text = _clean_optional_text(value)
+    if text is None:
+        return None
+
+    try:
+        return normalize_candidate_url(text)
+    except (TypeError, ValueError) as exc:
+        raise DiscoveryParseError(
+            f"OpenAlex returned an invalid {field_name}"
+        ) from exc
 
 
 def _host_type(location: Mapping[str, object]) -> HostType:
@@ -60,8 +74,14 @@ def _location_is_best(
         return location_id == best_id
 
     for field in ("pdf_url", "landing_page_url"):
-        location_url = _clean_optional_text(location.get(field))
-        best_url = _clean_optional_text(best_location.get(field))
+        location_url = _clean_optional_url(
+            location.get(field),
+            field_name=field,
+        )
+        best_url = _clean_optional_url(
+            best_location.get(field),
+            field_name=f"best_oa_location.{field}",
+        )
         if location_url and location_url == best_url:
             return True
 
@@ -88,7 +108,7 @@ def _candidate_from_url(
 
     return FullTextCandidate(
         doi=doi,
-        url=url.strip(),
+        url=url,
         provenance=(DiscoveryProvider.OPENALEX,),
         url_type=url_type,
         access_type=access_type,
@@ -108,8 +128,14 @@ def _parse_location(
     candidates: list[FullTextCandidate] = []
     is_best = _location_is_best(location, best_location)
 
-    pdf_url = _clean_optional_text(location.get("pdf_url"))
-    landing_url = _clean_optional_text(location.get("landing_page_url"))
+    pdf_url = _clean_optional_url(
+        location.get("pdf_url"),
+        field_name="locations.pdf_url",
+    )
+    landing_url = _clean_optional_url(
+        location.get("landing_page_url"),
+        field_name="locations.landing_page_url",
+    )
 
     if pdf_url:
         candidates.append(

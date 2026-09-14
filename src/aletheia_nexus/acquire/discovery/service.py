@@ -73,13 +73,19 @@ def discover_full_text(
         )
     )
 
-    if unpaywall_email:
+    clean_unpaywall_email = (
+        unpaywall_email.strip()
+        if isinstance(unpaywall_email, str)
+        else None
+    )
+
+    if clean_unpaywall_email:
         provider_results.append(
             _run_provider(
                 DiscoveryProvider.UNPAYWALL,
                 lambda: discover_unpaywall(
                     normalized_doi,
-                    email=unpaywall_email,
+                    email=clean_unpaywall_email,
                 ),
             )
         )

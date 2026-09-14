@@ -39,6 +39,33 @@ def test_merge_deduplicates_url_and_preserves_provenance():
     )
 
 
+def test_merge_normalizes_markdown_wrapped_url_before_deduplication():
+    clean_url = "https://example.org/paper.pdf"
+    wrapped = FullTextCandidate(
+        doi="10.1000/test",
+        url=f"[{clean_url}]({clean_url})",
+        provenance=(DiscoveryProvider.OPENALEX,),
+        url_type=CandidateUrlType.PDF,
+        access_type=AccessType.OPEN_ACCESS,
+    )
+    clean = FullTextCandidate(
+        doi="10.1000/test",
+        url=clean_url,
+        provenance=(DiscoveryProvider.UNPAYWALL,),
+        url_type=CandidateUrlType.PDF,
+        access_type=AccessType.OPEN_ACCESS,
+    )
+
+    result = merge_and_rank_candidates([wrapped, clean])
+
+    assert len(result) == 1
+    assert result[0].url == clean_url
+    assert result[0].provenance == (
+        DiscoveryProvider.OPENALEX,
+        DiscoveryProvider.UNPAYWALL,
+    )
+
+
 def test_direct_pdf_ranks_ahead_of_landing_page():
     landing = FullTextCandidate(
         doi="10.1000/test",
