@@ -1,8 +1,14 @@
 from collections.abc import Callable
 
 from aletheia_nexus.acquire.discovery.exceptions import (
+    DiscoveryConfigurationError,
     DiscoveryError,
+    DiscoveryNetworkError,
     DiscoveryNotFoundError,
+    DiscoveryParseError,
+    DiscoveryRateLimitError,
+    DiscoveryRequestError,
+    DiscoveryServiceError,
 )
 from aletheia_nexus.acquire.discovery.models import (
     DiscoveryProvider,
@@ -13,31 +19,63 @@ from aletheia_nexus.acquire.discovery.models import (
 )
 from aletheia_nexus.acquire.discovery.openalex import discover_openalex
 from aletheia_nexus.acquire.discovery.ranking import merge_and_rank_candidates
+from aletheia_nexus.acquire.discovery.retry import (
+    RetryCallError,
+    call_with_retry,
+    validate_retry_config,
+)
 from aletheia_nexus.acquire.discovery.unpaywall import discover_unpaywall
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 ProviderCall = Callable[[], tuple[FullTextCandidate, ...]]
 
 
+def _clean_optional_config(value: str | None, *, name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string or None")
+    return value.strip() or None
+
+
+def _provider_status_for_error(error: DiscoveryError) -> ProviderDiscoveryStatus:
+    if isinstance(error, DiscoveryConfigurationError):
+        return ProviderDiscoveryStatus.CONFIGURATION_ERROR
+    if isinstance(error, DiscoveryNotFoundError):
+        return ProviderDiscoveryStatus.NOT_FOUND
+    if isinstance(error, DiscoveryRequestError):
+        return ProviderDiscoveryStatus.REQUEST_ERROR
+    if isinstance(error, DiscoveryNetworkError):
+        return ProviderDiscoveryStatus.NETWORK_ERROR
+    if isinstance(error, DiscoveryRateLimitError):
+        return ProviderDiscoveryStatus.RATE_LIMITED
+    if isinstance(error, DiscoveryServiceError):
+        return ProviderDiscoveryStatus.SERVICE_ERROR
+    if isinstance(error, DiscoveryParseError):
+        return ProviderDiscoveryStatus.PARSE_ERROR
+    return ProviderDiscoveryStatus.ERROR
+
+
 def _run_provider(
     provider: DiscoveryProvider,
     call: ProviderCall,
+    *,
+    max_attempts: int,
+    backoff_base: float,
 ) -> ProviderDiscoveryResult:
     try:
-        candidates = call()
-    except DiscoveryNotFoundError as exc:
-        return ProviderDiscoveryResult(
-            provider=provider,
-            status=ProviderDiscoveryStatus.NOT_FOUND,
-            candidates=(),
-            error=str(exc),
+        candidates, attempts = call_with_retry(
+            call,
+            max_attempts=max_attempts,
+            backoff_base=backoff_base,
         )
-    except DiscoveryError as exc:
+    except RetryCallError as exc:
         return ProviderDiscoveryResult(
             provider=provider,
-            status=ProviderDiscoveryStatus.ERROR,
+            status=_provider_status_for_error(exc.error),
             candidates=(),
-            error=str(exc),
+            error=str(exc.error),
+            attempts=exc.attempts,
         )
 
     status = (
@@ -49,6 +87,7 @@ def _run_provider(
         provider=provider,
         status=status,
         candidates=candidates,
+        attempts=attempts,
     )
 
 
@@ -57,10 +96,23 @@ def discover_full_text(
     *,
     unpaywall_email: str | None = None,
     openalex_api_key: str | None = None,
+    max_attempts: int = 3,
+    backoff_base: float = 1.0,
 ) -> DiscoveryResult:
     """Discover and rank full-text candidates while isolating provider failures."""
 
+    validate_retry_config(max_attempts, backoff_base)
+
+    clean_unpaywall_email = _clean_optional_config(
+        unpaywall_email,
+        name="unpaywall_email",
+    )
+    clean_openalex_api_key = _clean_optional_config(
+        openalex_api_key,
+        name="openalex_api_key",
+    )
     normalized_doi = normalize_doi(doi)
+
     provider_results: list[ProviderDiscoveryResult] = []
 
     provider_results.append(
@@ -68,13 +120,11 @@ def discover_full_text(
             DiscoveryProvider.OPENALEX,
             lambda: discover_openalex(
                 normalized_doi,
-                api_key=openalex_api_key,
+                api_key=clean_openalex_api_key,
             ),
+            max_attempts=max_attempts,
+            backoff_base=backoff_base,
         )
-    )
-
-    clean_unpaywall_email = (
-        unpaywall_email.strip() if isinstance(unpaywall_email, str) else None
     )
 
     if clean_unpaywall_email:
@@ -85,6 +135,8 @@ def discover_full_text(
                     normalized_doi,
                     email=clean_unpaywall_email,
                 ),
+                max_attempts=max_attempts,
+                backoff_base=backoff_base,
             )
         )
     else:
@@ -94,6 +146,7 @@ def discover_full_text(
                 status=ProviderDiscoveryStatus.SKIPPED,
                 candidates=(),
                 error="Unpaywall requires an email parameter",
+                attempts=0,
             )
         )
 
