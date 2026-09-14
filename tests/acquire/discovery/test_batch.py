@@ -40,8 +40,19 @@ def _result(
                 else DiscoveryProvider.UNPAYWALL
             ),
             status=status,
-            candidates=(candidates if status == ProviderDiscoveryStatus.SUCCESS else ()),
-            error=(f"{status.value} error" if status not in {ProviderDiscoveryStatus.SUCCESS, ProviderDiscoveryStatus.NO_CANDIDATES, ProviderDiscoveryStatus.SKIPPED} else None),
+            candidates=(
+                candidates if status == ProviderDiscoveryStatus.SUCCESS else ()
+            ),
+            error=(
+                f"{status.value} error"
+                if status
+                not in {
+                    ProviderDiscoveryStatus.SUCCESS,
+                    ProviderDiscoveryStatus.NO_CANDIDATES,
+                    ProviderDiscoveryStatus.SKIPPED,
+                }
+                else None
+            ),
             attempts=(0 if status == ProviderDiscoveryStatus.SKIPPED else 1),
         )
         for index, status in enumerate(provider_statuses)
