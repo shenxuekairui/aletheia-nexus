@@ -54,9 +54,7 @@ def _classify_discovery(result: DiscoveryResult) -> DiscoveryStatus:
 
     if result.candidates:
         return (
-            DiscoveryStatus.PARTIAL_SUCCESS
-            if has_failure
-            else DiscoveryStatus.SUCCESS
+            DiscoveryStatus.PARTIAL_SUCCESS if has_failure else DiscoveryStatus.SUCCESS
         )
 
     if has_failure:
