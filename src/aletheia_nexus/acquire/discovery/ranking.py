@@ -48,9 +48,7 @@ def _consistent_text(group: list[FullTextCandidate], field: str) -> str | None:
 
     values = list(
         dict.fromkeys(
-            value
-            for candidate in group
-            if (value := getattr(candidate, field))
+            value for candidate in group if (value := getattr(candidate, field))
         )
     )
     return values[0] if len(values) == 1 else None
@@ -86,7 +84,8 @@ def merge_and_rank_candidates(
                 url=url,
                 provenance=provenance,
                 license=chosen.license or _consistent_text(group, "license"),
-                source_name=chosen.source_name or _consistent_text(group, "source_name"),
+                source_name=chosen.source_name
+                or _consistent_text(group, "source_name"),
                 is_best=any(candidate.is_best for candidate in group),
             )
         )
