@@ -141,7 +141,9 @@ def _print_summary(results, batch_elapsed: float) -> None:
     )
 
     print()
-    _print_counter("candidate host types", Counter(c.host_type.value for c in candidates))
+    _print_counter(
+        "candidate host types", Counter(c.host_type.value for c in candidates)
+    )
     _print_counter("candidate versions", Counter(c.version.value for c in candidates))
 
     item_times = [result.elapsed_seconds for result in results]
@@ -169,10 +171,7 @@ def _print_summary(results, batch_elapsed: float) -> None:
 
     if batch_elapsed > 0:
         print(f"provider time:     {total_provider_elapsed:.3f} s")
-        print(
-            "provider / batch:  "
-            f"{100 * total_provider_elapsed / batch_elapsed:.1f}%"
-        )
+        print(f"provider / batch:  {100 * total_provider_elapsed / batch_elapsed:.1f}%")
         print(
             "non-provider time: "
             f"{max(0.0, batch_elapsed - total_provider_elapsed):.3f} s"
