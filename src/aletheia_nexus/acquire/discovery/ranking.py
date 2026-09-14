@@ -43,12 +43,17 @@ def candidate_sort_key(candidate: FullTextCandidate) -> tuple[int, int, int, int
     )
 
 
-def _first_text(group: list[FullTextCandidate], field: str) -> str | None:
-    for candidate in group:
-        value = getattr(candidate, field)
-        if value:
-            return value
-    return None
+def _consistent_text(group: list[FullTextCandidate], field: str) -> str | None:
+    """Return one shared non-empty text value, or None when providers conflict."""
+
+    values = list(
+        dict.fromkeys(
+            value
+            for candidate in group
+            if (value := getattr(candidate, field))
+        )
+    )
+    return values[0] if len(values) == 1 else None
 
 
 def merge_and_rank_candidates(
@@ -80,8 +85,8 @@ def merge_and_rank_candidates(
                 chosen,
                 url=url,
                 provenance=provenance,
-                license=chosen.license or _first_text(group, "license"),
-                source_name=chosen.source_name or _first_text(group, "source_name"),
+                license=chosen.license or _consistent_text(group, "license"),
+                source_name=chosen.source_name or _consistent_text(group, "source_name"),
                 is_best=any(candidate.is_best for candidate in group),
             )
         )
