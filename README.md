@@ -3,9 +3,65 @@
 > **A local-first scientific knowledge acquisition infrastructure.**  
 > 面向科研场景的本地优先科学知识获取基础设施。
 
-Aletheia Nexus 的目标不是做一个简单的“论文下载脚本”，而是逐步构建一套 **可靠、可验证、可扩展、可自动化** 的科研知识获取基础设施。
+Aletheia Nexus 不是一个单纯的“论文下载脚本”。它希望把科研知识获取过程中容易被忽略的身份识别、来源发现、失败语义、可追溯性、验证和后续自动化拆成清晰、可靠、可测试的基础能力，为未来的 Workflow（工作流）、Agent（智能体）和实验室级科研智能系统提供稳定底座。
 
-它试图解决的是一条完整链路：
+当前版本：
+
+```text
+Aletheia Nexus v0.4.2
+Full-text Discovery
+全文候选来源发现
+```
+
+当前阶段已经完成：
+
+```text
+Identifier / DOI Core      ✅
+Metadata Resolution        ✅
+Full-text Discovery        ✅
+Reliability & Observability✅
+Discovery Performance      ✅
+
+Acquisition & Validation   → Next
+```
+
+> **v0.4 的边界非常明确：Discovery 负责回答“哪里可能有全文？”，不负责宣称“全文已经成功下载并验证”。**
+
+---
+
+## 1. Why Aletheia Nexus
+
+表面上，科研文献获取似乎只是：
+
+```text
+DOI
+↓
+PDF
+```
+
+但一个可靠系统真正需要回答的是：
+
+```text
+输入真的是 DOI 吗？
+↓
+它对应什么科研对象？
+↓
+元数据来自哪里？
+↓
+有哪些可能的全文路径？
+↓
+这个链接是出版社、仓储、索引还是解析入口？
+↓
+数据源失败意味着什么？值得重试吗？
+↓
+多个来源重复或冲突时如何处理？
+↓
+哪个路径最值得下一步尝试？
+↓
+实际下载回来的内容真的是目标论文吗？
+```
+
+因此项目采取分层路线：
 
 ```text
 科研对象标识
@@ -14,11 +70,11 @@ Aletheia Nexus 的目标不是做一个简单的“论文下载脚本”，而�
     ↓
 元数据解析
     ↓
-全文来源发现
+全文来源发现        ← v0.4 已完成
     ↓
-全文获取
+全文获取            ← v0.5
     ↓
-文件验证
+文件与身份验证      ← v0.5
     ↓
 内容解析
     ↓
@@ -27,84 +83,15 @@ Aletheia Nexus 的目标不是做一个简单的“论文下载脚本”，而�
 Agent / Lab / World
 ```
 
-当前版本：
+核心原则是：
 
-```text
-Aletheia Nexus v0.3.2
-Metadata Stabilization
-```
-
-当前阶段已经完成：
-
-```text
-DOI Core
-+
-Metadata Resolution
-+
-Stable Transport Layer
-+
-Retry / Batch Infrastructure
-+
-Automated Quality Checks
-```
-
-下一阶段：
-
-```text
-v0.4
-Full-text Candidate Discovery
-全文候选来源发现
-```
+> **先建立可靠、可验证的底层能力，再向更高层自动化和智能推进。**
 
 ---
 
-## 1. Why Aletheia Nexus
+## 2. Architecture
 
-科研文献获取看起来像一个简单问题：
-
-```text
-输入 DOI
-↓
-下载 PDF
-```
-
-但真正可靠的科研知识获取系统需要处理更多问题：
-
-```text
-这个输入真的是 DOI 吗？
-
-这个 DOI 属于哪个注册机构？
-
-对应的科研对象到底是什么？
-
-Crossref 和 DataCite 返回的数据怎么统一？
-
-一次 API 请求失败意味着文献不存在吗？
-
-429、网络超时、404、5xx 应该如何区分？
-
-同一篇文献有哪些可能的全文来源？
-
-下载回来的文件真的是 PDF 吗？
-
-这个 PDF 真的是目标论文吗？
-
-多个来源冲突时应该相信谁？
-
-如何保存来源、状态和失败原因？
-
-如何让后续 Agent 能稳定调用这些能力？
-```
-
-因此 Aletheia Nexus 的核心思想是：
-
-> **先建立可靠的科研知识获取基础设施，再在其上构建自动化、Agent 和科学知识系统。**
-
----
-
-## 2. Long-term Architecture
-
-Aletheia Nexus 的长期结构规划：
+长期结构：
 
 ```text
 Aletheia Nexus
@@ -116,200 +103,97 @@ Aletheia Nexus
 │  └─ Acquisition
 │
 ├─ Parse
-│
 ├─ Knowledge
-│
 ├─ Agent
-│
 ├─ Lab
-│
 └─ World
 ```
 
-各层职责：
+当前开发重点仍在 `Acquire`：
 
 ```text
-Acquire
-→ 找到并可靠获取科研信息
-
-Parse
-→ 从 PDF / HTML / Supplementary 等内容中提取结构化信息
-
-Knowledge
-→ 构建可检索、可追踪来源的科研知识层
-
-Agent
-→ 让 AI Agent 调用稳定的科研工具完成复杂任务
-
-Lab
-→ 与实验室数据、实验流程、ELN、自动化设备等连接
-
-World
-→ 面向更高层的科学模型、科学世界模型与知识推理
+Raw input
+   ↓
+Identifier
+   ↓
+Normalized DOI
+   ↓
+Metadata Resolution
+   ↓
+PaperMetadata
+   ↓
+Discovery Providers
+   ├─ OpenAlex
+   └─ Unpaywall
+   ↓
+FullTextCandidate
+   ↓
+URL normalization
+   ↓
+Deduplication + provenance merge
+   ↓
+Acquisition-oriented ranking
+   ↓
+DiscoveryResult
+   ↓
+[v0.5] Acquisition + Validation
 ```
 
-当前主要开发范围：
-
-```text
-Acquire
-├─ DOI Core          ✅
-├─ Metadata          ✅
-├─ Discovery         ← Next
-└─ Acquisition
-```
+Metadata（元数据）和 Discovery（全文发现）目前保留独立的 transport / retry 语义。虽然它们都有 HTTP、Retry（重试）和错误映射，但两层的业务含义不同；在没有稳定重复之前，项目不为了“减少几行代码”提前抽象成一个复杂公共框架。
 
 ---
 
 ## 3. Design Principles
 
-Aletheia Nexus 当前遵循以下设计原则。
+Aletheia Nexus 当前遵循以下工程原则：
 
-### 3.1 Identity before acquisition
-
-先确认：
-
-```text
-“我要找的科研对象到底是什么”
-```
-
-再处理：
-
-```text
-“从哪里获得全文”
-```
-
-身份解析和全文获取不应混在一起。
+1. **Correctness before automation（正确性优先于自动化）**：宁可明确未知，也不静默制造确定答案。
+2. **Identity before acquisition（先确认身份，再获取内容）**：对象识别和文件获取不混在一起。
+3. **Locate and download are different problems（发现与下载是不同问题）**：发现 Candidate 不等于拿到正确文件。
+4. **Temporary and permanent failures are different（临时失败与永久失败不同）**：只对合理的临时错误重试。
+5. **External complexity terminates at module boundaries（外部复杂性止于模块边界）**：Provider、Transport、Retry、Batch 各自负责明确问题。
+6. **Provenance over black-box results（保留来源而不是只给黑箱结果）**：Candidate 保留 provenance（来源追踪）。
+7. **Measure before optimize（先测量，再优化）**：v0.4.2 的并发来自真实 Benchmark，而不是提前设计。
+8. **Small, testable, reversible changes（小步、可测试、可回退）**：稳定层不因为下一层需求反复重构。
+9. **Local-first（本地优先）**：核心数据、状态和长期知识应尽可能由研究者或实验室掌控。
 
 ---
 
-### 3.2 Locate and Download are different problems
+## 4. Installation
+
+要求：
 
 ```text
-Locate
-→ 找到候选全文来源
-
-Download
-→ 从某个来源真正获取内容
+Python >= 3.11
 ```
 
-“找到了链接”和“成功得到正确全文”不是同一件事。
+推荐使用 Virtual Environment（Python 虚拟环境）。
 
----
+Windows PowerShell：
 
-### 3.3 HTTP 200 does not mean success
-
-网络请求成功只说明服务器返回了内容。
-
-它不代表：
-
-```text
-这是 PDF
-这是目标论文
-文件完整
-内容可以解析
-身份匹配
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
 ```
 
-因此未来的 Acquisition 层会继续进行文件和身份验证。
+检查安装版本：
 
----
-
-### 3.4 One source failure does not mean the work does not exist
-
-例如：
-
-```text
-Crossref 没找到
-≠
-科研对象一定不存在
+```powershell
+python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```
 
-不同数据库、注册机构和全文来源需要被明确区分。
-
----
-
-### 3.5 Temporary and permanent failures are different
-
-例如：
+当前应输出：
 
 ```text
-网络超时
-429 Rate Limit（请求限流）
-5xx Server Error（服务端错误）
-
-→ 可能值得重试
-```
-
-而：
-
-```text
-非法 DOI
-确定的 404
-不支持的注册机构
-无法解析的数据结构
-
-→ 重试通常没有意义
+0.4.2
 ```
 
 ---
 
-### 3.6 External complexity should terminate at module boundaries
+## 5. DOI Core
 
-当前 Metadata（元数据）架构遵循：
-
-```text
-HTTP / JSON 复杂性
-→ transport.py
-
-Crossref 数据结构
-→ crossref.py
-
-DataCite 数据结构
-→ datacite.py
-
-注册机构识别与路由
-→ resolver.py
-
-临时错误恢复
-→ retry.py
-
-批量任务组织
-→ batch.py
-```
-
-每一种复杂性尽量只存在一个地方。
-
----
-
-### 3.7 Correctness before premature optimization
-
-当前优先级：
-
-```text
-正确性
-↓
-鲁棒性
-↓
-可读性
-↓
-可维护性
-↓
-稳定性
-↓
-可扩展性
-↓
-性能优化
-```
-
-在真实性能瓶颈出现之前，不提前引入复杂异步架构、并发控制和缓存系统。
-
----
-
-## 4. Current Capabilities
-
-### DOI Core
-
-当前支持：
+当前 DOI 基础能力：
 
 ```python
 normalize_doi()
@@ -318,38 +202,12 @@ extract_dois()
 looks_like_doi()
 ```
 
-可以处理：
-
-```text
-标准 DOI
-
-DOI:
-doi:
-
-https://doi.org/
-http://doi.org/
-https://dx.doi.org/
-doi.org/
-
-大小写混合
-前后空格
-URL 百分号编码
-正文标点
-括号 / 引号 / 方括号
-中英文文本边界
-复杂历史 DOI 后缀
-批量标准化
-稳定去重
-自然语言 DOI 提取
-```
-
 示例：
 
 ```python
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 doi = normalize_doi("https://doi.org/10.1038/NPHYS1170")
-
 print(doi)
 ```
 
@@ -359,31 +217,13 @@ print(doi)
 10.1038/nphys1170
 ```
 
+DOI Core 可以处理常见 DOI URL / prefix、大小写、空格、正文标点、百分号编码、包裹符号、复杂历史后缀，并支持批量标准化、稳定去重和自然语言文本中的 DOI 提取。
+
 ---
 
-## 5. Metadata Resolution
+## 6. Metadata Resolution
 
-v0.3 建立了统一 Metadata Resolution（元数据解析）链路。
-
-```text
-Raw DOI / DOI URL
-        ↓
-DOI Normalization
-DOI 标准化
-        ↓
-Registration Agency Detection
-DOI 注册机构识别
-        ↓
-   ┌──────────────┐
-   │              │
-Crossref       DataCite
-   │              │
-   └──────┬───────┘
-          ↓
-    PaperMetadata
-          ↓
-Retry / Batch
-```
+Metadata 层负责把规范 DOI 解析为统一科研对象元数据。
 
 当前正式支持：
 
@@ -392,183 +232,21 @@ Crossref
 DataCite
 ```
 
-例如：
-
-```text
-10.1038/nphys1170
-→ Crossref
-
-10.5281/zenodo.31780
-→ DataCite
-```
-
-对于已识别但尚未支持的 DOI Registration Agency（DOI 注册机构），系统会返回明确的：
-
-```text
-UNSUPPORTED_AGENCY
-```
-
-而不是错误地将其视为：
-
-```text
-NOT_FOUND
-```
-
----
-
-## 6. Metadata Architecture
-
-v0.3.2 对 Metadata 层进行了稳定化重构。
-
-当前内部结构：
-
-```text
-metadata/
-│
-├─ __init__.py
-│
-├─ exceptions.py
-│
-├─ transport.py
-│
-├─ crossref.py
-│
-├─ datacite.py
-│
-├─ resolver.py
-│
-├─ retry.py
-│
-└─ batch.py
-```
-
-数据流：
-
-```text
-Application
-     ↓
-Public Metadata API
-     ↓
-Resolver
-     ↓
-Registration Agency
-     ↓
-┌───────────────┐
-│               │
-Crossref     DataCite
-│               │
-└───────┬───────┘
-        ↓
-    Transport
-        ↓
-      HTTP
-```
-
-其中：
-
-```text
-transport.py
-→ HTTP 请求
-→ User-Agent
-→ HTTP 状态语义
-→ 网络异常
-→ JSON 解码
-
-crossref.py
-→ Crossref schema → PaperMetadata
-
-datacite.py
-→ DataCite schema → PaperMetadata
-
-resolver.py
-→ DOI Registration Agency
-→ Provider Routing
-
-retry.py
-→ Retry
-→ Exponential Backoff
-
-batch.py
-→ 批量查询
-→ 去重
-→ 错误隔离
-→ 稳定状态
-```
-
----
-
-## 7. Shared Transport Layer
-
-v0.3.2 引入统一 Transport Layer（传输层）。
-
-Provider 不再分别实现：
-
-```text
-HTTP 请求
-Timeout
-Connection Error
-404
-429
-4xx
-5xx
-JSON Decode
-```
-
-这些行为统一由：
-
-```text
-transport.py
-```
-
-负责。
-
-这样未来如果引入：
-
-```text
-httpx.Client
-Connection Pooling（连接池）
-统一超时配置
-请求日志
-更高级的 Retry-After 支持
-```
-
-只需要修改 Transport 层，而不需要重新修改 Crossref、DataCite 和 Resolver。
-
-User-Agent（用户代理标识）也会自动读取当前安装版本：
-
-```text
-Aletheia-Nexus/0.3.2
-```
-
-而不再在多个模块中手工维护版本字符串。
-
----
-
-## 8. Unified Metadata Model
-
-不同数据源的数据结构差异很大。
-
-例如：
-
-```text
-Crossref
-→ author
-→ container-title
-→ published
-
-DataCite
-→ creators
-→ relatedItems
-→ dates
-```
-
-Aletheia Nexus 会将它们统一转换为：
+推荐通过统一 Public API（公开接口）使用：
 
 ```python
-PaperMetadata
+from aletheia_nexus.acquire.metadata import get_metadata
+
+paper = get_metadata("10.1038/nphys1170")
+
+print(paper.doi)
+print(paper.title)
+print(paper.authors)
+print(paper.journal)
+print(paper.year)
 ```
 
-当前字段：
+统一模型 `PaperMetadata` 当前字段：
 
 ```text
 doi
@@ -586,1114 +264,607 @@ pages
 url
 ```
 
-因此上层代码不需要关心：
+Metadata 层还提供：
 
-```text
-数据来自 Crossref
-还是 DataCite
+```python
+get_doi_agency()
+get_metadata_with_retry()
+get_metadata_batch()
 ```
 
-只需要面对统一模型。
+并明确区分：
 
-> 当前名称仍为 `PaperMetadata` 以保持 API 稳定。  
-> DataCite 本身也可能描述 Presentation、Dataset、Documentation 等非传统论文科研对象，未来如有实际需求，可进一步演化为更通用的 Work Metadata 模型。
+```text
+NOT_FOUND
+UNSUPPORTED_AGENCY
+NETWORK_ERROR
+RATE_LIMIT
+REQUEST_ERROR
+SERVICE_ERROR
+PARSE_ERROR
+```
+
+不会把不同失败原因压缩成一个模糊的 “failed”。
 
 ---
 
-## 9. DataCite Publication Resolution
+## 7. Full-text Discovery
 
-DataCite 的出版信息可能来自：
-
-```text
-relatedItems
-```
-
-或旧式 / 兼容字段：
-
-```text
-container
-```
-
-Aletheia Nexus 当前优先采用：
-
-```text
-relationType = IsPublishedIn
-```
-
-对应的 `relatedItems` 信息。
-
-并将：
-
-```text
-journal
-ISSN
-volume
-issue
-firstPage
-lastPage
-```
-
-作为一个完整 publication source（出版信息来源）解析。
-
-原则：
-
-```text
-如果存在可用 IsPublishedIn
-→ 整组采用 relatedItems
-
-否则
-→ fallback 到 container
-```
-
-不会把两个来源中的字段任意拼接。
-
-例如不会产生：
-
-```text
-relatedItems.firstPage = 249
-+
-container.lastPage = 18
-↓
-249-18
-```
-
-这种跨来源污染。
-
----
-
-## 10. Installation
-
-要求：
-
-```text
-Python >= 3.11
-```
-
-建议使用 Virtual Environment（Python 虚拟环境）。
-
-Windows PowerShell：
-
-```powershell
-python -m venv .venv
-```
-
-激活：
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-安装项目和开发依赖：
-
-```powershell
-python -m pip install -e ".[dev]"
-```
-
-验证版本：
-
-```powershell
-python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
-```
-
-当前应输出：
-
-```text
-0.3.2
-```
-
----
-
-## 11. Basic Usage
+v0.4 新增 Full-text Discovery（全文候选来源发现）。
 
 ### Single DOI
 
-推荐从统一 Public API（公开接口）导入：
-
 ```python
-from aletheia_nexus.acquire.metadata import get_metadata
+from aletheia_nexus.acquire.discovery import discover_full_text
 
-paper = get_metadata("10.1038/nphys1170")
+result = discover_full_text(
+    "10.1002/anie.201406668",
+    unpaywall_email="you@example.com",
+)
 
-print(paper.doi)
-print(paper.title)
-print(paper.authors)
-print(paper.journal)
-print(paper.year)
+print(result.doi)
+
+for candidate in result.candidates:
+    print(candidate.url)
+    print(candidate.url_type)
+    print(candidate.access_type)
+    print(candidate.version)
+    print(candidate.host_type)
+    print(candidate.provenance)
 ```
 
-系统内部自动执行：
+当前默认 Discovery Provider（发现数据源）：
 
 ```text
-DOI 标准化
-↓
-注册机构识别
-↓
-Crossref / DataCite 路由
-↓
-元数据解析
-↓
-PaperMetadata
+OpenAlex
+Unpaywall
 ```
+
+Unpaywall 需要邮箱参数；若未提供，系统会明确标记该 Provider 为：
+
+```text
+SKIPPED
+```
+
+而不是把它伪装成查询失败。
+
+OpenAlex API key 当前是可选配置。
 
 ---
 
-## 12. DOI Registration Agency
+## 8. Candidate Contract
 
-也可以单独查询 DOI 注册机构：
+统一候选模型：
 
 ```python
-from aletheia_nexus.acquire.metadata import (
-    get_doi_agency,
-)
-
-agency = get_doi_agency("10.1038/nphys1170")
-
-print(agency)
+FullTextCandidate
 ```
 
-当前可能得到：
+主要字段：
 
 ```text
-crossref
-datacite
+doi
+url
+provenance
+url_type
+access_type
+version
+host_type
+license
+source_name
+is_best
 ```
 
-其他已识别但尚未实现的注册机构会抛出：
+### 8.1 `PDF` does not mean verified PDF
 
-```python
-UnsupportedAgencyError
+```text
+CandidateUrlType.PDF
 ```
+
+表示：
+
+> Provider-reported PDF candidate（数据源报告的 PDF 候选路径）
+
+它**不表示** Aletheia Nexus 已经下载并验证了 PDF。
+
+例如一个 Provider 可能把 Handle resolver（Handle 解析入口）报告成 PDF 路径。真正的：
+
+```text
+Content-Type
+%PDF magic bytes
+文件完整性
+可解析性
+正文 / Supporting Information 区分
+DOI / title / author 身份匹配
+```
+
+全部属于 v0.5 Acquisition + Validation（获取与验证）。
+
+### 8.2 Version is provider-reported
+
+```text
+published
+accepted
+submitted
+unknown
+```
+
+是 Provider-reported scholarly version（数据源报告的学术版本），不是 AN 独立核验后的事实。
+
+### 8.3 HostType
+
+当前路径类型：
+
+```text
+PUBLISHER
+REPOSITORY
+INDEX
+RESOLVER
+UNKNOWN
+```
+
+真实 Benchmark 已证明需要区分：
+
+```text
+doi.org / hdl.handle.net
+→ RESOLVER
+
+PubMed / DOAJ
+→ INDEX
+
+PMC
+→ REPOSITORY
+```
+
+系统不会维护一张庞大的出版社域名硬编码表。
+
+### 8.4 Ranking is acquisition priority
+
+Candidate 排序回答的是：
+
+> **下一步 Acquisition 应优先尝试哪个路径？**
+
+而不是：
+
+> **哪个版本在学术意义上最权威？**
+
+当前排序主要考虑 OA、Provider-reported PDF、版本、路径类型和 best-location signal（最佳位置提示）。
+
+`is_best` 也是 Provider 侧信号，不应解释成 AN 已验证的“全局最佳全文”。
 
 ---
 
-## 13. Retry
+## 9. URL Normalization and Deduplication
 
-对于网络和服务端临时错误，可以使用：
+Discovery Provider 是外部输入，因此 Candidate URL 在进入后续 Acquisition 前会进行基础校验与标准化：
 
-```python
-from aletheia_nexus.acquire.metadata import (
-    get_metadata_with_retry,
-)
-
-paper = get_metadata_with_retry(
-    "10.1038/nphys1170",
-    max_attempts=3,
-    backoff_base=1.0,
-)
+```text
+只接受 HTTP / HTTPS
+必须存在 hostname
+拒绝 URL 内嵌账号密码
+移除 fragment
+去除安全的 Markdown / quote wrapper
+统一 scheme / host 大小写
 ```
 
-当前采用 Exponential Backoff（指数退避）。
+真实语料还发现了持久解析器的等价 URL：
+
+```text
+http://hdl.handle.net/...
+https://hdl.handle.net/...
+```
+
+以及旧 DOI resolver：
+
+```text
+http://doi.org/...
+https://dx.doi.org/...
+https://www.doi.org/...
+```
+
+v0.4.2 只对这些已经有真实证据支持的 Resolver（解析器）做更强 canonicalization（规范化），不会把普通网站的 HTTP 全局强制改成 HTTPS。
+
+相同规范 URL 会合并 provenance。`license` 和 `source_name` 只有在非空报告一致时才保留；来源冲突时保持未知，不静默选择某个 Provider 的值。
+
+---
+
+## 10. Reliability
+
+### Provider failure isolation
+
+一个 Provider 失败不会自动拖垮另一个 Provider。
 
 例如：
 
 ```text
-第 1 次失败
+OpenAlex NETWORK_ERROR
++
+Unpaywall SUCCESS
 ↓
-等待 1 秒
-
-第 2 次失败
+仍然保留可用 Candidate
 ↓
-等待 2 秒
-
-第 3 次请求
-↓
-成功 → 返回
-失败 → 抛出最终异常
+Batch 可表达 PARTIAL_SUCCESS
 ```
 
-默认会重试：
+### Retry
+
+仅以下临时错误自动 Retry（重试）：
 
 ```text
-MetadataNetworkError
-RateLimitError
-MetadataServiceError
+NETWORK_ERROR
+RATE_LIMITED
+SERVICE_ERROR
 ```
 
-不会重试：
+不自动重试：
 
 ```text
-MetadataNotFoundError
-MetadataRequestError
-MetadataParseError
-UnsupportedAgencyError
+NOT_FOUND
+REQUEST_ERROR
+PARSE_ERROR
+CONFIGURATION_ERROR
 ```
 
-这是因为：
+Retry 使用有界 Exponential Backoff（指数退避），并保留：
 
 ```text
-网络暂时不可用
-429 限流
-5xx 服务异常
-
-→ 有可能自行恢复
+attempts
+elapsed_seconds
+final error
 ```
 
-而：
-
-```text
-DOI 不存在
-请求本身有问题
-返回数据结构损坏
-注册机构尚未支持
-
-→ 单纯重复请求通常没有意义
-```
+未知编程错误不会被伪装成普通 Provider failure，而是继续显式抛出。
 
 ---
 
-## 14. Batch Resolution
-
-批量获取元数据：
+## 11. Batch Discovery
 
 ```python
-from aletheia_nexus.acquire.metadata import (
-    get_metadata_batch,
-)
+from aletheia_nexus.acquire.discovery import discover_full_text_batch
 
-results = get_metadata_batch(
+results = discover_full_text_batch(
     [
-        "10.1038/nphys1170",
-        "10.5281/zenodo.31780",
-        "10.9999/not-real-doi",
-        "not a doi",
+        "10.1002/anie.201406668",
+        "10.1038/s41467-024-49639-6",
     ],
-    max_attempts=3,
-    backoff_base=1.0,
+    unpaywall_email="you@example.com",
 )
 
-for result in results:
-    print(
-        result.status,
-        result.doi,
-    )
+for item in results:
+    print(item.input_value, item.doi, item.status, item.elapsed_seconds)
 ```
 
-批量层支持：
+Batch（批处理）当前支持：
 
 ```text
-输入逐条 DOI 标准化
-↓
-标准化后稳定去重
-↓
-注册机构自动识别
-↓
-数据源自动路由
-↓
-Retry
-↓
-逐条错误隔离
-↓
-稳定状态输出
+DOI 标准化
+稳定去重
+原输入保留
+单条失败隔离
+单条耗时
+Provider 配置透传
 ```
 
-其中一条 DOI 失败不会使整个批次终止。
-
-可能结果：
+Batch 状态：
 
 ```text
-SUCCESS        10.1038/nphys1170
-SUCCESS        10.5281/zenodo.31780
-NOT_FOUND      10.9999/not-real-doi
-INVALID_DOI    -
+SUCCESS
+PARTIAL_SUCCESS
+NO_CANDIDATES
+NOT_FOUND
+INVALID_DOI
+ERROR
 ```
+
+当前 Batch item 仍顺序执行；每个 DOI 内的 OpenAlex 与 Unpaywall 使用 Provider-level Bounded Concurrency（数据源级有限并发）。这是经过真实性能数据验证后引入的最小并发层级。
 
 ---
 
-## 15. Metadata Status Model
+## 12. Observability and Provider Evaluation
 
-Batch API（批处理接口）使用稳定状态：
-
-| Status | 含义 |
-|---|---|
-| `SUCCESS` | 元数据解析成功 |
-| `INVALID_DOI` | 输入无法标准化为合法 DOI |
-| `NOT_FOUND` | DOI / 对应元数据未找到 |
-| `UNSUPPORTED_AGENCY` | DOI 注册机构暂未支持 |
-| `REQUEST_ERROR` | 普通 HTTP 4xx 请求错误 |
-| `NETWORK_ERROR` | 网络连接或超时错误 |
-| `RATE_LIMITED` | API 返回 HTTP 429 |
-| `SERVICE_ERROR` | 服务端错误或异常 HTTP 状态 |
-| `PARSE_ERROR` | 返回数据结构无法可靠解析 |
-
-Batch 返回：
-
-```python
-MetadataLookupResult
-```
-
-其中包含：
+Discovery 运行结果保留：
 
 ```text
-input_value
-doi
+source / provider
 status
-metadata
+attempts
+elapsed_seconds
 error
+candidates
+provenance
 ```
 
-因此系统既保留：
+Provider-level 并发后，Benchmark 不再错误地把各 Provider 耗时之和当成墙钟时间，而区分：
 
 ```text
-原始输入
+provider work sum
+provider critical path
+provider overlap factor
+discovery wall time
+coordination estimate
+batch wrapper overhead
 ```
 
-也保留：
+v0.4.2 还提供：
+
+```python
+from aletheia_nexus.acquire.discovery import summarize_provider_contributions
+```
+
+用于统计：
 
 ```text
-标准化 DOI
-最终状态
-解析结果
-失败原因
+candidate routes
+unique routes
+shared routes
+exclusive metadata contributions
+metadata disagreements
+```
+
+Provider 冲突只被记录，不在评价层擅自决定哪个来源更权威。
+
+---
+
+## 13. Real-network Benchmark
+
+仓库保留可复现的 30 篇水电解跨出版社 Benchmark corpus（基准语料）：
+
+```text
+benchmarks/discovery_water_electrolysis_30.txt
+```
+
+覆盖 AAAS、Wiley、ACS、RSC、Nature Portfolio、Elsevier、Springer、MDPI、Frontiers、IOP、ECS、ECSJ/J-STAGE、AIP、Taylor & Francis、Oxford 等不同出版生态。
+
+同一 30 篇、同一两 Provider 的真实网络结果：
+
+| Metric | v0.4.1 sequential | v0.4.2 provider concurrency |
+| --- | ---: | ---: |
+| Discovery SUCCESS | 30 / 30 | 30 / 30 |
+| Batch elapsed | 66.484 s | **32.783 s** |
+| Speedup | 1.00× | **2.03×** |
+| Elapsed reduction | — | **50.7%** |
+| Works with OA candidate | 20 | 20 |
+| Works with PDF candidate | 15 | 15 |
+| Works with non-resolver route | 24 | 24 |
+| Works with publisher/repository route | 17 | 17 |
+
+v0.4.2 最终得到 97 个 merged candidates（合并候选）。相较早期 98 个减少 1 个，是因为等价 Handle HTTP/HTTPS 路径被正确合并，不是覆盖率下降。
+
+> 这是一组化学 / 能源领域的工程验收语料，不代表所有学科的全球覆盖率结论。
+
+手动复测：
+
+```powershell
+$env:UNPAYWALL_EMAIL = "you@example.com"
+python scripts/manual_discovery_acceptance.py `
+  --doi-file benchmarks/discovery_water_electrolysis_30.txt `
+  --baseline-seconds 66.484
+```
+
+如有 OpenAlex API key：
+
+```powershell
+$env:OPENALEX_API_KEY = "your-key"
+```
+
+真实网络验收脚本刻意不进入 CI，避免把外部服务波动变成代码测试不稳定。
+
+---
+
+## 14. Why Not Add More Providers Yet
+
+30 篇当前语料中：
+
+```text
+OpenAlex unique routes      41
+OpenAlex + Unpaywall shared 56
+Unpaywall unique routes      0
+```
+
+这不能证明 Unpaywall 在所有学科都没有价值，但说明当前最明显的实际缺口不是“缺第三个广域学术图谱 API”，而是：
+
+```text
+Known landing / repository route
+↓
+实际访问页面
+↓
+解析真实文件入口
+↓
+下载
+↓
+验证是否为目标正文
+```
+
+因此 v0.4 不继续堆叠 Provider。
+
+当前候选方向：
+
+```text
+Semantic Scholar
+→ 最值得未来用 gap corpus（缺口语料集）先测的广域候选
+
+Crossref link
+→ 更适合作为已有 Metadata 能力的后备 acquisition hint
+
+CORE
+→ 机构仓储缺口出现稳定证据时再评估
+
+Europe PMC
+→ 未来生物医学 / 生命科学工作流的领域型候选
+```
+
+完整判断见：
+
+```text
+docs/v0.4.2-provider-assessment.md
 ```
 
 ---
 
-## 16. Exception Model
-
-Metadata 层使用统一异常体系：
+## 15. Repository Layout
 
 ```text
-MetadataError
+aletheia-nexus/
 │
-├─ MetadataNotFoundError
-├─ MetadataNetworkError
-├─ MetadataRequestError
-├─ MetadataServiceError
-├─ MetadataParseError
-├─ RateLimitError
-└─ UnsupportedAgencyError
-```
-
-上层可以精确捕获：
-
-```python
-from aletheia_nexus.acquire.metadata import (
-    MetadataNetworkError,
-)
-
-try:
-    ...
-except MetadataNetworkError:
-    ...
-```
-
-也可以统一处理：
-
-```python
-from aletheia_nexus.acquire.metadata import (
-    MetadataError,
-)
-
-try:
-    ...
-except MetadataError:
-    ...
-```
-
----
-
-## 17. HTTP Semantics
-
-Transport Layer 当前约定：
-
-```text
-404
-→ MetadataNotFoundError
-
-429
-→ RateLimitError
-
-其他 4xx
-→ MetadataRequestError
-
-5xx
-→ MetadataServiceError
-
-Timeout / Connection Error
-→ MetadataNetworkError
-
-Invalid JSON
-→ MetadataParseError
-```
-
-这套语义同时服务于：
-
-```text
-异常处理
-Retry 决策
-Batch 状态映射
-未来日志与任务调度
-```
-
----
-
-## 18. Public Metadata API
-
-推荐从：
-
-```python
-aletheia_nexus.acquire.metadata
-```
-
-统一导入。
-
-当前公开 API：
-
-```python
-from aletheia_nexus.acquire.metadata import (
-    DoiAgency,
-    MetadataError,
-    MetadataLookupResult,
-    MetadataNetworkError,
-    MetadataNotFoundError,
-    MetadataParseError,
-    MetadataRequestError,
-    MetadataServiceError,
-    MetadataStatus,
-    PaperMetadata,
-    RateLimitError,
-    UnsupportedAgencyError,
-    get_doi_agency,
-    get_metadata,
-    get_metadata_batch,
-    get_metadata_with_retry,
-)
-```
-
-上层模块不应依赖：
-
-```text
-crossref.py
-datacite.py
-transport.py
-resolver.py
-retry.py
-batch.py
-```
-
-的内部实现细节。
-
-这样未来内部可以继续优化，而不需要破坏上层代码。
-
----
-
-## 19. Source Structure
-
-当前主要源码结构：
-
-```text
-src/
-└─ aletheia_nexus/
-   │
-   ├─ core/
-   │  │
-   │  ├─ models.py
-   │  │  └─ PaperMetadata
-   │  │
-   │  └─ identifiers/
-   │     └─ doi.py
-   │
-   └─ acquire/
-      │
-      └─ metadata/
-         ├─ __init__.py
-         ├─ exceptions.py
-         ├─ transport.py
-         ├─ crossref.py
-         ├─ datacite.py
-         ├─ resolver.py
-         ├─ retry.py
-         └─ batch.py
-```
-
-测试结构：
-
-```text
-tests/
+├─ src/aletheia_nexus/
+│  ├─ core/
+│  │  └─ identifiers/
+│  │
+│  └─ acquire/
+│     ├─ metadata/
+│     └─ discovery/
 │
-├─ core/
-│  └─ identifiers/
+├─ tests/
+│  ├─ core/
+│  └─ acquire/
+│     ├─ metadata/
+│     └─ discovery/
 │
-└─ acquire/
-   └─ metadata/
-      ├─ test_transport.py
-      ├─ test_crossref.py
-      ├─ test_datacite.py
-      ├─ test_resolver.py
-      ├─ test_retry.py
-      ├─ test_batch.py
-      └─ test_public_api.py
+├─ scripts/
+│  ├─ manual_metadata_acceptance.py
+│  └─ manual_discovery_acceptance.py
+│
+├─ benchmarks/
+│  └─ discovery_water_electrolysis_30.txt
+│
+└─ docs/
 ```
 
-人工真实网络验收：
-
-```text
-scripts/
-└─ manual_metadata_acceptance.py
-```
-
-持续集成：
-
-```text
-.github/
-└─ workflows/
-   └─ tests.yml
-```
+测试代码只保存在 `tests/`，不会混入正式安装包。
 
 ---
 
-## 20. Testing
+## 16. Development and CI
 
-项目使用：
-
-```text
-pytest
-```
-
-运行全部自动测试：
-
-```powershell
-python -m pytest -q
-```
-
-自动测试主要使用 mock / monkeypatch（模拟 / 运行时替换）隔离真实网络，因此不会因为 Crossref、DataCite 或本地网络暂时异常而随机失败。
-
-当前测试覆盖核心包括：
-
-```text
-DOI normalization
-DOI extraction
-DOI realistic boundary cases
-DOI deduplication
-
-Crossref schema parsing
-Crossref malformed records
-
-DataCite schema parsing
-DataCite relatedItems
-DataCite container fallback
-publication source consistency
-
-DOI agency detection
-provider routing
-
-shared transport
-HTTP error semantics
-JSON errors
-network errors
-
-retry behavior
-exponential backoff
-
-batch isolation
-batch deduplication
-stable statuses
-
-public API
-```
-
----
-
-## 21. Code Quality
-
-开发环境使用：
-
-```text
-Ruff
-```
-
-进行 Python Static Analysis（静态代码检查）和自动格式化。
-
-自动修复可安全处理的问题：
-
-```powershell
-ruff check . --fix
-```
-
-格式化：
-
-```powershell
-ruff format .
-```
-
-检查：
-
-```powershell
-ruff check .
-```
-
-检查格式：
+本地质量检查：
 
 ```powershell
 ruff format --check .
-```
-
-源码语法检查：
-
-```powershell
+ruff check .
 python -m compileall -q src
+python -m pytest -q
+python -m pip check
 ```
 
----
-
-## 22. Continuous Integration
-
-项目通过 GitHub Actions 进行 CI（持续集成）。
-
-当前自动测试矩阵：
+GitHub Actions 当前同时验证：
 
 ```text
 Python 3.11
 Python 3.14
 ```
 
-每次：
+每个环境执行：
 
 ```text
-push
-pull request
-manual workflow dispatch
-```
-
-都会执行：
-
-```text
-Checkout
-↓
-Set up Python
-↓
-Install project
-↓
-Ruff formatting check
-↓
+editable install
+pip check
+Ruff format
 Ruff static checks
-↓
-Python compile check
-↓
+compileall
 pytest
 ```
 
-只有这些步骤全部通过，当前代码才被认为处于稳定状态。
+CI 只验证确定性代码行为；真实第三方 API 网络验收保留为手动 Benchmark。
 
 ---
 
-## 23. Manual Real-network Acceptance Test
+## 17. v0.4 Boundaries
 
-除了 mock 自动测试，还提供真实网络验收：
-
-```powershell
-python scripts\manual_metadata_acceptance.py
-```
-
-它会真实访问：
+v0.4 **没有**实现：
 
 ```text
-Crossref
-DataCite
-```
-
-并验证：
-
-```text
-真实 Crossref DOI
-
-真实 DataCite DOI
-
-DOI 标准化
-
-标准化后去重
-
-语法有效但不存在的 DOI
-
-非法 DOI
-
-非字符串输入
-
-稳定状态分类
-```
-
-成功时：
-
-```text
-FINAL RESULT: PASS
-```
-
-并返回：
-
-```text
-exit code 0
-```
-
-失败时：
-
-```text
-FINAL RESULT: FAIL
-```
-
-并返回：
-
-```text
-exit code 1
-```
-
-真实联网验收不会默认作为普通 CI 的硬依赖，因为外部 API 和网络本身可能临时不可用。
-
----
-
-## 24. Development Verification
-
-一次完整的本地验证建议执行：
-
-```powershell
-ruff check . --fix
-ruff format .
-ruff check .
-ruff format --check .
-python -m compileall -q src
-python -m pytest -q
-python scripts\manual_metadata_acceptance.py
-```
-
-然后检查：
-
-```powershell
-git status
-git diff --stat
-```
-
-确认无误后再提交。
-
----
-
-## 25. What v0.3.2 Does Not Do
-
-当前版本解决的是：
-
-```text
-科研对象 DOI
-↓
-可靠身份标准化
-↓
-注册机构识别
-↓
-统一元数据
-```
-
-它暂时不负责：
-
-```text
-开放获取状态发现
-全文候选链接发现
-出版社全文定位
+真正下载 PDF
+Content-Type / magic bytes 验证
+PDF 完整性与可解析性验证
+正文 vs Supplementary 区分
+DOI / title / author 文件身份核验
+Landing Page HTML → PDF 解析
 机构订阅权限
 CARSI / SSO
-浏览器登录
-PDF 下载
-PDF 完整性验证
-PDF 身份匹配
-正文结构化解析
-Zotero 自动入库
-SQLite 文献状态数据库
-全文知识抽取
-Agent 自动研究
+浏览器自动化
+验证码处理
+文件存储与冲突管理
 ```
 
-这些属于后续阶段。
+这不是缺失的 Discovery 功能，而是下一层 Acquisition（获取层）的职责。
 
 ---
 
-## 26. Roadmap
+## 18. Next: v0.5 Acquisition + Validation
 
-### v0.1 — Basic DOI ✅
+下一阶段建议按可靠性从低层向上推进：
 
 ```text
-基础 DOI 标准化
-基础 doi.org URL 支持
+v0.5.0 Direct Acquisition
+直接文件获取
+↓
+v0.5.1 PDF Validation
+PDF 文件验证
+↓
+v0.5.2 Landing Page Resolution
+落地页解析 → 文件入口
+↓
+v0.5.x Authenticated Acquisition
+机构授权 / CARSI / SSO / Browser / Human-in-the-loop
 ```
+
+目标是把当前：
+
+```text
+Paper Identity
+→ Possible Sources
+→ Access Paths
+```
+
+继续推进到：
+
+```text
+Acquisition Strategy
+→ Retrieved File
+→ Verified File
+→ Traceable Scientific Object
+```
+
+高风险、低置信度、登录、验证码等步骤应允许 Human-in-the-loop（人在回路中），而不是为了“全自动”强行绕过真实边界。
 
 ---
 
-### v0.2 — DOI Core ✅
+## 19. Documentation
+
+v0.4 相关文档：
 
 ```text
-normalize_doi
-normalize_dois
-extract_dois
-looks_like_doi
+docs/v0.4-discovery.md
+    最终 v0.4 Discovery 契约与冻结说明
 
-现实边界测试
-批量标准化
-稳定去重
-复杂 DOI 支持
+docs/v0.4.1-discovery-reliability.md
+    v0.4.1 可靠性与可观测性强化记录
+
+docs/v0.4.2-discovery-performance.md
+    v0.4.2 性能与评价记录
+
+docs/v0.4.2-provider-assessment.md
+    Provider 扩展评估
 ```
+
+v0.4.1 / v0.4.2 文档保留迭代和验收历史；`v0.4-discovery.md` 作为最终 v0.4 行为契约。
 
 ---
 
-### v0.3 — Metadata Resolution ✅
+## 20. Project Direction
+
+Aletheia Nexus 的长期价值不只在于某个模型、某个脚本或某次自动下载，而在于持续积累：
 
 ```text
-PaperMetadata
-Crossref
-DataCite
-DOI Registration Agency
-Retry
-Batch
-Stable Error Model
+可靠的数据表示
+来源与 provenance
+稳定工具
+失败语义
+Benchmark
+评价标准
+工作流
+历史决策
+实验室知识
 ```
 
----
-
-### v0.3.1 — Reliability Hardening ✅
-
-```text
-更严格的外部数据验证
-更明确的错误语义
-Retry 参数安全检查
-DataCite 解析增强
-Batch 稳定性增强
-```
-
----
-
-### v0.3.2 — Metadata Stabilization ✅
-
-```text
-Shared Transport Layer
-统一 HTTP / JSON 处理
-
-Dynamic User-Agent
-动态版本 User-Agent
-
-DataCite publication source consistency
-DataCite 出版来源一致性
-
-Ruff
-自动格式化与静态检查
-
-GitHub Actions
-Python 3.11 / 3.14 CI
-
-Manual real-network acceptance
-真实联网验收
-```
-
-至此 Metadata 层进入稳定阶段。
-
----
-
-### v0.4 — Full-text Candidate Discovery 🚧
-
-下一阶段目标：
-
-```text
-PaperMetadata
-↓
-多个合法全文来源
-↓
-标准化 Candidate
-↓
-排序
-↓
-交给 Acquisition
-```
-
-计划研究的数据源包括：
-
-```text
-Unpaywall
-OpenAlex
-Semantic Scholar
-Europe PMC
-Crossref links
-DataCite links
-Publisher landing pages
-Publisher APIs / TDM endpoints
-```
-
-核心原则：
-
-```text
-Discovery
-只负责：
-
-“哪里可能有全文？”
-
-不负责：
-
-“最终是否成功下载？”
-```
-
-未来可能形成：
-
-```text
-FullTextCandidate
-├─ source
-├─ url
-├─ access_type
-├─ version
-├─ confidence
-└─ provenance
-```
-
----
-
-### v0.5 — Acquisition + PDF Validation
-
-目标：
-
-```text
-Candidate
-↓
-Acquisition Backend
-↓
-Download
-↓
-File Validation
-↓
-Identity Validation
-↓
-Canonical Storage
-```
-
-计划逐步支持：
-
-```text
-Direct HTTP
-
-Official Publisher APIs
-
-Institutional Browser Access
-
-Playwright Browser Automation
-
-Human-in-the-loop SSO / CAPTCHA
-
-PDF signature validation
-
-PDF parseability
-
-Page count validation
-
-DOI / title / author identity matching
-
-SHA-256
-
-.part temporary files
-
-atomic rename
-
-conflict preservation
-```
-
-成功定义将不再是：
-
-```text
-HTTP 200
-```
-
-而是：
-
-```text
-文件成功获取
-+
-文件格式正确
-+
-可以解析
-+
-目标身份匹配
-```
-
----
-
-## 27. Future Direction
-
-随着 Acquire 层成熟，Aletheia Nexus 将继续向：
-
-```text
-Acquire
-↓
-Parse
-↓
-Knowledge
-↓
-Agent
-↓
-Lab
-↓
-World
-```
-
-推进。
-
-长期目标不是单个工具，而是一套可以被：
-
-```text
-人
-Python
-Workflow
-Agent
-科研自动化系统
-```
-
-共同调用的科研知识基础设施。
-
-最终希望实现：
-
-```text
-文献检索
-↓
-可靠获取
-↓
-结构化解析
-↓
-证据追踪
-↓
-知识组织
-↓
-Agent 推理
-↓
-实验设计与科研工作流
-```
-
----
-
-## 28. Project Philosophy
-
-Aletheia Nexus 当前最重要的工程原则可以概括为：
-
-> **Correctness before automation.**  
-> 自动化之前先保证正确性。
-
-> **Identity before acquisition.**  
-> 获取之前先确认身份。
-
-> **Explicit failure is better than silent corruption.**  
-> 明确失败优于悄悄产生错误数据。
-
-> **External complexity should stop at clear module boundaries.**  
-> 外部复杂性应终止在清晰的模块边界。
-
-> **Every layer should have one primary responsibility.**  
-> 每一层只承担一种主要复杂性。
-
-> **Build for extension, but abstract only when real duplication appears.**  
-> 为扩展留下空间，但只在真实重复出现时进行抽象。
-
----
-
-## 29. Version
-
-Current release:
-
-```text
-Aletheia Nexus
-v0.3.2
-Metadata Stabilization
-```
-
-Current development focus:
-
-```text
-v0.4
-Full-text Candidate Discovery
-```
+最终希望形成的是一套可以被研究者、Workflow 和 Agent 稳定复用的科研智能基础设施，而不是把所有问题都交给一个不可验证的“万能智能体”。
