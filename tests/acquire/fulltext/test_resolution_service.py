@@ -13,7 +13,9 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
 )
 
 
-def _candidate(url_type=CandidateUrlType.LANDING_PAGE, url="https://example.org/article"):
+def _candidate(
+    url_type=CandidateUrlType.LANDING_PAGE, url="https://example.org/article"
+):
     return FullTextCandidate(
         doi="10.1000/target",
         url=url,
