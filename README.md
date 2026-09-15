@@ -5,7 +5,7 @@
 
 Aletheia Nexus 不是一个单纯的“论文下载脚本”。它希望把科研知识获取过程中容易被忽略的身份识别、来源发现、失败语义、可追溯性、验证和后续自动化拆成清晰、可靠、可测试的基础能力，为未来的 Workflow（工作流）、Agent（智能体）和实验室级科研智能系统提供稳定底座。
 
-当前版本：
+当前稳定版本：
 
 ```text
 Aletheia Nexus v0.4.2
@@ -13,7 +13,15 @@ Full-text Discovery
 全文候选来源发现
 ```
 
-当前阶段已经完成：
+当前开发分支：
+
+```text
+Aletheia Nexus v0.5.0
+Direct PDF Acquisition
+直接 PDF 获取与验证
+```
+
+当前阶段：
 
 ```text
 Identifier / DOI Core      ✅
@@ -22,10 +30,13 @@ Full-text Discovery        ✅
 Reliability & Observability✅
 Discovery Performance      ✅
 
-Acquisition & Validation   → Next
+Direct PDF Acquisition     🚧 v0.5.0
+Landing Page Resolution    → v0.5.1
+Multi-route Acquisition    → v0.5.2
+Authenticated Acquisition → later
 ```
 
-> **v0.4 的边界非常明确：Discovery 负责回答“哪里可能有全文？”，不负责宣称“全文已经成功下载并验证”。**
+> **v0.4 的边界：Discovery 负责回答“哪里可能有全文？”。v0.5 开始负责真正获取文件并验证“拿到的是不是目标论文正文”。**
 
 ---
 
@@ -72,9 +83,13 @@ PDF
     ↓
 全文来源发现        ← v0.4 已完成
     ↓
-全文获取            ← v0.5
+直接 PDF 获取       ← v0.5.0 开发中
     ↓
-文件与身份验证      ← v0.5
+Landing Page → PDF  ← v0.5.1
+    ↓
+多路径自动尝试      ← v0.5.2
+    ↓
+授权获取 / 人在回路 ← later
     ↓
 内容解析
     ↓
@@ -100,7 +115,7 @@ Aletheia Nexus
 │  ├─ Identifier
 │  ├─ Metadata
 │  ├─ Discovery
-│  └─ Acquisition
+│  └─ Fulltext
 │
 ├─ Parse
 ├─ Knowledge
@@ -136,10 +151,14 @@ Acquisition-oriented ranking
    ↓
 DiscoveryResult
    ↓
-[v0.5] Acquisition + Validation
+[v0.5.0] Direct PDF Acquisition
+   ↓
+PDF + identity validation
+   ↓
+Verified local file
 ```
 
-Metadata（元数据）和 Discovery（全文发现）目前保留独立的 transport / retry 语义。虽然它们都有 HTTP、Retry（重试）和错误映射，但两层的业务含义不同；在没有稳定重复之前，项目不为了“减少几行代码”提前抽象成一个复杂公共框架。
+Metadata（元数据）、Discovery（全文发现）和 Fulltext Acquisition（全文获取）目前保留独立的 transport / retry 语义。虽然它们都可能涉及 HTTP、Retry（重试）和错误映射，但业务含义不同；在没有稳定重复之前，项目不为了“减少几行代码”提前抽象成一个复杂公共框架。
 
 ---
 
@@ -150,12 +169,13 @@ Aletheia Nexus 当前遵循以下工程原则：
 1. **Correctness before automation（正确性优先于自动化）**：宁可明确未知，也不静默制造确定答案。
 2. **Identity before acquisition（先确认身份，再获取内容）**：对象识别和文件获取不混在一起。
 3. **Locate and download are different problems（发现与下载是不同问题）**：发现 Candidate 不等于拿到正确文件。
-4. **Temporary and permanent failures are different（临时失败与永久失败不同）**：只对合理的临时错误重试。
-5. **External complexity terminates at module boundaries（外部复杂性止于模块边界）**：Provider、Transport、Retry、Batch 各自负责明确问题。
-6. **Provenance over black-box results（保留来源而不是只给黑箱结果）**：Candidate 保留 provenance（来源追踪）。
-7. **Measure before optimize（先测量，再优化）**：v0.4.2 的并发来自真实 Benchmark，而不是提前设计。
-8. **Small, testable, reversible changes（小步、可测试、可回退）**：稳定层不因为下一层需求反复重构。
-9. **Local-first（本地优先）**：核心数据、状态和长期知识应尽可能由研究者或实验室掌控。
+4. **Downloaded is not verified（下载成功不等于验证成功）**：HTTP 200、`application/pdf` 或“能打开”都不等于目标论文已经验证成功。
+5. **Temporary and permanent failures are different（临时失败与永久失败不同）**：只对合理的临时错误重试。
+6. **External complexity terminates at module boundaries（外部复杂性止于模块边界）**：Provider、Transport、Retry、Batch 各自负责明确问题。
+7. **Provenance over black-box results（保留来源而不是只给黑箱结果）**：Candidate 和文件获取都保留 provenance（来源追踪）。
+8. **Measure before optimize（先测量，再优化）**：性能优化来自真实 Benchmark，而不是提前设计。
+9. **Small, testable, reversible changes（小步、可测试、可回退）**：稳定层不因为下一层需求反复重构。
+10. **Local-first（本地优先）**：核心数据、状态和长期知识应尽可能由研究者或实验室掌控。
 
 ---
 
@@ -183,10 +203,10 @@ python -m pip install -e ".[dev]"
 python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```
 
-当前应输出：
+在当前 v0.5.0 开发分支上应输出：
 
 ```text
-0.4.2
+0.5.0
 ```
 
 ---
@@ -378,7 +398,7 @@ Content-Type
 DOI / title / author 身份匹配
 ```
 
-全部属于 v0.5 Acquisition + Validation（获取与验证）。
+属于 v0.5 Acquisition + Validation（获取与验证）。
 
 ### 8.2 Version is provider-reported
 
@@ -701,6 +721,101 @@ docs/v0.4.2-provider-assessment.md
 
 ---
 
+## v0.5.0 Direct PDF Acquisition — In Development
+
+第一版 v0.5 只解决一个明确问题：
+
+```text
+FullTextCandidate(url_type=PDF)
+↓
+安全访问
+↓
+流式下载
+↓
+PDF 文件验证
+↓
+DOI / 标题身份验证
+↓
+Supporting Information 判断
+↓
+VERIFIED local file
+```
+
+公开接口：
+
+```python
+from aletheia_nexus.acquire.fulltext import acquire_direct_pdf
+
+result = acquire_direct_pdf(
+    candidate,
+    output_dir="downloads",
+    expected_title="Optional known paper title",
+)
+```
+
+第一版的核心成功条件：
+
+```text
+VERIFIED
+=
+valid PDF
++
+identity MATCH
++
+ARTICLE role
+```
+
+因此：
+
+```text
+HTTP 200              ≠ VERIFIED
+application/pdf       ≠ VERIFIED
+能正常打开 PDF        ≠ VERIFIED
+目标论文身份未确认     ≠ VERIFIED
+```
+
+主要结果状态：
+
+```text
+VERIFIED
+RETRIEVED_UNVERIFIED
+SUPPLEMENT
+MISMATCH
+INVALID_PDF
+AUTH_REQUIRED
+NOT_FOUND
+TOO_LARGE
+UNSAFE_URL
+REDIRECT_ERROR
+REQUEST_ERROR
+NETWORK_ERROR
+RATE_LIMITED
+SERVICE_ERROR
+ERROR
+```
+
+安全与存储原则：
+
+```text
+每个 redirect 重新检查 URL
+拒绝 localhost / private / link-local / reserved network
+默认最大下载 100 MiB
+下载时计算 SHA-256
+先写临时文件
+验证通过后原子移动
+正式 PDF 旁保存 .acquisition.json 来源记录
+```
+
+证据不足的正常 PDF 返回 `RETRIEVED_UNVERIFIED`，默认不进入正式文件目录；如显式设置 `keep_unverified=True`，才保留到 `_unverified/` 供 Human-in-the-loop（人在回路中）检查。
+
+完整 v0.5.0 设计记录见：
+
+```text
+docs/v0.5.0-direct-acquisition.md
+```
+
+---
+
 ## 15. Repository Layout
 
 ```text
@@ -712,17 +827,20 @@ aletheia-nexus/
 │  │
 │  └─ acquire/
 │     ├─ metadata/
-│     └─ discovery/
+│     ├─ discovery/
+│     └─ fulltext/
 │
 ├─ tests/
 │  ├─ core/
 │  └─ acquire/
 │     ├─ metadata/
-│     └─ discovery/
+│     ├─ discovery/
+│     └─ fulltext/
 │
 ├─ scripts/
 │  ├─ manual_metadata_acceptance.py
-│  └─ manual_discovery_acceptance.py
+│  ├─ manual_discovery_acceptance.py
+│  └─ manual_direct_acquisition.py
 │
 ├─ benchmarks/
 │  └─ discovery_water_electrolysis_30.txt
@@ -764,7 +882,17 @@ compileall
 pytest
 ```
 
-CI 只验证确定性代码行为；真实第三方 API 网络验收保留为手动 Benchmark。
+CI 只验证确定性代码行为；真实第三方 API / 出版社网络验收保留为手动测试。
+
+v0.5.0 手工直接 PDF 验收入口：
+
+```powershell
+python scripts/manual_direct_acquisition.py `
+  --doi "10.xxxx/xxxx" `
+  --url "https://.../paper.pdf" `
+  --title "Paper title" `
+  --output-dir "downloads"
+```
 
 ---
 
@@ -786,23 +914,23 @@ CARSI / SSO
 文件存储与冲突管理
 ```
 
-这不是缺失的 Discovery 功能，而是下一层 Acquisition（获取层）的职责。
+这是 v0.4 的冻结边界。其中“直接 PDF 获取 + PDF/身份验证 + 基础本地存储”已经进入 v0.5.0 开发；Landing Page、多路径编排和授权获取仍属于后续 v0.5 小版本。
 
 ---
 
-## 18. Next: v0.5 Acquisition + Validation
+## 18. v0.5 Roadmap
 
-下一阶段建议按可靠性从低层向上推进：
+当前按可靠性从低层向上推进：
 
 ```text
-v0.5.0 Direct Acquisition
-直接文件获取
+v0.5.0 Direct PDF Acquisition
+直接 PDF 获取 + PDF/身份验证
 ↓
-v0.5.1 PDF Validation
-PDF 文件验证
+v0.5.1 Landing Page Resolution
+落地页 → PDF 入口
 ↓
-v0.5.2 Landing Page Resolution
-落地页解析 → 文件入口
+v0.5.2 Multi-route Acquisition
+多个 Candidate 自动依次尝试
 ↓
 v0.5.x Authenticated Acquisition
 机构授权 / CARSI / SSO / Browser / Human-in-the-loop
@@ -847,7 +975,14 @@ docs/v0.4.2-provider-assessment.md
     Provider 扩展评估
 ```
 
-v0.4.1 / v0.4.2 文档保留迭代和验收历史；`v0.4-discovery.md` 作为最终 v0.4 行为契约。
+v0.5 开发文档：
+
+```text
+docs/v0.5.0-direct-acquisition.md
+    Direct PDF Acquisition 第一版设计、边界与状态语义
+```
+
+v0.4.1 / v0.4.2 文档保留迭代和验收历史；`v0.4-discovery.md` 作为最终 v0.4 行为契约。v0.5 文档在对应小版本冻结后再形成最终契约。
 
 ---
 
