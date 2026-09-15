@@ -76,6 +76,7 @@ def _classify_retrieved(
 
 def _record_payload(
     *,
+    target_doi: str,
     candidate: FullTextCandidate,
     status: AcquisitionStatus,
     resource: RetrievedResource,
@@ -92,7 +93,7 @@ def _record_payload(
         "attempts": attempts,
         "elapsed_seconds": elapsed_seconds,
         "target": {
-            "doi": candidate.doi,
+            "doi": target_doi,
             "expected_title": expected_title,
         },
         "candidate": {
@@ -139,6 +140,12 @@ def _record_payload(
             "evidence": list(identity_validation.evidence),
         },
     }
+
+
+def _delete_retained_path(resource: RetrievedResource) -> RetrievedResource:
+    if resource.local_path is not None:
+        resource.local_path.unlink(missing_ok=True)
+    return replace(resource, local_path=None)
 
 
 def acquire_direct_pdf(
@@ -189,12 +196,18 @@ def acquire_direct_pdf(
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
+    file_path: Path | None = None
+    promoted_new = False
+
     try:
+        if resource.local_path is None:
+            raise RuntimeError("Retriever returned a resource without a local file")
+
         inspection = inspect_pdf(resource.local_path)
         pdf_validation = inspection.report
 
         if not pdf_validation.valid_pdf:
-            resource.local_path.unlink(missing_ok=True)
+            resource = _delete_retained_path(resource)
             return AcquisitionResult(
                 candidate=candidate,
                 status=AcquisitionStatus.INVALID_PDF,
@@ -214,14 +227,13 @@ def acquire_direct_pdf(
         status = _classify_retrieved(identity.status, identity.document_role)
 
         should_persist = status == AcquisitionStatus.VERIFIED or keep_unverified
-        file_path: Path | None = None
         sidecar_path: Path | None = None
 
         if should_persist:
             subdirectory = (
                 None if status == AcquisitionStatus.VERIFIED else "_unverified"
             )
-            file_path = promote_resource(
+            file_path, promoted_new = promote_resource(
                 resource,
                 doi=normalized_doi,
                 output_dir=output_dir,
@@ -232,6 +244,7 @@ def acquire_direct_pdf(
             sidecar_path = write_json_sidecar(
                 file_path,
                 _record_payload(
+                    target_doi=normalized_doi,
                     candidate=candidate,
                     status=status,
                     resource=resource,
@@ -243,7 +256,7 @@ def acquire_direct_pdf(
                 ),
             )
         else:
-            resource.local_path.unlink(missing_ok=True)
+            resource = _delete_retained_path(resource)
             elapsed_seconds = time.perf_counter() - started_at
 
         return AcquisitionResult(
@@ -258,5 +271,9 @@ def acquire_direct_pdf(
             elapsed_seconds=elapsed_seconds,
         )
     except Exception:
-        resource.local_path.unlink(missing_ok=True)
+        if file_path is None:
+            if resource.local_path is not None:
+                resource.local_path.unlink(missing_ok=True)
+        elif promoted_new:
+            file_path.unlink(missing_ok=True)
         raise

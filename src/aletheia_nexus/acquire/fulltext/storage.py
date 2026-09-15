@@ -28,8 +28,15 @@ def promote_resource(
     doi: str,
     output_dir: str | Path,
     subdirectory: str | None = None,
-) -> Path:
-    """Atomically promote a temporary file into deterministic local storage."""
+) -> tuple[Path, bool]:
+    """Atomically promote a temporary file into deterministic local storage.
+
+    Returns ``(path, created_new)`` so callers can distinguish a newly promoted
+    file from a previously verified identical file that was safely reused.
+    """
+
+    if resource.local_path is None:
+        raise ValueError("Cannot promote a resource whose local file was removed")
 
     directory = Path(output_dir)
     if subdirectory:
@@ -44,10 +51,10 @@ def promote_resource(
                 f"Existing file hash conflicts with target path: {final_path}"
             )
         resource.local_path.unlink(missing_ok=True)
-        return final_path
+        return final_path, False
 
     os.replace(resource.local_path, final_path)
-    return final_path
+    return final_path, True
 
 
 def write_json_sidecar(
@@ -60,9 +67,13 @@ def write_json_sidecar(
     sidecar = pdf.with_suffix(".acquisition.json")
     temporary = sidecar.with_suffix(sidecar.suffix + ".part")
 
-    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
+    try:
+        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, sidecar)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
 
-    os.replace(temporary, sidecar)
     return sidecar

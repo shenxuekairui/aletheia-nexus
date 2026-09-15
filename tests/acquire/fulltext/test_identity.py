@@ -33,6 +33,24 @@ def test_exact_doi_match_verifies_article_identity():
     assert result.doi_match is True
 
 
+def test_exact_title_in_pdf_text_can_verify_when_doi_is_absent():
+    result = validate_paper_identity(
+        target_doi="10.1000/xyz123",
+        source_url="https://example.org/paper.pdf",
+        expected_title="Electrocatalytic Water Activation at Interfaces",
+        inspection=_inspection(
+            text=(
+                "Electrocatalytic Water Activation at Interfaces\n"
+                "Alice Author · Bob Author"
+            )
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
+    assert result.title_similarity == 1.0
+
+
 def test_metadata_title_can_verify_when_doi_is_absent():
     result = validate_paper_identity(
         target_doi="10.1000/xyz123",
@@ -46,6 +64,24 @@ def test_metadata_title_can_verify_when_doi_is_absent():
     assert result.status == IdentityStatus.MATCH
     assert result.document_role == DocumentRole.ARTICLE
     assert result.title_similarity == 1.0
+
+
+def test_scattered_title_vocabulary_does_not_verify_without_title_evidence():
+    result = validate_paper_identity(
+        target_doi="10.1000/xyz123",
+        source_url="https://example.org/paper.pdf",
+        expected_title="Electrocatalytic Water Activation at Interfaces",
+        inspection=_inspection(
+            text=(
+                "Water electrolysis is widely studied. Catalytic interfaces influence "
+                "many activation processes. Electrocatalytic systems are discussed."
+            )
+        ),
+    )
+
+    assert result.status == IdentityStatus.UNKNOWN
+    assert result.document_role == DocumentRole.UNKNOWN
+    assert result.title_similarity == 0.0
 
 
 def test_supplement_marker_blocks_article_role_even_when_doi_matches():

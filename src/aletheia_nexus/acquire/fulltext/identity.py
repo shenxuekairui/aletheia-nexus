@@ -34,6 +34,14 @@ def _normalize_title(value: str) -> str:
 def _title_score(
     expected_title: str, inspection: PdfInspection
 ) -> tuple[float, str | None]:
+    """Return conservative title evidence for identity fallback.
+
+    Exact normalized title occurrence in inspected text is strong evidence. If
+    that is absent, only the dedicated PDF metadata title is compared. General
+    token overlap across whole pages is intentionally not used for verification
+    because scientific vocabulary can recur outside the actual title.
+    """
+
     expected = _normalize_title(expected_title)
     if not expected:
         return 0.0, None
@@ -42,25 +50,12 @@ def _title_score(
     if expected in text:
         return 1.0, "Expected title found in inspected PDF text"
 
-    best_score = 0.0
-    best_evidence: str | None = None
-
     if inspection.metadata_title:
         metadata_title = _normalize_title(inspection.metadata_title)
         score = SequenceMatcher(None, expected, metadata_title).ratio()
-        if score > best_score:
-            best_score = score
-            best_evidence = f"PDF metadata title similarity={score:.3f}"
+        return score, f"PDF metadata title similarity={score:.3f}"
 
-    expected_tokens = {token for token in expected.split() if len(token) >= 4}
-    if len(expected_tokens) >= 4 and text:
-        text_tokens = set(text.split())
-        coverage = len(expected_tokens & text_tokens) / len(expected_tokens)
-        if coverage > best_score:
-            best_score = coverage
-            best_evidence = f"Expected title token coverage={coverage:.3f}"
-
-    return best_score, best_evidence
+    return 0.0, None
 
 
 def _supplement_evidence(source_url: str, inspection: PdfInspection) -> str | None:

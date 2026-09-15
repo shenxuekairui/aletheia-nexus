@@ -53,7 +53,11 @@ class RedirectHop:
 
 @dataclass(frozen=True, slots=True)
 class RetrievedResource:
-    """Bytes retrieved from one candidate URL before scholarly validation."""
+    """Bytes retrieved from one candidate URL before scholarly validation.
+
+    ``local_path`` is populated only while the bytes are retained locally. It
+    becomes ``None`` after an unverified or invalid temporary file is deleted.
+    """
 
     requested_url: str
     final_url: str
@@ -61,7 +65,7 @@ class RetrievedResource:
     content_type: str | None
     size_bytes: int
     sha256: str
-    local_path: Path
+    local_path: Path | None
     redirects: tuple[RedirectHop, ...] = ()
     elapsed_seconds: float = 0.0
 

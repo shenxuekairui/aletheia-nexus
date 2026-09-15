@@ -84,6 +84,8 @@ def test_unverified_pdf_is_not_persisted_by_default(tmp_path, monkeypatch):
 
     assert result.status == AcquisitionStatus.RETRIEVED_UNVERIFIED
     assert result.file_path is None
+    assert result.retrieved is not None
+    assert result.retrieved.local_path is None
     assert not temp.exists()
 
 
@@ -104,9 +106,11 @@ def test_unverified_pdf_can_be_kept_for_manual_review(tmp_path, monkeypatch):
     assert result.file_path is not None and result.file_path.exists()
     assert result.file_path.parent.name == "_unverified"
     assert result.sidecar_path is not None and result.sidecar_path.exists()
+    assert result.retrieved is not None
+    assert result.retrieved.local_path == result.file_path
 
 
-def test_invalid_pdf_is_deleted(tmp_path, monkeypatch):
+def test_invalid_pdf_is_deleted_without_stale_local_path(tmp_path, monkeypatch):
     temp = tmp_path / "download.part"
     temp.write_text("<html>login</html>", encoding="utf-8")
     monkeypatch.setattr(
@@ -116,7 +120,74 @@ def test_invalid_pdf_is_deleted(tmp_path, monkeypatch):
     result = service.acquire_direct_pdf(_candidate(), output_dir=tmp_path / "out")
 
     assert result.status == AcquisitionStatus.INVALID_PDF
+    assert result.retrieved is not None
+    assert result.retrieved.local_path is None
     assert not temp.exists()
+
+
+def test_new_promoted_pdf_is_rolled_back_if_sidecar_write_fails(
+    tmp_path, monkeypatch
+):
+    temp = tmp_path / "download.part"
+    _write_pdf(temp, title="Electrocatalytic Water Activation at Interfaces")
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp)
+    )
+
+    def fail_sidecar(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(service, "write_json_sidecar", fail_sidecar)
+
+    with pytest.raises(OSError, match="disk full"):
+        service.acquire_direct_pdf(
+            _candidate(),
+            output_dir=tmp_path / "out",
+            expected_title="Electrocatalytic Water Activation at Interfaces",
+        )
+
+    assert list((tmp_path / "out").glob("*.pdf")) == []
+
+
+def test_existing_verified_pdf_survives_later_sidecar_failure(tmp_path, monkeypatch):
+    output_dir = tmp_path / "out"
+    title = "Electrocatalytic Water Activation at Interfaces"
+
+    first_temp = tmp_path / "first.part"
+    _write_pdf(first_temp, title=title)
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(first_temp)
+    )
+    first = service.acquire_direct_pdf(
+        _candidate(),
+        output_dir=output_dir,
+        expected_title=title,
+    )
+    assert first.file_path is not None and first.file_path.exists()
+    existing_path = first.file_path
+    existing_bytes = existing_path.read_bytes()
+
+    second_temp = tmp_path / "second.part"
+    second_temp.write_bytes(existing_bytes)
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(second_temp)
+    )
+
+    def fail_sidecar(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(service, "write_json_sidecar", fail_sidecar)
+
+    with pytest.raises(OSError, match="disk full"):
+        service.acquire_direct_pdf(
+            _candidate(),
+            output_dir=output_dir,
+            expected_title=title,
+        )
+
+    assert existing_path.exists()
+    assert existing_path.read_bytes() == existing_bytes
+    assert not second_temp.exists()
 
 
 def test_authorization_failure_is_returned_as_stable_status(tmp_path, monkeypatch):
