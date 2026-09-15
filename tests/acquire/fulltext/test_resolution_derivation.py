@@ -127,7 +127,9 @@ def test_javascript_mailto_and_fragment_links_are_ignored():
 
 
 def test_http_extracted_pdf_also_derives_https_alternative():
-    parsed = parse_html('<meta name="citation_pdf_url" content="http://files.example.org/a.pdf">')
+    parsed = parse_html(
+        '<meta name="citation_pdf_url" content="http://files.example.org/a.pdf">'
+    )
 
     candidates = derive_pdf_candidates(
         parent=_parent(),
