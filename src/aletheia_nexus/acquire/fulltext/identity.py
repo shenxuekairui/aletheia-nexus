@@ -23,6 +23,7 @@ _SUPPLEMENT_FILENAME = re.compile(
     r"(?:^|[_.-])(si|supp|supplement|supplementary)(?:[_.-]|$)",
     re.IGNORECASE,
 )
+_SUPPLEMENT_TEXT_LEAD_CHARS = 400
 
 
 def _normalize_title(value: str) -> str:
@@ -67,9 +68,11 @@ def _supplement_evidence(source_url: str, inspection: PdfInspection) -> str | No
     if any(term in metadata_title for term in _SUPPLEMENT_TERMS):
         return "Supplement marker found in PDF metadata title"
 
-    text_prefix = " ".join(inspection.extracted_text[:1200].lower().split())
-    if any(term in text_prefix for term in _SUPPLEMENT_TERMS):
-        return "Supplement marker found near the beginning of the PDF"
+    text_lead = " ".join(
+        inspection.extracted_text[:_SUPPLEMENT_TEXT_LEAD_CHARS].lower().split()
+    )
+    if any(term in text_lead for term in _SUPPLEMENT_TERMS):
+        return "Supplement marker found at the beginning of the PDF"
 
     return None
 
@@ -87,6 +90,9 @@ def validate_paper_identity(
     evidence: list[str] = []
     extracted_dois = tuple(extract_dois(inspection.extracted_text))
     doi_match = normalized_doi in extracted_dois
+    locked_encrypted = (
+        inspection.report.encrypted and inspection.report.page_count is None
+    )
 
     if doi_match:
         evidence.append("Target DOI found in inspected PDF text")
@@ -98,7 +104,7 @@ def validate_paper_identity(
             raise TypeError("expected_title must be a string or None")
         if expected_title.strip():
             title_similarity, title_evidence = _title_score(expected_title, inspection)
-            title_match = title_similarity >= 0.92
+            title_match = title_similarity >= 0.92 and not locked_encrypted
             if title_evidence:
                 evidence.append(title_evidence)
 
@@ -106,7 +112,13 @@ def validate_paper_identity(
     if supplement_evidence:
         evidence.append(supplement_evidence)
 
-    if doi_match or title_match:
+    if locked_encrypted:
+        identity_status = IdentityStatus.UNKNOWN
+        evidence.append(
+            "Encrypted PDF could not be opened; metadata alone is insufficient "
+            "for scholarly identity verification"
+        )
+    elif doi_match or title_match:
         identity_status = IdentityStatus.MATCH
     else:
         identity_status = IdentityStatus.UNKNOWN
