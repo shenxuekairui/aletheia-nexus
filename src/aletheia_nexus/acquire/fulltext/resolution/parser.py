@@ -60,12 +60,16 @@ class _ScholarlyHtmlParser(HTMLParser):
         if tag == "meta":
             content = values.get("content", "").strip()
             key = (
-                values.get("name")
-                or values.get("property")
-                or values.get("itemprop")
-                or values.get("http-equiv")
-                or ""
-            ).strip().lower()
+                (
+                    values.get("name")
+                    or values.get("property")
+                    or values.get("itemprop")
+                    or values.get("http-equiv")
+                    or ""
+                )
+                .strip()
+                .lower()
+            )
             if key and content:
                 self.metadata.append((key, content))
 
@@ -156,9 +160,7 @@ def parse_html(text: str) -> ParsedHtml:
                 ),
                 rel=tuple(str(value) for value in item["rel"]),
                 title_attr=(
-                    str(item["title_attr"])
-                    if item["title_attr"] is not None
-                    else None
+                    str(item["title_attr"]) if item["title_attr"] is not None else None
                 ),
                 download=bool(item["download"]),
             )
