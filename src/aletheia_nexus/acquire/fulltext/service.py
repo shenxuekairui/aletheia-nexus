@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aletheia_nexus.acquire.discovery.models import CandidateUrlType, FullTextCandidate
 from aletheia_nexus.acquire.fulltext.exceptions import (
+    AcquisitionAccessBlockedError,
     AcquisitionAuthRequiredError,
     AcquisitionError,
     AcquisitionNetworkError,
@@ -43,6 +44,8 @@ from aletheia_nexus.core.identifiers.doi import normalize_doi
 def _status_for_error(error: AcquisitionError) -> AcquisitionStatus:
     if isinstance(error, AcquisitionAuthRequiredError):
         return AcquisitionStatus.AUTH_REQUIRED
+    if isinstance(error, AcquisitionAccessBlockedError):
+        return AcquisitionStatus.ACCESS_BLOCKED
     if isinstance(error, AcquisitionNotFoundError):
         return AcquisitionStatus.NOT_FOUND
     if isinstance(error, AcquisitionTooLargeError):

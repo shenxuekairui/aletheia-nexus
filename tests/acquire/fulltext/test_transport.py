@@ -5,6 +5,7 @@ import pytest
 
 from aletheia_nexus.acquire.fulltext import transport
 from aletheia_nexus.acquire.fulltext.exceptions import (
+    AcquisitionAccessBlockedError,
     AcquisitionAuthRequiredError,
     AcquisitionNotFoundError,
     AcquisitionRedirectError,
@@ -70,7 +71,7 @@ def test_redirect_is_manually_followed_and_recorded(tmp_path, monkeypatch):
     ("status_code", "error_type"),
     [
         (401, AcquisitionAuthRequiredError),
-        (403, AcquisitionAuthRequiredError),
+        (403, AcquisitionAccessBlockedError),
         (404, AcquisitionNotFoundError),
     ],
 )

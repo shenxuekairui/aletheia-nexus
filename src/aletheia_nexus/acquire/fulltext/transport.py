@@ -9,6 +9,7 @@ from urllib.parse import urljoin
 import httpx
 
 from aletheia_nexus.acquire.fulltext.exceptions import (
+    AcquisitionAccessBlockedError,
     AcquisitionAuthRequiredError,
     AcquisitionNetworkError,
     AcquisitionNotFoundError,
@@ -63,9 +64,13 @@ def _validate_limits(
 
 
 def _map_http_error(status_code: int, context: str) -> None:
-    if status_code in {401, 403}:
+    if status_code == 401:
         raise AcquisitionAuthRequiredError(
             f"Authorization is required while requesting {context}"
+        )
+    if status_code == 403:
+        raise AcquisitionAccessBlockedError(
+            f"Access was blocked while requesting {context}"
         )
     if status_code == 404:
         raise AcquisitionNotFoundError(f"Resource not found while requesting {context}")

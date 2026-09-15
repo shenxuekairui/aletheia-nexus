@@ -11,7 +11,11 @@ class AcquisitionRedirectError(AcquisitionError):
 
 
 class AcquisitionAuthRequiredError(AcquisitionError):
-    """The resource requires user or institutional authorization."""
+    """The resource explicitly requires user or institutional authorization."""
+
+
+class AcquisitionAccessBlockedError(AcquisitionError):
+    """The server denied access without proving that authentication is required."""
 
 
 class AcquisitionNotFoundError(AcquisitionError):
