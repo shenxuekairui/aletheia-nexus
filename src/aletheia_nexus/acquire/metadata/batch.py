@@ -1,3 +1,4 @@
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -35,13 +36,14 @@ class MetadataStatus(StrEnum):
 
 @dataclass(frozen=True)
 class MetadataLookupResult:
-    """Result of one metadata lookup."""
+    """Result of one metadata lookup, including end-to-end item runtime."""
 
     input_value: object
     doi: str | None
     status: MetadataStatus
     metadata: PaperMetadata | None = None
     error: str | None = None
+    elapsed_seconds: float = 0.0
 
 
 def get_metadata_batch(
@@ -69,6 +71,8 @@ def get_metadata_batch(
     seen: set[str] = set()
 
     for value in values:
+        item_started_at = time.perf_counter()
+
         try:
             doi = normalize_doi(value)
 
@@ -79,6 +83,7 @@ def get_metadata_batch(
                     doi=None,
                     status=MetadataStatus.INVALID_DOI,
                     error=str(exc),
+                    elapsed_seconds=time.perf_counter() - item_started_at,
                 )
             )
             continue
@@ -131,6 +136,7 @@ def get_metadata_batch(
                     doi=doi,
                     status=MetadataStatus.SUCCESS,
                     metadata=metadata,
+                    elapsed_seconds=time.perf_counter() - item_started_at,
                 )
             )
             continue
@@ -141,6 +147,7 @@ def get_metadata_batch(
                 doi=doi,
                 status=status,
                 error=error,
+                elapsed_seconds=time.perf_counter() - item_started_at,
             )
         )
 
