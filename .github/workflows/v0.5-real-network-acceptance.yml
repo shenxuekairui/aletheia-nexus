@@ -1,0 +1,122 @@
+name: v0.5 Real Network Acceptance
+
+on:
+  push:
+    branches:
+      - feat/v0.5.0-direct-acquisition
+    paths:
+      - .github/workflows/v0.5-real-network-acceptance.yml
+      - src/aletheia_nexus/acquire/fulltext/**
+      - pyproject.toml
+
+jobs:
+  real-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Run representative acquisition cases
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          from aletheia_nexus.acquire.discovery.models import (
+              CandidateUrlType,
+              DiscoveryProvider,
+              FullTextCandidate,
+          )
+          from aletheia_nexus.acquire.fulltext import AcquisitionStatus, acquire_direct_pdf
+
+          cases = [
+              {
+                  "name": "frontiers_article",
+                  "doi": "10.3389/fchem.2022.913419",
+                  "url": "https://www.frontiersin.org/journals/chemistry/articles/10.3389/fchem.2022.913419/pdf",
+                  "title": "Activity-Stability Relationships in Oxide Electrocatalysts for Water Electrolysis",
+                  "expected": {AcquisitionStatus.VERIFIED},
+              },
+              {
+                  "name": "caltech_supplement",
+                  "doi": "10.1021/ja510442p",
+                  "url": "https://authors.library.caltech.edu/records/9hdcw-5f261/files/ja510442p_si_001.pdf?download=1",
+                  "title": "Benchmarking Hydrogen Evolving Reaction and Oxygen Evolving Reaction Electrocatalysts for Solar Water Splitting Devices",
+                  "expected": {AcquisitionStatus.SUPPLEMENT},
+              },
+              {
+                  "name": "public_html_mislabeled_as_pdf",
+                  "doi": "10.1000/xyz123",
+                  "url": "https://example.com/",
+                  "title": None,
+                  "expected": {AcquisitionStatus.INVALID_PDF},
+              },
+              {
+                  "name": "mdpi_article_observation",
+                  "doi": "10.3390/catal14050307",
+                  "url": "https://www.mdpi.com/2073-4344/14/5/307/pdf",
+                  "title": None,
+                  "expected": None,
+              },
+              {
+                  "name": "tandf_access_boundary_observation",
+                  "doi": "10.1080/15567036.2016.1176090",
+                  "url": "https://www.tandfonline.com/doi/pdf/10.1080/15567036.2016.1176090?needAccess=true",
+                  "title": "The effectiveness of a magnetic field in increasing hydrogen production by water electrolysis",
+                  "expected": None,
+              },
+          ]
+
+          failures = []
+          with TemporaryDirectory() as root:
+              root_path = Path(root)
+              for case in cases:
+                  candidate = FullTextCandidate(
+                      doi=case["doi"],
+                      url=case["url"],
+                      provenance=(DiscoveryProvider.OPENALEX,),
+                      url_type=CandidateUrlType.PDF,
+                  )
+                  result = acquire_direct_pdf(
+                      candidate,
+                      output_dir=root_path / case["name"],
+                      expected_title=case["title"],
+                      max_attempts=1,
+                      timeout=30.0,
+                  )
+                  print(f"CASE {case['name']}")
+                  print(f"  status={result.status.value}")
+                  print(f"  attempts={result.attempts}")
+                  print(f"  error={result.error}")
+                  if result.retrieved:
+                      print(f"  final_url={result.retrieved.final_url}")
+                      print(f"  bytes={result.retrieved.size_bytes}")
+                      print(f"  redirects={len(result.retrieved.redirects)}")
+                  if result.pdf_validation:
+                      print(f"  valid_pdf={result.pdf_validation.valid_pdf}")
+                      print(f"  pages={result.pdf_validation.page_count}")
+                      print(f"  encrypted={result.pdf_validation.encrypted}")
+                  if result.identity_validation:
+                      print(f"  identity={result.identity_validation.status.value}")
+                      print(f"  role={result.identity_validation.document_role.value}")
+                      for evidence in result.identity_validation.evidence:
+                          print(f"  evidence={evidence}")
+
+                  expected = case["expected"]
+                  if expected is not None and result.status not in expected:
+                      failures.append(
+                          f"{case['name']}: expected {[x.value for x in expected]}, got {result.status.value}"
+                      )
+
+          if failures:
+              raise SystemExit("\n".join(failures))
+          PY
