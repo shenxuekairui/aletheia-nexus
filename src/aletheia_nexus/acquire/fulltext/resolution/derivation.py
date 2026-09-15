@@ -94,8 +94,10 @@ def _normalize_url(value: str, *, base_url: str) -> str | None:
         return None
 
     hostname = parts.hostname.lower().rstrip(".")
-    if port is None or (parts.scheme.lower() == "http" and port == 80) or (
-        parts.scheme.lower() == "https" and port == 443
+    if (
+        port is None
+        or (parts.scheme.lower() == "http" and port == 80)
+        or (parts.scheme.lower() == "https" and port == 443)
     ):
         netloc = hostname
     else:
@@ -106,7 +108,9 @@ def _normalize_url(value: str, *, base_url: str) -> str | None:
     )
 
 
-def _role_hint(link: HtmlLink | None, url: str, *, article_signal: bool) -> DocumentRole:
+def _role_hint(
+    link: HtmlLink | None, url: str, *, article_signal: bool
+) -> DocumentRole:
     basename = PurePosixPath(unquote(urlsplit(url).path)).name.lower()
     context = " ".join(
         value.lower()
@@ -117,9 +121,9 @@ def _role_hint(link: HtmlLink | None, url: str, *, article_signal: bool) -> Docu
         )
         if value
     )
-    if any(term in context for term in _SUPPLEMENT_TERMS) or _SUPPLEMENT_FILENAME.search(
-        basename
-    ):
+    if any(
+        term in context for term in _SUPPLEMENT_TERMS
+    ) or _SUPPLEMENT_FILENAME.search(basename):
         return DocumentRole.SUPPLEMENT
     if article_signal or any(term in context for term in _ARTICLE_LINK_TERMS):
         return DocumentRole.ARTICLE
@@ -139,10 +143,15 @@ def _host_type_for_derived(
     reported = HostType.UNKNOWN
     if derived_host and derived_host == original_host:
         reported = parent.host_type
-    elif derived_host and derived_host == source_host and parent.host_type in {
-        HostType.PUBLISHER,
-        HostType.REPOSITORY,
-    }:
+    elif (
+        derived_host
+        and derived_host == source_host
+        and parent.host_type
+        in {
+            HostType.PUBLISHER,
+            HostType.REPOSITORY,
+        }
+    ):
         reported = parent.host_type
     return refine_host_type(url, reported)
 
@@ -319,7 +328,9 @@ def _with_https_upgrades(
     return output
 
 
-def derive_https_upgrade(parent: FullTextCandidate) -> tuple[DerivedFullTextCandidate, ...]:
+def derive_https_upgrade(
+    parent: FullTextCandidate,
+) -> tuple[DerivedFullTextCandidate, ...]:
     """Derive an explicit HTTPS alternative for an HTTP direct-file candidate."""
 
     parts = urlsplit(parent.url)
@@ -399,14 +410,10 @@ def derive_pdf_candidates(
         type_is_pdf = (link.type_attr or "").lower() == "application/pdf"
         url_is_pdf = _looks_like_pdf_url(url)
         anchor_context = " ".join(
-            value.lower()
-            for value in (link.text, link.title_attr or "")
-            if value
+            value.lower() for value in (link.text, link.title_attr or "") if value
         )
         semantic_pdf = any(term in anchor_context for term in _ARTICLE_LINK_TERMS)
-        semantic_supplement = any(
-            term in anchor_context for term in _SUPPLEMENT_TERMS
-        )
+        semantic_supplement = any(term in anchor_context for term in _SUPPLEMENT_TERMS)
 
         method: DerivationMethod | None = None
         article_signal = False
@@ -415,9 +422,7 @@ def derive_pdf_candidates(
         ):
             method = DerivationMethod.LINK_PDF
             article_signal = True
-        elif link.tag in {"iframe", "embed", "object"} and (
-            type_is_pdf or url_is_pdf
-        ):
+        elif link.tag in {"iframe", "embed", "object"} and (type_is_pdf or url_is_pdf):
             method = DerivationMethod.EMBEDDED_PDF
         elif link.tag == "a" and (semantic_pdf or link.download):
             method = DerivationMethod.ANCHOR_DOWNLOAD
