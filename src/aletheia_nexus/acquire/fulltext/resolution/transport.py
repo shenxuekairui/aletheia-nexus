@@ -15,9 +15,9 @@ from aletheia_nexus.acquire.fulltext.exceptions import (
     AcquisitionTooLargeError,
 )
 from aletheia_nexus.acquire.fulltext.models import RedirectHop
+from aletheia_nexus.acquire.fulltext.resolution.models import RetrievedPage
 from aletheia_nexus.acquire.fulltext.safety import validate_safe_url
 from aletheia_nexus.acquire.fulltext.transport import build_user_agent
-from aletheia_nexus.acquire.fulltext.resolution.models import RetrievedPage
 
 DEFAULT_PAGE_TIMEOUT = 30.0
 DEFAULT_MAX_PAGE_BYTES = 10 * 1024 * 1024
@@ -165,7 +165,9 @@ def retrieve_page(
                         except ValueError:
                             declared_size = None
                         if declared_size is not None and declared_size > max_bytes:
-                            content_type = (response.headers.get("Content-Type") or "").lower()
+                            content_type = (
+                                response.headers.get("Content-Type") or ""
+                            ).lower()
                             if "pdf" not in content_type:
                                 raise AcquisitionTooLargeError(
                                     "Declared page size exceeds configured maximum"
