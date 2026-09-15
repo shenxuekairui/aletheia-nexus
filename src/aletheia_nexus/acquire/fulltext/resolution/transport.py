@@ -84,6 +84,15 @@ def _decode_page(body: bytes, response: httpx.Response) -> str:
         return body.decode("utf-8", errors="replace")
 
 
+def _is_definitely_textual(content_type: str) -> bool:
+    lowered = content_type.lower()
+    return (
+        "html" in lowered
+        or "xhtml" in lowered
+        or lowered.startswith("text/")
+    )
+
+
 def retrieve_page(
     url: str,
     *,
@@ -158,20 +167,21 @@ def retrieve_page(
 
                     _map_http_error(status_code, current_url)
 
+                    content_type = response.headers.get("Content-Type") or ""
                     content_length = response.headers.get("Content-Length")
                     if content_length:
                         try:
                             declared_size = int(content_length)
                         except ValueError:
                             declared_size = None
-                        if declared_size is not None and declared_size > max_bytes:
-                            content_type = (
-                                response.headers.get("Content-Type") or ""
-                            ).lower()
-                            if "pdf" not in content_type:
-                                raise AcquisitionTooLargeError(
-                                    "Declared page size exceeds configured maximum"
-                                )
+                        if (
+                            declared_size is not None
+                            and declared_size > max_bytes
+                            and _is_definitely_textual(content_type)
+                        ):
+                            raise AcquisitionTooLargeError(
+                                "Declared page size exceeds configured maximum"
+                            )
 
                     chunks: list[bytes] = []
                     bytes_read = 0
@@ -206,20 +216,14 @@ def retrieve_page(
                         chunks.append(chunk)
 
                     body = b"".join(chunks)
-                    content_type = response.headers.get("Content-Type")
-                    lowered_type = (content_type or "").lower()
-                    allowed_text = (
-                        not lowered_type
-                        or "html" in lowered_type
-                        or "xhtml" in lowered_type
-                        or lowered_type.startswith("text/")
-                    )
+                    lowered_type = content_type.lower()
+                    allowed_text = not lowered_type or _is_definitely_textual(content_type)
                     if not allowed_text:
                         return RetrievedPage(
                             requested_url=requested_url,
                             final_url=current_url,
                             http_status=status_code,
-                            content_type=content_type,
+                            content_type=content_type or None,
                             text=None,
                             size_bytes=len(body),
                             redirects=tuple(redirects),
@@ -230,7 +234,7 @@ def retrieve_page(
                         requested_url=requested_url,
                         final_url=current_url,
                         http_status=status_code,
-                        content_type=content_type,
+                        content_type=content_type or None,
                         text=_decode_page(body, response),
                         size_bytes=len(body),
                         redirects=tuple(redirects),
