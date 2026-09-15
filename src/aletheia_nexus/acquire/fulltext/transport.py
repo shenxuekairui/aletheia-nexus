@@ -48,7 +48,11 @@ def _validate_limits(
 ) -> None:
     if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1:
         raise ValueError("max_bytes must be a positive integer")
-    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or timeout <= 0
+    ):
         raise ValueError("timeout must be a positive number")
     if (
         not isinstance(max_redirects, int)
@@ -66,7 +70,9 @@ def _map_http_error(status_code: int, context: str) -> None:
     if status_code == 404:
         raise AcquisitionNotFoundError(f"Resource not found while requesting {context}")
     if status_code == 429:
-        raise AcquisitionRateLimitError(f"Rate limit exceeded while requesting {context}")
+        raise AcquisitionRateLimitError(
+            f"Rate limit exceeded while requesting {context}"
+        )
     if 400 <= status_code < 500:
         raise AcquisitionRequestError(
             f"Request failed with HTTP {status_code} while requesting {context}"

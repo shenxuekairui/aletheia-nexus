@@ -31,7 +31,9 @@ def _normalize_title(value: str) -> str:
     return " ".join(value.split())
 
 
-def _title_score(expected_title: str, inspection: PdfInspection) -> tuple[float, str | None]:
+def _title_score(
+    expected_title: str, inspection: PdfInspection
+) -> tuple[float, str | None]:
     expected = _normalize_title(expected_title)
     if not expected:
         return 0.0, None

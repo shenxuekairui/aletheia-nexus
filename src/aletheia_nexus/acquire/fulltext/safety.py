@@ -20,7 +20,9 @@ def _reject_local_hostname(hostname: str) -> None:
 def _validate_public_ip(address: str) -> None:
     ip = ipaddress.ip_address(address)
     if not ip.is_global:
-        raise AcquisitionUnsafeUrlError(f"Refusing non-public network address: {address}")
+        raise AcquisitionUnsafeUrlError(
+            f"Refusing non-public network address: {address}"
+        )
 
 
 def validate_safe_url(url: str) -> str:

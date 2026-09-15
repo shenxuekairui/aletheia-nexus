@@ -40,7 +40,9 @@ def promote_resource(
 
     if final_path.exists():
         if _sha256_file(final_path) != resource.sha256:
-            raise OSError(f"Existing file hash conflicts with target path: {final_path}")
+            raise OSError(
+                f"Existing file hash conflicts with target path: {final_path}"
+            )
         resource.local_path.unlink(missing_ok=True)
         return final_path
 

@@ -62,7 +62,9 @@ def _status_for_error(error: AcquisitionError) -> AcquisitionStatus:
     return AcquisitionStatus.ERROR
 
 
-def _classify_retrieved(identity_status: IdentityStatus, role: DocumentRole) -> AcquisitionStatus:
+def _classify_retrieved(
+    identity_status: IdentityStatus, role: DocumentRole
+) -> AcquisitionStatus:
     if role == DocumentRole.SUPPLEMENT:
         return AcquisitionStatus.SUPPLEMENT
     if identity_status == IdentityStatus.MATCH and role == DocumentRole.ARTICLE:
@@ -216,7 +218,9 @@ def acquire_direct_pdf(
         sidecar_path: Path | None = None
 
         if should_persist:
-            subdirectory = None if status == AcquisitionStatus.VERIFIED else "_unverified"
+            subdirectory = (
+                None if status == AcquisitionStatus.VERIFIED else "_unverified"
+            )
             file_path = promote_resource(
                 resource,
                 doi=normalized_doi,

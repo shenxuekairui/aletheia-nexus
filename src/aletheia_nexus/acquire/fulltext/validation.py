@@ -33,7 +33,11 @@ def inspect_pdf(
     """Validate PDF structure and extract limited identity evidence."""
 
     file_path = Path(path)
-    if not isinstance(text_pages, int) or isinstance(text_pages, bool) or text_pages < 0:
+    if (
+        not isinstance(text_pages, int)
+        or isinstance(text_pages, bool)
+        or text_pages < 0
+    ):
         raise ValueError("text_pages must be a non-negative integer")
 
     with file_path.open("rb") as handle:

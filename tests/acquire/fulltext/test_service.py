@@ -51,7 +51,9 @@ def _resource(path):
 def test_verified_pdf_is_promoted_and_sidecar_written(tmp_path, monkeypatch):
     temp = tmp_path / "download.part"
     _write_pdf(temp, title="Electrocatalytic Water Activation at Interfaces")
-    monkeypatch.setattr(service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp))
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp)
+    )
 
     result = service.acquire_direct_pdf(
         _candidate(),
@@ -74,7 +76,9 @@ def test_verified_pdf_is_promoted_and_sidecar_written(tmp_path, monkeypatch):
 def test_unverified_pdf_is_not_persisted_by_default(tmp_path, monkeypatch):
     temp = tmp_path / "download.part"
     _write_pdf(temp)
-    monkeypatch.setattr(service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp))
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp)
+    )
 
     result = service.acquire_direct_pdf(_candidate(), output_dir=tmp_path / "out")
 
@@ -86,7 +90,9 @@ def test_unverified_pdf_is_not_persisted_by_default(tmp_path, monkeypatch):
 def test_unverified_pdf_can_be_kept_for_manual_review(tmp_path, monkeypatch):
     temp = tmp_path / "download.part"
     _write_pdf(temp)
-    monkeypatch.setattr(service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp))
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp)
+    )
 
     result = service.acquire_direct_pdf(
         _candidate(),
@@ -103,7 +109,9 @@ def test_unverified_pdf_can_be_kept_for_manual_review(tmp_path, monkeypatch):
 def test_invalid_pdf_is_deleted(tmp_path, monkeypatch):
     temp = tmp_path / "download.part"
     temp.write_text("<html>login</html>", encoding="utf-8")
-    monkeypatch.setattr(service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp))
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp)
+    )
 
     result = service.acquire_direct_pdf(_candidate(), output_dir=tmp_path / "out")
 
