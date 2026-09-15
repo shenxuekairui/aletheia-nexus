@@ -125,9 +125,7 @@ def test_invalid_pdf_is_deleted_without_stale_local_path(tmp_path, monkeypatch):
     assert not temp.exists()
 
 
-def test_new_promoted_pdf_is_rolled_back_if_sidecar_write_fails(
-    tmp_path, monkeypatch
-):
+def test_new_promoted_pdf_is_rolled_back_if_sidecar_write_fails(tmp_path, monkeypatch):
     temp = tmp_path / "download.part"
     _write_pdf(temp, title="Electrocatalytic Water Activation at Interfaces")
     monkeypatch.setattr(
