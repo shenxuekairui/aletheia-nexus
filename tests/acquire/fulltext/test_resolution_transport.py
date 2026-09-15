@@ -19,7 +19,9 @@ def test_page_transport_follows_redirects_and_decodes_html(monkeypatch):
 
     def handler(request):
         if request.url.path == "/start":
-            return httpx.Response(302, headers={"Location": "/article"}, request=request)
+            return httpx.Response(
+                302, headers={"Location": "/article"}, request=request
+            )
         return httpx.Response(
             200,
             headers={"Content-Type": "text/html; charset=utf-8"},
@@ -36,7 +38,9 @@ def test_page_transport_follows_redirects_and_decodes_html(monkeypatch):
     assert page.is_pdf_response is False
 
 
-def test_page_transport_recognizes_direct_pdf_response_without_full_download(monkeypatch):
+def test_page_transport_recognizes_direct_pdf_response_without_full_download(
+    monkeypatch,
+):
     _unsafe_checks_off(monkeypatch)
     body = b"%PDF-1.7\n" + b"x" * 100_000
 
