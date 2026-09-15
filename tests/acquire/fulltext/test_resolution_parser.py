@@ -29,7 +29,10 @@ def test_parser_collects_scholarly_metadata_links_and_json_ld():
     assert parsed.metadata_values("citation_pdf_url") == ("paper.pdf",)
     assert len(parsed.json_ld) == 1
     assert any(link.text == "Download PDF" for link in parsed.links)
-    assert any(link.tag == "embed" and link.type_attr == "application/pdf" for link in parsed.links)
+    assert any(
+        link.tag == "embed" and link.type_attr == "application/pdf"
+        for link in parsed.links
+    )
 
 
 def test_parser_tolerates_incomplete_html():
