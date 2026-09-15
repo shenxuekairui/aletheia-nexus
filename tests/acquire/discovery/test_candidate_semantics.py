@@ -108,6 +108,37 @@ def test_merge_does_not_fill_conflicting_secondary_metadata():
     assert result.source_name is None
 
 
+def test_merge_clears_conflict_even_when_priority_candidate_has_value():
+    url = "https://example.org/paper.pdf"
+    priority = FullTextCandidate(
+        doi="10.1000/test",
+        url=url,
+        provenance=(DiscoveryProvider.OPENALEX,),
+        url_type=CandidateUrlType.PDF,
+        access_type=AccessType.OPEN_ACCESS,
+        version=FullTextVersion.PUBLISHED,
+        host_type=HostType.PUBLISHER,
+        license="cc-by",
+        source_name="Publisher A",
+    )
+    conflicting = FullTextCandidate(
+        doi="10.1000/test",
+        url=url,
+        provenance=(DiscoveryProvider.UNPAYWALL,),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        access_type=AccessType.OPEN_ACCESS,
+        version=FullTextVersion.ACCEPTED,
+        host_type=HostType.REPOSITORY,
+        license="cc0",
+        source_name="Repository B",
+    )
+
+    result = merge_and_rank_candidates([priority, conflicting])[0]
+
+    assert result.license is None
+    assert result.source_name is None
+
+
 def test_acquisition_priority_prefers_pdf_over_published_landing_page():
     published_landing = FullTextCandidate(
         doi="10.1000/test",

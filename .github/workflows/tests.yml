@@ -35,6 +35,9 @@ jobs:
       - name: Install project
         run: python -m pip install -e ".[dev]"
 
+      - name: Check installed dependencies
+        run: python -m pip check
+
       - name: Check formatting
         run: ruff format --check .
 

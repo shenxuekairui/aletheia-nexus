@@ -61,6 +61,10 @@ def merge_and_rank_candidates(
 
     Ranking answers "which route should Acquisition try first?". It does not
     assert that the first candidate is the most authoritative scholarly version.
+
+    Free-text metadata is merged conservatively. A shared ``license`` or
+    ``source_name`` is retained only when all non-empty reports agree; conflicts
+    remain unknown instead of silently selecting one provider's value.
     """
 
     grouped: dict[str, list[FullTextCandidate]] = {}
@@ -83,9 +87,8 @@ def merge_and_rank_candidates(
                 chosen,
                 url=url,
                 provenance=provenance,
-                license=chosen.license or _consistent_text(group, "license"),
-                source_name=chosen.source_name
-                or _consistent_text(group, "source_name"),
+                license=_consistent_text(group, "license"),
+                source_name=_consistent_text(group, "source_name"),
                 is_best=any(candidate.is_best for candidate in group),
             )
         )
