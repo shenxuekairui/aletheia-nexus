@@ -50,6 +50,20 @@ def test_page_identity_remains_unknown_when_evidence_is_absent():
     assert report.status == IdentityStatus.UNKNOWN
 
 
+def test_strongly_different_generic_page_title_is_not_enough_for_mismatch():
+    parsed = parse_html("<title>LinkingHub</title><body>Continue to article</body>")
+
+    report = validate_page_identity(
+        target_doi="10.1000/target",
+        parsed=parsed,
+        expected_title="A completely different scientific article title",
+    )
+
+    assert report.status == IdentityStatus.UNKNOWN
+    assert report.title_similarity is not None
+    assert report.title_similarity < 0.25
+
+
 def test_article_identity_takes_precedence_over_generic_sign_in_text():
     parsed = parse_html(
         '<meta name="citation_doi" content="10.1000/target">'
@@ -64,6 +78,18 @@ def test_challenge_page_is_classified_without_claiming_authentication():
     parsed = parse_html("<title>Checking your browser</title>Verify you are human")
     identity = validate_page_identity(target_doi="10.1000/target", parsed=parsed)
 
+    assert classify_page_type(parsed, identity) == PageType.CHALLENGE
+
+
+def test_challenge_signal_takes_precedence_over_stale_article_metadata():
+    parsed = parse_html(
+        '<meta name="citation_doi" content="10.1000/target">'
+        '<meta name="citation_title" content="Target Paper">'
+        "<title>Attention Required</title>Verify you are human"
+    )
+    identity = validate_page_identity(target_doi="10.1000/target", parsed=parsed)
+
+    assert identity.status == IdentityStatus.MATCH
     assert classify_page_type(parsed, identity) == PageType.CHALLENGE
 
 
