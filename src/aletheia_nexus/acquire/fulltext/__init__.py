@@ -1,4 +1,4 @@
-"""Direct full-text acquisition and validation for Aletheia Nexus."""
+"""Full-text route resolution, acquisition, and validation for Aletheia Nexus."""
 
 from aletheia_nexus.acquire.fulltext.exceptions import (
     AcquisitionAccessBlockedError,
@@ -23,6 +23,16 @@ from aletheia_nexus.acquire.fulltext.models import (
     RedirectHop,
     RetrievedResource,
 )
+from aletheia_nexus.acquire.fulltext.resolution import (
+    DerivationMethod,
+    DerivedFullTextCandidate,
+    PageIdentityReport,
+    PageType,
+    ResolutionStatus,
+    RetrievedPage,
+    RouteResolutionResult,
+    resolve_full_text_route,
+)
 from aletheia_nexus.acquire.fulltext.service import acquire_direct_pdf
 
 __all__ = [
@@ -39,11 +49,19 @@ __all__ = [
     "AcquisitionStatus",
     "AcquisitionTooLargeError",
     "AcquisitionUnsafeUrlError",
+    "DerivationMethod",
+    "DerivedFullTextCandidate",
     "DocumentRole",
     "IdentityStatus",
     "IdentityValidationReport",
+    "PageIdentityReport",
+    "PageType",
     "PdfValidationReport",
     "RedirectHop",
+    "ResolutionStatus",
+    "RetrievedPage",
     "RetrievedResource",
+    "RouteResolutionResult",
     "acquire_direct_pdf",
+    "resolve_full_text_route",
 ]
