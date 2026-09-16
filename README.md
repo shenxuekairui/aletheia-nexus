@@ -408,7 +408,8 @@ iframe / embed / object PDF routes
 JSON-LD PDF media
 relative URL
 <base href>
-PDF magic-byte sniffing
+visible-text filtering
+PDF magic-byte sniffing + bounded reads
 ARTICLE / SUPPLEMENT / UNKNOWN role hints
 Derived Candidate provenance
 candidate dedupe + deterministic ranking
@@ -463,7 +464,7 @@ v0.5.1 只给角色提示；最终是否为目标正文仍然由 v0.5.0 验证�
 
 ## 11. Real-network acceptance
 
-AN 不把 live publisher network（真实出版社网络）放进日常 CI，因为第三方网站随时会变化。但重要版本会使用固定语料做手动/临时工作流验收。
+AN 不把 live publisher network（真实出版社网络）放进日常 CI，因为第三方网站会变化；固定语料用于版本验收和趋势比较，而不是充当确定性的单元测试。
 
 固定 CDI 10-paper corpus：
 
@@ -477,16 +478,9 @@ benchmarks/cdi_acquisition_10.json
 scripts/manual_cdi_10_route_acceptance.py
 ```
 
-v0.5.1 在 2026-09-16 的 hardened real-network run（强化后真实网络验收）中，使用 OpenAlex-only Discovery 得到：
+2026-09-16 对同一语料进行了多轮 OpenAlex-only 真实网络验收，观察到 **4/10–5/10 `VERIFIED`** 的波动。变化主要来自第三方站点在不同运行时返回 `ACCESS_BLOCKED`、登录页或可访问正文，而不是通过替换测试集获得。
 
-```text
-VERIFIED                                      5 / 10
-NO_FILE_CANDIDATE                             3 / 10
-ACCESS_BLOCKED                                1 / 10
-INVALID_PDF | RETRIEVED_UNVERIFIED | SUPPLEMENT  1 / 10
-```
-
-真实打通的路径包括：
+已经真实打通并重复验证过的路线包括：
 
 ```text
 Nature landing → citation_pdf_url → Nature PDF
@@ -496,15 +490,18 @@ PolyU landing → usable HTTPS repository PDF
 existing direct Nature PDF → verified unchanged
 ```
 
-这轮验收更重要的结论不是“5/10”本身，而是：
+比原始成功数量更重要的稳定结论是：
 
 - challenge page 不再被误判成 wrong paper；
-- generic resolver page 不再因标题冲突被武断判为 MISMATCH；
-- Reporting Summary / Peer Review 不再被误标为 ARTICLE；
+- generic resolver page 不因标题冲突被武断判为 MISMATCH；
+- 明确机构访问/登录边界可以正确表达为 AUTH_REQUIRED；
+- 普通 script/style/template 文本不会污染页面语义；
+- Reporting Summary / Peer Review 不会被误标为 ARTICLE；
 - Supporting Information 仍会被拒绝；
-- **没有错误文件被提升为 VERIFIED。**
+- 失效或返回 HTML 的 provider PDF 不会被静默当成论文；
+- **多轮真实网络验收中，没有错误文件被提升为 `VERIFIED`。**
 
-剩余失败主要来自服务器阻断、权限/反爬边界或页面本身没有暴露文件，因此没有为了提升 benchmark 分数去加入出版社硬编码、猜 URL 或绕过访问控制。
+因此 live-network `VERIFIED` 数量是现实覆盖率证据，但不是 deterministic release gate（确定性发布门槛）。剩余失败主要来自服务器阻断、认证/反爬边界、JavaScript-only 行为或页面本身未暴露静态文件路径；5.1 不通过出版社硬编码、猜 URL 或绕过访问控制来人为提高 benchmark 分数。
 
 ---
 
@@ -553,7 +550,7 @@ pytest
 v0.5.1 最终强化测试集：
 
 ```text
-455 tests passing on Python 3.11
+461 tests passing on Python 3.11
 Python 3.14 matrix green
 ```
 
