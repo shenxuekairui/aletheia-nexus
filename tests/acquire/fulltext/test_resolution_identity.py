@@ -74,6 +74,39 @@ def test_article_identity_takes_precedence_over_generic_sign_in_text():
     assert classify_page_type(parsed, identity) == PageType.ARTICLE
 
 
+def test_explicit_access_boundary_takes_precedence_over_matching_identity():
+    parsed = parse_html(
+        '<meta name="citation_doi" content="10.1000/target">'
+        '<meta name="citation_title" content="Target Paper">'
+        "<body>Access through your institution to read this article</body>"
+    )
+    identity = validate_page_identity(target_doi="10.1000/target", parsed=parsed)
+
+    assert identity.status == IdentityStatus.MATCH
+    assert classify_page_type(parsed, identity) == PageType.LOGIN
+
+
+def test_weak_get_access_navigation_does_not_override_matching_identity():
+    parsed = parse_html(
+        '<meta name="citation_doi" content="10.1000/target">'
+        "<body>Article content Get access Journal alerts</body>"
+    )
+    identity = validate_page_identity(target_doi="10.1000/target", parsed=parsed)
+
+    assert classify_page_type(parsed, identity) == PageType.ARTICLE
+
+
+def test_script_only_challenge_terms_do_not_block_article_page():
+    parsed = parse_html(
+        '<meta name="citation_doi" content="10.1000/target">'
+        "<body>Target article</body>"
+        "<script>const vendor = 'cloudflare captcha';</script>"
+    )
+    identity = validate_page_identity(target_doi="10.1000/target", parsed=parsed)
+
+    assert classify_page_type(parsed, identity) == PageType.ARTICLE
+
+
 def test_challenge_page_is_classified_without_claiming_authentication():
     parsed = parse_html("<title>Checking your browser</title>Verify you are human")
     identity = validate_page_identity(target_doi="10.1000/target", parsed=parsed)
