@@ -48,6 +48,25 @@ def test_citation_pdf_url_is_high_priority_article_candidate():
     assert candidates[-1].role_hint == DocumentRole.SUPPLEMENT
 
 
+def test_nature_style_auxiliary_pdfs_are_not_article_hints():
+    parsed = parse_html(
+        '<a href="/reporting-summary.pdf">Reporting Summary (download PDF)</a>'
+        '<a href="/peer-review.pdf">Transparent Peer Review file (download PDF)</a>'
+        '<a href="/supplement.pdf">Supplementary Information (download PDF)</a>'
+    )
+
+    candidates = derive_pdf_candidates(
+        parent=_parent(),
+        parsed=parsed,
+        source_page_url="https://example.org/article",
+    )
+    roles = {item.candidate.url: item.role_hint for item in candidates}
+
+    assert roles["https://example.org/reporting-summary.pdf"] == DocumentRole.UNKNOWN
+    assert roles["https://example.org/peer-review.pdf"] == DocumentRole.UNKNOWN
+    assert roles["https://example.org/supplement.pdf"] == DocumentRole.SUPPLEMENT
+
+
 def test_relative_urls_honor_html_base_href():
     parsed = parse_html(
         '<base href="https://cdn.example.org/files/">'
