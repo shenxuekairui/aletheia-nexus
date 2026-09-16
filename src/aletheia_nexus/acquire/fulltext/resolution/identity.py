@@ -40,14 +40,16 @@ _ACCESS_DENIED_TERMS = (
     "you don't have permission",
     "you do not have permission",
 )
-_LOGIN_TERMS = (
-    "institutional access",
+_STRONG_LOGIN_TERMS = (
     "access through your institution",
     "sign in to access",
     "log in to access",
     "purchase article",
     "purchase pdf",
     "subscribe to read",
+)
+_WEAK_LOGIN_TERMS = (
+    "institutional access",
     "get access",
 )
 
@@ -71,16 +73,18 @@ def _metadata_dois(parsed: ParsedHtml) -> tuple[str, ...]:
     found: list[str] = []
     for name in _DOI_META_NAMES:
         for value in parsed.metadata_values(name):
-            for doi in extract_dois(value):
+            extracted = extract_dois(value)
+            for doi in extracted:
                 if doi not in found:
                     found.append(doi)
-            if not found:
-                try:
-                    normalized = normalize_doi(value)
-                except (TypeError, ValueError):
-                    continue
-                if normalized not in found:
-                    found.append(normalized)
+            if extracted:
+                continue
+            try:
+                normalized = normalize_doi(value)
+            except (TypeError, ValueError):
+                continue
+            if normalized not in found:
+                found.append(normalized)
 
     for link in parsed.links:
         if link.tag == "link" and "canonical" in link.rel:
@@ -162,12 +166,18 @@ def classify_page_type(parsed: ParsedHtml, identity: PageIdentityReport) -> Page
     if any(term in text for term in _ACCESS_DENIED_TERMS):
         return PageType.ACCESS_DENIED
 
-    # Once the page identity is positively established, generic account/sign-in
-    # controls must not turn an otherwise valid article page into a login page.
+    # Explicit access-boundary language describes the current response even when
+    # scholarly metadata correctly identifies the requested paper.
+    if any(term in text for term in _STRONG_LOGIN_TERMS):
+        return PageType.LOGIN
+
+    # Once the page identity is positively established, weak account/navigation
+    # controls such as a generic "Get access" link must not turn the article into
+    # a login page.
     if identity.status == IdentityStatus.MATCH:
         return PageType.ARTICLE
 
-    if any(term in text for term in _LOGIN_TERMS):
+    if any(term in text for term in _WEAK_LOGIN_TERMS):
         return PageType.LOGIN
     if parsed.metadata_values("citation_title", "citation_doi"):
         return PageType.ARTICLE
