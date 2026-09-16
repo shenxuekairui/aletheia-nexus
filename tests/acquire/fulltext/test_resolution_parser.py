@@ -35,6 +35,31 @@ def test_parser_collects_scholarly_metadata_links_and_json_ld():
     )
 
 
+def test_parser_excludes_script_style_and_template_text_from_visible_text():
+    parsed = parse_html(
+        "<html><body>Actual article content"
+        "<script>const warning = 'cloudflare captcha access denied';</script>"
+        "<style>.notice::before { content: 'forbidden'; }</style>"
+        "<template>verify you are human</template>"
+        "</body></html>"
+    )
+
+    assert parsed.visible_text == "Actual article content"
+
+
+def test_parser_keeps_json_ld_while_excluding_it_from_visible_text():
+    parsed = parse_html(
+        '<script type="application/ld+json">'
+        '{"contentUrl":"paper.pdf","fileFormat":"application/pdf"}'
+        "</script>"
+        "<body>Article text</body>"
+    )
+
+    assert len(parsed.json_ld) == 1
+    assert "paper.pdf" in parsed.json_ld[0]
+    assert parsed.visible_text == "Article text"
+
+
 def test_parser_tolerates_incomplete_html():
     parsed = parse_html(
         '<html><head><meta name="citation_title" content="Paper"><body>'
