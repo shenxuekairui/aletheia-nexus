@@ -158,18 +158,9 @@ def resolve_full_text_route(
     )
     page_type = classify_page_type(parsed, identity)
 
-    if identity.status == IdentityStatus.MISMATCH:
-        return RouteResolutionResult(
-            source_candidate=candidate,
-            status=ResolutionStatus.PAGE_MISMATCH,
-            page=page,
-            page_type=page_type,
-            identity=identity,
-            error="Landing page identity conflicts with the requested paper",
-            attempts=attempts,
-            elapsed_seconds=time.perf_counter() - started_at,
-        )
-
+    # Access/challenge semantics describe the response that was actually served.
+    # They take precedence over an apparent identity conflict caused by a generic
+    # interstitial title or stale scholarly metadata.
     if page_type in {PageType.CHALLENGE, PageType.ACCESS_DENIED}:
         return RouteResolutionResult(
             source_candidate=candidate,
@@ -190,6 +181,18 @@ def resolve_full_text_route(
             page_type=page_type,
             identity=identity,
             error="Landing page explicitly indicates an authentication/access boundary",
+            attempts=attempts,
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
+
+    if identity.status == IdentityStatus.MISMATCH:
+        return RouteResolutionResult(
+            source_candidate=candidate,
+            status=ResolutionStatus.PAGE_MISMATCH,
+            page=page,
+            page_type=page_type,
+            identity=identity,
+            error="Landing page identity conflicts with the requested paper",
             attempts=attempts,
             elapsed_seconds=time.perf_counter() - started_at,
         )
