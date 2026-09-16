@@ -31,6 +31,17 @@ _SUPPLEMENT_TERMS = (
     "supplemental material",
     "supporting material",
 )
+_AUXILIARY_TERMS = (
+    "reporting summary",
+    "peer review file",
+    "transparent peer review",
+    "peer review information",
+    "source data",
+    "editorial decision",
+    "decision letter",
+    "author checklist",
+    "reviewer comments",
+)
 _ARTICLE_LINK_TERMS = (
     "download pdf",
     "view pdf",
@@ -125,6 +136,8 @@ def _role_hint(
         term in context for term in _SUPPLEMENT_TERMS
     ) or _SUPPLEMENT_FILENAME.search(basename):
         return DocumentRole.SUPPLEMENT
+    if any(term in context for term in _AUXILIARY_TERMS):
+        return DocumentRole.UNKNOWN
     if article_signal or any(term in context for term in _ARTICLE_LINK_TERMS):
         return DocumentRole.ARTICLE
     return DocumentRole.UNKNOWN
@@ -414,6 +427,7 @@ def derive_pdf_candidates(
         )
         semantic_pdf = any(term in anchor_context for term in _ARTICLE_LINK_TERMS)
         semantic_supplement = any(term in anchor_context for term in _SUPPLEMENT_TERMS)
+        semantic_auxiliary = any(term in anchor_context for term in _AUXILIARY_TERMS)
 
         method: DerivationMethod | None = None
         article_signal = False
@@ -426,7 +440,9 @@ def derive_pdf_candidates(
             method = DerivationMethod.EMBEDDED_PDF
         elif link.tag == "a" and (semantic_pdf or link.download):
             method = DerivationMethod.ANCHOR_DOWNLOAD
-            article_signal = semantic_pdf and not semantic_supplement
+            article_signal = (
+                semantic_pdf and not semantic_supplement and not semantic_auxiliary
+            )
         elif url_is_pdf:
             method = DerivationMethod.PDF_URL_PATTERN
 
