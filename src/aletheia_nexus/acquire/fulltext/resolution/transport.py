@@ -86,11 +86,7 @@ def _decode_page(body: bytes, response: httpx.Response) -> str:
 
 def _is_definitely_textual(content_type: str) -> bool:
     lowered = content_type.lower()
-    return (
-        "html" in lowered
-        or "xhtml" in lowered
-        or lowered.startswith("text/")
-    )
+    return "html" in lowered or "xhtml" in lowered or lowered.startswith("text/")
 
 
 def retrieve_page(
@@ -217,7 +213,9 @@ def retrieve_page(
 
                     body = b"".join(chunks)
                     lowered_type = content_type.lower()
-                    allowed_text = not lowered_type or _is_definitely_textual(content_type)
+                    allowed_text = not lowered_type or _is_definitely_textual(
+                        content_type
+                    )
                     if not allowed_text:
                         return RetrievedPage(
                             requested_url=requested_url,
