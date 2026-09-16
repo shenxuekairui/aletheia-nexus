@@ -22,6 +22,7 @@ from aletheia_nexus.acquire.fulltext.transport import build_user_agent
 DEFAULT_PAGE_TIMEOUT = 30.0
 DEFAULT_MAX_PAGE_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_PAGE_REDIRECTS = 8
+_READ_CHUNK_BYTES = 64 * 1024
 _PDF_SNIFF_BYTES = 8192
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 
@@ -99,9 +100,9 @@ def retrieve_page(
 ) -> RetrievedPage:
     """Safely retrieve a bounded page route while preserving redirect evidence.
 
-    If a route unexpectedly resolves directly to a real PDF, only a small prefix
-    is consumed. The final URL is then returned as a direct-file derivation signal
-    rather than downloading the PDF twice inside the resolution layer.
+    If a route unexpectedly resolves directly to a real PDF, only a small bounded
+    prefix is consumed. The final URL is then returned as a direct-file derivation
+    signal rather than downloading the PDF twice inside the resolution layer.
     """
 
     _validate_limits(
@@ -183,7 +184,7 @@ def retrieve_page(
                     bytes_read = 0
                     prefix = bytearray()
 
-                    for chunk in response.iter_bytes():
+                    for chunk in response.iter_bytes(chunk_size=_READ_CHUNK_BYTES):
                         if not chunk:
                             continue
                         bytes_read += len(chunk)
