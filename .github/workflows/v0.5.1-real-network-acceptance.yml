@@ -1,0 +1,45 @@
+name: v0.5.1 Real Network Acceptance
+
+on:
+  push:
+    branches:
+      - feat/v0.5.1-route-resolution
+    paths:
+      - .github/workflows/v0.5.1-real-network-acceptance.yml
+      - src/aletheia_nexus/acquire/fulltext/**
+      - src/aletheia_nexus/acquire/discovery/**
+      - scripts/manual_cdi_10_route_acceptance.py
+      - benchmarks/cdi_acquisition_10.json
+      - pyproject.toml
+
+jobs:
+  real-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Run fixed CDI route-resolution corpus
+        run: |
+          python scripts/manual_cdi_10_route_acceptance.py \
+            --output-dir real_network_acceptance/cdi_10 \
+            --max-routes 12 \
+            --max-file-candidates 12 \
+            --timeout 25
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0.5.1-cdi-10-real-network
+          path: real_network_acceptance/cdi_10
+          if-no-files-found: warn
