@@ -85,6 +85,26 @@ def test_challenge_page_returns_access_blocked(monkeypatch):
     assert result.page_type == PageType.CHALLENGE
 
 
+def test_challenge_page_precedes_unrelated_title_identity_evidence(monkeypatch):
+    monkeypatch.setattr(
+        service,
+        "retrieve_page",
+        lambda *args, **kwargs: _page(
+            "<title>Attention Required</title>Checking your browser - verify you are human"
+        ),
+    )
+
+    result = service.resolve_full_text_route(
+        _candidate(),
+        expected_title="Target scientific paper with an unrelated title",
+    )
+
+    assert result.status == ResolutionStatus.ACCESS_BLOCKED
+    assert result.page_type == PageType.CHALLENGE
+    assert result.identity is not None
+    assert result.identity.status == IdentityStatus.UNKNOWN
+
+
 def test_explicit_login_page_returns_auth_required(monkeypatch):
     monkeypatch.setattr(
         service,
