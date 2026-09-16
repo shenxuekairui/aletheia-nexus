@@ -120,7 +120,9 @@ def test_explicit_login_page_returns_auth_required(monkeypatch):
     assert result.page_type == PageType.LOGIN
 
 
-def test_matching_article_with_explicit_access_boundary_returns_auth_required(monkeypatch):
+def test_matching_article_with_explicit_access_boundary_returns_auth_required(
+    monkeypatch,
+):
     monkeypatch.setattr(
         service,
         "retrieve_page",
@@ -131,7 +133,9 @@ def test_matching_article_with_explicit_access_boundary_returns_auth_required(mo
         ),
     )
 
-    result = service.resolve_full_text_route(_candidate(), expected_title="Target Paper")
+    result = service.resolve_full_text_route(
+        _candidate(), expected_title="Target Paper"
+    )
 
     assert result.status == ResolutionStatus.AUTH_REQUIRED
     assert result.page_type == PageType.LOGIN
