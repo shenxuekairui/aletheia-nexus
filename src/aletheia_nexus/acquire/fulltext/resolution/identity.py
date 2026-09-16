@@ -96,7 +96,13 @@ def validate_page_identity(
     parsed: ParsedHtml,
     expected_title: str | None = None,
 ) -> PageIdentityReport:
-    """Conservatively determine whether a page represents the requested paper."""
+    """Conservatively determine whether a page represents the requested paper.
+
+    A generic bridge, challenge, or repository page can have a title that looks
+    nothing like the paper. Title disagreement alone is therefore insufficient
+    for a mismatch. Explicit scholarly DOI metadata pointing to another work is
+    required before route resolution emits ``MISMATCH``.
+    """
 
     normalized_doi = normalize_doi(target_doi)
     metadata_dois = _metadata_dois(parsed)
@@ -124,14 +130,6 @@ def validate_page_identity(
     elif metadata_dois and normalized_doi not in metadata_dois:
         status = IdentityStatus.MISMATCH
         evidence.append("Page-level DOI metadata points to a different work")
-    elif (
-        expected_title
-        and metadata_title
-        and title_similarity is not None
-        and title_similarity < 0.25
-    ):
-        status = IdentityStatus.MISMATCH
-        evidence.append("Page title strongly conflicts with the requested work")
     else:
         status = IdentityStatus.UNKNOWN
 
@@ -148,9 +146,6 @@ def validate_page_identity(
 def classify_page_type(parsed: ParsedHtml, identity: PageIdentityReport) -> PageType:
     """Classify page semantics without overstating ambiguous access failures."""
 
-    if identity.status == IdentityStatus.MATCH:
-        return PageType.ARTICLE
-
     text = " ".join(
         part
         for part in (
@@ -160,10 +155,18 @@ def classify_page_type(parsed: ParsedHtml, identity: PageIdentityReport) -> Page
         if part
     ).lower()
 
+    # Strong block/challenge language describes the response we actually received
+    # and takes precedence over stale or copied scholarly metadata on that page.
     if any(term in text for term in _CHALLENGE_TERMS):
         return PageType.CHALLENGE
     if any(term in text for term in _ACCESS_DENIED_TERMS):
         return PageType.ACCESS_DENIED
+
+    # Once the page identity is positively established, generic account/sign-in
+    # controls must not turn an otherwise valid article page into a login page.
+    if identity.status == IdentityStatus.MATCH:
+        return PageType.ARTICLE
+
     if any(term in text for term in _LOGIN_TERMS):
         return PageType.LOGIN
     if parsed.metadata_values("citation_title", "citation_doi"):
