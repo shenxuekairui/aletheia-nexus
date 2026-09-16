@@ -28,6 +28,8 @@ class ParsedHtml:
 
 
 class _ScholarlyHtmlParser(HTMLParser):
+    _NON_VISIBLE_TEXT_TAGS = {"script", "style", "template"}
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.metadata: list[tuple[str, str]] = []
@@ -40,6 +42,7 @@ class _ScholarlyHtmlParser(HTMLParser):
         self.in_json_ld = False
         self.json_parts: list[str] = []
         self.visible_parts: list[str] = []
+        self.non_visible_text_depth = 0
 
     @staticmethod
     def _attrs(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
@@ -51,6 +54,9 @@ class _ScholarlyHtmlParser(HTMLParser):
 
         if tag == "title":
             self.in_title = True
+
+        if tag in self._NON_VISIBLE_TEXT_TAGS:
+            self.non_visible_text_depth += 1
 
         if tag == "base" and not self.base_href:
             href = values.get("href", "").strip()
@@ -119,12 +125,16 @@ class _ScholarlyHtmlParser(HTMLParser):
                 self.json_ld.append(payload)
             self.in_json_ld = False
             self.json_parts = []
+        if tag in self._NON_VISIBLE_TEXT_TAGS and self.non_visible_text_depth:
+            self.non_visible_text_depth -= 1
 
     def handle_data(self, data: str) -> None:
         if self.in_title:
             self.title_parts.append(data)
         if self.in_json_ld:
             self.json_parts.append(data)
+            return
+        if self.non_visible_text_depth:
             return
         text = data.strip()
         if text:
