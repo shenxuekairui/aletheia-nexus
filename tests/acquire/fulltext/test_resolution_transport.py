@@ -62,6 +62,8 @@ def test_page_transport_recognizes_direct_pdf_response_without_full_download(
     assert page.is_pdf_response is True
     assert page.text is None
     assert page.body_truncated is True
+    assert page.size_bytes <= transport._READ_CHUNK_BYTES
+    assert page.size_bytes < len(body)
 
 
 @pytest.mark.parametrize(
