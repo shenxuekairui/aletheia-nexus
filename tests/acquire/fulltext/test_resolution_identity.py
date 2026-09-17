@@ -131,6 +131,20 @@ def test_challenge_page_is_classified_without_claiming_authentication():
     assert classify_page_type(parsed, identity) == PageType.CHALLENGE
 
 
+def test_aws_waf_robot_challenge_is_classified_as_challenge():
+    parsed = parse_html(
+        "<html><head><title></title></head><body>"
+        "<noscript><h1>JavaScript is disabled</h1>"
+        "In order to continue, we need to verify that you're not a robot. "
+        "This requires JavaScript. Enable JavaScript and then reload the page."
+        "</noscript></body></html>"
+    )
+    identity = validate_page_identity(target_doi="10.1000/target", parsed=parsed)
+
+    assert identity.status == IdentityStatus.UNKNOWN
+    assert classify_page_type(parsed, identity) == PageType.CHALLENGE
+
+
 def test_challenge_signal_takes_precedence_over_stale_article_metadata():
     parsed = parse_html(
         '<meta name="citation_doi" content="10.1000/target">'

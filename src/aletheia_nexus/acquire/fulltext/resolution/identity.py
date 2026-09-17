@@ -26,6 +26,8 @@ _TITLE_META_NAMES = (
 )
 _CHALLENGE_TERMS = (
     "verify you are human",
+    "verify that you're not a robot",
+    "verify that you are not a robot",
     "checking your browser",
     "captcha",
     "cloudflare",
