@@ -58,6 +58,39 @@ _ARTICLE_LINK_TERMS = (
     "continue to article",
     "go to article",
 )
+_NON_ARTICLE_ROUTE_TERMS = (
+    "advertisement",
+    "advertising",
+    "altmetric",
+    "citation export",
+    "download citation",
+    "export citation",
+    "reference manager",
+    "references",
+    "rights and permissions",
+    "permissions",
+    "copyright",
+    "crossmark",
+    "metrics",
+    "share article",
+    "bibtex",
+    "refman",
+)
+_NON_ARTICLE_ROUTE_URL_TERMS = (
+    "doubleclick.net/",
+    "/gampad/",
+    "crossmark.crossref.org/",
+    "copyright.com/",
+    "/references/",
+    "/reference/",
+    "/citations/",
+    "/citation/",
+    "format=refman",
+    "format=bibtex",
+    "format=ris",
+    "/metrics/",
+    "/altmetric/",
+)
 _REDIRECT_QUERY_KEYS = {
     "redirect",
     "redirect_url",
@@ -228,6 +261,37 @@ def _anchor_context(link: HtmlLink) -> str:
     )
 
 
+def _is_article_like_target_doi_link(
+    url: str,
+    *,
+    context: str,
+    target_doi: str,
+) -> bool:
+    """Accept weak DOI-bearing anchors only when they still look article-directed.
+
+    A target DOI can appear in ads, citation exports, Crossmark, rights/permissions,
+    metrics and other scholarly utilities. Those links are useful metadata links but
+    not acquisition routes. For this weakest expansion signal, require the DOI in
+    the URL path or explicit article/full-text anchor semantics, and reject known
+    non-article semantics generically.
+    """
+
+    decoded_url = unquote(url).lower()
+    decoded_path = unquote(urlsplit(url).path).lower()
+    lowered_context = context.lower()
+
+    if target_doi not in decoded_url:
+        return False
+    if any(term in lowered_context for term in _NON_ARTICLE_ROUTE_TERMS):
+        return False
+    if any(term in decoded_url for term in _NON_ARTICLE_ROUTE_URL_TERMS):
+        return False
+
+    doi_in_path = target_doi in decoded_path
+    semantic_article_link = any(term in lowered_context for term in _ARTICLE_LINK_TERMS)
+    return doi_in_path or semantic_article_link
+
+
 def _add_with_redirect_target(
     items: list[ExpandedRouteCandidate],
     item: ExpandedRouteCandidate,
@@ -320,7 +384,6 @@ def derive_route_expansions(
             effective_base = normalized_base
 
     target_doi = normalize_doi(parent.doi).lower()
-    target_doi_encoded = target_doi.replace("/", "%2f")
     items: list[ExpandedRouteCandidate] = []
 
     source_redirect = _embedded_redirect_target(source_page_url)
@@ -393,16 +456,20 @@ def derive_route_expansions(
                     + (f" with text '{link.text[:120]}'" if link.text else "")
                 ),
             )
-        elif link.tag == "a":
-            decoded = unquote(url).lower()
-            if target_doi in decoded or target_doi_encoded in url.lower():
-                item = _candidate(
-                    parent=parent,
-                    url=url,
-                    source_page_url=source_page_url,
-                    method=RouteExpansionMethod.TARGET_DOI_LINK,
-                    evidence="Anchor URL explicitly contained the target DOI",
-                )
+        elif link.tag == "a" and _is_article_like_target_doi_link(
+            url,
+            context=context,
+            target_doi=target_doi,
+        ):
+            item = _candidate(
+                parent=parent,
+                url=url,
+                source_page_url=source_page_url,
+                method=RouteExpansionMethod.TARGET_DOI_LINK,
+                evidence=(
+                    "Anchor URL contained the target DOI and passed article-route filtering"
+                ),
+            )
         if item is not None:
             _add_with_redirect_target(items, item)
 

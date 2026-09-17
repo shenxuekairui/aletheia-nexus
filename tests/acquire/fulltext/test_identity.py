@@ -77,6 +77,61 @@ def test_supplement_marker_blocks_article_role_even_when_doi_matches():
     assert result.document_role == DocumentRole.SUPPLEMENT
 
 
+def test_auxiliary_filename_blocks_article_role_even_when_doi_matches():
+    result = validate_paper_identity(
+        target_doi="10.1000/xyz123",
+        source_url="https://example.org/reporting-summary.pdf",
+        inspection=_inspection(text="10.1000/xyz123"),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.SUPPLEMENT
+    assert any("Auxiliary-document" in item for item in result.evidence)
+
+
+def test_auxiliary_metadata_title_blocks_article_role():
+    result = validate_paper_identity(
+        target_doi="10.1000/xyz123",
+        source_url="https://example.org/file.pdf",
+        inspection=_inspection(
+            text="10.1000/xyz123",
+            title="Transparent Peer Review File",
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.SUPPLEMENT
+
+
+def test_auxiliary_text_lead_blocks_article_role():
+    result = validate_paper_identity(
+        target_doi="10.1000/xyz123",
+        source_url="https://example.org/file.pdf",
+        inspection=_inspection(
+            text="Reporting Summary for this article. DOI 10.1000/xyz123",
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.SUPPLEMENT
+
+
+def test_source_data_phrase_in_article_text_does_not_force_non_main_role():
+    result = validate_paper_identity(
+        target_doi="10.1000/xyz123",
+        source_url="https://example.org/paper.pdf",
+        inspection=_inspection(
+            text=(
+                "Article DOI: 10.1000/xyz123. Source data were collected from "
+                "three independent experiments and analyzed statistically."
+            )
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
+
+
 def test_article_is_not_marked_supplement_for_late_supporting_information_phrase():
     text = (
         "Article DOI: 10.1000/xyz123 "

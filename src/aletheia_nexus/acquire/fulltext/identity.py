@@ -19,16 +19,43 @@ _SUPPLEMENT_TERMS = (
     "supplementary material",
     "supplemental material",
 )
+_AUXILIARY_TERMS = (
+    "reporting summary",
+    "peer review file",
+    "transparent peer review",
+    "peer review information",
+    "source data",
+    "editorial decision",
+    "decision letter",
+    "author checklist",
+    "reviewer comments",
+)
+_AUXILIARY_TEXT_LEAD_TERMS = (
+    "reporting summary",
+    "peer review file",
+    "transparent peer review",
+    "peer review information",
+    "editorial decision",
+    "decision letter",
+    "author checklist",
+    "reviewer comments",
+)
 _SUPPLEMENT_FILENAME = re.compile(
     r"(?:^|[_.-])(si|supp|supplement|supplementary)(?:[_.-]|$)",
     re.IGNORECASE,
 )
-_SUPPLEMENT_TEXT_LEAD_CHARS = 400
+_NON_MAIN_TEXT_LEAD_CHARS = 400
 
 
 def _normalize_title(value: str) -> str:
     value = unicodedata.normalize("NFKC", value).lower()
     value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
+    return " ".join(value.split())
+
+
+def _semantic_context(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value).lower()
+    value = re.sub(r"[_.-]+", " ", value)
     return " ".join(value.split())
 
 
@@ -59,20 +86,27 @@ def _title_score(
     return 0.0, None
 
 
-def _supplement_evidence(source_url: str, inspection: PdfInspection) -> str | None:
+def _non_main_evidence(source_url: str, inspection: PdfInspection) -> str | None:
     basename = PurePosixPath(unquote(urlsplit(source_url).path)).name.lower()
-    if _SUPPLEMENT_FILENAME.search(basename):
+    normalized_basename = _semantic_context(basename)
+    if _SUPPLEMENT_FILENAME.search(basename) or any(
+        term in normalized_basename for term in _SUPPLEMENT_TERMS
+    ):
         return f"Supplement-like source filename: {basename}"
+    if any(term in normalized_basename for term in _AUXILIARY_TERMS):
+        return f"Auxiliary-document source filename: {basename}"
 
-    metadata_title = (inspection.metadata_title or "").strip().lower()
+    metadata_title = _semantic_context(inspection.metadata_title or "")
     if any(term in metadata_title for term in _SUPPLEMENT_TERMS):
         return "Supplement marker found in PDF metadata title"
+    if any(term in metadata_title for term in _AUXILIARY_TERMS):
+        return "Auxiliary-document marker found in PDF metadata title"
 
-    text_lead = " ".join(
-        inspection.extracted_text[:_SUPPLEMENT_TEXT_LEAD_CHARS].lower().split()
-    )
+    text_lead = _semantic_context(inspection.extracted_text[:_NON_MAIN_TEXT_LEAD_CHARS])
     if any(term in text_lead for term in _SUPPLEMENT_TERMS):
         return "Supplement marker found at the beginning of the PDF"
+    if any(term in text_lead for term in _AUXILIARY_TEXT_LEAD_TERMS):
+        return "Auxiliary-document marker found at the beginning of the PDF"
 
     return None
 
@@ -108,9 +142,9 @@ def validate_paper_identity(
             if title_evidence:
                 evidence.append(title_evidence)
 
-    supplement_evidence = _supplement_evidence(source_url, inspection)
-    if supplement_evidence:
-        evidence.append(supplement_evidence)
+    non_main_evidence = _non_main_evidence(source_url, inspection)
+    if non_main_evidence:
+        evidence.append(non_main_evidence)
 
     if locked_encrypted:
         identity_status = IdentityStatus.UNKNOWN
@@ -134,7 +168,11 @@ def validate_paper_identity(
                 "Different DOI evidence plus strongly conflicting PDF metadata title"
             )
 
-    if supplement_evidence:
+    if non_main_evidence:
+        # DocumentRole.SUPPLEMENT is the existing v0.5 umbrella for a valid
+        # scholarly PDF that is clearly not the main article. This includes
+        # supplementary information and auxiliary files such as reporting
+        # summaries, peer-review files and source-data documents.
         document_role = DocumentRole.SUPPLEMENT
     elif identity_status == IdentityStatus.MATCH:
         document_role = DocumentRole.ARTICLE

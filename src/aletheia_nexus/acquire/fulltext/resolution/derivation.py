@@ -123,7 +123,7 @@ def _role_hint(
     link: HtmlLink | None, url: str, *, article_signal: bool
 ) -> DocumentRole:
     basename = PurePosixPath(unquote(urlsplit(url).path)).name.lower()
-    context = " ".join(
+    raw_context = " ".join(
         value.lower()
         for value in (
             link.text if link else "",
@@ -132,12 +132,17 @@ def _role_hint(
         )
         if value
     )
+    context = re.sub(r"[_.-]+", " ", raw_context)
     if any(
         term in context for term in _SUPPLEMENT_TERMS
     ) or _SUPPLEMENT_FILENAME.search(basename):
         return DocumentRole.SUPPLEMENT
     if any(term in context for term in _AUXILIARY_TERMS):
-        return DocumentRole.UNKNOWN
+        # v0.5's role model distinguishes main article from non-main scholarly
+        # files. Auxiliary files therefore share the conservative SUPPLEMENT role
+        # so orchestration will skip them by default rather than validate them as
+        # possible main articles.
+        return DocumentRole.SUPPLEMENT
     if article_signal or any(term in context for term in _ARTICLE_LINK_TERMS):
         return DocumentRole.ARTICLE
     return DocumentRole.UNKNOWN

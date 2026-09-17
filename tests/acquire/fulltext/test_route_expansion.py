@@ -150,6 +150,34 @@ def test_target_doi_link_is_followed_but_other_doi_is_not():
     assert "10.1000/example" in routes[0].candidate.url
 
 
+def test_target_doi_in_query_requires_article_semantics():
+    parent = _candidate()
+    result = _resolution(
+        parent,
+        '<a href="https://utility.example.org/lookup?doi=10.1000%2Fexample">utility</a>'
+        '<a href="https://publisher.example.org/open?doi=10.1000%2Fexample">View article</a>',
+    )
+
+    routes = derive_route_expansions(parent=parent, resolution=result)
+
+    assert len(routes) == 1
+    assert routes[0].candidate.url.startswith("https://publisher.example.org/open?")
+    assert routes[0].method == RouteExpansionMethod.SEMANTIC_ARTICLE_LINK
+
+
+def test_non_article_target_doi_utilities_are_not_expanded():
+    parent = _candidate()
+    result = _resolution(
+        parent,
+        '<a href="https://pubads.example.org/jump?doi=10.1000%2Fexample">Ad</a>'
+        '<a href="https://citation.example.org/v2/references/10.1000/example?format=refman">References</a>'
+        '<a href="https://rights.example.org/?contentID=10.1000%2Fexample">Rights and permissions</a>'
+        '<a href="https://crossmark.crossref.org/dialog/?doi=10.1000%2Fexample">Crossmark</a>',
+    )
+
+    assert derive_route_expansions(parent=parent, resolution=result) == ()
+
+
 def test_pdf_and_static_assets_are_not_page_expansions():
     parent = _candidate()
     result = _resolution(

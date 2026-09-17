@@ -73,6 +73,22 @@ def test_verified_pdf_is_promoted_and_sidecar_written(tmp_path, monkeypatch):
     assert record["retrieval"]["sha256"] == result.retrieved.sha256
 
 
+def test_auxiliary_pdf_is_not_promoted_as_verified(tmp_path, monkeypatch):
+    temp = tmp_path / "download.part"
+    _write_pdf(temp, title="Reporting Summary")
+    monkeypatch.setattr(
+        service, "retrieve_to_temp", lambda *args, **kwargs: _resource(temp)
+    )
+
+    result = service.acquire_direct_pdf(_candidate(), output_dir=tmp_path / "out")
+
+    assert result.status == AcquisitionStatus.SUPPLEMENT
+    assert result.file_path is None
+    assert result.retrieved is not None
+    assert result.retrieved.local_path is None
+    assert not temp.exists()
+
+
 def test_unverified_pdf_is_not_persisted_by_default(tmp_path, monkeypatch):
     temp = tmp_path / "download.part"
     _write_pdf(temp)
