@@ -129,11 +129,13 @@ def validate_page_identity(
             title_match = title_similarity >= 0.92
             evidence.append(f"Page title similarity={title_similarity:.3f}")
 
-    if doi_match or title_match:
+    if doi_match:
         status = IdentityStatus.MATCH
-    elif metadata_dois and normalized_doi not in metadata_dois:
+    elif metadata_dois:
         status = IdentityStatus.MISMATCH
         evidence.append("Page-level DOI metadata points to a different work")
+    elif title_match:
+        status = IdentityStatus.MATCH
     else:
         status = IdentityStatus.UNKNOWN
 

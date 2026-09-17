@@ -42,6 +42,23 @@ def test_page_identity_rejects_explicit_different_doi():
     assert report.status == IdentityStatus.MISMATCH
 
 
+def test_explicit_conflicting_page_doi_outweighs_title_match():
+    parsed = parse_html(
+        '<meta name="citation_doi" content="10.1000/other">'
+        '<meta name="citation_title" content="Target Paper">'
+    )
+
+    report = validate_page_identity(
+        target_doi="10.1000/target",
+        parsed=parsed,
+        expected_title="Target Paper",
+    )
+
+    assert report.status == IdentityStatus.MISMATCH
+    assert report.title_similarity == 1.0
+    assert report.doi_match is False
+
+
 def test_page_identity_remains_unknown_when_evidence_is_absent():
     parsed = parse_html("<html><body>generic repository page</body></html>")
 

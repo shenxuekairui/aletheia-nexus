@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from urllib.parse import parse_qsl, unquote, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import CandidateUrlType, FullTextCandidate
@@ -11,6 +11,7 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
     RouteResolutionResult,
 )
 from aletheia_nexus.acquire.fulltext.resolution.parser import HtmlLink, parse_html
+from aletheia_nexus.acquire.fulltext.urls import normalize_derived_url
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 
@@ -122,39 +123,9 @@ _EXPANDABLE_STATUSES = {
 
 
 def _normalize_route_url(value: str, *, base_url: str) -> str | None:
-    if not isinstance(value, str):
+    normalized = normalize_derived_url(value, base_url=base_url)
+    if normalized is None:
         return None
-    raw = value.strip().strip("<>'\"")
-    if not raw or raw.startswith("#"):
-        return None
-    lowered = raw.lower()
-    if lowered.startswith(("javascript:", "mailto:", "data:", "tel:")):
-        return None
-
-    absolute = urljoin(base_url, raw)
-    parts = urlsplit(absolute)
-    if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
-        return None
-    if parts.username or parts.password:
-        return None
-    try:
-        port = parts.port
-    except ValueError:
-        return None
-
-    hostname = parts.hostname.lower().rstrip(".")
-    if (
-        port is None
-        or (parts.scheme.lower() == "http" and port == 80)
-        or (parts.scheme.lower() == "https" and port == 443)
-    ):
-        netloc = hostname
-    else:
-        netloc = f"{hostname}:{port}"
-
-    normalized = urlunsplit(
-        (parts.scheme.lower(), netloc, parts.path or "/", parts.query, "")
-    )
     decoded = unquote(normalized)
     if _PDF_PATH_RE.search(decoded) or _NON_PAGE_RESOURCE_RE.search(decoded):
         return None

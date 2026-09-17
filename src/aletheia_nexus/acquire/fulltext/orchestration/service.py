@@ -3,7 +3,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit
 
 from aletheia_nexus.acquire.discovery.models import (
     AccessType,
@@ -41,6 +41,7 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
 from aletheia_nexus.acquire.fulltext.resolution.service import resolve_full_text_route
 from aletheia_nexus.acquire.fulltext.retry import validate_retry_config
 from aletheia_nexus.acquire.fulltext.service import acquire_direct_pdf
+from aletheia_nexus.acquire.fulltext.urls import derive_https_url
 from aletheia_nexus.acquire.metadata.exceptions import MetadataError
 from aletheia_nexus.acquire.metadata.retry import get_metadata_with_retry
 from aletheia_nexus.core.identifiers.doi import normalize_doi
@@ -101,6 +102,13 @@ def _validate_optional_limit(value: int | None, *, name: str) -> None:
         raise ValueError(f"{name} must be at least 1")
 
 
+def _validate_positive_int(value: int, *, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer")
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1")
+
+
 def _validate_depth(value: int, *, name: str) -> None:
     if not isinstance(value, int) or isinstance(value, bool):
         raise TypeError(f"{name} must be an integer")
@@ -152,11 +160,8 @@ def _route_priority(candidate: FullTextCandidate) -> int:
 def _https_upgrade_route(candidate: FullTextCandidate) -> FullTextCandidate | None:
     """Derive an explicit HTTPS alternative for an HTTP page route."""
 
-    parts = urlsplit(candidate.url)
-    if parts.scheme.lower() != "http" or not parts.hostname:
-        return None
-    upgraded = urlunsplit(("https", parts.netloc, parts.path, parts.query, ""))
-    return replace(candidate, url=upgraded)
+    upgraded = derive_https_url(candidate.url)
+    return replace(candidate, url=upgraded) if upgraded is not None else None
 
 
 def _is_page_like_invalid_pdf(result: AcquisitionResult) -> bool:
@@ -332,7 +337,7 @@ def acquire_from_discovery(
     _validate_optional_limit(max_route_attempts, name="max_route_attempts")
     _validate_optional_limit(max_file_attempts, name="max_file_attempts")
     _validate_depth(max_route_depth, name="max_route_depth")
-    _validate_optional_limit(
+    _validate_positive_int(
         max_route_expansions_per_page,
         name="max_route_expansions_per_page",
     )
@@ -576,7 +581,7 @@ def acquire_from_discovery(
                     origin=FileCandidateOrigin.DERIVED,
                     derived=derived,
                 )
-                if fallback is not None:
+                if fallback is not None and entry.depth < max_route_depth:
                     route_queue.append(
                         _QueuedRoute(
                             candidate=fallback,

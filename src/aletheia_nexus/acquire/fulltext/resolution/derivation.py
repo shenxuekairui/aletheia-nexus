@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import replace
 from pathlib import PurePosixPath
-from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit
 
 from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import (
@@ -16,6 +16,7 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
     DerivedFullTextCandidate,
 )
 from aletheia_nexus.acquire.fulltext.resolution.parser import HtmlLink, ParsedHtml
+from aletheia_nexus.acquire.fulltext.urls import derive_https_url, normalize_derived_url
 
 _CITATION_PDF_META = {
     "citation_pdf_url",
@@ -80,42 +81,6 @@ def _looks_like_pdf_url(value: str) -> bool:
         or "format=pdf" in query
         or "type=pdf" in query
         or "download=pdf" in query
-    )
-
-
-def _normalize_url(value: str, *, base_url: str) -> str | None:
-    if not isinstance(value, str):
-        return None
-    raw = value.strip().strip("<>'\"")
-    if not raw or raw.startswith("#"):
-        return None
-    lowered = raw.lower()
-    if lowered.startswith(("javascript:", "mailto:", "data:", "tel:")):
-        return None
-
-    absolute = urljoin(base_url, raw)
-    parts = urlsplit(absolute)
-    if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
-        return None
-    if parts.username or parts.password:
-        return None
-    try:
-        port = parts.port
-    except ValueError:
-        return None
-
-    hostname = parts.hostname.lower().rstrip(".")
-    if (
-        port is None
-        or (parts.scheme.lower() == "http" and port == 80)
-        or (parts.scheme.lower() == "https" and port == 443)
-    ):
-        netloc = hostname
-    else:
-        netloc = f"{hostname}:{port}"
-
-    return urlunsplit(
-        (parts.scheme.lower(), netloc, parts.path or "/", parts.query, "")
     )
 
 
@@ -222,7 +187,7 @@ def derive_direct_pdf_response(
 ) -> DerivedFullTextCandidate:
     """Represent a landing/unknown route that directly returned PDF bytes."""
 
-    normalized = _normalize_url(final_url, base_url=parent.url)
+    normalized = normalize_derived_url(final_url, base_url=parent.url)
     if normalized is None:
         raise ValueError("final_url is not a usable HTTP(S) URL")
     return _candidate(
@@ -326,11 +291,8 @@ def _with_https_upgrades(
     output = list(candidates)
     existing_urls = {item.candidate.url for item in candidates}
     for item in candidates:
-        parts = urlsplit(item.candidate.url)
-        if parts.scheme.lower() != "http":
-            continue
-        https_url = urlunsplit(("https", parts.netloc, parts.path, parts.query, ""))
-        if https_url in existing_urls:
+        https_url = derive_https_url(item.candidate.url)
+        if https_url is None or https_url in existing_urls:
             continue
         existing_urls.add(https_url)
         output.append(
@@ -351,10 +313,11 @@ def derive_https_upgrade(
 ) -> tuple[DerivedFullTextCandidate, ...]:
     """Derive an explicit HTTPS alternative for an HTTP direct-file candidate."""
 
-    parts = urlsplit(parent.url)
-    if parent.url_type != CandidateUrlType.PDF or parts.scheme.lower() != "http":
+    if parent.url_type != CandidateUrlType.PDF:
         return ()
-    https_url = urlunsplit(("https", parts.netloc, parts.path, parts.query, ""))
+    https_url = derive_https_url(parent.url)
+    if https_url is None:
+        return ()
     return (
         _candidate(
             parent=parent,
@@ -377,7 +340,10 @@ def derive_pdf_candidates(
 
     effective_base = source_page_url
     if parsed.base_href:
-        normalized_base = _normalize_url(parsed.base_href, base_url=source_page_url)
+        normalized_base = normalize_derived_url(
+            parsed.base_href,
+            base_url=source_page_url,
+        )
         if normalized_base:
             effective_base = normalized_base
 
@@ -386,7 +352,7 @@ def derive_pdf_candidates(
     for key, value in parsed.metadata:
         if key not in _CITATION_PDF_META:
             continue
-        url = _normalize_url(value, base_url=effective_base)
+        url = normalize_derived_url(value, base_url=effective_base)
         if not url:
             continue
         method = (
@@ -407,7 +373,7 @@ def derive_pdf_candidates(
 
     for payload in parsed.json_ld:
         for raw_url in _json_ld_pdf_urls(payload):
-            url = _normalize_url(raw_url, base_url=effective_base)
+            url = normalize_derived_url(raw_url, base_url=effective_base)
             if not url:
                 continue
             derived.append(
@@ -422,7 +388,7 @@ def derive_pdf_candidates(
             )
 
     for link in parsed.links:
-        url = _normalize_url(link.url, base_url=effective_base)
+        url = normalize_derived_url(link.url, base_url=effective_base)
         if not url:
             continue
         type_is_pdf = (link.type_attr or "").lower() == "application/pdf"

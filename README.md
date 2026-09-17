@@ -3,17 +3,18 @@
 > **A local-first scientific knowledge acquisition infrastructure.**  
 > 面向科研场景的本地优先科学知识获取基础设施。
 
-Aletheia Nexus（AN）不是一个单纯的“论文下载脚本”。它把科研知识获取中的对象识别、元数据解析、全文发现、访问路径解析、文件获取、论文身份验证、失败语义和可追溯性拆成可靠、可测试、可组合的基础能力，为未来的 Workflow（工作流）、Agent（智能体）和实验室级科研智能系统提供稳定底座。
+Aletheia Nexus（AN）不是单纯的论文下载脚本。它把科研知识获取拆成可靠、可测试、可组合的基础能力：对象识别、元数据解析、全文发现、访问路径解析、文件获取、论文身份验证、失败语义与来源追踪，并为后续 Content Parsing（内容解析）、Workflow（工作流）和 Agent（智能体）提供稳定底座。
 
-当前版本：
+当前稳定版本：
 
 ```text
 Aletheia Nexus v0.5.2
-Multi-route Acquisition
-多路径全文获取编排
+Full-text Acquisition line — FINAL / FROZEN
 ```
 
-当前能力状态：
+---
+
+## 1. Current capability map
 
 ```text
 Identifier / DOI Core             ✅
@@ -32,51 +33,7 @@ Knowledge / Workflow / Agent      → later
 Lab / Scientific World Model      → long term
 ```
 
----
-
-## 1. Why AN exists
-
-表面上，文献获取似乎只是：
-
-```text
-DOI
-↓
-PDF
-```
-
-可靠科研基础设施真正面对的是：
-
-```text
-输入真的是 DOI 吗？
-↓
-它对应哪个科研对象？
-↓
-元数据从哪里来？
-↓
-哪些来源可能有全文？
-↓
-Provider 给的是 PDF、落地页、仓储页还是 DOI resolver？
-↓
-网页能不能继续解析出真正的文件路径？
-↓
-同一条路线是不是已经尝试过？
-↓
-何时继续 fallback，何时应该停止？
-↓
-网络失败、权限失败、反爬阻断分别意味着什么？
-↓
-下载回来的东西真的是 PDF 吗？
-↓
-它真的是目标论文吗？
-↓
-它是正文还是 Supporting Information（补充材料）？
-↓
-整个过程能不能被复查、复现并供后续系统调用？
-```
-
-AN 的目标不是“尽一切办法下载到东西”，而是：
-
-> **尽可能获取正确的科学对象；获取不到时，也要明确、可解释地失败。**
+v0.5 closes the **unauthenticated HTTP(S) full-text acquisition loop**. It intentionally does not absorb institutional login, browser automation, CAPTCHA bypass, paywall bypass or scientific-content parsing.
 
 ---
 
@@ -84,122 +41,101 @@ AN 的目标不是“尽一切办法下载到东西”，而是：
 
 ```text
 Raw input
-   ↓
+↓
 Identifier / DOI Core
-   ↓
+↓
 Normalized DOI
-   ↓
+↓
 Metadata Resolution
-   ↓
-PaperMetadata
-   ↓
+↓
 Full-text Discovery
-   ├─ OpenAlex
-   └─ Unpaywall
-   ↓
+↓
 FullTextCandidate[]
-   ↓
-┌──────────────────────────────────────────────┐
-│ v0.5.2 Multi-route Acquisition              │
-│                                              │
-│ Direct PDF candidate ───────────────┐        │
-│                                     ↓        │
-│ Landing / repository / resolver     │        │
-│              ↓                      │        │
-│ v0.5.1 Route Resolution             │        │
-│              ↓                      │        │
-│ Derived PDF Candidate ──────────────┘        │
-│              ↓                               │
-│ v0.5.0 Direct Acquisition + Validation       │
-│              ↓                               │
-│          VERIFIED?                           │
-│          ├─ yes → stop                       │
-│          └─ no  → bounded fallback/expansion │
-└──────────────────┬───────────────────────────┘
+↓
+┌─────────────────────────────────────────────┐
+│ v0.5 Full-text Acquisition                 │
+│                                             │
+│ Direct PDF ─────────────────┐               │
+│                             ↓               │
+│ Landing / repo / resolver   │               │
+│        ↓                    │               │
+│ Route Resolution            │               │
+│        ↓                    │               │
+│ Derived file candidate ─────┘               │
+│        ↓                                    │
+│ Retrieval + PDF Validation                  │
+│        ↓                                    │
+│ Paper Identity + Document Role              │
+│        ↓                                    │
+│ VERIFIED? yes → stop                        │
+│           no  → bounded fallback/expansion  │
+└──────────────────┬──────────────────────────┘
                    ↓
 Verified local article
 or explicit terminal outcome + attempt history
 ```
 
-长期结构：
+Long-term structure:
 
 ```text
-Aletheia Nexus
-│
-├─ Acquire
-│  ├─ Identifier
-│  ├─ Metadata
-│  ├─ Discovery
-│  └─ Fulltext
-│
-├─ Parse
-├─ Knowledge
-├─ Workflow
-├─ Agent
-├─ Lab
-└─ World
+Acquire
+↓
+Parse
+↓
+Knowledge
+↓
+Workflow
+↓
+Agent
+↓
+Lab / Scientific World Model
 ```
-
-v0.5.2 标志着当前 **Acquire / Fulltext（全文获取）主线在未认证 HTTP 范围内完成闭环**。
 
 ---
 
 ## 3. Core invariants
 
-AN 当前最重要的边界是：
-
 ```text
-Candidate
-≠ File
-
-File
-≠ Valid PDF
-
-Valid PDF
-≠ Target Paper
-
-Target Paper
-≠ Main Article
-
-Derived Candidate
-≠ Verified File
-
-Many attempted routes
-≠ Success
+Candidate ≠ File
+File ≠ Valid PDF
+Valid PDF ≠ Target Paper
+Target Paper ≠ Main Article
+Derived Candidate ≠ Verified File
+Many attempted routes ≠ Success
 ```
 
-只有经过文件结构、论文身份和文档角色验证的内容，才允许成为 `VERIFIED`。
+Only a file that passes structural PDF validation, target-paper identity validation and main-document role validation can become `VERIFIED`.
 
-> **宁可明确 UNKNOWN / ACCESS_BLOCKED / INVALID_PDF / EXHAUSTED，也不要拿错文件后告诉下游“成功了”。**
+> **宁可明确失败，也不要把错误文件交给下游科研系统。**
 
 ---
 
 ## 4. Engineering principles
 
-1. **Correctness before automation（正确性优先于自动化）**。
-2. **Explicit failure over silent wrong（明确失败优于静默错误）**。
-3. **Stable primitives before orchestration（先稳定基础能力，再做编排）**。
-4. **Discovery ≠ Acquisition（发现不等于获取）**。
-5. **Route Resolution ≠ File Validation（路径解析不等于文件验证）**。
-6. **Provenance over black boxes（来源追踪优于黑箱结果）**。
-7. **Bounded work（有界工作）**：网络请求、递归深度、文件大小和重试都必须有边界。
-8. **Measure before optimize（先测量，再优化）**。
-9. **No speculative abstraction（不为想象中的未来提前抽象）**。
-10. **Small, testable, reversible changes（小步、可测试、可回退）**。
-11. **Local-first（本地优先）**。
-12. **Human-in-the-loop（人在回路中）**：认证、低置信度和高风险环节允许人工介入。
+AN follows a small set of rules:
+
+1. Correctness before automation（正确性优先于自动化）.
+2. Explicit failure over silent wrong（明确失败优于静默错误）.
+3. Stable primitives before orchestration（先稳定基础能力，再做编排）.
+4. Bounded work（有界工作） for requests, retries, depth and file size.
+5. Provenance over black boxes（来源追踪优于黑箱结果）.
+6. Measure before optimize（先测量，再优化）.
+7. No speculative abstraction（不为想象中的未来过度设计）.
+8. Small, testable, reversible changes（小步、可验证、可回退）.
+9. Local-first（本地优先）.
+10. Human-in-the-loop（人在回路中） where automation is not trustworthy.
 
 ---
 
 ## 5. Installation
 
-要求：
+Requirements:
 
 ```text
 Python >= 3.11
 ```
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 python -m venv .venv
@@ -207,13 +143,13 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
-检查版本：
+Check the installed version:
 
 ```powershell
 python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```
 
-当前应输出：
+Expected:
 
 ```text
 0.5.2
@@ -221,42 +157,29 @@ python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 
 ---
 
-## 6. DOI Core
+## 6. Main APIs
+
+### DOI normalization
 
 ```python
-from aletheia_nexus.core.identifiers.doi import (
-    extract_dois,
-    looks_like_doi,
-    normalize_doi,
-    normalize_dois,
-)
+from aletheia_nexus.core.identifiers.doi import normalize_doi
+
+doi = normalize_doi("https://doi.org/10.1038/nphys1170")
 ```
 
-支持 DOI URL/prefix、大小写、空格、正文标点、百分号编码、常见包裹符号和复杂历史后缀，并支持批量标准化、稳定去重和杂乱文本提取。
+The DOI core also provides batch normalization, stable deduplication, extraction from noisy text and syntax checks.
 
----
-
-## 7. Metadata Resolution
-
-当前支持：
-
-```text
-Crossref
-DataCite
-```
+### Metadata Resolution（元数据解析）
 
 ```python
 from aletheia_nexus.acquire.metadata import get_metadata
 
 paper = get_metadata("10.1038/nphys1170")
-print(paper.doi, paper.title, paper.authors)
 ```
 
-Metadata 层明确区分 Not Found、Provider/Agency、Network、Rate Limit、Request、Service、Parse 等失败，而不是统一压成一个模糊的 `failed`。
+Current metadata providers include Crossref and DataCite.
 
----
-
-## 8. Full-text Discovery — v0.4
+### Full-text Discovery（全文发现）
 
 ```python
 from aletheia_nexus.acquire.discovery import discover_full_text
@@ -265,137 +188,18 @@ result = discover_full_text(
     "10.1002/anie.201406668",
     unpaywall_email="you@example.com",
 )
-
-for candidate in result.candidates:
-    print(candidate.url)
-    print(candidate.url_type)
-    print(candidate.access_type)
-    print(candidate.version)
-    print(candidate.host_type)
-    print(candidate.provenance)
 ```
 
-当前 Discovery Provider：
+Current Discovery providers:
 
 ```text
 OpenAlex
 Unpaywall
 ```
 
-`FullTextCandidate` 表示“值得尝试的全文位置”，而不是已经验证的论文文件。
+A `FullTextCandidate` is a route worth trying, not a verified article.
 
-Discovery ranking（排序）表示**下一步获取优先级**，不是学术权威性排名。
-
-详细设计：
-
-- `docs/v0.4-discovery.md`
-- `docs/v0.4.1-discovery-reliability.md`
-- `docs/v0.4.2-discovery-performance.md`
-- `docs/v0.4.2-provider-assessment.md`
-
----
-
-## 9. Direct PDF Acquisition + Validation — v0.5.0
-
-```python
-from aletheia_nexus.acquire.fulltext import acquire_direct_pdf
-
-result = acquire_direct_pdf(
-    candidate,
-    output_dir="downloads",
-    expected_title="Optional known title",
-)
-```
-
-职责：
-
-```text
-one concrete PDF candidate
-↓
-safe HTTP retrieval
-↓
-manual redirect validation
-↓
-streaming + size limit + SHA-256
-↓
-PDF structure inspection
-↓
-paper identity
-↓
-ARTICLE / SUPPLEMENT
-↓
-VERIFIED or explicit non-success
-```
-
-典型状态包括：
-
-```text
-VERIFIED
-RETRIEVED_UNVERIFIED
-SUPPLEMENT
-MISMATCH
-INVALID_PDF
-AUTH_REQUIRED
-ACCESS_BLOCKED
-NOT_FOUND
-TOO_LARGE
-UNSAFE_URL
-REDIRECT_ERROR
-REQUEST_ERROR
-NETWORK_ERROR
-RATE_LIMITED
-SERVICE_ERROR
-ERROR
-```
-
-详细契约：`docs/v0.5.0-direct-acquisition.md`。
-
----
-
-## 10. Route Resolution — v0.5.1
-
-```python
-from aletheia_nexus.acquire.fulltext import resolve_full_text_route
-
-result = resolve_full_text_route(
-    candidate,
-    expected_title="Optional known title",
-)
-
-for derived in result.candidates:
-    print(derived.candidate.url)
-    print(derived.method)
-    print(derived.role_hint)
-    print(derived.evidence)
-```
-
-v0.5.1 把 landing page / repository / resolver route 转换为**有证据、可追溯的文件候选**。
-
-当前通用信号包括：
-
-```text
-citation_pdf_url / scholarly metadata
-<link type="application/pdf">
-Download / View PDF anchors
-iframe / embed / object
-JSON-LD media routes
-relative URL / <base href>
-PDF magic-byte sniffing
-ARTICLE / SUPPLEMENT / UNKNOWN hints
-explicit HTTP → HTTPS derivation
-```
-
-它不会因为“链接看起来像 PDF”就宣布成功；最终文件仍交给 v0.5.0 验证。
-
-详细契约：`docs/v0.5.1-route-resolution.md`。
-
----
-
-## 11. Multi-route Acquisition — v0.5.2
-
-v0.5.2 将前面的稳定能力组合成 DOI 级全文获取 Workflow（工作流）。
-
-### Main API
+### Complete v0.5 workflow
 
 ```python
 from aletheia_nexus.acquire.fulltext import acquire_full_text
@@ -407,10 +211,10 @@ result = acquire_full_text(
 )
 
 print(result.status)
-print(result.verified_result)
+print(result.verified_path)
 ```
 
-如果已经完成 Discovery：
+If Discovery already exists:
 
 ```python
 from aletheia_nexus.acquire.fulltext import acquire_from_discovery
@@ -422,41 +226,64 @@ result = acquire_from_discovery(
 )
 ```
 
-### Orchestration policy
+---
 
-默认策略：
+## 7. What v0.5 does
 
-```text
-Metadata + Discovery 可并行启动
-↓
-先尝试 concrete PDF candidates
-↓
-必要时解析 landing/repository/resolver routes
-↓
-新派生的 PDF 立即验证
-↓
-必要时进行有限深度 route expansion
-↓
-provider routes 失败后可使用 DOI resolver fallback
-↓
-第一个 VERIFIED main article 立即停止
-```
-
-同时具备：
+### Direct Acquisition + Validation — v0.5.0
 
 ```text
-canonical URL dedupe
-redirect-target dedupe
-strong SUPPLEMENT hint skipping
-HTTP → HTTPS traceable alternatives
-page-like invalid PDF → route fallback
-route/file attempt budgets
-route-depth budget
-complete route/file attempt history
-explicit terminal semantics
+concrete file candidate
+↓
+safe bounded retrieval
+↓
+PDF structure inspection
+↓
+paper identity
+↓
+document role
+↓
+VERIFIED or explicit non-success
 ```
 
-默认边界：
+### Route Resolution — v0.5.1
+
+Generic static-page evidence includes:
+
+```text
+citation_pdf_url / scholarly PDF metadata
+<link type="application/pdf">
+Download / View PDF anchors
+iframe / embed / object
+JSON-LD media routes
+explicit PDF-looking URLs
+relative URL + <base href>
+explicit quoted .pdf paths in static inline script state
+```
+
+No JavaScript execution or publisher-specific URL guessing is required for these signals.
+
+### Multi-route Orchestration — v0.5.2
+
+Default policy:
+
+```text
+Metadata + Discovery may bootstrap concurrently
+↓
+try direct files first
+↓
+resolve page routes when needed
+↓
+validate derived files immediately
+↓
+follow only bounded, high-confidence next-hop routes
+↓
+use DOI resolver fallback when appropriate
+↓
+first VERIFIED main article stops
+```
+
+Stable defaults:
 
 ```text
 max route attempts              16
@@ -466,7 +293,9 @@ max route expansions per page    4
 HTTPS probe timeout              5 s
 ```
 
-### Final workflow statuses
+---
+
+## 8. Final workflow statuses
 
 ```text
 VERIFIED
@@ -478,117 +307,67 @@ EXHAUSTED
 LIMIT_REACHED
 ```
 
-一个失败结果仍然保留：Discovery 结果、每次 route/file attempt、来源、父路径、派生方式、证据、去重计数、深度、耗时和最终原因。
-
-详细冻结契约：`docs/v0.5.2-multi-route-acquisition.md`。
-
----
-
-## 12. Real-network acceptance
-
-真实出版社网络会随时间、IP、访问策略变化，因此 **live-network acceptance（真实网络验收）不是日常 deterministic CI（确定性持续集成）的一部分**。
-
-固定语料：
-
-```text
-benchmarks/cdi_acquisition_10.json
-benchmarks/seawater_desalination_10.json
-```
-
-v0.5.2 验收脚本：
-
-```text
-scripts/manual_multiroute_acceptance.py
-```
-
-示例：
-
-```powershell
-python scripts/manual_multiroute_acceptance.py `
-  --corpus benchmarks/seawater_desalination_10.json `
-  --output-dir real_network_acceptance/v0.5.2-seawater
-```
-
-验收记录的不只是成功数，还包括：
-
-```text
-provider status
-route attempts
-file attempts
-route depth / expansion
-redirect/final URL
-deduplication counters
-role hints
-elapsed time
-final status
-verified URL
-```
-
-发布判断采用两类证据：
-
-```text
-确定性 CI
-+
-固定语料真实网络验收
-```
-
-真实网络的 `VERIFIED` 数量可以波动；不可接受的是通过降低验证标准、猜 URL 或错误提升文件来制造“成功”。
-
----
-
-## 13. Safety and reliability
-
-### Retry
-
-只对合理的临时错误自动 Retry（重试），例如：
-
-```text
-NETWORK_ERROR
-RATE_LIMITED
-SERVICE_ERROR
-```
-
-明确的权限、阻断、Not Found、Unsafe URL、Too Large、Request Error 等不会被盲目重试。
-
-### Access semantics
+Access semantics are deliberately conservative:
 
 ```text
 401 → AUTH_REQUIRED
 403 → ACCESS_BLOCKED
 ```
 
-HTTP 403 可能来自权限、WAF（Web 应用防火墙）、anti-bot、IP policy 等多种原因，因此 AN 不会自动把它解释成“需要机构登录”。
+A 403 can represent authorization, WAF（Web 应用防火墙）, anti-bot or IP policy; AN does not automatically interpret it as institutional login.
 
-### SSRF boundary
-
-外部 Provider 和网页都可能提供 URL，因此 Acquisition 层限制：
-
-```text
-HTTP(S) only
-hostname required
-embedded credentials rejected
-private / loopback / link-local literal IP rejected
-best-effort DNS preflight checks
-redirect targets revalidated
-bounded redirects
-bounded timeout
-bounded body/file size
-```
-
-### Validation authority
-
-任何 Discovery、HTML metadata、link text、role hint 或 provider label 都不能单独产生 `VERIFIED`。
+Every failure keeps route/file attempt evidence rather than collapsing to a boolean.
 
 ---
 
-## 14. Testing
+## 9. Safety and provenance
 
-v0.5.2 最终确定性测试矩阵：
+Current safeguards include:
+
+- HTTP(S)-only acquisition;
+- URL and redirect safety checks;
+- bounded timeout / retries / redirects / page size / file size;
+- transient retries only for appropriate network/rate-limit/service failures;
+- SHA-256 while streaming;
+- temporary-file cleanup and atomic promotion;
+- provider provenance separated from AN-derived provenance;
+- deterministic verified filenames and `.acquisition.json` sidecars.
+
+Verified sidecars preserve enough information to explain where a file came from, how it was retrieved and why it was accepted.
+
+---
+
+## 10. Validation policy
+
+Page/PDF identity is intentionally conservative:
 
 ```text
-Python 3.11  ✅
-Python 3.14  ✅
+MATCH
+MISMATCH
+UNKNOWN
+```
 
+Exact DOI evidence is stronger than title similarity. Explicit DOI metadata for another work cannot be overridden by a matching-looking title.
+
+Document roles are:
+
+```text
+ARTICLE
+SUPPLEMENT
+UNKNOWN
+```
+
+Strong non-main signals include conventional Supporting Information and auxiliary scientific files such as Reporting Summary, peer-review files, Source Data files and decision letters.
+
+Route-level hints only affect priority/skipping. **Only file-level validation can create `VERIFIED`.**
+
+---
+
+## 11. Testing
+
+Normal CI is deterministic and runs on Python 3.11 and 3.14:
+
+```text
 editable install  ✅
 pip check         ✅
 Ruff format       ✅
@@ -597,138 +376,111 @@ compileall        ✅
 pytest            ✅
 ```
 
-当前测试集：
+Final v0.5 freeze audit:
 
 ```text
-488 passing tests on Python 3.11
-Python 3.14 matrix also passing
+504 passed on Python 3.11
+Python 3.14 also passes the complete CI workflow
 ```
 
-运行：
+Real publisher networks are tested separately because third-party access policy is inherently variable.
 
-```powershell
-python -m pytest -q
-python -m ruff check .
-python -m ruff format --check .
+Fixed live stress corpora:
+
+```text
+benchmarks/cdi_acquisition_10.json
+benchmarks/seawater_desalination_10.json
+```
+
+Runner:
+
+```text
+scripts/manual_multiroute_acceptance.py
+```
+
+Recorded same-environment stress run on 2026-09-17:
+
+```text
+6 / 20 VERIFIED = 30%
+ACCESS_BLOCKED   8
+NO_CANDIDATES    4
+EXHAUSTED        2
+```
+
+This small difficult corpus is diagnostic evidence, not a universal download-success estimate. Its dominant remaining limitation was access-layer blocking rather than false file verification.
+
+---
+
+## 12. Documentation
+
+Canonical final v0.5 contract:
+
+```text
+docs/v0.5.2-multi-route-acquisition.md
+```
+
+Historical layer records:
+
+```text
+docs/v0.5.0-direct-acquisition.md
+docs/v0.5.1-route-resolution.md
+```
+
+Discovery history:
+
+```text
+docs/v0.4-discovery.md
+docs/v0.4.1-discovery-reliability.md
+docs/v0.4.2-discovery-performance.md
+docs/v0.4.2-provider-assessment.md
 ```
 
 ---
 
-## 15. Repository layout
+## 13. Scope boundary and next line
 
-```text
-src/aletheia_nexus/
-├─ core/
-│  └─ identifiers/
-└─ acquire/
-   ├─ metadata/
-   ├─ discovery/
-   └─ fulltext/
-      ├─ validation/
-      ├─ resolution/
-      └─ orchestration/
-
-benchmarks/
-├─ cdi_acquisition_10.json
-└─ seawater_desalination_10.json
-
-scripts/
-├─ manual_cdi_10_route_acceptance.py
-└─ manual_multiroute_acceptance.py
-
-docs/
-├─ v0.4-discovery.md
-├─ v0.4.1-discovery-reliability.md
-├─ v0.4.2-discovery-performance.md
-├─ v0.4.2-provider-assessment.md
-├─ v0.5.0-direct-acquisition.md
-├─ v0.5.1-route-resolution.md
-└─ v0.5.2-multi-route-acquisition.md
-
-tests/
-└─ deterministic regression suite
-```
-
----
-
-## 16. What v0.5 intentionally does not do
-
-v0.5.2 冻结后，以下能力明确不属于当前稳定主线：
+v0.5 deliberately excludes:
 
 ```text
 CARSI / SSO / institutional login
 browser JavaScript execution
-cookie/session persistence
+persistent browser sessions
 CAPTCHA / anti-bot circumvention
 paywall bypass
-publisher-specific URL guessing
+publisher-specific guessed URL catalogues
 unbounded crawling
-OCR
 scientific-content parsing
-knowledge-base construction
-autonomous research Agent
+knowledge-base / autonomous Agent logic
 ```
 
-这些不是“漏做了”，而是为了保持模块边界清晰而明确留给其他层。
-
----
-
-## 17. Why v0.5 freezes here
-
-v0.5 已经形成完整责任链：
-
-```text
-Discover
-→ Resolve route
-→ Acquire file
-→ Validate PDF
-→ Verify paper identity
-→ Classify document role
-→ Coordinate multiple routes
-→ Stop on VERIFIED or explicit failure
-```
-
-继续为了少数网站加入 publisher-specific heuristics（出版社特定启发式规则）、猜测 URL 或更激进的网络策略，会开始损害可维护性、来源追踪和失败语义。
-
-因此当前最有价值的下一步不是继续把 0.5 做“大”，而是把它作为稳定工具层冻结，让下一层直接复用。
-
----
-
-## 18. Next
-
-下一条主线将从：
-
-```text
-“可靠地拿到正确论文”
-```
-
-转向：
+The next major line is:
 
 ```text
 Verified local article
 ↓
 Content Parsing（内容解析）
 ↓
-sections / text / tables / figures / references
-↓
-structured scientific objects
+structured scientific document
 ↓
 Knowledge / Workflow / Agent
 ```
 
-Authenticated / Browser Acquisition（认证/浏览器获取）可以作为未来独立能力存在，但只有在真实科研工作流证明其复杂性值得时再引入。
+Authenticated/browser access can be developed later as a separate capability when a concrete workflow justifies its additional state, security and maintenance cost.
 
 ---
 
-## Version status
+## 14. Project direction
+
+Aletheia Nexus is intended to become a reliable scientific-knowledge infrastructure layer:
 
 ```text
-v0.4    Full-text Discovery              FROZEN
-v0.4.1  Discovery Reliability            FROZEN
-v0.4.2  Discovery Performance            FROZEN
-v0.5.0  Direct Acquisition + Validation  FROZEN
-v0.5.1  Route Resolution                 FROZEN
-v0.5.2  Multi-route Acquisition          FROZEN
+scientific object identification
+→ information acquisition
+→ trustworthy local artifact
+→ content parsing
+→ knowledge organization
+→ Workflow / Agent callable capability
+→ laboratory research infrastructure
 ```
 
-**Aletheia Nexus v0.5.2 completes and freezes the current v0.5 full-text acquisition line.**
+The long-term asset is not one model or one script. It is the accumulation of reliable tools, structured data, provenance, workflows, evaluation rules and laboratory knowledge that can survive changes in models and platforms.

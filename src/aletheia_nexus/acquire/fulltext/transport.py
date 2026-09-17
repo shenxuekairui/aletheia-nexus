@@ -1,95 +1,28 @@
 import hashlib
 import tempfile
 import time
-from functools import lru_cache
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from urllib.parse import urljoin
 
 import httpx
 
 from aletheia_nexus.acquire.fulltext.exceptions import (
-    AcquisitionAccessBlockedError,
-    AcquisitionAuthRequiredError,
     AcquisitionNetworkError,
-    AcquisitionNotFoundError,
-    AcquisitionRateLimitError,
     AcquisitionRedirectError,
-    AcquisitionRequestError,
-    AcquisitionServiceError,
     AcquisitionTooLargeError,
+)
+from aletheia_nexus.acquire.fulltext.http import (
+    REDIRECT_STATUSES,
+    build_user_agent,
+    raise_for_http_status,
+    validate_http_limits,
 )
 from aletheia_nexus.acquire.fulltext.models import RedirectHop, RetrievedResource
 from aletheia_nexus.acquire.fulltext.safety import validate_safe_url
 
-PACKAGE_NAME = "aletheia-nexus"
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 DEFAULT_MAX_REDIRECTS = 8
-_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
-
-
-@lru_cache(maxsize=1)
-def _package_version() -> str:
-    try:
-        return version(PACKAGE_NAME)
-    except PackageNotFoundError:
-        return "dev"
-
-
-def build_user_agent() -> str:
-    return f"Aletheia-Nexus/{_package_version()}"
-
-
-def _validate_limits(
-    *,
-    max_bytes: int,
-    timeout: float,
-    max_redirects: int,
-) -> None:
-    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1:
-        raise ValueError("max_bytes must be a positive integer")
-    if (
-        isinstance(timeout, bool)
-        or not isinstance(timeout, (int, float))
-        or timeout <= 0
-    ):
-        raise ValueError("timeout must be a positive number")
-    if (
-        not isinstance(max_redirects, int)
-        or isinstance(max_redirects, bool)
-        or max_redirects < 0
-    ):
-        raise ValueError("max_redirects must be a non-negative integer")
-
-
-def _map_http_error(status_code: int, context: str) -> None:
-    if status_code == 401:
-        raise AcquisitionAuthRequiredError(
-            f"Authorization is required while requesting {context}"
-        )
-    if status_code == 403:
-        raise AcquisitionAccessBlockedError(
-            f"Access was blocked while requesting {context}"
-        )
-    if status_code == 404:
-        raise AcquisitionNotFoundError(f"Resource not found while requesting {context}")
-    if status_code == 429:
-        raise AcquisitionRateLimitError(
-            f"Rate limit exceeded while requesting {context}"
-        )
-    if 400 <= status_code < 500:
-        raise AcquisitionRequestError(
-            f"Request failed with HTTP {status_code} while requesting {context}"
-        )
-    if 500 <= status_code < 600:
-        raise AcquisitionServiceError(
-            f"Remote service returned HTTP {status_code} while requesting {context}"
-        )
-    if not 200 <= status_code < 300:
-        raise AcquisitionServiceError(
-            f"Unexpected HTTP {status_code} while requesting {context}"
-        )
 
 
 def _new_temp_path(output_dir: Path) -> Path:
@@ -120,7 +53,7 @@ def retrieve_to_temp(
     the next request. The response is streamed and bounded by ``max_bytes``.
     """
 
-    _validate_limits(
+    validate_http_limits(
         max_bytes=max_bytes,
         timeout=timeout,
         max_redirects=max_redirects,
@@ -148,7 +81,7 @@ def retrieve_to_temp(
                 ) as response:
                     status_code = response.status_code
 
-                    if status_code in _REDIRECT_STATUSES:
+                    if status_code in REDIRECT_STATUSES:
                         location = response.headers.get("Location")
                         if not location:
                             raise AcquisitionRedirectError(
@@ -175,7 +108,7 @@ def retrieve_to_temp(
                             f"Unsupported redirect response HTTP {status_code}"
                         )
 
-                    _map_http_error(status_code, current_url)
+                    raise_for_http_status(status_code, current_url)
 
                     content_length = response.headers.get("Content-Length")
                     if content_length:
