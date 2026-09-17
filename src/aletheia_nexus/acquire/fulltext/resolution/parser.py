@@ -1,5 +1,29 @@
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from re import IGNORECASE
+from re import compile as re_compile
+from re import sub as re_sub
+
+_SCRIPT_PDF_URL = re_compile(
+    r"""(?P<quote>["'])(?P<url>(?:(?:https?:)?//|/|\./|\.\./)?[^"'<>\\\s]*?\.pdf(?:\?[^"'<>\\\s]*)?)(?P=quote)""",
+    IGNORECASE,
+)
+
+
+def _extract_script_pdf_urls(value: str) -> tuple[str, ...]:
+    """Extract only explicit quoted PDF URL/path values from inline script text."""
+
+    normalized = value.replace("\\/", "/")
+    normalized = re_sub(r"\\u002[fF]", "/", normalized)
+    normalized = re_sub(r"\\u003[aA]", ":", normalized)
+    normalized = re_sub(r"\\u0026", "&", normalized, flags=IGNORECASE)
+
+    found: list[str] = []
+    for match in _SCRIPT_PDF_URL.finditer(normalized):
+        url = match.group("url").strip()
+        if url and url not in found:
+            found.append(url)
+    return tuple(found)
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +65,7 @@ class _ScholarlyHtmlParser(HTMLParser):
         self.json_ld: list[str] = []
         self.in_json_ld = False
         self.json_parts: list[str] = []
+        self.in_script = False
         self.visible_parts: list[str] = []
         self.non_visible_text_depth = 0
 
@@ -57,6 +82,9 @@ class _ScholarlyHtmlParser(HTMLParser):
 
         if tag in self._NON_VISIBLE_TEXT_TAGS:
             self.non_visible_text_depth += 1
+
+        if tag == "script":
+            self.in_script = True
 
         if tag == "base" and not self.base_href:
             href = values.get("href", "").strip()
@@ -125,6 +153,8 @@ class _ScholarlyHtmlParser(HTMLParser):
                 self.json_ld.append(payload)
             self.in_json_ld = False
             self.json_parts = []
+        if tag == "script":
+            self.in_script = False
         if tag in self._NON_VISIBLE_TEXT_TAGS and self.non_visible_text_depth:
             self.non_visible_text_depth -= 1
 
@@ -133,6 +163,20 @@ class _ScholarlyHtmlParser(HTMLParser):
             self.title_parts.append(data)
         if self.in_json_ld:
             self.json_parts.append(data)
+            return
+        if self.in_script:
+            for url in _extract_script_pdf_urls(data):
+                self.links.append(
+                    {
+                        "tag": "script",
+                        "url": url,
+                        "text_parts": [],
+                        "type_attr": None,
+                        "rel": (),
+                        "title_attr": None,
+                        "download": False,
+                    }
+                )
             return
         if self.non_visible_text_depth:
             return

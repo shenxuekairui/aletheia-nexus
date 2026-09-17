@@ -129,6 +129,42 @@ def test_json_ld_pdf_is_extracted():
     assert any(item.method == DerivationMethod.JSON_LD_PDF for item in candidates)
 
 
+def test_inline_script_pdf_path_is_derived_without_publisher_specific_logic():
+    parsed = parse_html(
+        '<script>window.documentState={"pdfPath":"/iel7/123/456/05366888.pdf"};</script>'
+    )
+
+    candidates = derive_pdf_candidates(
+        parent=_parent("https://ieeexplore.ieee.org/document/5366888/"),
+        parsed=parsed,
+        source_page_url="https://ieeexplore.ieee.org/document/5366888/",
+    )
+
+    assert len(candidates) == 1
+    assert (
+        candidates[0].candidate.url
+        == "https://ieeexplore.ieee.org/iel7/123/456/05366888.pdf"
+    )
+    assert candidates[0].method == DerivationMethod.PDF_URL_PATTERN
+    assert candidates[0].role_hint == DocumentRole.UNKNOWN
+    assert "<script>" in candidates[0].evidence[0]
+
+
+def test_inline_script_supplement_filename_keeps_non_main_role():
+    parsed = parse_html(
+        '<script>window.state={"file":"/files/supplement.pdf"};</script>'
+    )
+
+    candidates = derive_pdf_candidates(
+        parent=_parent(),
+        parsed=parsed,
+        source_page_url="https://example.org/article",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].role_hint == DocumentRole.SUPPLEMENT
+
+
 def test_embedded_pdf_is_extracted():
     parsed = parse_html('<embed src="/paper" type="application/pdf">')
 

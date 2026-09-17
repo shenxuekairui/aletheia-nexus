@@ -60,6 +60,39 @@ def test_parser_keeps_json_ld_while_excluding_it_from_visible_text():
     assert parsed.visible_text == "Article text"
 
 
+def test_parser_extracts_explicit_pdf_path_from_inline_script_state():
+    parsed = parse_html(
+        '<script>window.state={"pdfPath":"\\/iel7\\/123\\/456\\/05366888.pdf"};</script>'
+        "<body>Article text</body>"
+    )
+
+    assert any(
+        link.tag == "script" and link.url == "/iel7/123/456/05366888.pdf"
+        for link in parsed.links
+    )
+    assert parsed.visible_text == "Article text"
+
+
+def test_parser_extracts_unicode_escaped_pdf_url_from_inline_script_state():
+    parsed = parse_html(
+        '<script>window.state={"pdfUrl":"https\\u003A\\u002F\\u002Ffiles.example.org\\u002Fpaper.pdf?download=1\\u0026x=2"};</script>'
+    )
+
+    assert any(
+        link.tag == "script"
+        and link.url == "https://files.example.org/paper.pdf?download=1&x=2"
+        for link in parsed.links
+    )
+
+
+def test_parser_does_not_promote_non_pdf_inline_script_values():
+    parsed = parse_html(
+        '<script>window.state={"article":"/document/5366888/","format":"application/pdf"};</script>'
+    )
+
+    assert not any(link.tag == "script" for link in parsed.links)
+
+
 def test_parser_tolerates_incomplete_html():
     parsed = parse_html(
         '<html><head><meta name="citation_title" content="Paper"><body>'
