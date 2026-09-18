@@ -63,12 +63,10 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         value = getattr(config, name)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
             raise ValueError(f"{name} must be a non-negative number")
-    if (
-        not isinstance(config.max_pdf_candidates, int)
-        or isinstance(config.max_pdf_candidates, bool)
-        or config.max_pdf_candidates < 1
-    ):
-        raise ValueError("max_pdf_candidates must be a positive integer")
+    for name in ("max_source_routes", "max_pdf_candidates"):
+        value = getattr(config, name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
     if (
         not isinstance(config.max_bytes, int)
         or isinstance(config.max_bytes, bool)
