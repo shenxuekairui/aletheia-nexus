@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aletheia-nexus"
-version = "0.5.2"
+version = "0.6.0.dev0"
 description = "A local-first scientific knowledge acquisition infrastructure."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,6 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+browser = [
+    "playwright>=1.63,<2",
+]
 dev = [
     "pytest>=8,<10",
     "ruff>=0.12,<1",
