@@ -122,6 +122,17 @@ class BrowserAccessAttempt:
 
 
 @dataclass(frozen=True, slots=True)
+class BrowserRecoveryResult:
+    """Result of one persistent-browser recovery pass across multiple routes."""
+
+    doi: str
+    attempts: tuple[BrowserAccessAttempt, ...] = ()
+    verified_result: AcquisitionResult | None = None
+    profile_dir: Path | None = None
+    elapsed_seconds: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
 class MaximizedAcquisitionResult:
     """Complete v0.6 trace across v0.5 and authenticated browser recovery."""
 
