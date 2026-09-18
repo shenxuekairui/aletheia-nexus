@@ -135,13 +135,10 @@ def classify_access_challenge(
             evidence=tuple(f"Access-denied signal: {term}" for term in hits[:3]),
         )
 
-    hits = _contains_any(combined, _ENTITLEMENT_TERMS)
-    if hits:
-        return ChallengeReport(
-            kind=ChallengeKind.ENTITLEMENT,
-            evidence=tuple(f"Entitlement signal: {term}" for term in hits[:3]),
-        )
-
+    # Prefer an explicit institutional/SSO path over a generic paywall marker.
+    # Many legitimate subscription pages show both at the same time; reporting
+    # ENTITLEMENT too early would prevent the user from authenticating through
+    # access they already possess.
     sso_hits = _contains_any(combined, _SSO_TERMS)
     login_url = any(
         marker in url_text
@@ -171,6 +168,13 @@ def classify_access_challenge(
         return ChallengeReport(
             kind=ChallengeKind.AUTHENTICATION,
             evidence=tuple(evidence),
+        )
+
+    hits = _contains_any(combined, _ENTITLEMENT_TERMS)
+    if hits:
+        return ChallengeReport(
+            kind=ChallengeKind.ENTITLEMENT,
+            evidence=tuple(f"Entitlement signal: {term}" for term in hits[:3]),
         )
 
     return ChallengeReport(kind=ChallengeKind.NONE)
