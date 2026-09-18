@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from aletheia_nexus.acquire.discovery.models import FullTextCandidate
 from aletheia_nexus.acquire.fulltext.models import AcquisitionResult
 from aletheia_nexus.acquire.fulltext.orchestration.models import (
     MultiRouteAcquisitionResult,
@@ -83,18 +84,41 @@ class BrowserAccessConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class BrowserAccessAttempt:
-    """One browser-backed attempt with challenge and validation provenance."""
+class BrowserFileAttempt:
+    """One browser-authenticated concrete-file retrieval and validation."""
 
-    source_url: str
+    candidate: FullTextCandidate
+    result: AcquisitionResult | None = None
+    source_page_url: str | None = None
+    method: str = "context_request"
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BrowserAccessAttempt:
+    """One browser-backed route attempt with complete access provenance."""
+
+    source_candidate: FullTextCandidate
     final_url: str | None
     status: BrowserAttemptStatus
-    challenge: ChallengeReport | None = None
-    result: AcquisitionResult | None = None
+    challenge_history: tuple[ChallengeReport, ...] = ()
+    file_attempts: tuple[BrowserFileAttempt, ...] = ()
     candidates_considered: int = 0
+    interaction_used: bool = False
     evidence: tuple[str, ...] = ()
     error: str | None = None
     elapsed_seconds: float = 0.0
+
+    @property
+    def source_url(self) -> str:
+        return self.source_candidate.url
+
+    @property
+    def result(self) -> AcquisitionResult | None:
+        for attempt in reversed(self.file_attempts):
+            if attempt.result is not None:
+                return attempt.result
+        return None
 
 
 @dataclass(frozen=True, slots=True)
