@@ -15,17 +15,21 @@ def _contains_any(text: str, terms: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(term for term in terms if term in text)
 
 
-_CAPTCHA_TERMS = (
-    "g-recaptcha",
-    "recaptcha",
-    "hcaptcha",
-    "h-captcha",
-    "cf-turnstile",
-    "turnstile",
+_CAPTCHA_VISIBLE_TERMS = (
     "captcha",
     "verify you are human",
     "verify that you are human",
     "human verification",
+)
+_CAPTCHA_DOM_TERMS = (
+    'class="g-recaptcha',
+    "class='g-recaptcha",
+    "h-captcha",
+    "cf-turnstile",
+    "challenges.cloudflare.com/turnstile",
+    "www.google.com/recaptcha",
+    "www.recaptcha.net/recaptcha",
+    "hcaptcha.com/1/api.js",
 )
 _MFA_TERMS = (
     "multi-factor authentication",
@@ -90,35 +94,42 @@ def classify_access_challenge(
     *,
     title: str = "",
     url: str = "",
+    visible_text: str = "",
     html: str = "",
 ) -> ChallengeReport:
     """Classify strong browser-access signals without publisher-specific rules.
 
-    The classifier deliberately requires explicit challenge/access language.
-    Generic article-page navigation such as a harmless "Sign in" header does
-    not by itself become an authentication challenge.
+    Visible text drives semantic classification. Raw HTML is used only for strong
+    structural CAPTCHA widget markers so harmless script bundles mentioning
+    challenge libraries do not turn a normal article page into a false block.
     """
 
     title_text = _normalize(title)
     url_text = _normalize(url)
+    visible = _normalize(visible_text)
     html_text = _normalize(html)
-    combined = " ".join((title_text, url_text, html_text))
+    semantic = " ".join((title_text, url_text, visible))
 
-    hits = _contains_any(combined, _CAPTCHA_TERMS)
-    if hits:
+    visible_hits = _contains_any(semantic, _CAPTCHA_VISIBLE_TERMS)
+    dom_hits = _contains_any(html_text, _CAPTCHA_DOM_TERMS)
+    if visible_hits or dom_hits:
+        evidence = [
+            *(f"CAPTCHA visible signal: {term}" for term in visible_hits[:2]),
+            *(f"CAPTCHA DOM signal: {term}" for term in dom_hits[:2]),
+        ]
         return ChallengeReport(
             kind=ChallengeKind.CAPTCHA,
-            evidence=tuple(f"CAPTCHA signal: {term}" for term in hits[:3]),
+            evidence=tuple(evidence),
         )
 
-    hits = _contains_any(combined, _MFA_TERMS)
+    hits = _contains_any(semantic, _MFA_TERMS)
     if hits:
         return ChallengeReport(
             kind=ChallengeKind.MFA,
             evidence=tuple(f"MFA signal: {term}" for term in hits[:3]),
         )
 
-    hits = _contains_any(combined, _BOT_TERMS)
+    hits = _contains_any(semantic, _BOT_TERMS)
     if hits or title_text in {"just a moment", "just a moment..."}:
         evidence = [f"Bot challenge signal: {term}" for term in hits[:3]]
         if title_text in {"just a moment", "just a moment..."}:
@@ -128,7 +139,7 @@ def classify_access_challenge(
             evidence=tuple(evidence),
         )
 
-    hits = _contains_any(combined, _DENIED_TERMS)
+    hits = _contains_any(semantic, _DENIED_TERMS)
     if hits:
         return ChallengeReport(
             kind=ChallengeKind.ACCESS_DENIED,
@@ -136,10 +147,8 @@ def classify_access_challenge(
         )
 
     # Prefer an explicit institutional/SSO path over a generic paywall marker.
-    # Many legitimate subscription pages show both at the same time; reporting
-    # ENTITLEMENT too early would prevent the user from authenticating through
-    # access they already possess.
-    sso_hits = _contains_any(combined, _SSO_TERMS)
+    # Legitimate subscription pages frequently show both at the same time.
+    sso_hits = _contains_any(semantic, _SSO_TERMS)
     login_url = any(
         marker in url_text
         for marker in (
@@ -151,13 +160,13 @@ def classify_access_challenge(
             "/openathens",
         )
     )
-    if sso_hits and (login_url or "institution" in title_text or "sign in" in title_text):
+    if sso_hits and (login_url or "institution" in title_text or sso_hits):
         return ChallengeReport(
             kind=ChallengeKind.SSO,
             evidence=tuple(f"SSO signal: {term}" for term in sso_hits[:3]),
         )
 
-    auth_hits = _contains_any(combined, _AUTH_TERMS)
+    auth_hits = _contains_any(semantic, _AUTH_TERMS)
     if auth_hits or (
         login_url
         and any(marker in title_text for marker in ("sign in", "log in", "login"))
@@ -170,7 +179,7 @@ def classify_access_challenge(
             evidence=tuple(evidence),
         )
 
-    hits = _contains_any(combined, _ENTITLEMENT_TERMS)
+    hits = _contains_any(semantic, _ENTITLEMENT_TERMS)
     if hits:
         return ChallengeReport(
             kind=ChallengeKind.ENTITLEMENT,
