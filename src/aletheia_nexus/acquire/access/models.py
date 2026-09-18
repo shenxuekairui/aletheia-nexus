@@ -78,6 +78,7 @@ class BrowserAccessConfig:
     auto_challenge_grace: float = 8.0
     interaction_timeout: float = 180.0
     poll_interval: float = 1.0
+    max_source_routes: int = 12
     max_pdf_candidates: int = 12
     max_bytes: int = 100 * 1024 * 1024
     keep_unverified: bool = False
