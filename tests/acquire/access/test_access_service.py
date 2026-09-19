@@ -317,7 +317,6 @@ def test_failed_elsevier_api_falls_through_to_browser(monkeypatch, tmp_path):
     assert result.browser_attempts == (browser_attempt,)
 
 
-
 def test_elsevier_auth_failure_is_preserved_after_browser_exhaustion():
     from aletheia_nexus.acquire.access.models import (
         ElsevierAccessAttempt,
