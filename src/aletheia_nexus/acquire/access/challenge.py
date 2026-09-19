@@ -243,18 +243,11 @@ def classify_access_challenge(
     )
     title_is_access_surface = any(
         title_text == marker
-        or (
-            title_text.startswith(marker)
-            and len(title_text) <= len(marker) + 24
-        )
+        or (title_text.startswith(marker) and len(title_text) <= len(marker) + 24)
         for marker in sso_title_markers
     )
     visible_is_access_surface = any(
-        visible == term
-        or (
-            visible.startswith(term)
-            and len(visible) <= len(term) + 80
-        )
+        visible == term or (visible.startswith(term) and len(visible) <= len(term) + 80)
         for term in sso_hits
     )
     multiple_sso_signals = len(set(sso_hits)) >= 2
@@ -271,7 +264,9 @@ def classify_access_challenge(
         if login_url:
             evidence.append("SSO/login-like URL")
         if entitlement_hits:
-            evidence.append("Institutional access option appears at an entitlement boundary")
+            evidence.append(
+                "Institutional access option appears at an entitlement boundary"
+            )
         if title_is_access_surface:
             evidence.append("Page title is an institutional authentication surface")
         return ChallengeReport(
