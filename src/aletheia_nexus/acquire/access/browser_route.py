@@ -478,7 +478,22 @@ def _click_semantic_pdf_control(page) -> bool:
             text = " ".join(item.inner_text().split())
         except Exception:
             continue
-        if not text or not _SEMANTIC_PDF_CONTROL.fullmatch(text):
+        lowered = text.lower()
+        if (
+            not text
+            or len(text) > 100
+            or not _SEMANTIC_PDF_CONTROL.search(text)
+            or any(
+                marker in lowered
+                for marker in (
+                    "supporting",
+                    "supplement",
+                    "source data",
+                    "peer review",
+                    "reporting summary",
+                )
+            )
+        ):
             continue
         try:
             item.click(timeout=5000)
