@@ -231,6 +231,12 @@ def classify_access_challenge(
     sso_title_markers = (
         "institutional sign in",
         "institutional login",
+        "choose your institution",
+        "select your institution",
+        "find your institution",
+        "选择机构",
+        "选择您的机构",
+        "查找您的机构",
         "single sign-on",
         "single sign on",
         "统一身份认证",
