@@ -89,7 +89,7 @@ def test_freeze_gate_requires_three_positive_controls():
         entitled_controls=2,
         entitled_verified=2,
         entitled_access_families=("publisher-a", "publisher-b"),
-        entitled_controls_with_family=3,
+        entitled_controls_with_family=2,
         require_entitled_controls=True,
     )
 
@@ -102,7 +102,7 @@ def test_freeze_gate_passes_only_when_access_ceiling_is_met():
         entitled_controls=4,
         entitled_verified=4,
         entitled_access_families=("publisher-a", "publisher-b"),
-        entitled_controls_with_family=3,
+        entitled_controls_with_family=4,
         require_entitled_controls=True,
     )
 
@@ -156,7 +156,7 @@ def test_freeze_gate_requires_two_access_families():
         require_entitled_controls=True,
     )
 
-    assert code == 5
+    assert code == 6
     assert "at least 2 distinct publisher/access families" in message
 
 
@@ -188,7 +188,6 @@ def test_conflicting_access_family_for_same_doi_is_rejected(tmp_path):
         assert "Conflicting access_family values" in str(exc)
     else:
         raise AssertionError("conflicting access families must be rejected")
-
 
 
 def test_freeze_gate_requires_family_on_every_control():
