@@ -160,7 +160,7 @@ def classify_access_challenge(
             "/openathens",
         )
     )
-    if sso_hits and (login_url or "institution" in title_text or sso_hits):
+    if sso_hits:
         return ChallengeReport(
             kind=ChallengeKind.SSO,
             evidence=tuple(f"SSO signal: {term}" for term in sso_hits[:3]),
