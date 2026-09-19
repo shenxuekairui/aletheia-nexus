@@ -113,7 +113,6 @@ def test_redact_unparseable_url_fails_closed():
     assert "secret" not in value
 
 
-
 def test_browser_network_url_allows_canonical_public_ip():
     assert (
         validate_browser_network_url("https://8.8.8.8/article")
