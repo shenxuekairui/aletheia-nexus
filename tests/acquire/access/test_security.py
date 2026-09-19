@@ -75,10 +75,13 @@ def test_authenticated_request_referer_strips_same_origin_query_secrets(monkeypa
         lambda value: value,
     )
 
-    assert _safe_referer(
-        "https://publisher.example/article?ticket=secret#viewer",
-        "https://publisher.example/article.pdf",
-    ) == "https://publisher.example/article"
+    assert (
+        _safe_referer(
+            "https://publisher.example/article?ticket=secret#viewer",
+            "https://publisher.example/article.pdf",
+        )
+        == "https://publisher.example/article"
+    )
 
 
 def test_authenticated_request_referer_is_origin_only_cross_origin(monkeypatch):
@@ -87,7 +90,10 @@ def test_authenticated_request_referer_is_origin_only_cross_origin(monkeypatch):
         lambda value: value,
     )
 
-    assert _safe_referer(
-        "https://publisher.example/article?ticket=secret",
-        "https://cdn.example/article.pdf",
-    ) == "https://publisher.example/"
+    assert (
+        _safe_referer(
+            "https://publisher.example/article?ticket=secret",
+            "https://cdn.example/article.pdf",
+        )
+        == "https://publisher.example/"
+    )
