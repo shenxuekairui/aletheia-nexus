@@ -311,8 +311,15 @@ python scripts/manual_v06_access_acceptance.py `
   --entitled-doi 10.xxxx/example2
 ```
 
-正式冻结必须把 ≥3 篇、覆盖 ≥2 个出版社/访问家族的阳性对照写到本地
-`benchmarks/v06_entitled_positive_controls.local.json`。每条记录都要填写
+正式冻结先从仓库模板复制一份本地文件：
+
+```powershell
+Copy-Item benchmarks/v06_entitled_positive_controls.example.json `
+  benchmarks/v06_entitled_positive_controls.local.json
+```
+
+然后把其中 3 条示例替换成你**人工确认在同一机构/账号/网络环境下能下载**
+的真实论文。正式冻结必须 ≥3 篇、覆盖 ≥2 个出版社/访问家族。每条记录都要填写
 `access_family`（例如 `elsevier-sciencedirect`、`springer-nature`）。
 
 正式 `--require-entitled-controls` 冻结门会同时要求：
