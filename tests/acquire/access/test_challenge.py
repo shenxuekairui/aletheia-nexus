@@ -79,7 +79,7 @@ def test_loaded_recaptcha_library_without_active_widget_is_not_a_challenge():
         url="https://publisher.example/article",
         visible_text="Full article text",
         html=(
-            '<main>Full article text</main>'
+            "<main>Full article text</main>"
             '<script src="https://www.google.com/recaptcha/api.js"></script>'
         ),
     )
