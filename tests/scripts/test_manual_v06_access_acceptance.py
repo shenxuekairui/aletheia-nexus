@@ -1,5 +1,33 @@
 import json
 
+from aletheia_nexus.acquire.access.models import (
+    MaximizedAcquisitionResult,
+    MaximizedAcquisitionStatus,
+)
+from aletheia_nexus.acquire.discovery.models import (
+    DiscoveryProvider,
+    DiscoveryResult,
+    FullTextCandidate,
+    ProviderDiscoveryResult,
+    ProviderDiscoveryStatus,
+)
+from aletheia_nexus.acquire.fulltext.models import (
+    AcquisitionResult,
+    AcquisitionStatus,
+)
+from aletheia_nexus.acquire.fulltext.orchestration.models import (
+    FileAttempt,
+    FileCandidateOrigin,
+    FullTextAcquisitionStatus,
+    MultiRouteAcquisitionResult,
+    RouteAttempt,
+    RouteCandidateOrigin,
+)
+from aletheia_nexus.acquire.fulltext.resolution.models import (
+    PageType,
+    ResolutionStatus,
+    RouteResolutionResult,
+)
 from scripts import manual_v06_access_acceptance as acceptance
 
 
@@ -317,3 +345,76 @@ def test_report_marks_full_freeze_gate_only_when_every_machine_gate_passes(tmp_p
     assert payload["summary"]["stress_v0.5_verified_rate"] == 0.3
     assert payload["summary"]["stress_v0.6_verified_rate"] == 0.35
     assert payload["corpus"]["stress_case_count"] == 20
+
+
+
+def test_acceptance_report_preserves_redacted_v05_trace():
+    candidate = FullTextCandidate(
+        doi="10.1000/trace",
+        url="https://publisher.example/article?ticket=super-secret",
+        provenance=(),
+    )
+    provider = ProviderDiscoveryResult(
+        provider=DiscoveryProvider.OPENALEX,
+        status=ProviderDiscoveryStatus.SUCCESS,
+        candidates=(candidate,),
+        attempts=1,
+    )
+    discovery = DiscoveryResult(
+        doi="10.1000/trace",
+        candidates=(candidate,),
+        providers=(provider,),
+    )
+    route_result = RouteResolutionResult(
+        source_candidate=candidate,
+        status=ResolutionStatus.NO_FILE_CANDIDATES,
+        page_type=PageType.ARTICLE,
+    )
+    route_attempt = RouteAttempt(
+        candidate=candidate,
+        origin=RouteCandidateOrigin.DISCOVERY,
+        result=route_result,
+        depth=1,
+        parent_url="https://resolver.example/path?token=parent-secret",
+    )
+    file_result = AcquisitionResult(
+        candidate=candidate,
+        status=AcquisitionStatus.INVALID_PDF,
+    )
+    file_attempt = FileAttempt(
+        candidate=candidate,
+        origin=FileCandidateOrigin.DISCOVERY,
+        result=file_result,
+        parent_url="https://publisher.example/article?token=parent-secret",
+    )
+    base = MultiRouteAcquisitionResult(
+        doi="10.1000/trace",
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=discovery,
+        route_attempts=(route_attempt,),
+        file_attempts=(file_attempt,),
+        duplicate_file_candidates_skipped=1,
+        page_route_attempts=1,
+    )
+    result = MaximizedAcquisitionResult(
+        doi="10.1000/trace",
+        status=MaximizedAcquisitionStatus.EXHAUSTED,
+        base_result=base,
+    )
+
+    record = acceptance._serialize(result)
+    trace = record["base_trace"]
+
+    assert trace["discovery"]["candidate_count"] == 1
+    assert trace["discovery"]["providers"][0]["status"] == "SUCCESS"
+    assert trace["route_attempts"][0]["status"] == "NO_FILE_CANDIDATES"
+    assert trace["route_attempts"][0]["depth"] == 1
+    assert trace["route_attempts"][0]["page_type"] == "ARTICLE"
+    assert trace["file_attempts"][0]["status"] == "INVALID_PDF"
+    assert trace["stats"]["duplicate_file_candidates_skipped"] == 1
+    assert trace["stats"]["page_route_attempts"] == 1
+
+    serialized = json.dumps(record)
+    assert "super-secret" not in serialized
+    assert "parent-secret" not in serialized
+    assert "%5Bredacted%5D" in serialized
