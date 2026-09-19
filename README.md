@@ -250,7 +250,6 @@ result = acquire_full_text_maximized(
     output_dir="downloads",
     browser_config=BrowserAccessConfig(
         profile_name="institution",
-        channel="chrome",
         headless=False,
         interaction_callback=on_interaction,
     ),
@@ -330,7 +329,6 @@ python scripts/manual_v06_access_acceptance.py \
 ```python
 config = BrowserAccessConfig(
     profile_name="institution",
-    channel="chrome",
     headless=False,
     interaction_callback=on_interaction,
 )
