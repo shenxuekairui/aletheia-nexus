@@ -20,6 +20,9 @@ _CAPTCHA_VISIBLE_TERMS = (
     "verify that you are human",
     "prove you are human",
     "human verification required",
+    "请完成人机验证",
+    "人机验证",
+    "图形验证码",
 )
 _CAPTCHA_DOM_TERMS = (
     'class="g-recaptcha',
@@ -46,6 +49,13 @@ _MFA_TERMS = (
     "multifactor authentication required",
     "two-factor authentication required",
     "2-factor authentication required",
+    "请输入短信验证码",
+    "请输入手机验证码",
+    "请输入动态验证码",
+    "短信验证码",
+    "手机验证码",
+    "动态验证码",
+    "二次验证",
 )
 _BOT_TERMS = (
     "checking your browser",
@@ -55,6 +65,9 @@ _BOT_TERMS = (
     "enable javascript and cookies to continue",
     "please wait while we verify",
     "browser verification",
+    "正在进行安全验证",
+    "请稍候，我们正在验证",
+    "正在验证您的浏览器",
 )
 _SSO_TERMS = (
     "single sign-on",
@@ -65,6 +78,12 @@ _SSO_TERMS = (
     "access through your institution",
     "shibboleth",
     "openathens",
+    "统一身份认证",
+    "机构登录",
+    "机构认证",
+    "使用中国科技云通行证登录",
+    "中国科技云通行证账号登录",
+    "carsi",
 )
 _AUTH_TERMS = (
     "sign in to access",
@@ -76,6 +95,10 @@ _AUTH_TERMS = (
     "authentication required",
     "please sign in",
     "please log in",
+    "请登录后访问",
+    "请先登录",
+    "登录后访问",
+    "您正在登录",
 )
 _ENTITLEMENT_TERMS = (
     "your institution does not have access",
@@ -84,6 +107,10 @@ _ENTITLEMENT_TERMS = (
     "purchase this article",
     "rent or buy",
     "buy this article",
+    "您的机构没有访问权限",
+    "您的机构无权访问",
+    "当前机构没有访问权限",
+    "暂无访问权限",
 )
 _DENIED_TERMS = (
     "access denied",
@@ -91,6 +118,8 @@ _DENIED_TERMS = (
     "request has been blocked",
     "you have been blocked",
     "403 forbidden",
+    "拒绝访问",
+    "请求已被阻止",
 )
 
 
@@ -166,6 +195,10 @@ def classify_access_challenge(
             "/sso",
             "/shibboleth",
             "/openathens",
+            "/oauth",
+            "/authorize",
+            "/saml",
+            "/cas/",
         )
     )
     if sso_hits and (
@@ -182,7 +215,10 @@ def classify_access_challenge(
     auth_hits = _contains_any(semantic, _AUTH_TERMS)
     if auth_hits or (
         login_url
-        and any(marker in title_text for marker in ("sign in", "log in", "login"))
+        and any(
+            marker in title_text
+            for marker in ("sign in", "log in", "login", "登录", "认证")
+        )
     ):
         evidence = [f"Authentication signal: {term}" for term in auth_hits[:3]]
         if login_url:
