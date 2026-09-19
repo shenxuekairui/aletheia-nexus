@@ -6,8 +6,12 @@ from io import BytesIO
 import pytest
 from pypdf import PdfWriter
 
-from aletheia_nexus.acquire.access import BrowserAccessConfig, BrowserSession
-from aletheia_nexus.acquire.access import browser, browser_route
+from aletheia_nexus.acquire.access import (
+    BrowserAccessConfig,
+    BrowserSession,
+    browser,
+    browser_route,
+)
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
     FullTextCandidate,
