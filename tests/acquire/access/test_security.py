@@ -6,8 +6,7 @@ def test_redact_url_preserves_route_shape_but_not_values():
         "https://cdn.example/paper.pdf?token=secret&download=true#viewer"
     )
     assert value == (
-        "https://cdn.example/paper.pdf?"
-        "token=%5Bredacted%5D&download=%5Bredacted%5D"
+        "https://cdn.example/paper.pdf?token=%5Bredacted%5D&download=%5Bredacted%5D"
     )
     assert "secret" not in value
     assert "true" not in value
