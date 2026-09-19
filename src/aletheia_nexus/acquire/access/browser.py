@@ -251,7 +251,7 @@ class BrowserSession:
             playwright = manager.__enter__()
         except Exception as exc:
             raise BrowserCapabilityUnavailable(
-                f"Playwright could not start: {type(exc).__name__}: {exc}"
+                f"Playwright could not start: {type(exc).__name__}"
             ) from exc
 
         launch_kwargs: dict[str, object] = {
@@ -272,7 +272,7 @@ class BrowserSession:
             raise BrowserCapabilityUnavailable(
                 "Playwright browser could not start. Install a browser with "
                 "'python -m playwright install chromium' or configure an "
-                f"available channel. Original error: {type(exc).__name__}: {exc}"
+                f"available channel. Error type: {type(exc).__name__}"
             ) from exc
 
         context.set_default_timeout(self.config.navigation_timeout * 1000)
