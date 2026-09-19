@@ -409,18 +409,30 @@ def _download_to_file_attempt(
     expected_title: str | None,
     config: BrowserAccessConfig,
 ) -> BrowserFileAttempt:
+    download_url = str(getattr(download, "url", "") or "")
+    browser_local_url = False
+    try:
+        candidate = _candidate_for_url(parent, download_url)
+        resource_url = download_url
+    except ValueError:
+        # Browser-generated downloads frequently use blob: URLs. The downloaded
+        # bytes are still valuable; retain the HTTP(S) parent route as provenance
+        # and let scientific file validation decide whether the artifact is valid.
+        candidate = replace(parent, url=parent.url, url_type=CandidateUrlType.PDF)
+        resource_url = source_page_url or parent.url
+        browser_local_url = True
+
     try:
         source = Path(download.path())
         size = source.stat().st_size
         if size > config.max_bytes:
             return BrowserFileAttempt(
-                candidate=_candidate_for_url(parent, download.url),
+                candidate=candidate,
                 source_page_url=source_page_url,
                 method="browser_download",
                 error=f"Browser download exceeds max_bytes ({size} > {config.max_bytes})",
             )
 
-        candidate = _candidate_for_url(parent, download.url)
         directory = Path(output_dir)
         directory.mkdir(parents=True, exist_ok=True)
         temporary = directory / f".an-browser-download-{uuid4().hex}.part"
@@ -431,13 +443,19 @@ def _download_to_file_attempt(
                 body_hash.update(chunk)
         resource = RetrievedResource(
             requested_url=candidate.url,
-            final_url=download.url,
+            final_url=resource_url,
             http_status=200,
             content_type="application/pdf",
             size_bytes=size,
             sha256=body_hash.hexdigest(),
             local_path=temporary,
         )
+        evidence = ["Captured a browser download event"]
+        if browser_local_url:
+            evidence.append(
+                "Browser-local download URL was replaced by the parent HTTP(S) route "
+                "for provenance"
+            )
         result = finalize_browser_resource(
             candidate=candidate,
             resource=resource,
@@ -446,7 +464,7 @@ def _download_to_file_attempt(
             keep_unverified=config.keep_unverified,
             profile_name=config.profile_name,
             source_page_url=source_page_url,
-            access_evidence=("Captured a browser download event",),
+            access_evidence=tuple(evidence),
         )
         return BrowserFileAttempt(
             candidate=candidate,
@@ -455,9 +473,8 @@ def _download_to_file_attempt(
             method="browser_download",
         )
     except Exception as exc:
-        fallback = replace(parent, url=download.url, url_type=CandidateUrlType.PDF)
         return BrowserFileAttempt(
-            candidate=fallback,
+            candidate=candidate,
             source_page_url=source_page_url,
             method="browser_download",
             error=f"{type(exc).__name__}: {exc}",
