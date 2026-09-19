@@ -186,7 +186,6 @@ def test_institution_access_prompt_with_short_instruction_is_sso_handoff():
     assert report.kind == ChallengeKind.SSO
 
 
-
 def test_slider_captcha_is_classified():
     report = classify_access_challenge(
         title="安全验证",
@@ -209,7 +208,6 @@ def test_authenticator_push_is_classified_as_mfa():
     assert report.kind == ChallengeKind.MFA
 
 
-
 def test_article_page_with_institution_link_is_not_false_sso():
     report = classify_access_challenge(
         title="Target Article",
@@ -224,7 +222,6 @@ def test_article_page_with_institution_link_is_not_false_sso():
     assert report.kind == ChallengeKind.NONE
 
 
-
 def test_long_institution_chooser_page_is_sso():
     report = classify_access_challenge(
         title="Choose your institution",
@@ -237,7 +234,6 @@ def test_long_institution_chooser_page_is_sso():
     )
 
     assert report.kind == ChallengeKind.SSO
-
 
 
 def test_challenge_classifier_ignores_far_tail_article_text():
