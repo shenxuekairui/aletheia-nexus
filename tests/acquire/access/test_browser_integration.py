@@ -282,7 +282,6 @@ def test_real_browser_recovers_pdf_opened_in_new_tab(
     assert result.verified_result.file_path is not None
 
 
-
 def test_real_browser_recovers_after_institution_access_handoff(
     monkeypatch,
     tmp_path,
