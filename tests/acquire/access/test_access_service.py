@@ -30,7 +30,6 @@ from aletheia_nexus.acquire.fulltext.orchestration.models import (
     MultiRouteAcquisitionResult,
 )
 
-
 def _candidate(
     url="https://publisher.example/article",
     *,
@@ -43,7 +42,6 @@ def _candidate(
         url_type=url_type,
         host_type=HostType.PUBLISHER,
     )
-
 
 def _base(status=FullTextAcquisitionStatus.EXHAUSTED, *, candidate=None):
     candidate = candidate or _candidate()
@@ -67,7 +65,6 @@ def _base(status=FullTextAcquisitionStatus.EXHAUSTED, *, candidate=None):
         expected_title="Target Article",
     )
 
-
 def test_browser_recovery_plan_includes_discovery_and_resolver():
     base = _base()
     routes = service.browser_recovery_routes(base, limit=8)
@@ -76,7 +73,6 @@ def test_browser_recovery_plan_includes_discovery_and_resolver():
     assert any(
         route.url.startswith("https://doi.org/10.1000/target") for route in routes
     )
-
 
 def test_maximized_stops_when_v05_already_verified(monkeypatch, tmp_path):
     base = _base(FullTextAcquisitionStatus.VERIFIED)
@@ -95,7 +91,6 @@ def test_maximized_stops_when_v05_already_verified(monkeypatch, tmp_path):
     assert result.status == MaximizedAcquisitionStatus.VERIFIED
     assert result.verified_result == base.verified_result
     assert result.browser_attempts == ()
-
 
 def test_maximized_escalates_and_accepts_only_verified_browser_result(
     monkeypatch,
@@ -136,7 +131,6 @@ def test_maximized_escalates_and_accepts_only_verified_browser_result(
     assert result.verified_result == verified
     assert result.browser_attempts == (attempt,)
 
-
 def test_unresolved_captcha_surfaces_interaction_required(monkeypatch, tmp_path):
     base = _base()
     attempt = BrowserAccessAttempt(
@@ -160,7 +154,6 @@ def test_unresolved_captcha_surfaces_interaction_required(monkeypatch, tmp_path)
 
     assert result.status == MaximizedAcquisitionStatus.INTERACTION_REQUIRED
 
-
 def test_missing_browser_dependency_is_explicit(monkeypatch, tmp_path):
     base = _base()
     monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
@@ -177,8 +170,6 @@ def test_missing_browser_dependency_is_explicit(monkeypatch, tmp_path):
 
     assert result.status == MaximizedAcquisitionStatus.BROWSER_UNAVAILABLE
     assert result.message == "browser missing"
-
-
 
 def test_maximized_can_use_caller_owned_browser_session(monkeypatch, tmp_path):
     base = _base()
@@ -218,7 +209,6 @@ def test_maximized_can_use_caller_owned_browser_session(monkeypatch, tmp_path):
     assert result.status == MaximizedAcquisitionStatus.VERIFIED
     assert result.verified_result == verified
 
-
 def test_browser_config_and_session_are_mutually_exclusive(tmp_path):
     session = BrowserSession(BrowserAccessConfig(profile_root=tmp_path))
 
@@ -233,8 +223,6 @@ def test_browser_config_and_session_are_mutually_exclusive(tmp_path):
         assert "mutually exclusive" in str(exc)
     else:
         raise AssertionError("expected mutually exclusive browser options to fail")
-
-
 
 def test_official_elsevier_api_stops_before_browser_when_verified(
     monkeypatch,
@@ -279,7 +267,6 @@ def test_official_elsevier_api_stops_before_browser_when_verified(
     assert result.verified_result == verified
     assert result.elsevier_attempt == api_attempt
     assert result.browser_attempts == ()
-
 
 def test_failed_elsevier_api_falls_through_to_browser(monkeypatch, tmp_path):
     base = _base()
