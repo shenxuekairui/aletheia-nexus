@@ -76,6 +76,7 @@ def test_freeze_gate_requires_all_entitled_controls_to_verify():
         entitled_controls=3,
         entitled_verified=2,
         entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
         require_entitled_controls=True,
     )
 
@@ -88,6 +89,7 @@ def test_freeze_gate_requires_three_positive_controls():
         entitled_controls=2,
         entitled_verified=2,
         entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
         require_entitled_controls=True,
     )
 
@@ -100,6 +102,7 @@ def test_freeze_gate_passes_only_when_access_ceiling_is_met():
         entitled_controls=4,
         entitled_verified=4,
         entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
         require_entitled_controls=True,
     )
 
@@ -112,6 +115,7 @@ def test_freeze_gate_rejects_runner_errors():
         entitled_controls=3,
         entitled_verified=3,
         entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
         require_entitled_controls=True,
         runner_errors=1,
     )
@@ -148,6 +152,7 @@ def test_freeze_gate_requires_two_access_families():
         entitled_controls=3,
         entitled_verified=3,
         entitled_access_families=("publisher-a",),
+        entitled_controls_with_family=3,
         require_entitled_controls=True,
     )
 
@@ -183,3 +188,34 @@ def test_conflicting_access_family_for_same_doi_is_rejected(tmp_path):
         assert "Conflicting access_family values" in str(exc)
     else:
         raise AssertionError("conflicting access families must be rejected")
+
+
+
+def test_freeze_gate_requires_family_on_every_control():
+    code, message = acceptance._freeze_gate(
+        entitled_controls=3,
+        entitled_verified=3,
+        entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=2,
+        require_entitled_controls=True,
+    )
+
+    assert code == 5
+    assert "access_family on every entitled positive control" in message
+
+
+def test_access_family_is_case_normalized(tmp_path):
+    entitled = _write(
+        tmp_path / "entitled.json",
+        [
+            {
+                "doi": "10.1000/target",
+                "title": "Target",
+                "access_family": " Elsevier-ScienceDirect ",
+            }
+        ],
+    )
+
+    cases = acceptance._load_cases([], [entitled], [], [])
+
+    assert cases[0]["access_family"] == "elsevier-sciencedirect"
