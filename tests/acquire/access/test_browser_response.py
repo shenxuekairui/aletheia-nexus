@@ -6,6 +6,7 @@ from pypdf import PdfWriter
 from aletheia_nexus.acquire.access.browser_route import (
     _browser_response_to_file_attempt,
     _download_to_file_attempt,
+    _request_pdf_candidate,
     _safe_context_get,
 )
 from aletheia_nexus.acquire.access.models import BrowserAccessConfig
@@ -207,3 +208,85 @@ def test_failed_browser_download_validation_cleans_temp_file(
     assert attempt.result is None
     assert attempt.error == "RuntimeError: validation failed"
     assert list(output_dir.glob(".an-browser-download-*.part")) == []
+
+
+
+class _PdfRequestResponse:
+    def __init__(self, body: bytes):
+        self.url = "https://cdn.example/article.pdf"
+        self.status = 200
+        self.headers = {"content-type": "application/pdf"}
+        self._body = body
+        self.disposed = False
+
+    def body(self):
+        return self._body
+
+    def dispose(self):
+        self.disposed = True
+
+
+def test_failed_captured_response_validation_cleans_temp_file(
+    monkeypatch,
+    tmp_path,
+):
+    output_dir = tmp_path / "captured-out"
+    parent = FullTextCandidate(
+        doi="10.1000/captured-response",
+        url="https://publisher.example/article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.access.browser_route.finalize_browser_resource",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("validation failed")),
+    )
+
+    attempt = _browser_response_to_file_attempt(
+        _Response(_pdf_bytes()),
+        parent=parent,
+        source_page_url=parent.url,
+        output_dir=output_dir,
+        expected_title="Captured Browser Response",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+    )
+
+    assert attempt.result is None
+    assert attempt.error == "RuntimeError: validation failed"
+    assert list(output_dir.glob(".an-browser-*.part")) == []
+
+
+def test_failed_context_request_validation_cleans_temp_file(
+    monkeypatch,
+    tmp_path,
+):
+    output_dir = tmp_path / "request-out"
+    candidate = FullTextCandidate(
+        doi="10.1000/captured-response",
+        url="https://cdn.example/article.pdf",
+        provenance=(),
+        url_type=CandidateUrlType.PDF,
+    )
+    response = _PdfRequestResponse(_pdf_bytes())
+    context = _RequestContext([response])
+
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.access.browser_route.finalize_browser_resource",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("validation failed")),
+    )
+
+    attempt, challenge = _request_pdf_candidate(
+        context,
+        candidate=candidate,
+        source_page_url="https://publisher.example/article?ticket=secret",
+        output_dir=output_dir,
+        expected_title="Captured Browser Response",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+    )
+
+    assert challenge is None
+    assert attempt.result is None
+    assert attempt.error == "RuntimeError: validation failed"
+    assert response.disposed is True
+    assert list(output_dir.glob(".an-browser-*.part")) == []
