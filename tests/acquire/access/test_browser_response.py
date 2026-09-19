@@ -90,3 +90,86 @@ def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
     assert attempt.result.retrieved is not None
     assert attempt.result.retrieved.final_url == parent.url
     assert attempt.result.candidate.url == parent.url
+
+
+
+class _RedirectResponse:
+    def __init__(self, *, url, status, location=None):
+        self.url = url
+        self.status = status
+        self.headers = {}
+        if location is not None:
+            self.headers["location"] = location
+        self.disposed = False
+
+    def dispose(self):
+        self.disposed = True
+
+
+class _RequestClient:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return self.responses.pop(0)
+
+
+class _RequestContext:
+    def __init__(self, responses):
+        self.request = _RequestClient(responses)
+
+
+def test_authenticated_request_follows_public_redirects_manually():
+    from aletheia_nexus.acquire.access.browser_route import _safe_context_get
+
+    first = _RedirectResponse(
+        url="https://publisher.example/start",
+        status=302,
+        location="https://cdn.example/article.pdf",
+    )
+    final = _RedirectResponse(
+        url="https://cdn.example/article.pdf",
+        status=200,
+    )
+    context = _RequestContext([first, final])
+
+    response, redirects = _safe_context_get(
+        context,
+        url="https://publisher.example/start",
+        request_kwargs={"timeout": 1000, "fail_on_status_code": False},
+    )
+
+    assert response is final
+    assert first.disposed is True
+    assert len(redirects) == 1
+    assert redirects[0].to_url == "https://cdn.example/article.pdf"
+    assert [call[0] for call in context.request.calls] == [
+        "https://publisher.example/start",
+        "https://cdn.example/article.pdf",
+    ]
+    assert all(call[1]["max_redirects"] == 0 for call in context.request.calls)
+
+
+def test_authenticated_request_rejects_redirect_to_private_network():
+    import pytest
+
+    from aletheia_nexus.acquire.access.browser_route import _safe_context_get
+
+    first = _RedirectResponse(
+        url="https://publisher.example/start",
+        status=302,
+        location="http://127.0.0.1/private",
+    )
+    context = _RequestContext([first])
+
+    with pytest.raises(ValueError):
+        _safe_context_get(
+            context,
+            url="https://publisher.example/start",
+            request_kwargs={"timeout": 1000, "fail_on_status_code": False},
+        )
+
+    assert first.disposed is True
+    assert len(context.request.calls) == 1
