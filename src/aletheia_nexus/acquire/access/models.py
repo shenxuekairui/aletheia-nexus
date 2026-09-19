@@ -94,13 +94,16 @@ class ElsevierAccessConfig:
     def from_env(cls) -> "ElsevierAccessConfig | None":
         import os
 
-        api_key = os.getenv("ELSEVIER_API_KEY")
+        api_key = (os.getenv("ELSEVIER_API_KEY") or "").strip()
         if not api_key:
             return None
+
+        inst_token = (os.getenv("ELSEVIER_INST_TOKEN") or "").strip() or None
+        bearer_token = (os.getenv("ELSEVIER_BEARER_TOKEN") or "").strip() or None
         return cls(
             api_key=api_key,
-            inst_token=os.getenv("ELSEVIER_INST_TOKEN"),
-            bearer_token=os.getenv("ELSEVIER_BEARER_TOKEN"),
+            inst_token=inst_token,
+            bearer_token=bearer_token,
         )
 
 
