@@ -130,9 +130,7 @@ def acquire_elsevier_pdf(
     _validate_config(config)
     normalized_doi = normalize_doi(doi)
     started_at = time.perf_counter()
-    endpoint = validate_safe_url(
-        _ELSEVIER_API_ROOT + quote(normalized_doi, safe="/")
-    )
+    endpoint = validate_safe_url(_ELSEVIER_API_ROOT + quote(normalized_doi, safe="/"))
     candidate = _candidate(normalized_doi, endpoint)
     credential_modes = _credential_modes(config)
     redirects: list[RedirectHop] = []
@@ -171,7 +169,9 @@ def acquire_elsevier_pdf(
                                 error="Elsevier API exceeded max_redirects",
                                 elapsed_seconds=time.perf_counter() - started_at,
                             )
-                        next_url = validate_safe_url(urljoin(str(response.url), location))
+                        next_url = validate_safe_url(
+                            urljoin(str(response.url), location)
+                        )
                         redirects.append(
                             RedirectHop(
                                 from_url=str(response.url),
