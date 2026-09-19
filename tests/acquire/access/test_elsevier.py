@@ -142,3 +142,52 @@ def test_elsevier_redirect_target_is_validated_before_follow(monkeypatch, tmp_pa
 
     assert attempt.status == ElsevierAccessStatus.ERROR
     assert "local target" in attempt.error
+
+
+
+def test_elsevier_credentials_are_not_forwarded_to_cross_origin_redirect(
+    monkeypatch,
+    tmp_path,
+):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.host == "api.elsevier.com":
+            return httpx.Response(
+                302,
+                headers={"Location": "https://cdn.example/article.pdf"},
+            )
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            content=_pdf_bytes("Redirected Elsevier Article"),
+        )
+
+    _install_transport(monkeypatch, handler)
+    config = ElsevierAccessConfig(
+        api_key="api-secret",
+        inst_token="institution-secret",
+        bearer_token="bearer-secret",
+    )
+
+    attempt = elsevier.acquire_elsevier_pdf(
+        "10.1016/j.test.2026.100005",
+        config=config,
+        output_dir=tmp_path,
+        expected_title="Redirected Elsevier Article",
+    )
+
+    assert attempt.status == ElsevierAccessStatus.VERIFIED
+    assert len(requests) == 2
+
+    first_headers = requests[0].headers
+    assert first_headers["x-els-apikey"] == "api-secret"
+    assert first_headers["x-els-insttoken"] == "institution-secret"
+    assert first_headers["authorization"] == "Bearer bearer-secret"
+
+    redirected_headers = requests[1].headers
+    assert "x-els-apikey" not in redirected_headers
+    assert "x-els-insttoken" not in redirected_headers
+    assert "authorization" not in redirected_headers
+    assert redirected_headers["accept"] == "application/pdf"
