@@ -230,3 +230,23 @@ def test_elsevier_author_manuscript_fallback_can_be_disabled(monkeypatch, tmp_pa
 
     assert len(seen_urls) == 1
     assert "amsRedirect" not in seen_urls[0]
+
+
+
+def test_elsevier_config_from_env_ignores_blank_optional_tokens(monkeypatch):
+    monkeypatch.setenv("ELSEVIER_API_KEY", "  api-secret  ")
+    monkeypatch.setenv("ELSEVIER_INST_TOKEN", "   ")
+    monkeypatch.setenv("ELSEVIER_BEARER_TOKEN", "")
+
+    config = ElsevierAccessConfig.from_env()
+
+    assert config is not None
+    assert config.api_key == "api-secret"
+    assert config.inst_token is None
+    assert config.bearer_token is None
+
+
+def test_elsevier_config_from_env_requires_nonblank_api_key(monkeypatch):
+    monkeypatch.setenv("ELSEVIER_API_KEY", "   ")
+
+    assert ElsevierAccessConfig.from_env() is None
