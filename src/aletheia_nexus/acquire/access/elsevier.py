@@ -50,6 +50,8 @@ def _validate_config(config: ElsevierAccessConfig) -> None:
         or config.max_bytes < 1
     ):
         raise ValueError("Elsevier max_bytes must be a positive integer")
+    if not isinstance(config.allow_author_manuscript_fallback, bool):
+        raise TypeError("Elsevier allow_author_manuscript_fallback must be a boolean")
     if (
         not isinstance(config.max_redirects, int)
         or isinstance(config.max_redirects, bool)
@@ -130,7 +132,10 @@ def acquire_elsevier_pdf(
     _validate_config(config)
     normalized_doi = normalize_doi(doi)
     started_at = time.perf_counter()
-    endpoint = validate_safe_url(_ELSEVIER_API_ROOT + quote(normalized_doi, safe="/"))
+    endpoint = _ELSEVIER_API_ROOT + quote(normalized_doi, safe="/")
+    if config.allow_author_manuscript_fallback:
+        endpoint += "?amsRedirect=true"
+    endpoint = validate_safe_url(endpoint)
     candidate = _candidate(normalized_doi, endpoint)
     credential_modes = _credential_modes(config)
     redirects: list[RedirectHop] = []
@@ -268,6 +273,9 @@ def acquire_elsevier_pdf(
                         access_details={
                             "provider": "elsevier",
                             "credential_modes": list(credential_modes),
+                            "author_manuscript_fallback_enabled": (
+                                config.allow_author_manuscript_fallback
+                            ),
                         },
                         access_evidence=(
                             "Retrieved through Elsevier Article Retrieval API",
