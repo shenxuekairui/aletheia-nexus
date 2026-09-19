@@ -8,12 +8,16 @@ from aletheia_nexus.acquire.access.browser import (
 )
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
+from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
     BrowserAttemptStatus,
     BrowserFileAttempt,
     BrowserRecoveryResult,
+    ElsevierAccessAttempt,
+    ElsevierAccessConfig,
+    ElsevierAccessStatus,
     ChallengeKind,
     ElsevierAccessAttempt,
     ElsevierAccessConfig,
@@ -35,6 +39,9 @@ __all__ = [
     "BrowserFileAttempt",
     "BrowserRecoveryResult",
     "BrowserSession",
+    "ElsevierAccessAttempt",
+    "ElsevierAccessConfig",
+    "ElsevierAccessStatus",
     "ChallengeKind",
     "ChallengeReport",
     "ElsevierAccessAttempt",
@@ -42,6 +49,7 @@ __all__ = [
     "ElsevierAccessStatus",
     "MaximizedAcquisitionResult",
     "MaximizedAcquisitionStatus",
+    "acquire_elsevier_pdf",
     "acquire_elsevier_pdf",
     "acquire_full_text_maximized",
     "acquire_with_browser",
