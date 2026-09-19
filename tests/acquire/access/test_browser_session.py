@@ -68,8 +68,9 @@ def _candidate(index, *, doi="10.1000/session-limit", url=None):
 def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     context = _Context()
     calls = []
+    manager = _Manager(context)
 
-    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: _Manager(context))
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
 
     def attempt(context_value, page, *, source, **kwargs):
         calls.append(source.url)
@@ -98,6 +99,7 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert len(result.attempts) == 2
     assert result.verified_result is None
     assert context.closed is True
+    assert manager.playwright.chromium.kwargs["service_workers"] == "block"
 
 
 
