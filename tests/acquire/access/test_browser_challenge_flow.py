@@ -254,3 +254,48 @@ def test_article_route_automatically_enters_institutional_sso(
         ChallengeKind.SSO,
         ChallengeKind.NONE,
     ]
+
+
+
+class _InstitutionControl:
+    def __init__(self, text):
+        self.text = text
+        self.clicked = False
+
+    def inner_text(self):
+        return self.text
+
+    def click(self, timeout=0):
+        self.clicked = True
+
+
+class _InstitutionLocator:
+    def __init__(self, control):
+        self.control = control
+
+    def filter(self, **kwargs):
+        return self
+
+    def count(self):
+        return 1
+
+    def nth(self, index):
+        assert index == 0
+        return self.control
+
+
+class _InstitutionPage:
+    def __init__(self, text):
+        self.control = _InstitutionControl(text)
+
+    def locator(self, selector):
+        assert selector == "a, button"
+        return _InstitutionLocator(self.control)
+
+
+def test_standard_federated_login_controls_are_clicked():
+    for text in ("Sign in with Shibboleth", "Access via OpenAthens"):
+        page = _InstitutionPage(text)
+
+        assert browser_route._click_semantic_institution_control(page) is True
+        assert page.control.clicked is True
