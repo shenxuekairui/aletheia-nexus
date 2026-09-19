@@ -3,6 +3,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
+from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
 from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
 from aletheia_nexus.acquire.fulltext.models import (
@@ -105,7 +106,7 @@ def finalize_browser_resource(
                     "expected_title": expected_title,
                 },
                 "candidate": {
-                    "url": candidate.url,
+                    "url": redact_url_for_record(candidate.url),
                     "url_type": candidate.url_type.value,
                     "access_type": candidate.access_type.value,
                     "version": candidate.version.value,
@@ -117,13 +118,13 @@ def finalize_browser_resource(
                 },
                 "access": {
                     "profile_name": profile_name,
-                    "source_page_url": source_page_url,
+                    "source_page_url": redact_url_for_record(source_page_url),
                     "evidence": list(access_evidence),
                     "sensitive_session_state_recorded": False,
                 },
                 "retrieval": {
-                    "requested_url": resource.requested_url,
-                    "final_url": resource.final_url,
+                    "requested_url": redact_url_for_record(resource.requested_url),
+                    "final_url": redact_url_for_record(resource.final_url),
                     "http_status": resource.http_status,
                     "content_type": resource.content_type,
                     "size_bytes": resource.size_bytes,
