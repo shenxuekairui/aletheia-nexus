@@ -144,7 +144,6 @@ def test_elsevier_redirect_target_is_validated_before_follow(monkeypatch, tmp_pa
     assert "local target" in attempt.error
 
 
-
 def test_elsevier_credentials_are_not_forwarded_to_cross_origin_redirect(
     monkeypatch,
     tmp_path,
@@ -191,3 +190,43 @@ def test_elsevier_credentials_are_not_forwarded_to_cross_origin_redirect(
     assert "x-els-insttoken" not in redirected_headers
     assert "authorization" not in redirected_headers
     assert redirected_headers["accept"] == "application/pdf"
+
+
+
+def test_elsevier_author_manuscript_fallback_is_on_by_default(monkeypatch, tmp_path):
+    seen_urls = []
+
+    def handler(request):
+        seen_urls.append(str(request.url))
+        return httpx.Response(404, content=b"not found")
+
+    _install_transport(monkeypatch, handler)
+    elsevier.acquire_elsevier_pdf(
+        "10.1016/j.test.2026.100006",
+        config=ElsevierAccessConfig(api_key="api-secret"),
+        output_dir=tmp_path,
+    )
+
+    assert len(seen_urls) == 1
+    assert "amsRedirect=true" in seen_urls[0]
+
+
+def test_elsevier_author_manuscript_fallback_can_be_disabled(monkeypatch, tmp_path):
+    seen_urls = []
+
+    def handler(request):
+        seen_urls.append(str(request.url))
+        return httpx.Response(404, content=b"not found")
+
+    _install_transport(monkeypatch, handler)
+    elsevier.acquire_elsevier_pdf(
+        "10.1016/j.test.2026.100007",
+        config=ElsevierAccessConfig(
+            api_key="api-secret",
+            allow_author_manuscript_fallback=False,
+        ),
+        output_dir=tmp_path,
+    )
+
+    assert len(seen_urls) == 1
+    assert "amsRedirect" not in seen_urls[0]
