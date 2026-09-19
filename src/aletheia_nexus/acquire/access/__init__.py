@@ -30,6 +30,7 @@ __all__ = [
     "BrowserCapabilityUnavailable",
     "BrowserFileAttempt",
     "BrowserSession",
+    "BrowserSession",
     "BrowserRecoveryResult",
     "ChallengeKind",
     "ChallengeReport",
