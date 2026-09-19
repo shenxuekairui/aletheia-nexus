@@ -336,6 +336,13 @@ class BrowserSession:
         verified: AcquisitionResult | None = None
 
         for source in normalized_routes:
+            # Context-wide handlers append into these reusable lists. Clear them
+            # per route so a long batch preserves authentication state without
+            # retaining response/download objects from earlier papers.
+            self._blocked_unsafe_urls.clear()
+            self._pdf_responses.clear()
+            self._downloads.clear()
+
             page = context.new_page()
             try:
                 attempt = attempt_browser_route(
@@ -352,6 +359,9 @@ class BrowserSession:
             finally:
                 if not page.is_closed():
                     page.close()
+                self._blocked_unsafe_urls.clear()
+                self._pdf_responses.clear()
+                self._downloads.clear()
 
             attempts.append(attempt)
             if (
