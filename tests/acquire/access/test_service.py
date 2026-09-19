@@ -67,7 +67,9 @@ def test_browser_recovery_plan_includes_discovery_and_resolver():
     routes = service.browser_recovery_routes(base, limit=8)
 
     assert routes[0].url == "https://publisher.example/article"
-    assert any(route.url.startswith("https://doi.org/10.1000/target") for route in routes)
+    assert any(
+        route.url.startswith("https://doi.org/10.1000/target") for route in routes
+    )
 
 
 def test_maximized_stops_when_v05_already_verified(monkeypatch, tmp_path):
