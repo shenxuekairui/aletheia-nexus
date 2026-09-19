@@ -15,6 +15,7 @@ from aletheia_nexus.acquire.access import (
     acquire_full_text_maximized,
 )
 from aletheia_nexus.acquire.access.security import redact_url_for_record
+from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 DEFAULT_BENCHMARKS = (
     Path("benchmarks/cdi_acquisition_10.json"),
@@ -155,7 +156,7 @@ def _load_cases(
         if not isinstance(payload, list):
             raise ValueError(f"Benchmark must contain a JSON list: {path}")
         for item in payload:
-            doi = str(item["doi"]).strip()
+            doi = normalize_doi(str(item["doi"]))
             if doi in by_doi:
                 continue
             case: dict[str, object] = {
@@ -168,8 +169,8 @@ def _load_cases(
             cases.append(case)
 
     for doi in dois:
-        value = doi.strip()
-        if value and value not in by_doi:
+        value = normalize_doi(doi)
+        if value not in by_doi:
             case = {
                 "doi": value,
                 "title": None,
@@ -180,9 +181,7 @@ def _load_cases(
             cases.append(case)
 
     for doi in entitled_dois:
-        value = doi.strip()
-        if not value:
-            continue
+        value = normalize_doi(doi)
         case = by_doi.get(value)
         if case is None:
             case = {
