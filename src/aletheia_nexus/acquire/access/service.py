@@ -11,9 +11,9 @@ from aletheia_nexus.acquire.access.browser import (
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
+    BrowserAttemptStatus,
     ElsevierAccessConfig,
     ElsevierAccessStatus,
-    BrowserAttemptStatus,
     MaximizedAcquisitionResult,
     MaximizedAcquisitionStatus,
 )
