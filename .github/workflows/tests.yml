@@ -91,4 +91,6 @@ jobs:
           PY
 
       - name: Run access-layer tests
+        env:
+          AN_RUN_BROWSER_SMOKE: "1"
         run: python -m pytest -q tests/acquire/access
