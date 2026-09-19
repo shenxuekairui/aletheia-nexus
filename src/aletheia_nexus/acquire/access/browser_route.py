@@ -4,7 +4,6 @@ import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
-from urllib.parse import urljoin
 from uuid import uuid4
 
 from aletheia_nexus.acquire.access.artifact import finalize_browser_resource
@@ -37,57 +36,6 @@ from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
 from aletheia_nexus.acquire.fulltext.urls import normalize_derived_url
 
 _BROWSER_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
-_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
-
-
-def _context_get_with_safe_redirects(
-    context,
-    *,
-    url: str,
-    source_page_url: str | None,
-    config: BrowserAccessConfig,
-):
-    """GET through the browser cookie jar while validating every redirect target."""
-
-    current_url = validate_browser_network_url(url)
-    redirects = 0
-    while True:
-        request_kwargs: dict[str, object] = {
-            "timeout": config.request_timeout * 1000,
-            "fail_on_status_code": False,
-            "max_redirects": 0,
-        }
-        if source_page_url:
-            request_kwargs["headers"] = {"Referer": source_page_url}
-
-        response = context.request.get(current_url, **request_kwargs)
-        if response.status not in _REDIRECT_STATUSES:
-            return response
-
-        location = response.headers.get("location")
-        if not location:
-            return response
-
-        if redirects >= config.max_request_redirects:
-            try:
-                response.dispose()
-            finally:
-                raise RuntimeError(
-                    "Authenticated PDF request exceeded max_request_redirects"
-                )
-
-        next_url = urljoin(response.url, location)
-        try:
-            next_url = validate_browser_network_url(next_url)
-        except Exception:
-            response.dispose()
-            raise
-
-        response.dispose()
-        current_url = next_url
-        redirects += 1
-
-
 _SEMANTIC_PDF_CONTROL = re.compile(
     r"(?:download|view|read|open)?\s*(?:full[- ]?text\s*)?(?:article\s*)?pdf",
     re.IGNORECASE,
@@ -267,7 +215,7 @@ def _safe_context_get(
     *,
     url: str,
     request_kwargs: dict[str, object],
-    max_redirects: int,
+    max_redirects: int = 10,
 ) -> tuple[object, tuple[RedirectHop, ...]]:
     """GET through the shared browser cookie jar with safe manual redirects."""
 
