@@ -485,8 +485,9 @@ def main() -> int:
         "--require-entitled-controls",
         action="store_true",
         help=(
-            "Freeze gate: fail if no entitled positive controls were supplied. "
-            "Any supplied entitled control already fails the run if not VERIFIED."
+            "Freeze gate: require >=3 entitled controls, access_family on every "
+            "control, >=2 distinct access families, all controls VERIFIED, and "
+            "zero unexpected runner errors."
         ),
     )
     parser.add_argument("--output-dir", type=Path, default=Path("downloads/v06"))
