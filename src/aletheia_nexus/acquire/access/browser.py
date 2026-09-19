@@ -47,7 +47,10 @@ class BrowserCapabilityUnavailable(RuntimeError):
 def _validate_config(config: BrowserAccessConfig) -> None:
     if not isinstance(config, BrowserAccessConfig):
         raise TypeError("config must be a BrowserAccessConfig")
-    if not _PROFILE_RE.fullmatch(config.profile_name) or config.profile_name in {".", ".."}:
+    if not _PROFILE_RE.fullmatch(config.profile_name) or config.profile_name in {
+        ".",
+        "..",
+    }:
         raise ValueError(
             "profile_name must be 1-64 safe characters and may not be '.' or '..'"
         )
@@ -98,7 +101,7 @@ def _load_playwright():
     return sync_playwright
 
 
-def _page_snapshot(page) -> tuple[str, str, str]:
+def _page_snapshot(page) -> tuple[str, str, str, str]:
     try:
         title = page.title()
     except Exception:
@@ -108,15 +111,24 @@ def _page_snapshot(page) -> tuple[str, str, str]:
     except Exception:
         url = ""
     try:
+        visible_text = page.locator("body").inner_text(timeout=2000)
+    except Exception:
+        visible_text = ""
+    try:
         html = page.content()
     except Exception:
         html = ""
-    return title, url, html
+    return title, url, visible_text, html
 
 
 def _report_for_page(page) -> ChallengeReport:
-    title, url, html = _page_snapshot(page)
-    return classify_access_challenge(title=title, url=url, html=html)
+    title, url, visible_text, html = _page_snapshot(page)
+    return classify_access_challenge(
+        title=title,
+        url=url,
+        visible_text=visible_text,
+        html=html,
+    )
 
 
 def _append_report(
@@ -142,7 +154,9 @@ def _wait_until_challenge_changes(
     while time.monotonic() < deadline:
         if page.is_closed():
             return report
-        page.wait_for_timeout(min(poll_interval, max(deadline - time.monotonic(), 0.01)) * 1000)
+        page.wait_for_timeout(
+            min(poll_interval, max(deadline - time.monotonic(), 0.01)) * 1000
+        )
         report = _report_for_page(page)
         _append_report(history, report)
         if report.kind == ChallengeKind.NONE:
@@ -254,9 +268,11 @@ def _challenge_from_non_pdf_response(response, body: bytes) -> ChallengeReport:
     if "html" not in content_type and b"<html" not in body[:4096].lower():
         return ChallengeReport(kind=ChallengeKind.NONE)
     text = body[:500_000].decode("utf-8", errors="ignore")
+    parsed = parse_html(text)
     return classify_access_challenge(
-        title="",
+        title=parsed.title or "",
         url=response.url,
+        visible_text=parsed.visible_text,
         html=text,
     )
 
@@ -271,10 +287,15 @@ def _request_pdf_candidate(
     config: BrowserAccessConfig,
 ) -> tuple[BrowserFileAttempt, ChallengeReport | None]:
     try:
+        request_kwargs: dict[str, object] = {
+            "timeout": config.request_timeout * 1000,
+            "fail_on_status_code": False,
+        }
+        if source_page_url:
+            request_kwargs["headers"] = {"Referer": source_page_url}
         response = context.request.get(
             candidate.url,
-            timeout=config.request_timeout * 1000,
-            fail_on_status_code=False,
+            **request_kwargs,
         )
     except Exception as exc:
         return (
@@ -484,7 +505,10 @@ def _attempt_source(
     def on_response(response) -> None:
         try:
             content_type = (response.headers.get("content-type") or "").lower()
-            if "application/pdf" in content_type and response.url not in network_pdf_urls:
+            if (
+                "application/pdf" in content_type
+                and response.url not in network_pdf_urls
+            ):
                 network_pdf_urls.append(response.url)
         except Exception:
             return
@@ -507,10 +531,15 @@ def _attempt_source(
             config=config,
         )
         file_attempts.append(direct)
-        if direct.result is not None and direct.result.status == AcquisitionStatus.VERIFIED:
+        if (
+            direct.result is not None
+            and direct.result.status == AcquisitionStatus.VERIFIED
+        ):
             return BrowserAccessAttempt(
                 source_candidate=source,
-                final_url=direct.result.retrieved.final_url if direct.result.retrieved else source.url,
+                final_url=direct.result.retrieved.final_url
+                if direct.result.retrieved
+                else source.url,
                 status=BrowserAttemptStatus.VERIFIED,
                 file_attempts=tuple(file_attempts),
                 candidates_considered=1,
@@ -540,7 +569,10 @@ def _attempt_source(
                 config=config,
             )
             file_attempts.append(attempt)
-            if attempt.result is not None and attempt.result.status == AcquisitionStatus.VERIFIED:
+            if (
+                attempt.result is not None
+                and attempt.result.status == AcquisitionStatus.VERIFIED
+            ):
                 return BrowserAccessAttempt(
                     source_candidate=source,
                     final_url=source.url,
@@ -629,9 +661,13 @@ def _attempt_source(
 
     if navigation_response is not None:
         try:
-            content_type = (navigation_response.headers.get("content-type") or "").lower()
+            content_type = (
+                navigation_response.headers.get("content-type") or ""
+            ).lower()
             if "application/pdf" in content_type:
-                candidates.insert(0, _candidate_for_url(source, navigation_response.url))
+                candidates.insert(
+                    0, _candidate_for_url(source, navigation_response.url)
+                )
         except Exception:
             pass
 
@@ -641,9 +677,7 @@ def _attempt_source(
         except ValueError:
             continue
 
-    candidates = list(
-        _dedupe_candidates(candidates, limit=config.max_pdf_candidates)
-    )
+    candidates = list(_dedupe_candidates(candidates, limit=config.max_pdf_candidates))
 
     retried_auth_urls: set[str] = set()
     for candidate in candidates:
@@ -656,7 +690,10 @@ def _attempt_source(
             config=config,
         )
         file_attempts.append(attempt)
-        if attempt.result is not None and attempt.result.status == AcquisitionStatus.VERIFIED:
+        if (
+            attempt.result is not None
+            and attempt.result.status == AcquisitionStatus.VERIFIED
+        ):
             return BrowserAccessAttempt(
                 source_candidate=source,
                 final_url=page.url,
@@ -758,7 +795,9 @@ def _attempt_source(
                         file_attempts=tuple(file_attempts),
                         candidates_considered=len(file_attempts),
                         interaction_used=interaction_used,
-                        evidence=("Explicit article-PDF browser control produced a file",),
+                        evidence=(
+                            "Explicit article-PDF browser control produced a file",
+                        ),
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
 
@@ -797,7 +836,9 @@ def _attempt_source(
                         file_attempts=tuple(file_attempts),
                         candidates_considered=len(file_attempts),
                         interaction_used=interaction_used,
-                        evidence=("Network response after PDF control yielded verified file",),
+                        evidence=(
+                            "Network response after PDF control yielded verified file",
+                        ),
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
 
@@ -891,17 +932,21 @@ def acquire_with_browser(
 
             try:
                 context.set_default_timeout(config.navigation_timeout * 1000)
-                page = context.pages[0] if context.pages else context.new_page()
 
                 for source in normalized_routes:
-                    attempt = _attempt_source(
-                        context,
-                        page,
-                        source=source,
-                        output_dir=output_dir,
-                        expected_title=expected_title,
-                        config=config,
-                    )
+                    page = context.new_page()
+                    try:
+                        attempt = _attempt_source(
+                            context,
+                            page,
+                            source=source,
+                            output_dir=output_dir,
+                            expected_title=expected_title,
+                            config=config,
+                        )
+                    finally:
+                        if not page.is_closed():
+                            page.close()
                     attempts.append(attempt)
                     if (
                         attempt.result is not None
@@ -909,8 +954,6 @@ def acquire_with_browser(
                     ):
                         verified = attempt.result
                         break
-                    if page.is_closed():
-                        page = context.new_page()
             finally:
                 context.close()
     except BrowserCapabilityUnavailable:
