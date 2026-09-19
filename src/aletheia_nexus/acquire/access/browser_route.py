@@ -32,7 +32,6 @@ _SEMANTIC_PDF_CONTROL = re.compile(
     re.IGNORECASE,
 )
 
-
 def _page_snapshot(page) -> tuple[str, str, str, str]:
     try:
         title = page.title()
@@ -349,9 +348,7 @@ def _browser_response_to_file_attempt(
             )
 
         content_type = response.headers.get("content-type")
-        if b"%PDF-" not in body[:1024] and "pdf" not in (
-            content_type or ""
-        ).lower():
+        if b"%PDF-" not in body[:1024] and "pdf" not in (content_type or "").lower():
             return BrowserFileAttempt(
                 candidate=candidate,
                 source_page_url=source_page_url,
@@ -847,9 +844,7 @@ def attempt_browser_route(
                         file_attempts=tuple(file_attempts),
                         candidates_considered=len(file_attempts),
                         interaction_used=interaction_used,
-                        evidence=(
-                            "PDF control produced a verified browser response",
-                        ),
+                        evidence=("PDF control produced a verified browser response",),
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
 
