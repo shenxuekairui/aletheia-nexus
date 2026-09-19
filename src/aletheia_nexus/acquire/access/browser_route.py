@@ -461,6 +461,22 @@ def _browser_response_to_file_attempt(
     resource: RetrievedResource | None = None
     try:
         candidate = _candidate_for_url(parent, response.url)
+        content_length = response.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > config.max_bytes:
+                    return BrowserFileAttempt(
+                        candidate=candidate,
+                        source_page_url=source_page_url,
+                        method="browser_response",
+                        error=(
+                            "Browser PDF response exceeds max_bytes "
+                            f"({content_length} > {config.max_bytes})"
+                        ),
+                    )
+            except ValueError:
+                pass
+
         body = response.body()
         if len(body) > config.max_bytes:
             return BrowserFileAttempt(
