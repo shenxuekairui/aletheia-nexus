@@ -250,6 +250,7 @@ def acquire_full_text_maximized(
     browser_config: BrowserAccessConfig | None = None,
     browser_session: BrowserSession | None = None,
     elsevier_config: ElsevierAccessConfig | None = None,
+    auto_official_api: bool = True,
     expected_title: str | None = None,
     unpaywall_email: str | None = None,
     openalex_api_key: str | None = None,
@@ -272,7 +273,9 @@ def acquire_full_text_maximized(
     """Maximize legitimate full-text acquisition across all supported access layers.
 
     v0.5 remains the first stage because it is cheap, deterministic and hardened.
-    A configured/applicable official authenticated API is tried next. Only
+    Configured official-provider credentials are discovered from the environment by
+    default, or may be supplied explicitly. An applicable authenticated API is tried
+    next. Only
     remaining non-VERIFIED outcomes escalate to persistent browser recovery.
     No access mechanism may weaken scientific validation.
     """
@@ -281,6 +284,8 @@ def acquire_full_text_maximized(
         elsevier_config, ElsevierAccessConfig
     ):
         raise TypeError("elsevier_config must be an ElsevierAccessConfig or None")
+    if not isinstance(auto_official_api, bool):
+        raise TypeError("auto_official_api must be a boolean")
     if browser_session is not None and not isinstance(browser_session, BrowserSession):
         raise TypeError("browser_session must be a BrowserSession or None")
     if browser_session is not None and browser_config is not None:
@@ -332,6 +337,10 @@ def acquire_full_text_maximized(
                 "was unnecessary."
             ),
         )
+    
+    if elsevier_config is None and auto_official_api:
+        elsevier_config = ElsevierAccessConfig.from_env()
+
 
     elsevier_attempt = None
     if elsevier_config is not None and _should_try_elsevier_api(base):
