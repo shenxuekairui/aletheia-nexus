@@ -274,7 +274,6 @@ def classify_access_challenge(
             evidence=tuple(evidence),
         )
 
-
     if auth_hits or (
         login_url
         and any(
