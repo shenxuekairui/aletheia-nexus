@@ -49,3 +49,32 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+
+  browser-extra:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install browser extra
+        run: python -m pip install -e ".[dev,browser]"
+
+      - name: Check installed dependencies
+        run: python -m pip check
+
+      - name: Check Playwright Python API
+        run: python -c "from playwright.sync_api import sync_playwright; assert callable(sync_playwright)"
+
+      - name: Run access-layer tests
+        run: python -m pytest -q tests/acquire/access
