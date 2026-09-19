@@ -312,8 +312,10 @@ python scripts/manual_v06_access_acceptance.py `
   --require-entitled-controls
 ```
 
-正式冻结建议把 ≥3 篇、覆盖 ≥2 个出版社/访问家族的阳性对照写到本地
-`benchmarks/v06_entitled_positive_controls.local.json`，再运行：
+正式冻结必须把 ≥3 篇、覆盖 ≥2 个出版社/访问家族的阳性对照写到本地
+`benchmarks/v06_entitled_positive_controls.local.json`。每条记录都要填写
+`access_family`（例如 `elsevier-sciencedirect`、`springer-nature`），
+机器冻结门会实际检查数量与家族多样性，而不是只依赖人工约定。然后运行：
 
 ```powershell
 python scripts/manual_v06_access_acceptance.py `
