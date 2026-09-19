@@ -251,7 +251,6 @@ def test_elsevier_config_from_env_requires_nonblank_api_key(monkeypatch):
     assert ElsevierAccessConfig.from_env() is None
 
 
-
 def test_elsevier_error_does_not_persist_secret_url(monkeypatch, tmp_path):
     real_client = httpx.Client
     transport = httpx.MockTransport(
