@@ -67,6 +67,20 @@ def test_optional_institution_link_on_accessible_article_is_not_a_challenge():
     report = classify_access_challenge(
         title="Target Article",
         url="https://publisher.example/article",
+        visible_text="Full article text Access through your institution",
         html="<main>Full article text</main><a>Access through your institution</a>",
+    )
+    assert report.kind == ChallengeKind.NONE
+
+
+def test_loaded_recaptcha_library_without_active_widget_is_not_a_challenge():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        visible_text="Full article text",
+        html=(
+            '<main>Full article text</main>'
+            '<script src="https://www.google.com/recaptcha/api.js"></script>'
+        ),
     )
     assert report.kind == ChallengeKind.NONE
