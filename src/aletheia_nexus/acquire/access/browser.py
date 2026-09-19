@@ -9,7 +9,10 @@ from aletheia_nexus.acquire.access.models import (
     BrowserAttemptStatus,
     BrowserRecoveryResult,
 )
-from aletheia_nexus.acquire.access.security import validate_browser_network_url
+from aletheia_nexus.acquire.access.security import (
+    redact_url_for_record,
+    validate_browser_network_url,
+)
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
 from aletheia_nexus.acquire.fulltext.models import AcquisitionResult, AcquisitionStatus
 from aletheia_nexus.core.identifiers.doi import normalize_doi
@@ -77,6 +80,63 @@ def browser_profile_dir(config: BrowserAccessConfig) -> Path:
         else Path.home() / ".aletheia-nexus" / "browser-profiles"
     )
     return root / config.profile_name
+
+
+def _install_context_request_guard(context) -> list[str]:
+    """Protect every page/popup in the persistent context from local-network URLs."""
+
+    blocked: list[str] = []
+    if not hasattr(context, "route"):
+        return blocked
+
+    def guard(route) -> None:
+        request_url = str(route.request.url)
+        if not request_url.lower().startswith(("http://", "https://")):
+            route.continue_()
+            return
+        try:
+            validate_browser_network_url(request_url)
+        except (TypeError, ValueError):
+            safe_url = redact_url_for_record(request_url) or ""
+            if safe_url not in blocked:
+                blocked.append(safe_url)
+            route.abort("blockedbyclient")
+            return
+        route.continue_()
+
+    context.route("**/*", guard)
+    return blocked
+
+
+def _install_context_event_capture(
+    context,
+    *,
+    pdf_responses: list[object],
+    downloads: list[object],
+) -> None:
+    """Capture PDF responses and downloads from every page, including popups."""
+
+    if not hasattr(context, "on"):
+        return
+
+    def on_response(response) -> None:
+        try:
+            content_type = (response.headers.get("content-type") or "").lower()
+            if "application/pdf" in content_type:
+                pdf_responses.append(response)
+        except Exception:
+            return
+
+    def attach_page(page) -> None:
+        try:
+            page.on("download", downloads.append)
+        except Exception:
+            return
+
+    context.on("response", on_response)
+    context.on("page", attach_page)
+    for page in getattr(context, "pages", ()):
+        attach_page(page)
 
 
 def _load_playwright():
@@ -159,6 +219,9 @@ class BrowserSession:
         self.profile_dir = browser_profile_dir(self.config)
         self._manager = None
         self._context = None
+        self._blocked_unsafe_urls: list[str] = []
+        self._pdf_responses: list[object] = []
+        self._downloads: list[object] = []
 
     @property
     def active(self) -> bool:
@@ -213,6 +276,12 @@ class BrowserSession:
             ) from exc
 
         context.set_default_timeout(self.config.navigation_timeout * 1000)
+        self._blocked_unsafe_urls = _install_context_request_guard(context)
+        _install_context_event_capture(
+            context,
+            pdf_responses=self._pdf_responses,
+            downloads=self._downloads,
+        )
         self._manager = manager
         self._context = context
         return context
@@ -222,6 +291,9 @@ class BrowserSession:
         manager = self._manager
         self._context = None
         self._manager = None
+        self._blocked_unsafe_urls = []
+        self._pdf_responses = []
+        self._downloads = []
 
         if context is not None:
             try:
@@ -273,6 +345,9 @@ class BrowserSession:
                     output_dir=output_dir,
                     expected_title=expected_title,
                     config=self.config,
+                    session_blocked_urls=self._blocked_unsafe_urls,
+                    session_pdf_responses=self._pdf_responses,
+                    session_downloads=self._downloads,
                 )
             finally:
                 if not page.is_closed():
