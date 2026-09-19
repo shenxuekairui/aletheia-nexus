@@ -1,4 +1,5 @@
 import ipaddress
+import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from aletheia_nexus.acquire.discovery.urls import normalize_candidate_url
@@ -60,6 +61,10 @@ def redact_url_for_record(url: str | None) -> str | None:
 
 
 _LOCAL_HOST_SUFFIXES = (".localhost", ".local")
+_AMBIGUOUS_NUMERIC_HOST = re.compile(
+    r"^(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*$",
+    re.IGNORECASE,
+)
 
 
 def validate_browser_network_url(url: str) -> str:
@@ -82,8 +87,15 @@ def validate_browser_network_url(url: str) -> str:
         raise ValueError(f"Refusing local browser hostname: {hostname}")
 
     try:
-        address = ipaddress.ip_address(hostname)
+        address = ipaddress.ip_address(lowered)
     except ValueError:
+        # WHATWG/browser URL parsers historically accept several shorthand
+        # numeric IPv4 forms that ipaddress intentionally rejects (for example
+        # 127.1 or an integer/hex representation). Scholarly publisher routes do
+        # not need those ambiguous forms, so fail closed instead of risking an
+        # SSRF bypass to localhost/private networks.
+        if _AMBIGUOUS_NUMERIC_HOST.fullmatch(lowered):
+            raise ValueError("Refusing ambiguous numeric browser hostname")
         return normalized
 
     if not address.is_global:
