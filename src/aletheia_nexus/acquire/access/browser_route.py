@@ -352,6 +352,7 @@ def _request_pdf_candidate(
             None,
         )
 
+    resource: RetrievedResource | None = None
     try:
         content_length = response.headers.get("content-length")
         if content_length:
@@ -428,6 +429,17 @@ def _request_pdf_candidate(
             ),
             None,
         )
+    except Exception as exc:
+        if resource is not None and resource.local_path is not None:
+            resource.local_path.unlink(missing_ok=True)
+        return (
+            BrowserFileAttempt(
+                candidate=candidate,
+                source_page_url=source_page_url,
+                error=f"{type(exc).__name__}: {exc}",
+            ),
+            None,
+        )
     finally:
         try:
             response.dispose()
@@ -446,6 +458,7 @@ def _browser_response_to_file_attempt(
 ) -> BrowserFileAttempt:
     """Validate PDF bytes already returned by the real browser request."""
 
+    resource: RetrievedResource | None = None
     try:
         candidate = _candidate_for_url(parent, response.url)
         body = response.body()
@@ -496,6 +509,8 @@ def _browser_response_to_file_attempt(
             method="browser_response",
         )
     except Exception as exc:
+        if resource is not None and resource.local_path is not None:
+            resource.local_path.unlink(missing_ok=True)
         try:
             candidate = _candidate_for_url(parent, response.url)
         except Exception:
