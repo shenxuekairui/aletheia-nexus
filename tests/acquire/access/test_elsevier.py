@@ -141,7 +141,8 @@ def test_elsevier_redirect_target_is_validated_before_follow(monkeypatch, tmp_pa
     )
 
     assert attempt.status == ElsevierAccessStatus.ERROR
-    assert "local target" in attempt.error
+    assert attempt.error == "ValueError"
+    assert "127.0.0.1" not in attempt.error
 
 
 def test_elsevier_credentials_are_not_forwarded_to_cross_origin_redirect(
@@ -248,3 +249,58 @@ def test_elsevier_config_from_env_requires_nonblank_api_key(monkeypatch):
     monkeypatch.setenv("ELSEVIER_API_KEY", "   ")
 
     assert ElsevierAccessConfig.from_env() is None
+
+
+
+def test_elsevier_error_does_not_persist_secret_url(monkeypatch, tmp_path):
+    real_client = httpx.Client
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            302,
+            headers={
+                "Location": "https://cdn.example/article.pdf?token=super-secret"
+            },
+        )
+    )
+
+    monkeypatch.setattr(
+        elsevier.httpx,
+        "Client",
+        lambda **kwargs: real_client(transport=transport, **kwargs),
+    )
+
+    def reject(value):
+        if "cdn.example" in value:
+            raise ValueError(
+                "unsafe redirect https://cdn.example/article.pdf?token=super-secret"
+            )
+        return value
+
+    monkeypatch.setattr(elsevier, "validate_safe_url", reject)
+
+    attempt = elsevier.acquire_elsevier_pdf(
+        "10.1016/j.test.2026.100008",
+        config=ElsevierAccessConfig(api_key="api-secret"),
+        output_dir=tmp_path,
+    )
+
+    assert attempt.status == ElsevierAccessStatus.ERROR
+    assert attempt.error == "ValueError"
+    assert "super-secret" not in attempt.error
+    assert "cdn.example" not in attempt.error
+
+
+def test_elsevier_keep_unverified_requires_boolean(tmp_path):
+    try:
+        elsevier.acquire_elsevier_pdf(
+            "10.1016/j.test.2026.100009",
+            config=ElsevierAccessConfig(
+                api_key="api-secret",
+                keep_unverified=1,
+            ),
+            output_dir=tmp_path,
+        )
+    except TypeError as exc:
+        assert "keep_unverified" in str(exc)
+    else:
+        raise AssertionError("keep_unverified must require a real bool")
