@@ -128,7 +128,7 @@ def _load_cases(
                 stress=False,
                 entitled=True,
                 access_family=(
-                    str(item.get("access_family") or "").strip() or None
+                    str(item.get("access_family") or "").strip().casefold() or None
                 ),
             )
 
@@ -272,6 +272,7 @@ def _report_payload(
     entitled_controls: int,
     entitled_verified: int,
     entitled_access_families: tuple[str, ...],
+    entitled_controls_with_family: int,
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -321,10 +322,12 @@ def _report_payload(
             "entitled_failures": entitled_controls - entitled_verified,
             "entitled_access_family_count": len(entitled_access_families),
             "entitled_access_families": list(entitled_access_families),
+            "entitled_controls_with_family": entitled_controls_with_family,
             "entitled_controls_passed": (
                 runner_errors == 0
                 and entitled_controls >= MIN_FREEZE_ENTITLED_CONTROLS
                 and entitled_verified == entitled_controls
+                and entitled_controls_with_family == entitled_controls
                 and len(entitled_access_families) >= MIN_FREEZE_ACCESS_FAMILIES
             ),
             "final_statuses": dict(sorted(final_statuses.items())),
@@ -346,6 +349,7 @@ def _write_report(
     entitled_controls: int,
     entitled_verified: int,
     entitled_access_families: tuple[str, ...],
+    entitled_controls_with_family: int,
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -364,6 +368,7 @@ def _write_report(
         entitled_controls=entitled_controls,
         entitled_verified=entitled_verified,
         entitled_access_families=entitled_access_families,
+        entitled_controls_with_family=entitled_controls_with_family,
         elsevier_enabled=elsevier_enabled,
         elsevier_recovered=elsevier_recovered,
         browser_recovered=browser_recovered,
@@ -385,6 +390,7 @@ def _freeze_gate(
     entitled_verified: int,
     require_entitled_controls: bool,
     entitled_access_families: tuple[str, ...] = (),
+    entitled_controls_with_family: int = 0,
     runner_errors: int = 0,
 ) -> tuple[int, str | None]:
     """Evaluate the live-release access ceiling gate deterministically."""
@@ -414,9 +420,18 @@ def _freeze_gate(
                     f"received {entitled_controls}."
                 ),
             )
-        if len(entitled_access_families) < MIN_FREEZE_ACCESS_FAMILIES:
+        if entitled_controls_with_family != entitled_controls:
             return (
                 5,
+                (
+                    "freeze acceptance requires access_family on every entitled "
+                    f"positive control; received {entitled_controls_with_family}/"
+                    f"{entitled_controls} labeled controls."
+                ),
+            )
+        if len(entitled_access_families) < MIN_FREEZE_ACCESS_FAMILIES:
+            return (
+                6,
                 (
                     "freeze acceptance requires at least "
                     f"{MIN_FREEZE_ACCESS_FAMILIES} distinct publisher/access families; "
@@ -530,6 +545,10 @@ def main() -> int:
     runner_errors = 0
     entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
     entitled_verified = 0
+    entitled_controls_with_family = sum(
+        bool(case["entitled_control"] and case.get("access_family"))
+        for case in cases
+    )
     entitled_access_families = tuple(
         sorted(
             {
@@ -582,6 +601,7 @@ def main() -> int:
                     entitled_controls=entitled_controls,
                     entitled_verified=entitled_verified,
                     entitled_access_families=entitled_access_families,
+                    entitled_controls_with_family=entitled_controls_with_family,
                     elsevier_enabled=elsevier_config is not None,
                     elsevier_recovered=elsevier_recovered,
                     browser_recovered=browser_recovered,
@@ -643,6 +663,7 @@ def main() -> int:
                 entitled_controls=entitled_controls,
                 entitled_verified=entitled_verified,
                 entitled_access_families=entitled_access_families,
+                entitled_controls_with_family=entitled_controls_with_family,
                 elsevier_enabled=elsevier_config is not None,
                 elsevier_recovered=elsevier_recovered,
                 browser_recovered=browser_recovered,
@@ -682,6 +703,7 @@ def main() -> int:
         entitled_controls=entitled_controls,
         entitled_verified=entitled_verified,
         entitled_access_families=entitled_access_families,
+        entitled_controls_with_family=entitled_controls_with_family,
         require_entitled_controls=args.require_entitled_controls,
         runner_errors=runner_errors,
     )
