@@ -5,6 +5,11 @@ from aletheia_nexus.acquire.access.models import ChallengeKind, ChallengeReport
 
 _WS = re.compile(r"\s+")
 
+_MAX_TITLE = 4_096
+_MAX_URL = 16_384
+_MAX_VISIBLE_TEXT = 100_000
+_MAX_HTML = 500_000
+
 
 def _normalize(value: str) -> str:
     value = unescape(value or "").lower()
@@ -158,10 +163,13 @@ def classify_access_challenge(
     challenge libraries do not turn a normal article page into a false block.
     """
 
-    title_text = _normalize(title)
-    url_text = _normalize(url)
-    visible = _normalize(visible_text)
-    html_text = _normalize(html)
+    # Bound normalization work before allocating normalized copies. Challenge
+    # surfaces are small; scanning entire article/script payloads adds cost and
+    # increases false-positive exposure without improving access classification.
+    title_text = _normalize(title[:_MAX_TITLE])
+    url_text = _normalize(url[:_MAX_URL])
+    visible = _normalize(visible_text[:_MAX_VISIBLE_TEXT])
+    html_text = _normalize(html[:_MAX_HTML])
     # Challenge language should normally be near the access surface, not buried
     # deep inside a scholarly article. Bound visible text to reduce topical
     # false positives while retaining login/challenge content.
