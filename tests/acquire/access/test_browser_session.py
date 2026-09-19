@@ -234,3 +234,42 @@ def test_unsafe_routes_also_consume_source_route_budget(monkeypatch, tmp_path):
     assert all(
         attempt.status == BrowserAttemptStatus.UNSAFE_URL for attempt in result.attempts
     )
+
+
+
+def test_browser_session_clears_route_event_buffers(monkeypatch, tmp_path):
+    context = _Context()
+    manager = _Manager(context)
+    observed_starts = []
+
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page, *, source, **kwargs):
+        blocked = kwargs["session_blocked_urls"]
+        responses = kwargs["session_pdf_responses"]
+        downloads = kwargs["session_downloads"]
+        observed_starts.append((len(blocked), len(responses), len(downloads)))
+        blocked.append("https://blocked.example/")
+        responses.append(object())
+        downloads.append(object())
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=source.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+    ) as session:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1), _candidate(2)],
+            output_dir=tmp_path / "downloads",
+        )
+
+        assert observed_starts == [(0, 0, 0), (0, 0, 0)]
+        assert session._blocked_unsafe_urls == []
+        assert session._pdf_responses == []
+        assert session._downloads == []
