@@ -164,7 +164,7 @@ def test_chinese_article_mentioning_login_is_not_auth_prompt():
     assert report.kind == ChallengeKind.NONE
 
 
-def test_bare_institution_access_is_deferred_to_route_fallback():
+def test_bare_institution_access_is_sso_handoff():
     report = classify_access_challenge(
         title="Target Article",
         url="https://publisher.example/article",
@@ -172,7 +172,7 @@ def test_bare_institution_access_is_deferred_to_route_fallback():
         html="<a>Access through your institution</a>",
     )
 
-    assert report.kind == ChallengeKind.NONE
+    assert report.kind == ChallengeKind.SSO
 
 
 def test_institution_access_prompt_with_short_instruction_is_sso_handoff():
