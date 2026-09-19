@@ -13,9 +13,21 @@ Aletheia Nexus（AN）不是单纯的论文下载脚本。它希望把科研中�
 
 ```text
 Aletheia Nexus v0.5.2
-Full-text Acquisition
+Unauthenticated Full-text Acquisition
 FINAL / HARDENED / FROZEN
 ```
+
+当前开发主线：
+
+```text
+Aletheia Nexus v0.6
+Acquisition Maximization
+authenticated / institutional / browser-session access
+```
+
+v0.6 不修改已经冻结的 v0.5 HTTP 核心，而是在 v0.5 无法得到
+`VERIFIED` 时升级到持久浏览器会话、合法机构/账号认证和受控
+Human-in-the-loop（人在回路中）恢复。
 
 Release snapshot：
 
@@ -41,14 +53,15 @@ Direct PDF Acquisition            ✅ v0.5.0
 PDF + Paper Identity Validation   ✅ v0.5.0
 Route Resolution                  ✅ v0.5.1
 Multi-route Acquisition           ✅ v0.5.2
+Authenticated Browser Access      🚧 v0.6
+Acquisition Maximization          🚧 v0.6
 
-Content Parsing                   → v0.6 next
-Authenticated / Browser Access    → separate future capability
+Content Parsing                   → v0.7 next
 Knowledge / Workflow / Agent      → later
 Lab / Scientific World Model      → long term
 ```
 
-当前 v0.5 已闭合 **unauthenticated HTTP(S) full-text acquisition（未认证 HTTP(S) 全文获取）**链路，但不会为了提高小样本下载率而把浏览器登录、JavaScript challenge、CAPTCHA、付费墙绕过或出版社特判混入 HTTP core（HTTP 核心层）。
+当前 v0.5 已闭合 **unauthenticated HTTP(S) full-text acquisition（未认证 HTTP(S) 全文获取）**链路。v0.6 将浏览器登录、JavaScript challenge、机构认证和 Human-in-the-loop 放在独立 Access Layer（访问层）中，而不是污染 v0.5 HTTP core。AN 不做付费墙绕过、凭据猜测或 CAPTCHA-solving service（验证码代答服务）。
 
 ## Architecture
 
@@ -132,7 +145,7 @@ Requirements：
 Python >= 3.11
 ```
 
-Windows PowerShell：
+Windows PowerShell（基础能力）：
 
 ```powershell
 python -m venv .venv
@@ -140,17 +153,24 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 ```
 
+如果需要 v0.6 Browser Access（浏览器访问）：
+
+```powershell
+python -m pip install -e ".[dev,browser]"
+python -m playwright install chromium
+```
+
+浏览器能力是 optional dependency（可选依赖），不会污染 v0.5 的普通 HTTP
+安装和 CI。
+
 检查安装版本：
 
 ```powershell
 python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```
 
-正式 v0.5.2 release 应输出：
-
-```text
-0.5.2
-```
+稳定标签 `v0.5.2` 应输出 `0.5.2`。v0.6 开发分支在冻结前使用
+`0.6.0.dev0`。
 
 ## Main APIs
 
@@ -209,6 +229,54 @@ result = acquire_from_discovery(
     expected_title="Known article title",
 )
 ```
+
+### v0.6 Acquisition Maximization（获取率最大化）
+
+```python
+from aletheia_nexus.acquire.access import (
+    BrowserAccessConfig,
+    acquire_full_text_maximized,
+)
+
+def on_interaction(challenge, url):
+    print(f"请在打开的浏览器中完成 {challenge.kind}: {url}")
+
+result = acquire_full_text_maximized(
+    "10.1038/s44221-024-00340-4",
+    output_dir="downloads",
+    browser_config=BrowserAccessConfig(
+        profile_name="institution",
+        channel="chrome",
+        headless=False,
+        interaction_callback=on_interaction,
+    ),
+    unpaywall_email="you@example.com",
+)
+
+print(result.status)
+print(result.verified_path)
+```
+
+执行逻辑：
+
+```text
+v0.5 public/direct routes
+↓
+未 VERIFIED 才升级
+↓
+persistent browser profile
+↓
+session reuse / JavaScript / SSO / login / MFA / CAPTCHA handoff
+↓
+captured PDF response / authenticated request / browser download
+↓
+原有 PDF + paper identity + document-role validation
+↓
+VERIFIED
+```
+
+核心原则仍然是：**浏览器和认证只能提高“拿到文件”的能力，不能降低
+`VERIFIED` 标准。**
 
 ## v0.5 full-text acquisition
 
@@ -411,6 +479,12 @@ knowledge-base / autonomous Agent logic
 
 ## Documentation
 
+v0.6 获取率最大化规范：
+
+```text
+docs/v0.6-acquisition-maximization.md
+```
+
 完整 v0.5 最终规范：
 
 ```text
@@ -433,33 +507,31 @@ docs/v0.4.2-discovery-performance.md
 docs/v0.4.2-provider-assessment.md
 ```
 
-## Next: v0.6 Content Parsing
+## Next: v0.7 Content Parsing
 
-v0.5 解决的是：
+v0.5 解决：
 
-> **怎样可靠地获得“正确的本地论文文件”。**
+> **怎样在无需认证的 HTTP(S) 世界里可靠获得正确论文。**
 
-下一层 v0.6 将开始解决：
+v0.6 补上：
 
-> **怎样把一个可信 PDF Artifact（PDF 文件对象）转换成可信的 Structured Scientific Document（结构化科学文档）。**
+> **怎样在用户具有合法访问条件时，把机构权限、浏览器登录态和必要的人机协作纳入统一获取系统，最大化最终 VERIFIED 获取率。**
 
-预期主线：
+v0.6 稳定后，v0.7 才进入：
 
 ```text
 Verified local article
 ↓
 Content Parsing
 ↓
-structured document model
-↓
-sections / references / scientific objects
+structured scientific document
 ↓
 Knowledge organization
 ↓
 Workflow / Agent callable capability
 ```
 
-v0.6 仍将延续同样的工程原则：先定义可靠对象和失败语义，再评估解析工具和性能；不会一开始就把所有 PDF、OCR、图表、公式和 Agent 能力堆进同一层。
+这样 Acquisition（获取）层先真正闭合，再向上构建 Parsing（解析）和知识层。
 
 ## Project direction
 
