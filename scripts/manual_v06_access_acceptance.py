@@ -256,6 +256,7 @@ def _runner_error_record(
         "case_id": case["id"],
         "stress_case": bool(case["stress_case"]),
         "entitled_control": bool(case["entitled_control"]),
+        "access_family": case.get("access_family"),
         "sources": list(case["sources"]),
     }
 
@@ -382,6 +383,7 @@ def _freeze_gate(
     entitled_controls: int,
     entitled_verified: int,
     require_entitled_controls: bool,
+    entitled_access_families: tuple[str, ...] = (),
     runner_errors: int = 0,
 ) -> tuple[int, str | None]:
     """Evaluate the live-release access ceiling gate deterministically."""
@@ -413,7 +415,7 @@ def _freeze_gate(
             )
         if len(entitled_access_families) < MIN_FREEZE_ACCESS_FAMILIES:
             return (
-                4,
+                5,
                 (
                     "freeze acceptance requires at least "
                     f"{MIN_FREEZE_ACCESS_FAMILIES} distinct publisher/access families; "
