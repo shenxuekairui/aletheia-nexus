@@ -16,10 +16,10 @@ def _contains_any(text: str, terms: tuple[str, ...]) -> tuple[str, ...]:
 
 
 _CAPTCHA_VISIBLE_TERMS = (
-    "captcha",
     "verify you are human",
     "verify that you are human",
-    "human verification",
+    "prove you are human",
+    "human verification required",
 )
 _CAPTCHA_DOM_TERMS = (
     'class="g-recaptcha',
@@ -33,15 +33,19 @@ _CAPTCHA_DOM_TERMS = (
     "turnstile/v0/",
 )
 _MFA_TERMS = (
-    "multi-factor authentication",
-    "multifactor authentication",
-    "two-factor authentication",
-    "2-factor authentication",
-    "verification code",
-    "one-time password",
-    "one time password",
-    "security code",
-    "authenticator app",
+    "enter the verification code",
+    "enter your verification code",
+    "enter the security code",
+    "enter your security code",
+    "enter the one-time password",
+    "enter your one-time password",
+    "enter the one time password",
+    "code from your authenticator app",
+    "open your authenticator app",
+    "multi-factor authentication required",
+    "multifactor authentication required",
+    "two-factor authentication required",
+    "2-factor authentication required",
 )
 _BOT_TERMS = (
     "checking your browser",
@@ -86,7 +90,7 @@ _DENIED_TERMS = (
     "request blocked",
     "request has been blocked",
     "you have been blocked",
-    "forbidden",
+    "403 forbidden",
 )
 
 
@@ -108,7 +112,10 @@ def classify_access_challenge(
     url_text = _normalize(url)
     visible = _normalize(visible_text)
     html_text = _normalize(html)
-    semantic = " ".join((title_text, url_text, visible))
+    # Challenge language should normally be near the access surface, not buried
+    # deep inside a scholarly article. Bound visible text to reduce topical
+    # false positives while retaining login/challenge content.
+    semantic = " ".join((title_text, url_text, visible[:50_000]))
 
     visible_hits = _contains_any(semantic, _CAPTCHA_VISIBLE_TERMS)
     dom_hits = _contains_any(html_text, _CAPTCHA_DOM_TERMS)
