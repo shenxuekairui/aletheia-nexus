@@ -162,3 +162,14 @@ def test_chinese_article_mentioning_login_is_not_auth_prompt():
         html="<main>本文研究统一身份认证系统的设计与实现。</main>",
     )
     assert report.kind == ChallengeKind.NONE
+
+
+def test_bare_institution_access_is_sso_handoff():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        visible_text="Access through your institution",
+        html="<a>Access through your institution</a>",
+    )
+
+    assert report.kind == ChallengeKind.SSO
