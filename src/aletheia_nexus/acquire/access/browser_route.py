@@ -26,6 +26,7 @@ from aletheia_nexus.acquire.discovery.models import (
     FullTextCandidate,
 )
 from aletheia_nexus.acquire.fulltext.models import (
+    AcquisitionResult,
     AcquisitionStatus,
     RedirectHop,
     RetrievedResource,
