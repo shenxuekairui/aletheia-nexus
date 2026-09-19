@@ -36,14 +36,18 @@ def _pdf_bytes(title: str = "Authenticated Browser Integration Article") -> byte
 class _Handler(BaseHTTPRequestHandler):
     pdf_body = _pdf_bytes()
     popup_pdf_body = _pdf_bytes("Popup Browser Integration Article")
+    institution_pdf_body = _pdf_bytes("Institutional Access Integration Article")
     pdf_cookie_seen = False
     popup_cookie_seen = False
+    institution_cookie_seen = False
 
     def log_message(self, format, *args):
         return
 
     def do_GET(self):
-        if self.path == "/article":
+        path = self.path.split("?", 1)[0]
+
+        if path == "/article":
             body = b"""<!doctype html>
 <html>
 <head>
@@ -62,75 +66,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if self.path == "/popup-article":
-            body = b"""<!doctype html>
-<html>
-<head>
-<meta name="citation_title" content="Authenticated Browser Integration Article">
-<meta name="citation_doi" content="10.1000/browser-integration">
-<title>Authenticated Browser Integration Article</title>
-</head>
-<body>
-<button onclick="window.open('/popup.pdf', '_blank')">Download PDF</button>
-</body>
-</html>"""
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Set-Cookie", "an_session=ok; Path=/; SameSite=Lax")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
-        if self.path == "/popup.pdf":
-            cookie = self.headers.get("Cookie", "")
-            type(self).popup_cookie_seen = "an_session=ok" in cookie
-            if not type(self).popup_cookie_seen:
-                body = b"<html><body>Sign in to access</body></html>"
-                self.send_response(401)
-                self.send_header("Content-Type", "text/html")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-
-            body = type(self).pdf_body
-            self.send_response(200)
-            self.send_header("Content-Type", "application/pdf")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
-        if self.path == "/popup-article":
-            body = b"""<!doctype html>
-<html>
-<head>
-<meta name="citation_title" content="Popup Browser Integration Article">
-<meta name="citation_doi" content="10.1000/browser-popup">
-<title>Popup Browser Integration Article</title>
-</head>
-<body>
-<a target="_blank" href="/popup.pdf">View PDF</a>
-</body>
-</html>"""
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
-        if self.path == "/popup.pdf":
-            body = type(self).popup_pdf_body
-            self.send_response(200)
-            self.send_header("Content-Type", "application/pdf")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-
-        if self.path == "/article.pdf":
+        if path == "/article.pdf":
             cookie = self.headers.get("Cookie", "")
             type(self).pdf_cookie_seen = "an_session=ok" in cookie
             if not type(self).pdf_cookie_seen:
@@ -150,6 +86,96 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/popup-article":
+            body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Popup Browser Integration Article">
+<meta name="citation_doi" content="10.1000/browser-popup">
+<title>Popup Browser Integration Article</title>
+</head>
+<body>
+<button onclick="window.open('/popup.pdf', '_blank')">View PDF</button>
+</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/popup.pdf":
+            type(self).popup_cookie_seen = True
+            body = type(self).popup_pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/institution-article":
+            cookie = self.headers.get("Cookie", "")
+            authenticated = "institution_session=ok" in cookie
+            if authenticated:
+                body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Institutional Access Integration Article">
+<meta name="citation_doi" content="10.1000/browser-institution">
+<meta name="citation_pdf_url" content="/institution.pdf">
+<title>Institutional Access Integration Article</title>
+</head>
+<body>Authenticated article page</body>
+</html>"""
+            else:
+                body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Institutional Access Integration Article">
+<meta name="citation_doi" content="10.1000/browser-institution">
+<title>Institutional Access Integration Article</title>
+</head>
+<body><a href="/institution-login">Access through your institution</a></body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/institution-login":
+            self.send_response(302)
+            self.send_header("Location", "/institution-article")
+            self.send_header(
+                "Set-Cookie",
+                "institution_session=ok; Path=/; SameSite=Lax",
+            )
+            self.end_headers()
+            return
+
+        if path == "/institution.pdf":
+            cookie = self.headers.get("Cookie", "")
+            type(self).institution_cookie_seen = "institution_session=ok" in cookie
+            if not type(self).institution_cookie_seen:
+                body = b"<html><body>Sign in to access</body></html>"
+                self.send_response(401)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            body = type(self).institution_pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         self.send_response(404)
         self.end_headers()
 
@@ -158,6 +184,7 @@ class _Handler(BaseHTTPRequestHandler):
 def local_article_server():
     _Handler.pdf_cookie_seen = False
     _Handler.popup_cookie_seen = False
+    _Handler.institution_cookie_seen = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -253,3 +280,45 @@ def test_real_browser_recovers_pdf_opened_in_new_tab(
     assert result.verified_result is not None
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
     assert result.verified_result.file_path is not None
+
+
+
+def test_real_browser_recovers_after_institution_access_handoff(
+    monkeypatch,
+    tmp_path,
+    local_article_server,
+):
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+
+    candidate = FullTextCandidate(
+        doi="10.1000/browser-institution",
+        url=f"{local_article_server}/institution-article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    config = BrowserAccessConfig(
+        profile_name="institution-integration",
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+        auto_challenge_grace=0,
+        interaction_timeout=0,
+    )
+
+    with BrowserSession(config) as session:
+        result = session.acquire(
+            doi=candidate.doi,
+            routes=[candidate],
+            output_dir=tmp_path / "downloads",
+            expected_title="Institutional Access Integration Article",
+        )
+
+    assert _Handler.institution_cookie_seen is True
+    assert result.verified_result is not None
+    assert result.verified_result.status == AcquisitionStatus.VERIFIED
+    assert result.attempts[0].interaction_used is False
+    assert any(
+        "Institutional access handoff completed" in item
+        for item in result.attempts[0].evidence
+    )
