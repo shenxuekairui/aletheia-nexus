@@ -306,9 +306,9 @@ ELSEVIER_BEARER_TOKEN    # optional
 少量论文可以直接传 DOI：
 
 ```powershell
-python scripts/manual_v06_access_acceptance.py \
-  --entitled-doi 10.xxxx/example1 \
-  --entitled-doi 10.xxxx/example2 \
+python scripts/manual_v06_access_acceptance.py `
+  --entitled-doi 10.xxxx/example1 `
+  --entitled-doi 10.xxxx/example2 `
   --require-entitled-controls
 ```
 
@@ -316,8 +316,8 @@ python scripts/manual_v06_access_acceptance.py \
 `benchmarks/v06_entitled_positive_controls.local.json`，再运行：
 
 ```powershell
-python scripts/manual_v06_access_acceptance.py \
-  --entitled-benchmark benchmarks/v06_entitled_positive_controls.local.json \
+python scripts/manual_v06_access_acceptance.py `
+  --entitled-benchmark benchmarks/v06_entitled_positive_controls.local.json `
   --require-entitled-controls
 ```
 
