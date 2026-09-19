@@ -188,6 +188,8 @@ def _should_try_elsevier_api(base_result: MultiRouteAcquisitionResult) -> bool:
 def _final_status_from_browser(
     base_result: MultiRouteAcquisitionResult,
     attempts,
+    *,
+    elsevier_attempt=None,
 ) -> tuple[MaximizedAcquisitionStatus, str]:
     statuses = {attempt.status for attempt in attempts}
 
@@ -207,6 +209,27 @@ def _final_status_from_browser(
             MaximizedAcquisitionStatus.ACCESS_DENIED,
             "All browser recovery routes ended at explicit access-denied pages.",
         )
+
+    if elsevier_attempt is not None:
+        if elsevier_attempt.status == ElsevierAccessStatus.AUTH_REQUIRED:
+            return (
+                MaximizedAcquisitionStatus.AUTH_REQUIRED,
+                "The configured Elsevier API credentials were rejected or missing, "
+                "and browser recovery did not obtain a verified article.",
+            )
+        if elsevier_attempt.status == ElsevierAccessStatus.ENTITLEMENT_REQUIRED:
+            return (
+                MaximizedAcquisitionStatus.ENTITLEMENT_REQUIRED,
+                "Elsevier reported an entitlement boundary and browser recovery "
+                "did not obtain a verified article.",
+            )
+        if elsevier_attempt.status == ElsevierAccessStatus.ACCESS_DENIED:
+            return (
+                MaximizedAcquisitionStatus.ACCESS_DENIED,
+                "Elsevier denied API access and browser recovery did not obtain "
+                "a verified article.",
+            )
+
     if statuses and statuses <= {BrowserAttemptStatus.UNSAFE_URL}:
         return (
             MaximizedAcquisitionStatus.UNSAFE_URL,
@@ -384,7 +407,11 @@ def acquire_full_text_maximized(
             message="Browser-backed recovery acquired a verified main article.",
         )
 
-    status, message = _final_status_from_browser(base, recovery.attempts)
+    status, message = _final_status_from_browser(
+        base,
+        recovery.attempts,
+        elsevier_attempt=elsevier_attempt,
+    )
     return MaximizedAcquisitionResult(
         doi=normalized_doi,
         status=status,
