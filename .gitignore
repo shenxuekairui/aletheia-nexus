@@ -179,3 +179,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Aletheia Nexus local authenticated browser state / live reports
+.aletheia-nexus/
+v06-access-acceptance*.json
