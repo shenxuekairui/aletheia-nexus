@@ -492,3 +492,22 @@ def test_all_browser_internal_failures_surface_error():
 
     assert status == MaximizedAcquisitionStatus.ERROR
     assert "browser/navigation errors" in message.lower()
+
+
+
+def test_browser_config_type_error_precedes_base_acquisition(monkeypatch, tmp_path):
+    def should_not_run_base(*args, **kwargs):
+        raise AssertionError("invalid browser_config must fail before v0.5 network work")
+
+    monkeypatch.setattr(service, "acquire_full_text", should_not_run_base)
+
+    try:
+        service.acquire_full_text_maximized(
+            "10.1000/target",
+            output_dir=tmp_path,
+            browser_config="not-a-config",
+        )
+    except TypeError as exc:
+        assert "browser_config" in str(exc)
+    else:
+        raise AssertionError("invalid browser_config must raise TypeError")
