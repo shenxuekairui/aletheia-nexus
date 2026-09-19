@@ -170,7 +170,10 @@ def _should_try_elsevier_api(base_result: MultiRouteAcquisitionResult) -> bool:
         if "elsevier" in publisher or "cell press" in publisher:
             return True
 
-    for candidate in base_result.discovery.candidates:
+    candidates = list(base_result.discovery.candidates)
+    candidates.extend(attempt.candidate for attempt in base_result.route_attempts)
+    candidates.extend(attempt.candidate for attempt in base_result.file_attempts)
+    for candidate in candidates:
         host = (urlsplit(candidate.url).hostname or "").lower()
         if (
             host == "sciencedirect.com"
@@ -251,6 +254,10 @@ def acquire_full_text_maximized(
     user to complete SSO/MFA/CAPTCHA, but it never weakens scientific validation.
     """
 
+    if elsevier_config is not None and not isinstance(
+        elsevier_config, ElsevierAccessConfig
+    ):
+        raise TypeError("elsevier_config must be an ElsevierAccessConfig or None")
     if browser_session is not None and not isinstance(browser_session, BrowserSession):
         raise TypeError("browser_session must be a BrowserSession or None")
     if browser_session is not None and browser_config is not None:
@@ -297,7 +304,10 @@ def acquire_full_text_maximized(
             base_result=base,
             verified_result=base.verified_result,
             elapsed_seconds=time.perf_counter() - started_at,
-            message="v0.5 acquired and verified the article; browser escalation was unnecessary.",
+            message=(
+                "v0.5 acquired and verified the article; authenticated escalation "
+                "was unnecessary."
+            ),
         )
 
     elsevier_attempt = None
