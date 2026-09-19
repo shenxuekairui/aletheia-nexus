@@ -262,6 +262,8 @@ def test_report_distinguishes_entitled_controls_from_full_freeze_gate(tmp_path):
         config=config,
         base_verified=0,
         verified=3,
+        stress_base_verified=0,
+        stress_verified=0,
         entitled_controls=3,
         entitled_verified=3,
         entitled_access_families=("publisher-a", "publisher-b"),
@@ -291,6 +293,8 @@ def test_report_marks_full_freeze_gate_only_when_every_machine_gate_passes(tmp_p
         config=config,
         base_verified=6,
         verified=7,
+        stress_base_verified=6,
+        stress_verified=7,
         entitled_controls=3,
         entitled_verified=3,
         entitled_access_families=("publisher-a", "publisher-b"),
@@ -309,4 +313,7 @@ def test_report_marks_full_freeze_gate_only_when_every_machine_gate_passes(tmp_p
     assert payload["summary"]["entitled_controls_passed"] is True
     assert payload["summary"]["freeze_gate_passed"] is True
     assert payload["summary"]["v0.6_only_recoveries"] == 1
+    assert payload["summary"]["stress_uplift_count"] == 1
+    assert payload["summary"]["stress_v0.5_verified_rate"] == 0.3
+    assert payload["summary"]["stress_v0.6_verified_rate"] == 0.35
     assert payload["corpus"]["stress_case_count"] == 20
