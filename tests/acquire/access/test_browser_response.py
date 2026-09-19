@@ -14,7 +14,6 @@ from aletheia_nexus.acquire.discovery.models import (
 )
 from aletheia_nexus.acquire.fulltext.models import AcquisitionStatus
 
-
 class _Response:
     def __init__(self, body: bytes):
         self.url = "https://cdn.example/article.pdf?signature=secret"
@@ -25,7 +24,6 @@ class _Response:
     def body(self) -> bytes:
         return self._body
 
-
 def _pdf_bytes() -> bytes:
     output = BytesIO()
     writer = PdfWriter()
@@ -33,7 +31,6 @@ def _pdf_bytes() -> bytes:
     writer.add_metadata({"/Title": "Captured Browser Response"})
     writer.write(output)
     return output.getvalue()
-
 
 def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
     parent = FullTextCandidate(
@@ -56,7 +53,6 @@ def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
     assert attempt.result.status == AcquisitionStatus.VERIFIED
     assert attempt.result.file_path is not None
 
-
 class _BlobDownload:
     def __init__(self, path):
         self.url = "blob:https://publisher.example/7c0f1a8c"
@@ -64,7 +60,6 @@ class _BlobDownload:
 
     def path(self):
         return str(self._path)
-
 
 def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
     source = tmp_path / "blob-download.pdf"
@@ -92,8 +87,6 @@ def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
     assert attempt.result.retrieved.final_url == parent.url
     assert attempt.result.candidate.url == parent.url
 
-
-
 class _RedirectResponse:
     def __init__(self, *, url, status, location=None):
         self.url = url
@@ -106,7 +99,6 @@ class _RedirectResponse:
     def dispose(self):
         self.disposed = True
 
-
 class _RequestClient:
     def __init__(self, responses):
         self.responses = list(responses)
@@ -116,11 +108,9 @@ class _RequestClient:
         self.calls.append((url, kwargs))
         return self.responses.pop(0)
 
-
 class _RequestContext:
     def __init__(self, responses):
         self.request = _RequestClient(responses)
-
 
 def test_authenticated_request_follows_public_redirects_manually():
     from aletheia_nexus.acquire.access.browser_route import _safe_context_get
@@ -152,7 +142,6 @@ def test_authenticated_request_follows_public_redirects_manually():
     ]
     assert all(call[1]["max_redirects"] == 0 for call in context.request.calls)
 
-
 def test_authenticated_request_rejects_redirect_to_private_network():
     import pytest
 
@@ -175,8 +164,6 @@ def test_authenticated_request_rejects_redirect_to_private_network():
     assert first.disposed is True
     assert len(context.request.calls) == 1
 
-
-
 class _RedirectResponse:
     def __init__(self, *, url, status, location=None):
         self.url = url
@@ -189,7 +176,6 @@ class _RedirectResponse:
     def dispose(self):
         self.disposed = True
 
-
 class _RequestClient:
     def __init__(self, responses):
         self.responses = list(responses)
@@ -199,11 +185,9 @@ class _RequestClient:
         self.calls.append((url, kwargs))
         return self.responses.pop(0)
 
-
 class _RequestContext:
     def __init__(self, responses):
         self.request = _RequestClient(responses)
-
 
 def test_authenticated_request_redirects_are_followed_manually_and_bounded(tmp_path):
     first = _RedirectResponse(
@@ -235,7 +219,6 @@ def test_authenticated_request_redirects_are_followed_manually_and_bounded(tmp_p
         "https://cdn.example/article.pdf",
     ]
     assert all(call[1]["max_redirects"] == 0 for call in context.request.calls)
-
 
 def test_authenticated_request_rejects_unsafe_redirect_before_second_request(tmp_path):
     first = _RedirectResponse(
