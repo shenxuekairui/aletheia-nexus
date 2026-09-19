@@ -125,3 +125,53 @@ def test_all_unsafe_routes_do_not_start_browser(monkeypatch, tmp_path):
     assert len(result.attempts) == 1
     assert result.attempts[0].status == BrowserAttemptStatus.UNSAFE_URL
     assert result.verified_result is None
+
+
+
+def test_browser_session_reuses_one_live_context_across_dois(monkeypatch, tmp_path):
+    context = _Context()
+    manager = _Manager(context)
+    launches = 0
+    calls = []
+    original_launch = manager.playwright.chromium.launch_persistent_context
+
+    def launch_once(**kwargs):
+        nonlocal launches
+        launches += 1
+        return original_launch(**kwargs)
+
+    manager.playwright.chromium.launch_persistent_context = launch_once
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page, *, source, **kwargs):
+        calls.append((context_value, source.doi))
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=source.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+    ) as session:
+        session.acquire(
+            doi="10.1000/first",
+            routes=[_candidate(1, doi="10.1000/first")],
+            output_dir=tmp_path / "downloads",
+        )
+        assert session.active is True
+        assert context.closed is False
+
+        session.acquire(
+            doi="10.1000/second",
+            routes=[_candidate(2, doi="10.1000/second")],
+            output_dir=tmp_path / "downloads",
+        )
+        assert context.closed is False
+
+    assert launches == 1
+    assert [doi for _, doi in calls] == ["10.1000/first", "10.1000/second"]
+    assert all(context_value is context for context_value, _ in calls)
+    assert context.closed is True
