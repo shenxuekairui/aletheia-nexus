@@ -4,6 +4,7 @@ import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from aletheia_nexus.acquire.access.artifact import finalize_browser_resource
@@ -276,6 +277,41 @@ def _challenge_from_non_pdf_response(response, body: bytes) -> ChallengeReport:
     )
 
 
+def _safe_referer(source_page_url: str, target_url: str) -> str | None:
+    """Return a privacy-preserving Referer for an authenticated PDF request.
+
+    Query strings on SSO/article URLs can contain short-lived credentials.
+    Preserve the page path only for same-origin requests; cross-origin requests
+    receive origin-only referrer information.
+    """
+
+    try:
+        source = urlsplit(validate_browser_network_url(source_page_url))
+        target = urlsplit(validate_browser_network_url(target_url))
+    except (TypeError, ValueError):
+        return None
+
+    source_port = source.port or (443 if source.scheme == "https" else 80)
+    target_port = target.port or (443 if target.scheme == "https" else 80)
+    same_origin = (
+        source.scheme == target.scheme
+        and source.hostname == target.hostname
+        and source_port == target_port
+    )
+
+    if same_origin:
+        return urlunsplit(
+            (
+                source.scheme,
+                source.netloc,
+                source.path or "/",
+                "",
+                "",
+            )
+        )
+    return urlunsplit((source.scheme, source.netloc, "/", "", ""))
+
+
 def _request_pdf_candidate(
     context,
     *,
@@ -291,7 +327,9 @@ def _request_pdf_candidate(
             "fail_on_status_code": False,
         }
         if source_page_url:
-            request_kwargs["headers"] = {"Referer": source_page_url}
+            referer = _safe_referer(source_page_url, candidate.url)
+            if referer is not None:
+                request_kwargs["headers"] = {"Referer": referer}
         response, redirects = _safe_context_get(
             context,
             url=candidate.url,
