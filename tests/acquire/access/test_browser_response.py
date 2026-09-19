@@ -1,11 +1,12 @@
 from io import BytesIO
 
+import pytest
 from pypdf import PdfWriter
 
 from aletheia_nexus.acquire.access.browser_route import (
     _browser_response_to_file_attempt,
-    _context_get_with_safe_redirects,
     _download_to_file_attempt,
+    _safe_context_get,
 )
 from aletheia_nexus.acquire.access.models import BrowserAccessConfig
 from aletheia_nexus.acquire.discovery.models import (
@@ -13,6 +14,7 @@ from aletheia_nexus.acquire.discovery.models import (
     FullTextCandidate,
 )
 from aletheia_nexus.acquire.fulltext.models import AcquisitionStatus
+
 
 class _Response:
     def __init__(self, body: bytes):
@@ -24,6 +26,7 @@ class _Response:
     def body(self) -> bytes:
         return self._body
 
+
 def _pdf_bytes() -> bytes:
     output = BytesIO()
     writer = PdfWriter()
@@ -31,6 +34,7 @@ def _pdf_bytes() -> bytes:
     writer.add_metadata({"/Title": "Captured Browser Response"})
     writer.write(output)
     return output.getvalue()
+
 
 def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
     parent = FullTextCandidate(
@@ -53,6 +57,7 @@ def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
     assert attempt.result.status == AcquisitionStatus.VERIFIED
     assert attempt.result.file_path is not None
 
+
 class _BlobDownload:
     def __init__(self, path):
         self.url = "blob:https://publisher.example/7c0f1a8c"
@@ -60,6 +65,7 @@ class _BlobDownload:
 
     def path(self):
         return str(self._path)
+
 
 def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
     source = tmp_path / "blob-download.pdf"
@@ -87,6 +93,7 @@ def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
     assert attempt.result.retrieved.final_url == parent.url
     assert attempt.result.candidate.url == parent.url
 
+
 class _RedirectResponse:
     def __init__(self, *, url, status, location=None):
         self.url = url
@@ -99,6 +106,7 @@ class _RedirectResponse:
     def dispose(self):
         self.disposed = True
 
+
 class _RequestClient:
     def __init__(self, responses):
         self.responses = list(responses)
@@ -108,13 +116,13 @@ class _RequestClient:
         self.calls.append((url, kwargs))
         return self.responses.pop(0)
 
+
 class _RequestContext:
     def __init__(self, responses):
         self.request = _RequestClient(responses)
 
-def test_authenticated_request_follows_public_redirects_manually():
-    from aletheia_nexus.acquire.access.browser_route import _safe_context_get
 
+def test_authenticated_request_follows_public_redirects_manually():
     first = _RedirectResponse(
         url="https://publisher.example/start",
         status=302,
@@ -130,6 +138,7 @@ def test_authenticated_request_follows_public_redirects_manually():
         context,
         url="https://publisher.example/start",
         request_kwargs={"timeout": 1000, "fail_on_status_code": False},
+        max_redirects=2,
     )
 
     assert response is final
@@ -142,11 +151,8 @@ def test_authenticated_request_follows_public_redirects_manually():
     ]
     assert all(call[1]["max_redirects"] == 0 for call in context.request.calls)
 
+
 def test_authenticated_request_rejects_redirect_to_private_network():
-    import pytest
-
-    from aletheia_nexus.acquire.access.browser_route import _safe_context_get
-
     first = _RedirectResponse(
         url="https://publisher.example/start",
         status=302,
@@ -159,87 +165,7 @@ def test_authenticated_request_rejects_redirect_to_private_network():
             context,
             url="https://publisher.example/start",
             request_kwargs={"timeout": 1000, "fail_on_status_code": False},
-        )
-
-    assert first.disposed is True
-    assert len(context.request.calls) == 1
-
-class _RedirectResponse:
-    def __init__(self, *, url, status, location=None):
-        self.url = url
-        self.status = status
-        self.headers = {}
-        if location is not None:
-            self.headers["location"] = location
-        self.disposed = False
-
-    def dispose(self):
-        self.disposed = True
-
-class _RequestClient:
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls = []
-
-    def get(self, url, **kwargs):
-        self.calls.append((url, kwargs))
-        return self.responses.pop(0)
-
-class _RequestContext:
-    def __init__(self, responses):
-        self.request = _RequestClient(responses)
-
-def test_authenticated_request_redirects_are_followed_manually_and_bounded(tmp_path):
-    first = _RedirectResponse(
-        url="https://publisher.example/start",
-        status=302,
-        location="https://cdn.example/article.pdf",
-    )
-    final = _RedirectResponse(
-        url="https://cdn.example/article.pdf",
-        status=200,
-    )
-    context = _RequestContext([first, final])
-    config = BrowserAccessConfig(
-        profile_root=tmp_path,
-        max_request_redirects=2,
-    )
-
-    response = _context_get_with_safe_redirects(
-        context,
-        url="https://publisher.example/start",
-        source_page_url="https://publisher.example/article",
-        config=config,
-    )
-
-    assert response is final
-    assert first.disposed is True
-    assert [call[0] for call in context.request.calls] == [
-        "https://publisher.example/start",
-        "https://cdn.example/article.pdf",
-    ]
-    assert all(call[1]["max_redirects"] == 0 for call in context.request.calls)
-
-def test_authenticated_request_rejects_unsafe_redirect_before_second_request(tmp_path):
-    first = _RedirectResponse(
-        url="https://publisher.example/start",
-        status=302,
-        location="http://127.0.0.1/private.pdf",
-    )
-    context = _RequestContext([first])
-    config = BrowserAccessConfig(
-        profile_root=tmp_path,
-        max_request_redirects=2,
-    )
-
-    import pytest
-
-    with pytest.raises(ValueError):
-        _context_get_with_safe_redirects(
-            context,
-            url="https://publisher.example/start",
-            source_page_url=None,
-            config=config,
+            max_redirects=2,
         )
 
     assert first.disposed is True
