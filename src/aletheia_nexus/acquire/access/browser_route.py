@@ -1154,6 +1154,7 @@ def attempt_browser_route(
 
     initial_report = _report_for_page(page)
     if initial_report.kind == ChallengeKind.SSO:
+        _append_report(challenge_history, initial_report)
         handoff_result = run_institution_handoff_and_retry()
         if handoff_result is not None:
             return handoff_result
