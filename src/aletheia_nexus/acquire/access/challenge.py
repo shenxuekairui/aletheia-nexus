@@ -80,7 +80,6 @@ _ENTITLEMENT_TERMS = (
     "purchase this article",
     "rent or buy",
     "buy this article",
-    "get access to this article",
 )
 _DENIED_TERMS = (
     "access denied",
