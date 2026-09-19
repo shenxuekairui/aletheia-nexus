@@ -424,3 +424,29 @@ def test_maximized_can_disable_env_provider_discovery(monkeypatch, tmp_path):
     )
 
     assert result.elsevier_attempt is None
+
+
+
+def test_unexpected_browser_error_does_not_persist_secret_message(
+    monkeypatch,
+    tmp_path,
+):
+    base = _base()
+    monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
+
+    def explode(**kwargs):
+        raise RuntimeError(
+            "failed at https://publisher.example/pdf?token=super-secret"
+        )
+
+    monkeypatch.setattr(service, "acquire_with_browser", explode)
+
+    result = service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+    )
+
+    assert result.status == MaximizedAcquisitionStatus.ERROR
+    assert result.message == "Browser recovery failed unexpectedly: RuntimeError"
+    assert "super-secret" not in result.message
+    assert "publisher.example" not in result.message
