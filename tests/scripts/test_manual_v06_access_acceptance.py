@@ -418,3 +418,21 @@ def test_acceptance_report_preserves_redacted_v05_trace():
     assert "super-secret" not in serialized
     assert "parent-secret" not in serialized
     assert "%5Bredacted%5D" in serialized
+
+
+
+def test_report_path_hides_absolute_local_directories(tmp_path):
+    absolute = tmp_path / "private" / "controls.json"
+
+    rendered = acceptance._report_path(absolute)
+
+    assert rendered == "controls.json"
+    assert str(tmp_path) not in rendered
+
+
+def test_report_path_keeps_useful_relative_benchmark_path():
+    rendered = acceptance._report_path(
+        acceptance.Path("benchmarks/cdi_acquisition_10.json")
+    )
+
+    assert rendered == "benchmarks/cdi_acquisition_10.json"
