@@ -297,6 +297,16 @@ ELSEVIER_BEARER_TOKEN    # optional
 程序中可通过 `ElsevierAccessConfig.from_env()` 读取。API key、institution
 token 和 bearer token 只进入请求 header，不进入 `.acquisition.json`。
 
+真实验收时，除了固定 20 篇困难集，还应使用 `--entitled-doi` 加入
+**你已经人工确认在同一机构/账号下能下载的论文**。这些阳性对照如果任何
+一篇不能 `VERIFIED`，0.6 就不能视为完成：
+
+```powershell
+python scripts/manual_v06_access_acceptance.py \
+  --entitled-doi 10.xxxx/example1 \
+  --entitled-doi 10.xxxx/example2
+```
+
 批量任务建议复用一个 live BrowserSession（实时浏览器会话），而不是每篇
 论文重新启动浏览器：
 
