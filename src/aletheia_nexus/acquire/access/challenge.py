@@ -23,6 +23,12 @@ _CAPTCHA_VISIBLE_TERMS = (
     "请完成人机验证",
     "人机验证",
     "图形验证码",
+    "drag the slider to verify",
+    "slide to verify",
+    "slider verification",
+    "请拖动滑块",
+    "拖动滑块完成验证",
+    "滑块验证",
 )
 _CAPTCHA_DOM_TERMS = (
     'class="g-recaptcha',
@@ -56,6 +62,15 @@ _MFA_TERMS = (
     "手机验证码",
     "动态验证码",
     "二次验证",
+    "approve sign in request",
+    "approve the sign-in request",
+    "approve the sign in request",
+    "check your authenticator app",
+    "we sent a notification to your mobile device",
+    "批准登录请求",
+    "请批准登录请求",
+    "请在身份验证器应用中批准",
+    "请在 authenticator 中批准",
 )
 _BOT_TERMS = (
     "checking your browser",
