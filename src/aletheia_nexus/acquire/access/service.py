@@ -204,10 +204,11 @@ def _final_status_from_browser(
             MaximizedAcquisitionStatus.ENTITLEMENT_REQUIRED,
             "Browser recovery reached an explicit subscription/entitlement boundary.",
         )
-    if statuses and statuses <= {BrowserAttemptStatus.ACCESS_DENIED}:
+    if BrowserAttemptStatus.ACCESS_DENIED in statuses:
         return (
             MaximizedAcquisitionStatus.ACCESS_DENIED,
-            "All browser recovery routes ended at explicit access-denied pages.",
+            "Browser recovery encountered an explicit access-denied boundary "
+            "and no route obtained a verified article.",
         )
 
     if elsevier_attempt is not None:
@@ -234,6 +235,16 @@ def _final_status_from_browser(
         return (
             MaximizedAcquisitionStatus.UNSAFE_URL,
             "All browser recovery routes were rejected by browser URL safety preflight.",
+        )
+
+    if statuses and statuses <= {
+        BrowserAttemptStatus.ERROR,
+        BrowserAttemptStatus.NAVIGATION_ERROR,
+        BrowserAttemptStatus.BROWSER_UNAVAILABLE,
+    }:
+        return (
+            MaximizedAcquisitionStatus.ERROR,
+            "All browser recovery routes failed with browser/navigation errors.",
         )
 
     return (
