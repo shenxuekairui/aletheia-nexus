@@ -26,11 +26,13 @@ def test_acceptance_cases_merge_stress_and_entitled_controls(tmp_path):
                 "id": "entitled-one",
                 "doi": "10.1000/abc",
                 "title": "Confirmed title",
+                "access_family": "publisher-a",
             },
             {
                 "id": "entitled-two",
                 "doi": "10.1000/xyz",
                 "title": "Second title",
+                "access_family": "publisher-b",
             },
         ],
     )
@@ -47,6 +49,7 @@ def test_acceptance_cases_merge_stress_and_entitled_controls(tmp_path):
     assert first["stress_case"] is True
     assert first["entitled_control"] is True
     assert first["title"] == "Stress title"
+    assert first["access_family"] == "publisher-a"
     assert first["sources"] == [str(stress), str(entitled)]
 
 
@@ -72,6 +75,7 @@ def test_freeze_gate_requires_all_entitled_controls_to_verify():
     code, message = acceptance._freeze_gate(
         entitled_controls=3,
         entitled_verified=2,
+        entitled_access_families=("publisher-a", "publisher-b"),
         require_entitled_controls=True,
     )
 
@@ -79,21 +83,23 @@ def test_freeze_gate_requires_all_entitled_controls_to_verify():
     assert "1 manually confirmed entitled control" in message
 
 
-def test_freeze_gate_can_require_nonempty_positive_controls():
+def test_freeze_gate_requires_three_positive_controls():
     code, message = acceptance._freeze_gate(
-        entitled_controls=0,
-        entitled_verified=0,
+        entitled_controls=2,
+        entitled_verified=2,
+        entitled_access_families=("publisher-a", "publisher-b"),
         require_entitled_controls=True,
     )
 
     assert code == 3
-    assert message == "no entitled positive controls were supplied."
+    assert "at least 3 entitled positive controls" in message
 
 
 def test_freeze_gate_passes_only_when_access_ceiling_is_met():
     code, message = acceptance._freeze_gate(
         entitled_controls=4,
         entitled_verified=4,
+        entitled_access_families=("publisher-a", "publisher-b"),
         require_entitled_controls=True,
     )
 
@@ -105,6 +111,7 @@ def test_freeze_gate_rejects_runner_errors():
     code, message = acceptance._freeze_gate(
         entitled_controls=3,
         entitled_verified=3,
+        entitled_access_families=("publisher-a", "publisher-b"),
         require_entitled_controls=True,
         runner_errors=1,
     )
@@ -118,6 +125,7 @@ def test_runner_error_record_does_not_persist_exception_message():
         "id": "case-one",
         "stress_case": True,
         "entitled_control": False,
+        "access_family": None,
         "sources": ["benchmark.json"],
     }
     record = acceptance._runner_error_record(
@@ -133,3 +141,46 @@ def test_runner_error_record_does_not_persist_exception_message():
     assert record["runner_error_type"] == "RuntimeError"
     assert "super-secret" not in serialized
     assert "publisher.example" not in serialized
+
+
+
+def test_freeze_gate_requires_two_access_families():
+    code, message = acceptance._freeze_gate(
+        entitled_controls=3,
+        entitled_verified=3,
+        entitled_access_families=("publisher-a",),
+        require_entitled_controls=True,
+    )
+
+    assert code == 5
+    assert "at least 2 distinct publisher/access families" in message
+
+
+def test_conflicting_access_family_for_same_doi_is_rejected(tmp_path):
+    first = _write(
+        tmp_path / "first.json",
+        [
+            {
+                "doi": "10.1000/target",
+                "title": "Target",
+                "access_family": "publisher-a",
+            }
+        ],
+    )
+    second = _write(
+        tmp_path / "second.json",
+        [
+            {
+                "doi": "10.1000/target",
+                "title": "Target",
+                "access_family": "publisher-b",
+            }
+        ],
+    )
+
+    try:
+        acceptance._load_cases([], [first, second], [], [])
+    except ValueError as exc:
+        assert "Conflicting access_family values" in str(exc)
+    else:
+        raise AssertionError("conflicting access families must be rejected")
