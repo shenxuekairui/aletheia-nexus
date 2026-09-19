@@ -1,7 +1,10 @@
 from pathlib import Path
 
 from aletheia_nexus.acquire.access import service
-from aletheia_nexus.acquire.access.browser import BrowserCapabilityUnavailable
+from aletheia_nexus.acquire.access.browser import (
+    BrowserCapabilityUnavailable,
+    BrowserSession,
+)
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
@@ -171,3 +174,59 @@ def test_missing_browser_dependency_is_explicit(monkeypatch, tmp_path):
 
     assert result.status == MaximizedAcquisitionStatus.BROWSER_UNAVAILABLE
     assert result.message == "browser missing"
+
+
+
+def test_maximized_can_use_caller_owned_browser_session(monkeypatch, tmp_path):
+    base = _base()
+    verified = AcquisitionResult(
+        candidate=_candidate(
+            "https://publisher.example/article.pdf",
+            url_type=CandidateUrlType.PDF,
+        ),
+        status=AcquisitionStatus.VERIFIED,
+        file_path=tmp_path / "article.pdf",
+    )
+    recovery = BrowserRecoveryResult(
+        doi="10.1000/target",
+        verified_result=verified,
+        profile_dir=tmp_path / "profile",
+    )
+    session = BrowserSession(BrowserAccessConfig(profile_root=tmp_path))
+
+    monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
+    monkeypatch.setattr(session, "acquire", lambda **kwargs: recovery)
+
+    def should_not_open_temporary_session(**kwargs):
+        raise AssertionError("caller-owned session should be reused")
+
+    monkeypatch.setattr(
+        service,
+        "acquire_with_browser",
+        should_not_open_temporary_session,
+    )
+
+    result = service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+        browser_session=session,
+    )
+
+    assert result.status == MaximizedAcquisitionStatus.VERIFIED
+    assert result.verified_result == verified
+
+
+def test_browser_config_and_session_are_mutually_exclusive(tmp_path):
+    session = BrowserSession(BrowserAccessConfig(profile_root=tmp_path))
+
+    try:
+        service.acquire_full_text_maximized(
+            "10.1000/target",
+            output_dir=tmp_path,
+            browser_config=BrowserAccessConfig(profile_root=tmp_path),
+            browser_session=session,
+        )
+    except ValueError as exc:
+        assert "mutually exclusive" in str(exc)
+    else:
+        raise AssertionError("expected mutually exclusive browser options to fail")
