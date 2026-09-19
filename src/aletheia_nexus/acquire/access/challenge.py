@@ -91,24 +91,6 @@ _SSO_TERMS = (
     "中国科技云通行证账号登录",
     "carsi",
 )
-
-_SSO_STRONG_TERMS = (
-    "institutional sign in",
-    "institutional login",
-    "sign in through your institution",
-    "choose your institution",
-    "select your institution",
-    "find your institution",
-    "shibboleth",
-    "openathens",
-    "机构登录",
-    "选择机构",
-    "选择您的机构",
-    "查找您的机构",
-    "使用中国科技云通行证登录",
-    "中国科技云通行证账号登录",
-    "carsi",
-)
 _AUTH_TERMS = (
     "sign in to access",
     "log in to access",
