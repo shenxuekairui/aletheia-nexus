@@ -180,6 +180,7 @@ def _load_cases(
 
     return cases
 
+
 def _interaction_notice(challenge, url: str) -> None:
     safe_url = redact_url_for_record(url)
     print()
