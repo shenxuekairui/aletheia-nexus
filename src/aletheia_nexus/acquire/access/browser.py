@@ -27,6 +27,8 @@ class BrowserCapabilityUnavailable(RuntimeError):
 def _validate_config(config: BrowserAccessConfig) -> None:
     if not isinstance(config, BrowserAccessConfig):
         raise TypeError("config must be a BrowserAccessConfig")
+    if not isinstance(config.profile_name, str):
+        raise TypeError("profile_name must be a string")
     if not _PROFILE_RE.fullmatch(config.profile_name) or config.profile_name in {
         ".",
         "..",
@@ -34,6 +36,14 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         raise ValueError(
             "profile_name must be 1-64 safe characters and may not be '.' or '..'"
         )
+    for name in ("headless", "interactive", "keep_unverified"):
+        if not isinstance(getattr(config, name), bool):
+            raise TypeError(f"{name} must be a bool")
+    if config.channel is not None:
+        if not isinstance(config.channel, str):
+            raise TypeError("channel must be a string or None")
+        if not config.channel.strip():
+            raise ValueError("channel must not be blank")
     if config.interaction_callback is not None and not callable(
         config.interaction_callback
     ):
