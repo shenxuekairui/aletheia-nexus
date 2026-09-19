@@ -24,17 +24,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _pdf_bytes() -> bytes:
+def _pdf_bytes(title: str = "Authenticated Browser Integration Article") -> bytes:
     output = BytesIO()
     writer = PdfWriter()
     writer.add_blank_page(width=612, height=792)
-    writer.add_metadata({"/Title": "Authenticated Browser Integration Article"})
+    writer.add_metadata({"/Title": title})
     writer.write(output)
     return output.getvalue()
 
 
 class _Handler(BaseHTTPRequestHandler):
     pdf_body = _pdf_bytes()
+    popup_pdf_body = _pdf_bytes("Popup Browser Integration Article")
     pdf_cookie_seen = False
     popup_cookie_seen = False
 
@@ -94,6 +95,35 @@ class _Handler(BaseHTTPRequestHandler):
                 return
 
             body = type(self).pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+
+        if self.path == "/popup-article":
+            body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Popup Browser Integration Article">
+<meta name="citation_doi" content="10.1000/browser-popup">
+<title>Popup Browser Integration Article</title>
+</head>
+<body>
+<a target="_blank" href="/popup.pdf">View PDF</a>
+</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if self.path == "/popup.pdf":
+            body = type(self).popup_pdf_body
             self.send_response(200)
             self.send_header("Content-Type", "application/pdf")
             self.send_header("Content-Length", str(len(body)))
@@ -231,3 +261,42 @@ def test_real_browser_recovers_pdf_opened_in_new_tab(
     assert _Handler.popup_cookie_seen is True
     assert result.verified_result is not None
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
+
+
+
+def test_real_browser_recovers_pdf_opened_in_new_tab(
+    monkeypatch,
+    tmp_path,
+    local_article_server,
+):
+    # Production rejects local-network targets. The deterministic integration
+    # fixture is intentionally local, so only the test replaces that policy.
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+
+    candidate = FullTextCandidate(
+        doi="10.1000/browser-popup",
+        url=f"{local_article_server}/popup-article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    config = BrowserAccessConfig(
+        profile_name="popup-integration",
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+        auto_challenge_grace=0,
+        interaction_timeout=0,
+    )
+
+    with BrowserSession(config) as session:
+        result = session.acquire(
+            doi=candidate.doi,
+            routes=[candidate],
+            output_dir=tmp_path / "downloads",
+            expected_title="Popup Browser Integration Article",
+        )
+
+    assert result.verified_result is not None
+    assert result.verified_result.status == AcquisitionStatus.VERIFIED
+    assert result.verified_result.file_path is not None
