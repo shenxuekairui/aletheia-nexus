@@ -1,7 +1,7 @@
 import hashlib
 import time
 from pathlib import Path
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, urljoin, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -67,13 +67,19 @@ def _credential_modes(config: ElsevierAccessConfig) -> tuple[str, ...]:
     return tuple(modes)
 
 
-def _headers(config: ElsevierAccessConfig) -> dict[str, str]:
+def _headers(config: ElsevierAccessConfig, *, url: str) -> dict[str, str]:
+    """Return request headers without leaking Elsevier credentials cross-origin."""
+
     headers = {
         "Accept": "application/pdf",
         "User-Agent": build_user_agent(),
-        "X-ELS-APIKey": config.api_key,
-        "X-ELS-ResourceVersion": "new",
     }
+    hostname = (urlsplit(url).hostname or "").lower().rstrip(".")
+    if hostname != "api.elsevier.com":
+        return headers
+
+    headers["X-ELS-APIKey"] = config.api_key
+    headers["X-ELS-ResourceVersion"] = "new"
     if config.inst_token:
         headers["X-ELS-Insttoken"] = config.inst_token
     if config.bearer_token:
@@ -140,10 +146,13 @@ def acquire_elsevier_pdf(
         with httpx.Client(
             follow_redirects=False,
             timeout=config.timeout,
-            headers=_headers(config),
         ) as client:
             while True:
-                with client.stream("GET", current_url) as response:
+                with client.stream(
+                    "GET",
+                    current_url,
+                    headers=_headers(config, url=current_url),
+                ) as response:
                     if response.status_code in REDIRECT_STATUSES:
                         location = response.headers.get("location")
                         if not location:
