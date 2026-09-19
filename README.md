@@ -238,8 +238,10 @@ from aletheia_nexus.acquire.access import (
     acquire_full_text_maximized,
 )
 
+
 def on_interaction(challenge, url):
     print(f"请在打开的浏览器中完成 {challenge.kind}: {url}")
+
 
 result = acquire_full_text_maximized(
     "10.1038/s44221-024-00340-4",
