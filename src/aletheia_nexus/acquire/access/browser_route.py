@@ -45,7 +45,7 @@ _SEMANTIC_PDF_CONTROL = re.compile(
 _SEMANTIC_INSTITUTION_CONTROL = re.compile(
     r"(?:access|sign\s*in|log\s*in).{0,50}(?:institution|organization)"
     r"|(?:institutional|organization).{0,50}(?:access|sign\s*in|login)"
-    r"|carsi|中国科技云通行证|统一身份认证|机构(?:登录|认证|访问)",
+    r"|carsi|shibboleth|openathens|中国科技云通行证|统一身份认证|机构(?:登录|认证|访问)",
     re.IGNORECASE,
 )
 
