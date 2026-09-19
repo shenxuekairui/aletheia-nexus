@@ -580,6 +580,7 @@ def main() -> int:
                     verified=verified,
                     entitled_controls=entitled_controls,
                     entitled_verified=entitled_verified,
+                    entitled_access_families=entitled_access_families,
                     elsevier_enabled=elsevier_config is not None,
                     elsevier_recovered=elsevier_recovered,
                     browser_recovered=browser_recovered,
