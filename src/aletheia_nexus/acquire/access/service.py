@@ -8,8 +8,11 @@ from aletheia_nexus.acquire.access.browser import (
     BrowserSession,
     acquire_with_browser,
 )
+from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
+    ElsevierAccessConfig,
+    ElsevierAccessStatus,
     BrowserAttemptStatus,
     MaximizedAcquisitionResult,
     MaximizedAcquisitionStatus,
@@ -157,6 +160,28 @@ def browser_recovery_routes(
     return tuple(item[2] for item in ranked[:limit])
 
 
+def _should_try_elsevier_api(base_result: MultiRouteAcquisitionResult) -> bool:
+    doi = base_result.doi.lower()
+    if doi.startswith("10.1016/"):
+        return True
+
+    if base_result.metadata is not None:
+        publisher = (base_result.metadata.publisher or "").lower()
+        if "elsevier" in publisher or "cell press" in publisher:
+            return True
+
+    for candidate in base_result.discovery.candidates:
+        host = (urlsplit(candidate.url).hostname or "").lower()
+        if (
+            host == "sciencedirect.com"
+            or host.endswith(".sciencedirect.com")
+            or host == "elsevier.com"
+            or host.endswith(".elsevier.com")
+        ):
+            return True
+    return False
+
+
 def _final_status_from_browser(
     base_result: MultiRouteAcquisitionResult,
     attempts,
@@ -198,6 +223,7 @@ def acquire_full_text_maximized(
     output_dir: str | Path,
     browser_config: BrowserAccessConfig | None = None,
     browser_session: BrowserSession | None = None,
+    elsevier_config: ElsevierAccessConfig | None = None,
     expected_title: str | None = None,
     unpaywall_email: str | None = None,
     openalex_api_key: str | None = None,
@@ -274,6 +300,28 @@ def acquire_full_text_maximized(
             message="v0.5 acquired and verified the article; browser escalation was unnecessary.",
         )
 
+    elsevier_attempt = None
+    if elsevier_config is not None and _should_try_elsevier_api(base):
+        elsevier_attempt = acquire_elsevier_pdf(
+            normalized_doi,
+            config=elsevier_config,
+            output_dir=output_dir,
+            expected_title=base.expected_title,
+        )
+        if (
+            elsevier_attempt.status == ElsevierAccessStatus.VERIFIED
+            and elsevier_attempt.result is not None
+        ):
+            return MaximizedAcquisitionResult(
+                doi=normalized_doi,
+                status=MaximizedAcquisitionStatus.VERIFIED,
+                base_result=base,
+                elsevier_attempt=elsevier_attempt,
+                verified_result=elsevier_attempt.result,
+                elapsed_seconds=time.perf_counter() - started_at,
+                message="Official Elsevier API acquired a verified main article.",
+            )
+
     routes = browser_recovery_routes(
         base,
         limit=config.max_source_routes,
@@ -300,6 +348,7 @@ def acquire_full_text_maximized(
             doi=normalized_doi,
             status=MaximizedAcquisitionStatus.BROWSER_UNAVAILABLE,
             base_result=base,
+            elsevier_attempt=elsevier_attempt,
             elapsed_seconds=time.perf_counter() - started_at,
             message=str(exc),
         )
@@ -308,6 +357,7 @@ def acquire_full_text_maximized(
             doi=normalized_doi,
             status=MaximizedAcquisitionStatus.ERROR,
             base_result=base,
+            elsevier_attempt=elsevier_attempt,
             elapsed_seconds=time.perf_counter() - started_at,
             message=f"Browser recovery failed unexpectedly: {type(exc).__name__}: {exc}",
         )
@@ -318,6 +368,7 @@ def acquire_full_text_maximized(
             status=MaximizedAcquisitionStatus.VERIFIED,
             base_result=base,
             browser_attempts=recovery.attempts,
+            elsevier_attempt=elsevier_attempt,
             verified_result=recovery.verified_result,
             elapsed_seconds=time.perf_counter() - started_at,
             message="Browser-backed recovery acquired a verified main article.",
@@ -329,6 +380,7 @@ def acquire_full_text_maximized(
         status=status,
         base_result=base,
         browser_attempts=recovery.attempts,
+        elsevier_attempt=elsevier_attempt,
         elapsed_seconds=time.perf_counter() - started_at,
         message=message,
     )
