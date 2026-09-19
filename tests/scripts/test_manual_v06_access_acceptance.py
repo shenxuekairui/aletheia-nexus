@@ -143,7 +143,6 @@ def test_runner_error_record_does_not_persist_exception_message():
     assert "publisher.example" not in serialized
 
 
-
 def test_freeze_gate_requires_two_access_families():
     code, message = acceptance._freeze_gate(
         entitled_controls=3,
