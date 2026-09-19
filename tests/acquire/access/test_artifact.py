@@ -90,7 +90,6 @@ def test_browser_artifact_rejects_non_pdf_and_cleans_temp_file(tmp_path):
     assert not source.exists()
 
 
-
 def test_access_details_reject_credential_like_fields(tmp_path):
     source = tmp_path / "browser-secret.part"
     writer = PdfWriter()
@@ -134,9 +133,7 @@ def test_access_detail_urls_are_redacted_before_persistence(tmp_path):
         expected_title="Expected Browser Article",
         keep_unverified=False,
         transport="test",
-        access_details={
-            "source_url": "https://idp.example/login?state=super-secret"
-        },
+        access_details={"source_url": "https://idp.example/login?state=super-secret"},
     )
 
     payload = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
