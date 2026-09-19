@@ -204,7 +204,6 @@ def test_all_unsafe_routes_return_without_starting_browser(monkeypatch, tmp_path
     assert result.attempts[0].status == BrowserAttemptStatus.UNSAFE_URL
 
 
-
 def test_unsafe_routes_also_consume_source_route_budget(monkeypatch, tmp_path):
     started = False
 
@@ -233,6 +232,5 @@ def test_unsafe_routes_also_consume_source_route_budget(monkeypatch, tmp_path):
     assert started is False
     assert len(result.attempts) == 2
     assert all(
-        attempt.status == BrowserAttemptStatus.UNSAFE_URL
-        for attempt in result.attempts
+        attempt.status == BrowserAttemptStatus.UNSAFE_URL for attempt in result.attempts
     )
