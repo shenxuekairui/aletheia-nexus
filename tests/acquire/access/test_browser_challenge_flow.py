@@ -298,3 +298,48 @@ def test_standard_federated_login_controls_are_clicked():
 
         assert browser_route._click_semantic_institution_control(page) is True
         assert page.control.clicked is True
+
+
+
+def test_institution_chooser_is_treated_as_sso_handoff(tmp_path):
+    events = []
+    page = _Page(
+        [
+            (
+                "Choose your institution",
+                "https://publisher.example/institution",
+                "Choose your institution",
+                "<main>Choose your institution</main>",
+            ),
+            (
+                "Article",
+                "https://publisher.example/article",
+                "Article abstract",
+                "<main>Article abstract</main>",
+            ),
+        ]
+    )
+
+    report, history, interaction_used = _resolve_page_challenge(
+        page,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            auto_challenge_grace=0,
+            interaction_timeout=0.01,
+            poll_interval=0.001,
+            interaction_callback=lambda challenge, url: events.append(
+                (challenge.kind, url)
+            ),
+        ),
+    )
+
+    assert events == [
+        (
+            ChallengeKind.SSO,
+            "https://publisher.example/institution",
+        )
+    ]
+    assert report.kind == ChallengeKind.NONE
+    assert history[0].kind == ChallengeKind.SSO
+    assert history[-1].kind == ChallengeKind.NONE
+    assert interaction_used is True
