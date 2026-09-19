@@ -54,6 +54,10 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         raise ValueError(
             "profile_name must be 1-64 safe characters and may not be '.' or '..'"
         )
+    if config.interaction_callback is not None and not callable(
+        config.interaction_callback
+    ):
+        raise TypeError("interaction_callback must be callable or None")
     for name in (
         "navigation_timeout",
         "request_timeout",
@@ -199,6 +203,8 @@ def _resolve_page_challenge(
     # The visible persistent browser is the handoff surface. The user may complete
     # legitimate SSO, MFA, CAPTCHA or other account verification. AN never records
     # credentials or challenge answers; it only observes when the page becomes usable.
+    if config.interaction_callback is not None:
+        config.interaction_callback(report, page.url)
     report = _wait_until_challenge_changes(
         page,
         initial=report,
@@ -903,7 +909,12 @@ def acquire_with_browser(
 
     started_at = time.perf_counter()
     profile = browser_profile_dir(config)
-    profile.mkdir(parents=True, exist_ok=True)
+    profile.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        profile.chmod(0o700)
+    except OSError:
+        # Windows and some mounted filesystems may not implement POSIX modes.
+        pass
     sync_playwright = _load_playwright()
 
     attempts: list[BrowserAccessAttempt] = []
