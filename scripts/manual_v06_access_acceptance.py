@@ -4,6 +4,7 @@ from pathlib import Path
 
 from aletheia_nexus.acquire.access import (
     BrowserAccessConfig,
+    BrowserSession,
     MaximizedAcquisitionStatus,
     acquire_full_text_maximized,
 )
@@ -167,40 +168,41 @@ def main() -> int:
     base_verified = 0
     interaction_cases = 0
 
-    for index, case in enumerate(cases, start=1):
-        doi = str(case["doi"])
-        title = case["title"]
-        print(f"[{index}/{len(cases)}] {doi}")
-        result = acquire_full_text_maximized(
-            doi,
-            output_dir=args.output_dir,
-            browser_config=config,
-            expected_title=title,
-            unpaywall_email=args.unpaywall_email,
-            openalex_api_key=args.openalex_api_key,
-            metadata_mailto=args.metadata_mailto,
-        )
-        record = _serialize(result)
-        records.append(record)
+    with BrowserSession(config) as browser_session:
+        for index, case in enumerate(cases, start=1):
+            doi = str(case["doi"])
+            title = case["title"]
+            print(f"[{index}/{len(cases)}] {doi}")
+            result = acquire_full_text_maximized(
+                doi,
+                output_dir=args.output_dir,
+                browser_session=browser_session,
+                expected_title=title,
+                unpaywall_email=args.unpaywall_email,
+                openalex_api_key=args.openalex_api_key,
+                metadata_mailto=args.metadata_mailto,
+            )
+            record = _serialize(result)
+            records.append(record)
 
-        if result.base_result.status.value == "VERIFIED":
-            base_verified += 1
-        if result.status == MaximizedAcquisitionStatus.VERIFIED:
-            verified += 1
-        if any(attempt.interaction_used for attempt in result.browser_attempts):
-            interaction_cases += 1
+            if result.base_result.status.value == "VERIFIED":
+                base_verified += 1
+            if result.status == MaximizedAcquisitionStatus.VERIFIED:
+                verified += 1
+            if any(attempt.interaction_used for attempt in result.browser_attempts):
+                interaction_cases += 1
 
-        print(
-            f"  base={result.base_result.status.value} "
-            f"final={result.status.value} "
-            f"verified={result.verified_path or '-'}"
-        )
+            print(
+                f"  base={result.base_result.status.value} "
+                f"final={result.status.value} "
+                f"verified={result.verified_path or '-'}"
+            )
 
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(
-            json.dumps(records, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(
+                json.dumps(records, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
 
     print()
     print("Aletheia Nexus v0.6 acceptance summary")
