@@ -52,3 +52,52 @@ def test_headless_browser_rejects_interactive_handoff(tmp_path):
     )
     with pytest.raises(ValueError):
         browser_profile_dir(config)
+
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("headless", 1),
+        ("interactive", "yes"),
+        ("keep_unverified", 0),
+    ],
+)
+def test_browser_boolean_options_require_real_bools(tmp_path, field, value):
+    kwargs = {
+        "profile_name": "typed-config",
+        "profile_root": tmp_path,
+        field: value,
+    }
+    config = BrowserAccessConfig(**kwargs)
+
+    with pytest.raises(TypeError, match=field):
+        browser_profile_dir(config)
+
+
+def test_browser_channel_rejects_blank_or_non_string_values(tmp_path):
+    with pytest.raises(ValueError, match="channel"):
+        browser_profile_dir(
+            BrowserAccessConfig(
+                profile_root=tmp_path,
+                channel="   ",
+            )
+        )
+
+    with pytest.raises(TypeError, match="channel"):
+        browser_profile_dir(
+            BrowserAccessConfig(
+                profile_root=tmp_path,
+                channel=123,
+            )
+        )
+
+
+def test_browser_profile_name_type_error_is_explicit(tmp_path):
+    config = BrowserAccessConfig(
+        profile_name=123,
+        profile_root=tmp_path,
+    )
+
+    with pytest.raises(TypeError, match="profile_name"):
+        browser_profile_dir(config)
