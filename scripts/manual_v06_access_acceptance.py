@@ -322,7 +322,8 @@ def _report_payload(
             "entitled_access_family_count": len(entitled_access_families),
             "entitled_access_families": list(entitled_access_families),
             "entitled_controls_passed": (
-                entitled_controls >= MIN_FREEZE_ENTITLED_CONTROLS
+                runner_errors == 0
+                and entitled_controls >= MIN_FREEZE_ENTITLED_CONTROLS
                 and entitled_verified == entitled_controls
                 and len(entitled_access_families) >= MIN_FREEZE_ACCESS_FAMILIES
             ),
