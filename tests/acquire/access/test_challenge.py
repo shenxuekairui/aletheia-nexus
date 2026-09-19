@@ -184,3 +184,26 @@ def test_institution_access_prompt_with_short_instruction_is_sso_handoff():
     )
 
     assert report.kind == ChallengeKind.SSO
+
+
+
+def test_slider_captcha_is_classified():
+    report = classify_access_challenge(
+        title="安全验证",
+        url="https://idp.example/challenge",
+        visible_text="请拖动滑块完成验证",
+        html="",
+    )
+
+    assert report.kind == ChallengeKind.CAPTCHA
+
+
+def test_authenticator_push_is_classified_as_mfa():
+    report = classify_access_challenge(
+        title="Verify your identity",
+        url="https://login.example/mfa",
+        visible_text="Approve the sign-in request in your Authenticator app",
+        html="",
+    )
+
+    assert report.kind == ChallengeKind.MFA
