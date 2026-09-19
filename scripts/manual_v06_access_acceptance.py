@@ -37,9 +37,7 @@ def _read_benchmark(path: Path) -> list[dict[str, object]]:
     output: list[dict[str, object]] = []
     for index, item in enumerate(payload, start=1):
         if not isinstance(item, dict):
-            raise ValueError(
-                f"Benchmark item {index} must be a JSON object: {path}"
-            )
+            raise ValueError(f"Benchmark item {index} must be a JSON object: {path}")
         doi = str(item.get("doi") or "").strip()
         if not doi:
             raise ValueError(f"Benchmark item {index} has no DOI: {path}")
