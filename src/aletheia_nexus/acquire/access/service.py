@@ -246,12 +246,12 @@ def acquire_full_text_maximized(
     skip_supplement_hints: bool = True,
     use_doi_resolver_fallback: bool = True,
 ) -> MaximizedAcquisitionResult:
-    """Maximize legitimate full-text acquisition across public and browser access.
+    """Maximize legitimate full-text acquisition across all supported access layers.
 
-    v0.5 remains the first stage because it is cheaper, deterministic and already
-    hardened. Only non-VERIFIED outcomes escalate to the browser capability.
-    Browser access may reuse a legitimate persistent session and may pause for the
-    user to complete SSO/MFA/CAPTCHA, but it never weakens scientific validation.
+    v0.5 remains the first stage because it is cheap, deterministic and hardened.
+    A configured/applicable official authenticated API is tried next. Only
+    remaining non-VERIFIED outcomes escalate to persistent browser recovery.
+    No access mechanism may weaken scientific validation.
     """
 
     if elsevier_config is not None and not isinstance(
