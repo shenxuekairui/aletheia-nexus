@@ -210,7 +210,6 @@ def test_failed_browser_download_validation_cleans_temp_file(
     assert list(output_dir.glob(".an-browser-download-*.part")) == []
 
 
-
 class _PdfRequestResponse:
     def __init__(self, body: bytes):
         self.url = "https://cdn.example/article.pdf"
