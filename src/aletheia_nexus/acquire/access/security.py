@@ -1,4 +1,7 @@
+import ipaddress
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from aletheia_nexus.acquire.discovery.urls import normalize_candidate_url
 
 _REDACTED = "[redacted]"
 
@@ -54,3 +57,35 @@ def redact_url_for_record(url: str | None) -> str | None:
             "",
         )
     )
+
+
+_LOCAL_HOST_SUFFIXES = (".localhost", ".local")
+
+
+def validate_browser_network_url(url: str) -> str:
+    """Normalize a browser HTTP(S) target and reject obvious local-network access.
+
+    Browser sessions may legitimately use VPNs, proxies, or institution-managed
+    DNS, so this layer deliberately does not require local DNS resolution to match
+    the browser's network view. It still rejects embedded credentials, localhost
+    names, .local names, and literal non-global IP addresses before browser access.
+    """
+
+    normalized = normalize_candidate_url(url)
+    parts = urlsplit(normalized)
+    hostname = parts.hostname
+    if hostname is None:
+        raise ValueError("Browser URL must contain a host")
+
+    lowered = hostname.lower().rstrip(".")
+    if lowered == "localhost" or lowered.endswith(_LOCAL_HOST_SUFFIXES):
+        raise ValueError(f"Refusing local browser hostname: {hostname}")
+
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return normalized
+
+    if not address.is_global:
+        raise ValueError(f"Refusing non-public browser network address: {hostname}")
+    return normalized
