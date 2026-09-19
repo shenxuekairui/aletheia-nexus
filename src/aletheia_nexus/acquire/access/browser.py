@@ -132,7 +132,7 @@ def _normalize_routes(
         if len(normalized_routes) >= limit:
             break
 
-    return normalized_doi, normalized_routes, preflight_attempts, preflight_attempts
+    return normalized_doi, normalized_routes, preflight_attempts
 
 
 class BrowserSession:
