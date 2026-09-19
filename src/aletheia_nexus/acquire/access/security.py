@@ -39,7 +39,7 @@ def redact_url_for_record(url: str | None) -> str | None:
     try:
         parts = urlsplit(url)
     except ValueError:
-        return url.split("#", 1)[0]
+        return "[unparseable-url]"
 
     pairs = parse_qsl(parts.query, keep_blank_values=True)
     query = urlencode([(key, _REDACTED) for key, _ in pairs], doseq=True)
