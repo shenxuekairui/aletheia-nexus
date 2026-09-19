@@ -149,6 +149,7 @@ def classify_access_challenge(
     # Prefer an explicit institutional/SSO path over a generic paywall marker.
     # Legitimate subscription pages frequently show both at the same time.
     sso_hits = _contains_any(semantic, _SSO_TERMS)
+    entitlement_hits = _contains_any(semantic, _ENTITLEMENT_TERMS)
     login_url = any(
         marker in url_text
         for marker in (
@@ -160,7 +161,12 @@ def classify_access_challenge(
             "/openathens",
         )
     )
-    if sso_hits:
+    if sso_hits and (
+        login_url
+        or entitlement_hits
+        or "institution" in title_text
+        or "sign in" in title_text
+    ):
         return ChallengeReport(
             kind=ChallengeKind.SSO,
             evidence=tuple(f"SSO signal: {term}" for term in sso_hits[:3]),
@@ -179,11 +185,12 @@ def classify_access_challenge(
             evidence=tuple(evidence),
         )
 
-    hits = _contains_any(semantic, _ENTITLEMENT_TERMS)
-    if hits:
+    if entitlement_hits:
         return ChallengeReport(
             kind=ChallengeKind.ENTITLEMENT,
-            evidence=tuple(f"Entitlement signal: {term}" for term in hits[:3]),
+            evidence=tuple(
+                f"Entitlement signal: {term}" for term in entitlement_hits[:3]
+            ),
         )
 
     return ChallengeReport(kind=ChallengeKind.NONE)
