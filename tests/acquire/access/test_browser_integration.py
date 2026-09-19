@@ -386,7 +386,6 @@ def test_real_browser_recovers_after_institution_access_handoff(
     )
 
 
-
 def test_real_browser_profile_persists_session_across_restarts(
     monkeypatch,
     tmp_path,
