@@ -25,11 +25,19 @@ from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
     FullTextCandidate,
 )
-from aletheia_nexus.acquire.fulltext.models import AcquisitionStatus, RetrievedResource
+from aletheia_nexus.acquire.fulltext.models import (
+    AcquisitionStatus,
+    RedirectHop,
+    RetrievedResource,
+)
 from aletheia_nexus.acquire.fulltext.resolution.derivation import derive_pdf_candidates
 from aletheia_nexus.acquire.fulltext.resolution.identity import validate_page_identity
 from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
+from aletheia_nexus.acquire.fulltext.safety import validate_safe_url
 from aletheia_nexus.acquire.fulltext.urls import normalize_derived_url
+
+_BROWSER_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_MAX_BROWSER_REDIRECTS = 8
 
 _SEMANTIC_PDF_CONTROL = re.compile(
     r"(?:download|view|read|open)?\s*(?:full[- ]?text\s*)?(?:article\s*)?pdf",
@@ -187,6 +195,7 @@ def _resource_from_bytes(
     content_type: str | None,
     body: bytes,
     output_dir: str | Path,
+    redirects: tuple[RedirectHop, ...] = (),
 ) -> RetrievedResource:
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
@@ -200,6 +209,52 @@ def _resource_from_bytes(
         size_bytes=len(body),
         sha256=hashlib.sha256(body).hexdigest(),
         local_path=temporary,
+        redirects=redirects,
+    )
+
+
+def _safe_context_get(
+    context,
+    *,
+    url: str,
+    request_kwargs: dict[str, object],
+) -> tuple[object, tuple[RedirectHop, ...]]:
+    """GET through the shared browser cookie jar with safe manual redirects."""
+
+    current = validate_safe_url(url)
+    redirects: list[RedirectHop] = []
+
+    for _ in range(_MAX_BROWSER_REDIRECTS + 1):
+        response = context.request.get(
+            current,
+            max_redirects=0,
+            **request_kwargs,
+        )
+        if response.status not in _BROWSER_REDIRECT_STATUSES:
+            return response, tuple(redirects)
+
+        location = response.headers.get("location")
+        if not location:
+            return response, tuple(redirects)
+
+        next_url = normalize_derived_url(location, base_url=current)
+        if next_url is None:
+            response.dispose()
+            raise ValueError(f"Redirect exposed an unusable URL: {location!r}")
+        safe_next = validate_safe_url(next_url)
+        redirects.append(
+            RedirectHop(
+                from_url=current,
+                status_code=response.status,
+                location=location,
+                to_url=safe_next,
+            )
+        )
+        response.dispose()
+        current = safe_next
+
+    raise RuntimeError(
+        f"Browser-authenticated request exceeded {_MAX_BROWSER_REDIRECTS} redirects"
     )
 
 
@@ -233,9 +288,10 @@ def _request_pdf_candidate(
         }
         if source_page_url:
             request_kwargs["headers"] = {"Referer": source_page_url}
-        response = context.request.get(
-            candidate.url,
-            **request_kwargs,
+        response, redirects = _safe_context_get(
+            context,
+            url=candidate.url,
+            request_kwargs=request_kwargs,
         )
     except Exception as exc:
         return (
@@ -300,6 +356,7 @@ def _request_pdf_candidate(
             content_type=content_type,
             body=body,
             output_dir=output_dir,
+            redirects=redirects,
         )
         result = finalize_browser_resource(
             candidate=candidate,
@@ -626,8 +683,22 @@ def attempt_browser_route(
             _append_report(challenge_history, direct_challenge)
 
     try:
+        safe_source_url = validate_safe_url(source.url)
+    except Exception as exc:
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=None,
+            status=BrowserAttemptStatus.UNSAFE_URL,
+            challenge_history=tuple(challenge_history),
+            file_attempts=tuple(file_attempts),
+            candidates_considered=len(file_attempts),
+            error=f"{type(exc).__name__}: {exc}",
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
+
+    try:
         navigation_response = page.goto(
-            source.url,
+            safe_source_url,
             wait_until="domcontentloaded",
             timeout=config.navigation_timeout * 1000,
         )
