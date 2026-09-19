@@ -54,7 +54,6 @@ def test_headless_browser_rejects_interactive_handoff(tmp_path):
         browser_profile_dir(config)
 
 
-
 @pytest.mark.parametrize(
     ("field", "value"),
     [
