@@ -192,7 +192,7 @@ def _normalize_routes(
                     source_candidate=route,
                     final_url=None,
                     status=BrowserAttemptStatus.UNSAFE_URL,
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=type(exc).__name__,
                 )
             )
             continue
