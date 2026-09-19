@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
@@ -42,6 +42,21 @@ class BrowserAttemptStatus(StrEnum):
     ERROR = "ERROR"
 
 
+class ElsevierAccessStatus(StrEnum):
+    """Outcome for the official ScienceDirect Article Retrieval API."""
+
+    VERIFIED = "VERIFIED"
+    RETRIEVED_UNVERIFIED = "RETRIEVED_UNVERIFIED"
+    AUTH_REQUIRED = "AUTH_REQUIRED"
+    ENTITLEMENT_REQUIRED = "ENTITLEMENT_REQUIRED"
+    ACCESS_DENIED = "ACCESS_DENIED"
+    NOT_FOUND = "NOT_FOUND"
+    RATE_LIMITED = "RATE_LIMITED"
+    SERVICE_ERROR = "SERVICE_ERROR"
+    INVALID_RESPONSE = "INVALID_RESPONSE"
+    ERROR = "ERROR"
+
+
 class MaximizedAcquisitionStatus(StrEnum):
     """Stable DOI-level outcome after public and authenticated access paths."""
 
@@ -61,6 +76,32 @@ class ChallengeReport:
 
     kind: ChallengeKind
     evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ElsevierAccessConfig:
+    """Credentials and limits for Elsevier's official Article Retrieval API."""
+
+    api_key: str = field(repr=False)
+    inst_token: str | None = field(default=None, repr=False)
+    bearer_token: str | None = field(default=None, repr=False)
+    timeout: float = 30.0
+    max_bytes: int = 100 * 1024 * 1024
+    max_redirects: int = 5
+    keep_unverified: bool = False
+
+    @classmethod
+    def from_env(cls) -> "ElsevierAccessConfig | None":
+        import os
+
+        api_key = os.getenv("ELSEVIER_API_KEY")
+        if not api_key:
+            return None
+        return cls(
+            api_key=api_key,
+            inst_token=os.getenv("ELSEVIER_INST_TOKEN"),
+            bearer_token=os.getenv("ELSEVIER_BEARER_TOKEN"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +129,18 @@ class BrowserAccessConfig:
     max_request_redirects: int = 10
     max_bytes: int = 100 * 1024 * 1024
     keep_unverified: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ElsevierAccessAttempt:
+    """One official Elsevier full-text API attempt."""
+
+    status: ElsevierAccessStatus
+    result: AcquisitionResult | None = None
+    http_status: int | None = None
+    credential_modes: tuple[str, ...] = ()
+    error: str | None = None
+    elapsed_seconds: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +200,7 @@ class MaximizedAcquisitionResult:
     status: MaximizedAcquisitionStatus
     base_result: MultiRouteAcquisitionResult
     browser_attempts: tuple[BrowserAccessAttempt, ...] = ()
+    elsevier_attempt: ElsevierAccessAttempt | None = None
     verified_result: AcquisitionResult | None = None
     elapsed_seconds: float = 0.0
     message: str | None = None
