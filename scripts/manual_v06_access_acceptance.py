@@ -15,6 +15,7 @@ from aletheia_nexus.acquire.access import (
     acquire_full_text_maximized,
 )
 from aletheia_nexus.acquire.access.security import redact_url_for_record
+from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 DEFAULT_BENCHMARKS = (
     Path("benchmarks/cdi_acquisition_10.json"),
@@ -66,9 +67,10 @@ def _load_cases(
         stress: bool,
         entitled: bool,
     ) -> None:
-        value = doi.strip()
-        if not value:
+        raw = doi.strip()
+        if not raw:
             return
+        value = normalize_doi(raw)
         existing = by_doi.get(value)
         if existing is None:
             existing = {
@@ -322,6 +324,28 @@ def _write_report(
     )
 
 
+def _freeze_gate(
+    *,
+    entitled_controls: int,
+    entitled_verified: int,
+    require_entitled_controls: bool,
+) -> tuple[int, str | None]:
+    """Evaluate the live-release access ceiling gate deterministically."""
+
+    entitled_failures = entitled_controls - entitled_verified
+    if entitled_failures:
+        return (
+            2,
+            (
+                f"{entitled_failures} manually confirmed entitled control(s) "
+                "were not VERIFIED."
+            ),
+        )
+    if require_entitled_controls and entitled_controls == 0:
+        return 3, "no entitled positive controls were supplied."
+    return 0, None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run the v0.6 acquisition-maximization live acceptance corpus."
@@ -521,24 +545,14 @@ def main() -> int:
         print("  (none)")
     print(f"Report:             {args.report}")
 
-    entitled_failures = entitled_controls - entitled_verified
-    if entitled_failures:
-        print(
-            "FREEZE GATE FAILED: "
-            f"{entitled_failures} manually confirmed entitled control(s) "
-            "were not VERIFIED.",
-            file=sys.stderr,
-        )
-        return 2
-
-    if args.require_entitled_controls and entitled_controls == 0:
-        print(
-            "FREEZE GATE FAILED: no entitled positive controls were supplied.",
-            file=sys.stderr,
-        )
-        return 3
-
-    return 0
+    exit_code, freeze_error = _freeze_gate(
+        entitled_controls=entitled_controls,
+        entitled_verified=entitled_verified,
+        require_entitled_controls=args.require_entitled_controls,
+    )
+    if freeze_error is not None:
+        print(f"FREEZE GATE FAILED: {freeze_error}", file=sys.stderr)
+    return exit_code
 
 
 if __name__ == "__main__":
