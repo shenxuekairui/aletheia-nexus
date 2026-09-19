@@ -534,6 +534,7 @@ def _download_to_file_attempt(
         resource_url = source_page_url or parent.url
         browser_local_url = True
 
+    temporary: Path | None = None
     try:
         source = Path(download.path())
         size = source.stat().st_size
@@ -585,6 +586,8 @@ def _download_to_file_attempt(
             method="browser_download",
         )
     except Exception as exc:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
         return BrowserFileAttempt(
             candidate=candidate,
             source_page_url=source_page_url,
