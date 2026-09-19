@@ -357,7 +357,6 @@ def test_elsevier_entitlement_is_preserved_after_browser_exhaustion():
     assert "entitlement" in message.lower()
 
 
-
 def test_maximized_auto_discovers_elsevier_env_credentials(monkeypatch, tmp_path):
     base = _base()
     discovered = ElsevierAccessConfig(api_key="env-secret")
