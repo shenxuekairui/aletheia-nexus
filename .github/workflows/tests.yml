@@ -73,8 +73,22 @@ jobs:
       - name: Check installed dependencies
         run: python -m pip check
 
-      - name: Check Playwright Python API
-        run: python -c "from playwright.sync_api import sync_playwright; assert callable(sync_playwright)"
+      - name: Install Chromium runtime
+        run: python -m playwright install --with-deps chromium
+
+      - name: Smoke test real Chromium
+        run: |
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              page = browser.new_page()
+              page.set_content("<title>AN browser smoke</title><main>ok</main>")
+              assert page.title() == "AN browser smoke"
+              assert page.locator("main").inner_text() == "ok"
+              browser.close()
+          PY
 
       - name: Run access-layer tests
         run: python -m pytest -q tests/acquire/access
