@@ -159,9 +159,7 @@ def main() -> int:
         headless=args.headless,
         interactive=not args.non_interactive,
         interaction_timeout=args.interaction_timeout,
-        interaction_callback=(
-            None if args.non_interactive else _interaction_notice
-        ),
+        interaction_callback=(None if args.non_interactive else _interaction_notice),
     )
 
     records: list[dict[str, object]] = []
