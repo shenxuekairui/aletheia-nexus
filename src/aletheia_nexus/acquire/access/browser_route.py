@@ -239,7 +239,11 @@ def _safe_context_get(
         if next_url is None:
             response.dispose()
             raise ValueError(f"Redirect exposed an unusable URL: {location!r}")
-        safe_next = validate_browser_network_url(next_url)
+        try:
+            safe_next = validate_browser_network_url(next_url)
+        except Exception:
+            response.dispose()
+            raise
         redirects.append(
             RedirectHop(
                 from_url=current,
