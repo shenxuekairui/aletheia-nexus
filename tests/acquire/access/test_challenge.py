@@ -122,14 +122,12 @@ def test_imperative_mfa_prompt_is_still_detected():
     assert report.kind == ChallengeKind.MFA
 
 
-
 def test_cstcloud_oauth_login_is_classified_as_sso():
     report = classify_access_challenge(
         title="中国科技云通行证登录",
         url="https://passport.escience.cn/oauth2/authorize?client_id=123",
         visible_text=(
-            "登录 您正在登录 CSTCloud AAI用户服务系统 "
-            "使用中国科技云通行证登录"
+            "登录 您正在登录 CSTCloud AAI用户服务系统 使用中国科技云通行证登录"
         ),
         html="<main>使用中国科技云通行证登录</main>",
     )
