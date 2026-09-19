@@ -449,3 +449,46 @@ def test_unexpected_browser_error_does_not_persist_secret_message(
     assert result.message == "Browser recovery failed unexpectedly: RuntimeError"
     assert "super-secret" not in result.message
     assert "publisher.example" not in result.message
+
+
+
+def test_mixed_browser_access_denied_is_not_downgraded_to_exhausted():
+    base = _base()
+    attempts = (
+        BrowserAccessAttempt(
+            source_candidate=_candidate("https://publisher.example/blocked"),
+            final_url="https://publisher.example/blocked",
+            status=BrowserAttemptStatus.ACCESS_DENIED,
+        ),
+        BrowserAccessAttempt(
+            source_candidate=_candidate("https://publisher.example/no-file"),
+            final_url="https://publisher.example/no-file",
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        ),
+    )
+
+    status, message = service._final_status_from_browser(base, attempts)
+
+    assert status == MaximizedAcquisitionStatus.ACCESS_DENIED
+    assert "access-denied" in message.lower()
+
+
+def test_all_browser_internal_failures_surface_error():
+    base = _base()
+    attempts = (
+        BrowserAccessAttempt(
+            source_candidate=_candidate("https://publisher.example/error"),
+            final_url=None,
+            status=BrowserAttemptStatus.ERROR,
+        ),
+        BrowserAccessAttempt(
+            source_candidate=_candidate("https://publisher.example/nav"),
+            final_url=None,
+            status=BrowserAttemptStatus.NAVIGATION_ERROR,
+        ),
+    )
+
+    status, message = service._final_status_from_browser(base, attempts)
+
+    assert status == MaximizedAcquisitionStatus.ERROR
+    assert "browser/navigation errors" in message.lower()
