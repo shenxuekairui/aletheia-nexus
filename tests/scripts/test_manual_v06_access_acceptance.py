@@ -222,7 +222,6 @@ def test_access_family_is_case_normalized(tmp_path):
     assert cases[0]["access_family"] == "elsevier-sciencedirect"
 
 
-
 def test_freeze_gate_requires_full_stress_corpus():
     code, message = acceptance._freeze_gate(
         entitled_controls=3,
