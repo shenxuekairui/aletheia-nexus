@@ -291,3 +291,39 @@ def test_failed_context_request_validation_cleans_temp_file(
     assert attempt.error == "RuntimeError"
     assert response.disposed is True
     assert list(output_dir.glob(".an-browser-*.part")) == []
+
+
+
+def test_captured_response_honors_content_length_before_body(tmp_path):
+    class OversizedResponse:
+        url = "https://cdn.example/article.pdf"
+        status = 200
+        headers = {
+            "content-type": "application/pdf",
+            "content-length": "999999",
+        }
+
+        def body(self):
+            raise AssertionError("oversized body must not be read")
+
+    parent = FullTextCandidate(
+        doi="10.1000/oversized-response",
+        url="https://publisher.example/article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    attempt = _browser_response_to_file_attempt(
+        OversizedResponse(),
+        parent=parent,
+        source_page_url=parent.url,
+        output_dir=tmp_path,
+        expected_title=None,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            max_bytes=1024,
+        ),
+    )
+
+    assert attempt.result is None
+    assert "exceeds max_bytes" in attempt.error
