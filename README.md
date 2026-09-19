@@ -235,6 +235,7 @@ result = acquire_from_discovery(
 ```python
 from aletheia_nexus.acquire.access import (
     BrowserAccessConfig,
+    BrowserSession,
     acquire_full_text_maximized,
 )
 
@@ -279,6 +280,30 @@ VERIFIED
 
 核心原则仍然是：**浏览器和认证只能提高“拿到文件”的能力，不能降低
 `VERIFIED` 标准。**
+
+批量任务建议复用一个 live BrowserSession（实时浏览器会话），而不是每篇
+论文重新启动浏览器：
+
+```python
+config = BrowserAccessConfig(
+    profile_name="institution",
+    channel="chrome",
+    headless=False,
+    interaction_callback=on_interaction,
+)
+
+with BrowserSession(config) as session:
+    for doi in dois:
+        result = acquire_full_text_maximized(
+            doi,
+            output_dir="downloads",
+            browser_session=session,
+            unpaywall_email="you@example.com",
+        )
+```
+
+这样不仅复用磁盘 cookie，也保留同一批任务中的短期 SSO / challenge state
+（挑战状态）。
 
 ## v0.5 full-text acquisition
 
