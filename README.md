@@ -308,8 +308,7 @@ ELSEVIER_BEARER_TOKEN    # optional
 ```powershell
 python scripts/manual_v06_access_acceptance.py `
   --entitled-doi 10.xxxx/example1 `
-  --entitled-doi 10.xxxx/example2 `
-  --require-entitled-controls
+  --entitled-doi 10.xxxx/example2
 ```
 
 正式冻结必须把 ≥3 篇、覆盖 ≥2 个出版社/访问家族的阳性对照写到本地
