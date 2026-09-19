@@ -291,6 +291,10 @@ def acquire_full_text_maximized(
     No access mechanism may weaken scientific validation.
     """
 
+    if browser_config is not None and not isinstance(
+        browser_config, BrowserAccessConfig
+    ):
+        raise TypeError("browser_config must be a BrowserAccessConfig or None")
     if elsevier_config is not None and not isinstance(
         elsevier_config, ElsevierAccessConfig
     ):
