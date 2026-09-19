@@ -236,7 +236,6 @@ def test_unsafe_routes_also_consume_source_route_budget(monkeypatch, tmp_path):
     )
 
 
-
 def test_browser_session_clears_route_event_buffers(monkeypatch, tmp_path):
     context = _Context()
     manager = _Manager(context)
