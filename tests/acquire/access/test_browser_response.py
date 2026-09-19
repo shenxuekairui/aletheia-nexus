@@ -4,6 +4,7 @@ from pypdf import PdfWriter
 
 from aletheia_nexus.acquire.access.browser_route import (
     _browser_response_to_file_attempt,
+    _download_to_file_attempt,
 )
 from aletheia_nexus.acquire.access.models import BrowserAccessConfig
 from aletheia_nexus.acquire.discovery.models import (
@@ -53,3 +54,39 @@ def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
     assert attempt.result is not None
     assert attempt.result.status == AcquisitionStatus.VERIFIED
     assert attempt.result.file_path is not None
+
+
+class _BlobDownload:
+    def __init__(self, path):
+        self.url = "blob:https://publisher.example/7c0f1a8c"
+        self._path = path
+
+    def path(self):
+        return str(self._path)
+
+
+def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
+    source = tmp_path / "blob-download.pdf"
+    source.write_bytes(_pdf_bytes())
+    parent = FullTextCandidate(
+        doi="10.1000/captured-response",
+        url="https://publisher.example/article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    attempt = _download_to_file_attempt(
+        _BlobDownload(source),
+        parent=parent,
+        source_page_url=parent.url,
+        output_dir=tmp_path / "out",
+        expected_title="Captured Browser Response",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+    )
+
+    assert attempt.method == "browser_download"
+    assert attempt.result is not None
+    assert attempt.result.status == AcquisitionStatus.VERIFIED
+    assert attempt.result.retrieved is not None
+    assert attempt.result.retrieved.final_url == parent.url
+    assert attempt.result.candidate.url == parent.url
