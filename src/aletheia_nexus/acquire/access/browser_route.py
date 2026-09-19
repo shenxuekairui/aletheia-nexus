@@ -755,6 +755,22 @@ def attempt_browser_route(
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
+    try:
+        validate_browser_network_url(page.url)
+    except (TypeError, ValueError) as exc:
+        safe_final = redact_url_for_record(getattr(page, "url", None))
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=safe_final,
+            status=BrowserAttemptStatus.UNSAFE_URL,
+            challenge_history=tuple(challenge_history),
+            file_attempts=tuple(file_attempts),
+            candidates_considered=len(file_attempts),
+            evidence=("Browser navigation ended at an unsafe network target",),
+            error=f"{type(exc).__name__}: {exc}",
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
+
     final_report, observed, used = _resolve_page_challenge(page, config=config)
     for report in observed:
         _append_report(challenge_history, report)
