@@ -33,9 +33,12 @@ def _report_payload(
     *,
     records: list[dict[str, object]],
     benchmark_paths: list[Path],
+    entitled_benchmark_paths: list[Path],
     config: BrowserAccessConfig,
     base_verified: int,
     verified: int,
+    entitled_total: int,
+    entitled_verified: int,
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -55,8 +58,12 @@ def _report_payload(
             "platform_release": platform.release(),
         },
         "corpus": {
-            "benchmarks": [str(path) for path in benchmark_paths],
+            "stress_benchmarks": [str(path) for path in benchmark_paths],
+            "entitled_positive_control_benchmarks": [
+                str(path) for path in entitled_benchmark_paths
+            ],
             "case_count": len(records),
+            "entitled_positive_control_count": entitled_total,
         },
         "official_api": {
             "elsevier_enabled": elsevier_enabled,
@@ -72,6 +79,11 @@ def _report_payload(
         "summary": {
             "v0.5_verified": base_verified,
             "v0.6_verified": verified,
+            "entitled_positive_controls_verified": entitled_verified,
+            "entitled_positive_controls_total": entitled_total,
+            "entitled_positive_controls_passed": (
+                entitled_total > 0 and entitled_verified == entitled_total
+            ),
             "elsevier_recovered": elsevier_recovered,
             "browser_recovered": browser_recovered,
             "interaction_cases": interaction_cases,
@@ -90,9 +102,12 @@ def _write_report(
     *,
     records: list[dict[str, object]],
     benchmark_paths: list[Path],
+    entitled_benchmark_paths: list[Path],
     config: BrowserAccessConfig,
     base_verified: int,
     verified: int,
+    entitled_total: int,
+    entitled_verified: int,
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -105,9 +120,12 @@ def _write_report(
     payload = _report_payload(
         records=records,
         benchmark_paths=benchmark_paths,
+        entitled_benchmark_paths=entitled_benchmark_paths,
         config=config,
         base_verified=base_verified,
         verified=verified,
+        entitled_total=entitled_total,
+        entitled_verified=entitled_verified,
         elsevier_enabled=elsevier_enabled,
         elsevier_recovered=elsevier_recovered,
         browser_recovered=browser_recovered,
@@ -269,6 +287,24 @@ def main() -> int:
         help="JSON benchmark path. Repeat to combine corpora.",
     )
     parser.add_argument(
+        "--entitled-benchmark",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "JSON benchmark containing papers manually confirmed downloadable "
+            "with the same account/institution environment. Repeat as needed."
+        ),
+    )
+    parser.add_argument(
+        "--require-entitled-controls",
+        action="store_true",
+        help=(
+            "Return a non-zero exit status unless at least one entitled positive "
+            "control is supplied and every such control finishes VERIFIED."
+        ),
+    )
+    parser.add_argument(
         "--doi",
         action="append",
         default=[],
@@ -332,6 +368,8 @@ def main() -> int:
     entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
     entitled_verified = 0
     browser_recovered = 0
+    entitled_total = sum(bool(case["expected_entitled"]) for case in cases)
+    entitled_verified = 0
     final_statuses: Counter[str] = Counter()
     challenge_kinds: Counter[str] = Counter()
 
@@ -358,6 +396,8 @@ def main() -> int:
                 base_verified += 1
             if result.status == MaximizedAcquisitionStatus.VERIFIED:
                 verified += 1
+                if bool(case["expected_entitled"]):
+                    entitled_verified += 1
                 if bool(case["entitled_control"]):
                     entitled_verified += 1
                 if (
@@ -384,9 +424,12 @@ def main() -> int:
                 args.report,
                 records=records,
                 benchmark_paths=benchmark_paths,
+                entitled_benchmark_paths=entitled_benchmark_paths,
                 config=config,
                 base_verified=base_verified,
                 verified=verified,
+                entitled_total=entitled_total,
+                entitled_verified=entitled_verified,
                 elsevier_enabled=elsevier_config is not None,
                 elsevier_recovered=elsevier_recovered,
                 browser_recovered=browser_recovered,
@@ -402,6 +445,10 @@ def main() -> int:
     print(f"Cases:              {len(cases)}")
     print(f"v0.5 VERIFIED:      {base_verified}")
     print(f"v0.6 VERIFIED:      {verified}")
+    print(
+        "Entitled controls:  "
+        f"{entitled_verified}/{entitled_total if entitled_total else '-'}"
+    )
     print(f"Elsevier recovered: {elsevier_recovered}")
     print(f"Browser recovered:  {browser_recovered}")
     print(f"Interaction cases:  {interaction_cases}")
