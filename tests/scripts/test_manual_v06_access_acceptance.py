@@ -99,3 +99,38 @@ def test_freeze_gate_passes_only_when_access_ceiling_is_met():
 
     assert code == 0
     assert message is None
+
+
+
+def test_freeze_gate_rejects_runner_errors():
+    code, message = acceptance._freeze_gate(
+        entitled_controls=3,
+        entitled_verified=3,
+        require_entitled_controls=True,
+        runner_errors=1,
+    )
+
+    assert code == 4
+    assert "unexpected runner errors" in message
+
+
+def test_runner_error_record_does_not_persist_exception_message():
+    case = {
+        "id": "case-one",
+        "stress_case": True,
+        "entitled_control": False,
+        "sources": ["benchmark.json"],
+    }
+    record = acceptance._runner_error_record(
+        doi="10.1000/target",
+        case=case,
+        exc=RuntimeError(
+            "failed at https://publisher.example/pdf?token=super-secret"
+        ),
+    )
+
+    serialized = json.dumps(record)
+    assert record["status"] == "RUNNER_ERROR"
+    assert record["runner_error_type"] == "RuntimeError"
+    assert "super-secret" not in serialized
+    assert "publisher.example" not in serialized
