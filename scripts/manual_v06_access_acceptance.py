@@ -15,7 +15,6 @@ from aletheia_nexus.acquire.access import (
     acquire_full_text_maximized,
 )
 from aletheia_nexus.acquire.access.security import redact_url_for_record
-from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 DEFAULT_BENCHMARKS = (
     Path("benchmarks/cdi_acquisition_10.json"),
@@ -30,170 +29,114 @@ def _package_version() -> str:
         return "dev"
 
 
-def _report_payload(
-    *,
-    records: list[dict[str, object]],
-    benchmark_paths: list[Path],
-    entitled_benchmark_paths: list[Path],
-    config: BrowserAccessConfig,
-    base_verified: int,
-    verified: int,
-    entitled_total: int,
-    entitled_verified: int,
-    elsevier_enabled: bool,
-    elsevier_recovered: int,
-    browser_recovered: int,
-    interaction_cases: int,
-    entitled_controls: int,
-    entitled_verified: int,
-    final_statuses: Counter[str],
-    challenge_kinds: Counter[str],
-) -> dict[str, object]:
-    return {
-        "schema": "aletheia-nexus/v0.6-access-acceptance/v1",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "aletheia_nexus_version": _package_version(),
-        "environment": {
-            "python": sys.version.split()[0],
-            "platform": platform.system(),
-            "platform_release": platform.release(),
-        },
-        "corpus": {
-            "stress_benchmarks": [str(path) for path in benchmark_paths],
-            "entitled_positive_control_benchmarks": [
-                str(path) for path in entitled_benchmark_paths
-            ],
-            "case_count": len(records),
-            "entitled_positive_control_count": entitled_total,
-        },
-        "official_api": {
-            "elsevier_enabled": elsevier_enabled,
-        },
-        "browser": {
-            "profile_name": config.profile_name,
-            "channel": config.channel,
-            "headless": config.headless,
-            "interactive": config.interactive,
-            "max_source_routes": config.max_source_routes,
-            "max_pdf_candidates": config.max_pdf_candidates,
-        },
-        "summary": {
-            "v0.5_verified": base_verified,
-            "v0.6_verified": verified,
-            "entitled_positive_controls_verified": entitled_verified,
-            "entitled_positive_controls_total": entitled_total,
-            "entitled_positive_controls_passed": (
-                entitled_total > 0 and entitled_verified == entitled_total
-            ),
-            "elsevier_recovered": elsevier_recovered,
-            "browser_recovered": browser_recovered,
-            "interaction_cases": interaction_cases,
-            "entitled_controls": entitled_controls,
-            "entitled_verified": entitled_verified,
-            "entitled_failures": entitled_controls - entitled_verified,
-            "final_statuses": dict(sorted(final_statuses.items())),
-            "challenge_kinds": dict(sorted(challenge_kinds.items())),
-        },
-        "records": records,
-    }
-
-
-def _write_report(
-    path: Path,
-    *,
-    records: list[dict[str, object]],
-    benchmark_paths: list[Path],
-    entitled_benchmark_paths: list[Path],
-    config: BrowserAccessConfig,
-    base_verified: int,
-    verified: int,
-    entitled_total: int,
-    entitled_verified: int,
-    elsevier_enabled: bool,
-    elsevier_recovered: int,
-    browser_recovered: int,
-    interaction_cases: int,
-    entitled_controls: int,
-    entitled_verified: int,
-    final_statuses: Counter[str],
-    challenge_kinds: Counter[str],
-) -> None:
-    payload = _report_payload(
-        records=records,
-        benchmark_paths=benchmark_paths,
-        entitled_benchmark_paths=entitled_benchmark_paths,
-        config=config,
-        base_verified=base_verified,
-        verified=verified,
-        entitled_total=entitled_total,
-        entitled_verified=entitled_verified,
-        elsevier_enabled=elsevier_enabled,
-        elsevier_recovered=elsevier_recovered,
-        browser_recovered=browser_recovered,
-        interaction_cases=interaction_cases,
-        entitled_controls=entitled_controls,
-        entitled_verified=entitled_verified,
-        final_statuses=final_statuses,
-        challenge_kinds=challenge_kinds,
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+def _read_benchmark(path: Path) -> list[dict[str, object]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"Benchmark must contain a JSON list: {path}")
+    output: list[dict[str, object]] = []
+    for index, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"Benchmark item {index} must be a JSON object: {path}"
+            )
+        doi = str(item.get("doi") or "").strip()
+        if not doi:
+            raise ValueError(f"Benchmark item {index} has no DOI: {path}")
+        output.append(item)
+    return output
 
 
 def _load_cases(
-    paths: list[Path],
+    stress_paths: list[Path],
+    entitled_paths: list[Path],
     dois: list[str],
     entitled_dois: list[str],
 ) -> list[dict[str, object]]:
+    """Build one deduplicated acceptance corpus with explicit access expectations."""
+
     cases: list[dict[str, object]] = []
     by_doi: dict[str, dict[str, object]] = {}
 
-    for path in paths:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, list):
-            raise ValueError(f"Benchmark must contain a JSON list: {path}")
-        for item in payload:
-            doi = normalize_doi(str(item["doi"]))
-            if doi in by_doi:
-                continue
-            case: dict[str, object] = {
-                "doi": doi,
-                "title": str(item.get("title") or "").strip() or None,
-                "id": str(item.get("id") or doi),
-                "entitled_control": False,
+    def add(
+        *,
+        doi: str,
+        title: str | None,
+        case_id: str,
+        source: str | None,
+        stress: bool,
+        entitled: bool,
+    ) -> None:
+        value = doi.strip()
+        if not value:
+            return
+        existing = by_doi.get(value)
+        if existing is None:
+            existing = {
+                "doi": value,
+                "title": title,
+                "id": case_id,
+                "stress_case": stress,
+                "entitled_control": entitled,
+                "sources": [source] if source else [],
             }
-            by_doi[doi] = case
-            cases.append(case)
+            by_doi[value] = existing
+            cases.append(existing)
+            return
+
+        existing["stress_case"] = bool(existing["stress_case"]) or stress
+        existing["entitled_control"] = bool(existing["entitled_control"]) or entitled
+        if not existing["title"] and title:
+            existing["title"] = title
+        sources = existing["sources"]
+        assert isinstance(sources, list)
+        if source and source not in sources:
+            sources.append(source)
+
+    for path in stress_paths:
+        for item in _read_benchmark(path):
+            doi = str(item["doi"]).strip()
+            add(
+                doi=doi,
+                title=str(item.get("title") or "").strip() or None,
+                case_id=str(item.get("id") or doi),
+                source=str(path),
+                stress=True,
+                entitled=False,
+            )
+
+    for path in entitled_paths:
+        for item in _read_benchmark(path):
+            doi = str(item["doi"]).strip()
+            add(
+                doi=doi,
+                title=str(item.get("title") or "").strip() or None,
+                case_id=str(item.get("id") or doi),
+                source=str(path),
+                stress=False,
+                entitled=True,
+            )
 
     for doi in dois:
-        value = normalize_doi(doi)
-        if value not in by_doi:
-            case = {
-                "doi": value,
-                "title": None,
-                "id": value,
-                "entitled_control": False,
-            }
-            by_doi[value] = case
-            cases.append(case)
+        value = doi.strip()
+        add(
+            doi=value,
+            title=None,
+            case_id=value,
+            source=None,
+            stress=False,
+            entitled=False,
+        )
 
     for doi in entitled_dois:
-        value = normalize_doi(doi)
-        case = by_doi.get(value)
-        if case is None:
-            case = {
-                "doi": value,
-                "title": None,
-                "id": value,
-                "entitled_control": True,
-            }
-            by_doi[value] = case
-            cases.append(case)
-        else:
-            case["entitled_control"] = True
+        value = doi.strip()
+        add(
+            doi=value,
+            title=None,
+            case_id=value,
+            source=None,
+            stress=False,
+            entitled=True,
+        )
 
     return cases
 
@@ -274,16 +217,124 @@ def _serialize(result) -> dict[str, object]:
     }
 
 
+def _report_payload(
+    *,
+    records: list[dict[str, object]],
+    stress_paths: list[Path],
+    entitled_paths: list[Path],
+    config: BrowserAccessConfig,
+    base_verified: int,
+    verified: int,
+    entitled_controls: int,
+    entitled_verified: int,
+    elsevier_enabled: bool,
+    elsevier_recovered: int,
+    browser_recovered: int,
+    interaction_cases: int,
+    final_statuses: Counter[str],
+    challenge_kinds: Counter[str],
+) -> dict[str, object]:
+    return {
+        "schema": "aletheia-nexus/v0.6-access-acceptance/v2",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "aletheia_nexus_version": _package_version(),
+        "environment": {
+            "python": sys.version.split()[0],
+            "platform": platform.system(),
+            "platform_release": platform.release(),
+        },
+        "corpus": {
+            "stress_benchmarks": [str(path) for path in stress_paths],
+            "entitled_positive_control_benchmarks": [
+                str(path) for path in entitled_paths
+            ],
+            "case_count": len(records),
+            "entitled_positive_control_count": entitled_controls,
+        },
+        "official_api": {
+            "elsevier_enabled": elsevier_enabled,
+        },
+        "browser": {
+            "profile_name": config.profile_name,
+            "channel": config.channel,
+            "headless": config.headless,
+            "interactive": config.interactive,
+            "max_source_routes": config.max_source_routes,
+            "max_pdf_candidates": config.max_pdf_candidates,
+        },
+        "summary": {
+            "v0.5_verified": base_verified,
+            "v0.6_verified": verified,
+            "elsevier_recovered": elsevier_recovered,
+            "browser_recovered": browser_recovered,
+            "interaction_cases": interaction_cases,
+            "entitled_controls": entitled_controls,
+            "entitled_verified": entitled_verified,
+            "entitled_failures": entitled_controls - entitled_verified,
+            "entitled_controls_passed": (
+                entitled_controls > 0 and entitled_verified == entitled_controls
+            ),
+            "final_statuses": dict(sorted(final_statuses.items())),
+            "challenge_kinds": dict(sorted(challenge_kinds.items())),
+        },
+        "records": records,
+    }
+
+
+def _write_report(
+    path: Path,
+    *,
+    records: list[dict[str, object]],
+    stress_paths: list[Path],
+    entitled_paths: list[Path],
+    config: BrowserAccessConfig,
+    base_verified: int,
+    verified: int,
+    entitled_controls: int,
+    entitled_verified: int,
+    elsevier_enabled: bool,
+    elsevier_recovered: int,
+    browser_recovered: int,
+    interaction_cases: int,
+    final_statuses: Counter[str],
+    challenge_kinds: Counter[str],
+) -> None:
+    payload = _report_payload(
+        records=records,
+        stress_paths=stress_paths,
+        entitled_paths=entitled_paths,
+        config=config,
+        base_verified=base_verified,
+        verified=verified,
+        entitled_controls=entitled_controls,
+        entitled_verified=entitled_verified,
+        elsevier_enabled=elsevier_enabled,
+        elsevier_recovered=elsevier_recovered,
+        browser_recovered=browser_recovered,
+        interaction_cases=interaction_cases,
+        final_statuses=final_statuses,
+        challenge_kinds=challenge_kinds,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run the fixed v0.6 authenticated-access acceptance corpus."
+        description="Run the v0.6 acquisition-maximization live acceptance corpus."
     )
     parser.add_argument(
         "--benchmark",
         action="append",
         type=Path,
         default=[],
-        help="JSON benchmark path. Repeat to combine corpora.",
+        help=(
+            "Stress-corpus JSON path. Repeat to combine corpora. If omitted, "
+            "the fixed CDI + seawater-desalination 20-paper corpus is used."
+        ),
     )
     parser.add_argument(
         "--entitled-benchmark",
@@ -291,31 +342,31 @@ def main() -> int:
         type=Path,
         default=[],
         help=(
-            "JSON benchmark containing papers manually confirmed downloadable "
-            "with the same account/institution environment. Repeat as needed."
-        ),
-    )
-    parser.add_argument(
-        "--require-entitled-controls",
-        action="store_true",
-        help=(
-            "Return a non-zero exit status unless at least one entitled positive "
-            "control is supplied and every such control finishes VERIFIED."
+            "JSON corpus manually confirmed downloadable with this same "
+            "account/institution/network environment. Repeat as needed."
         ),
     )
     parser.add_argument(
         "--doi",
         action="append",
         default=[],
-        help="Additional DOI to test. Repeat as needed.",
+        help="Additional ad-hoc DOI. Repeat as needed.",
     )
     parser.add_argument(
         "--entitled-doi",
         action="append",
         default=[],
         help=(
-            "DOI manually confirmed downloadable with the same account/institution. "
-            "Repeat for positive controls; any failure makes the runner exit non-zero."
+            "DOI manually confirmed downloadable with this same access environment. "
+            "Repeat as needed. Any such failure makes the run fail."
+        ),
+    )
+    parser.add_argument(
+        "--require-entitled-controls",
+        action="store_true",
+        help=(
+            "Freeze gate: fail if no entitled positive controls were supplied. "
+            "Any supplied entitled control already fails the run if not VERIFIED."
         ),
     )
     parser.add_argument("--output-dir", type=Path, default=Path("downloads/v06"))
@@ -339,11 +390,18 @@ def main() -> int:
         help="Ignore ELSEVIER_* environment credentials even if configured.",
     )
     args = parser.parse_args()
+
     if args.headless and not args.non_interactive:
         parser.error("--headless requires --non-interactive")
 
-    benchmark_paths = args.benchmark or list(DEFAULT_BENCHMARKS)
-    cases = _load_cases(benchmark_paths, args.doi, args.entitled_doi)
+    stress_paths = args.benchmark or list(DEFAULT_BENCHMARKS)
+    entitled_paths = list(args.entitled_benchmark)
+    cases = _load_cases(
+        stress_paths,
+        entitled_paths,
+        args.doi,
+        args.entitled_doi,
+    )
     if not cases:
         raise SystemExit("No acceptance cases were provided")
 
@@ -356,18 +414,15 @@ def main() -> int:
         interaction_timeout=args.interaction_timeout,
         interaction_callback=(None if args.non_interactive else _interaction_notice),
     )
-
     elsevier_config = None if args.no_elsevier_api else ElsevierAccessConfig.from_env()
 
     records: list[dict[str, object]] = []
     verified = 0
     base_verified = 0
     elsevier_recovered = 0
+    browser_recovered = 0
     interaction_cases = 0
     entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
-    entitled_verified = 0
-    browser_recovered = 0
-    entitled_total = sum(bool(case["expected_entitled"]) for case in cases)
     entitled_verified = 0
     final_statuses: Counter[str] = Counter()
     challenge_kinds: Counter[str] = Counter()
@@ -377,26 +432,33 @@ def main() -> int:
             doi = str(case["doi"])
             title = case["title"]
             print(f"[{index}/{len(cases)}] {doi}")
+
             result = acquire_full_text_maximized(
                 doi,
                 output_dir=args.output_dir,
                 browser_session=browser_session,
                 elsevier_config=elsevier_config,
-                expected_title=title,
+                expected_title=title if isinstance(title, str) else None,
                 unpaywall_email=args.unpaywall_email,
                 openalex_api_key=args.openalex_api_key,
                 metadata_mailto=args.metadata_mailto,
             )
+
             record = _serialize(result)
-            record["entitled_control"] = bool(case["entitled_control"])
+            record.update(
+                {
+                    "case_id": case["id"],
+                    "stress_case": bool(case["stress_case"]),
+                    "entitled_control": bool(case["entitled_control"]),
+                    "sources": list(case["sources"]),
+                }
+            )
             records.append(record)
 
             if result.base_result.status.value == "VERIFIED":
                 base_verified += 1
             if result.status == MaximizedAcquisitionStatus.VERIFIED:
                 verified += 1
-                if bool(case["expected_entitled"]):
-                    entitled_verified += 1
                 if bool(case["entitled_control"]):
                     entitled_verified += 1
                 if (
@@ -406,6 +468,7 @@ def main() -> int:
                     elsevier_recovered += 1
                 elif result.base_result.status.value != "VERIFIED":
                     browser_recovered += 1
+
             final_statuses[result.status.value] += 1
             for attempt in result.browser_attempts:
                 for report in attempt.challenge_history:
@@ -413,28 +476,27 @@ def main() -> int:
             if any(attempt.interaction_used for attempt in result.browser_attempts):
                 interaction_cases += 1
 
+            label = " ENTITLED-CONTROL" if case["entitled_control"] else ""
             print(
                 f"  base={result.base_result.status.value} "
                 f"final={result.status.value} "
-                f"verified={result.verified_path or '-'}"
+                f"verified={result.verified_path or '-'}{label}"
             )
 
             _write_report(
                 args.report,
                 records=records,
-                benchmark_paths=benchmark_paths,
-                entitled_benchmark_paths=entitled_benchmark_paths,
+                stress_paths=stress_paths,
+                entitled_paths=entitled_paths,
                 config=config,
                 base_verified=base_verified,
                 verified=verified,
-                entitled_total=entitled_total,
+                entitled_controls=entitled_controls,
                 entitled_verified=entitled_verified,
                 elsevier_enabled=elsevier_config is not None,
                 elsevier_recovered=elsevier_recovered,
                 browser_recovered=browser_recovered,
                 interaction_cases=interaction_cases,
-                entitled_controls=entitled_controls,
-                entitled_verified=entitled_verified,
                 final_statuses=final_statuses,
                 challenge_kinds=challenge_kinds,
             )
@@ -444,14 +506,10 @@ def main() -> int:
     print(f"Cases:              {len(cases)}")
     print(f"v0.5 VERIFIED:      {base_verified}")
     print(f"v0.6 VERIFIED:      {verified}")
-    print(
-        "Entitled controls:  "
-        f"{entitled_verified}/{entitled_total if entitled_total else '-'}"
-    )
+    print(f"Entitled controls:  {entitled_verified}/{entitled_controls}")
     print(f"Elsevier recovered: {elsevier_recovered}")
     print(f"Browser recovered:  {browser_recovered}")
     print(f"Interaction cases:  {interaction_cases}")
-    print(f"Entitled controls:  {entitled_verified}/{entitled_controls}")
     print("Final statuses:")
     for name, count in sorted(final_statuses.items()):
         print(f"  {name:<22} {count}")
@@ -466,10 +524,20 @@ def main() -> int:
     entitled_failures = entitled_controls - entitled_verified
     if entitled_failures:
         print(
-            f"FAIL: {entitled_failures} manually confirmed entitled control(s) "
-            "were not VERIFIED."
+            "FREEZE GATE FAILED: "
+            f"{entitled_failures} manually confirmed entitled control(s) "
+            "were not VERIFIED.",
+            file=sys.stderr,
         )
         return 2
+
+    if args.require_entitled_controls and entitled_controls == 0:
+        print(
+            "FREEZE GATE FAILED: no entitled positive controls were supplied.",
+            file=sys.stderr,
+        )
+        return 3
+
     return 0
 
 
