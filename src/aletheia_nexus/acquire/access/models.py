@@ -60,6 +60,7 @@ class MaximizedAcquisitionStatus(StrEnum):
     """Stable DOI-level outcome after public and authenticated access paths."""
 
     VERIFIED = "VERIFIED"
+    AUTH_REQUIRED = "AUTH_REQUIRED"
     INTERACTION_REQUIRED = "INTERACTION_REQUIRED"
     ENTITLEMENT_REQUIRED = "ENTITLEMENT_REQUIRED"
     ACCESS_DENIED = "ACCESS_DENIED"
