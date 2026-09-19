@@ -99,7 +99,6 @@ def test_authenticated_request_referer_is_origin_only_cross_origin(monkeypatch):
     )
 
 
-
 def test_redact_unparseable_url_fails_closed():
     value = redact_url_for_record(
         "https://user:secret@[invalid/paper.pdf?token=super-secret"
