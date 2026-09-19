@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
+from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionResult,
@@ -131,10 +132,10 @@ def finalize_browser_resource(
                     "sha256": resource.sha256,
                     "redirects": [
                         {
-                            "from_url": hop.from_url,
+                            "from_url": redact_url_for_record(hop.from_url),
                             "status_code": hop.status_code,
-                            "location": hop.location,
-                            "to_url": hop.to_url,
+                            "location": redact_url_for_record(hop.location),
+                            "to_url": redact_url_for_record(hop.to_url),
                         }
                         for hop in resource.redirects
                     ],
