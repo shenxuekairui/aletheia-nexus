@@ -426,7 +426,6 @@ def test_maximized_can_disable_env_provider_discovery(monkeypatch, tmp_path):
     assert result.elsevier_attempt is None
 
 
-
 def test_unexpected_browser_error_does_not_persist_secret_message(
     monkeypatch,
     tmp_path,
