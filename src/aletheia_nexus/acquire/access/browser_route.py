@@ -1312,6 +1312,40 @@ def attempt_browser_route(
         except Exception:
             pass
 
+        # Read context-captured PDF bytes before popup processing closes any
+        # newly opened page. Real Chromium may invalidate Response.body() after
+        # the owning popup is closed even though the response event was observed.
+        sync_session_events()
+        for response in list(network_pdf_responses):
+            response_url = getattr(response, "url", "")
+            if not response_url or response_url in seen_browser_response_urls:
+                continue
+            seen_browser_response_urls.add(response_url)
+            attempt = _browser_response_to_file_attempt(
+                response,
+                parent=source,
+                source_page_url=page.url,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                config=config,
+            )
+            file_attempts.append(attempt)
+            if (
+                attempt.result is not None
+                and attempt.result.status == AcquisitionStatus.VERIFIED
+            ):
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=page.url,
+                    status=BrowserAttemptStatus.VERIFIED,
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    evidence=("PDF control yielded live browser response bytes",),
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
         (
             popup_attempts,
             popup_challenges,
