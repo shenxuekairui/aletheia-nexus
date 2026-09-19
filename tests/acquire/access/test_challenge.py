@@ -222,3 +222,18 @@ def test_article_page_with_institution_link_is_not_false_sso():
     )
 
     assert report.kind == ChallengeKind.NONE
+
+
+
+def test_long_institution_chooser_page_is_sso():
+    report = classify_access_challenge(
+        title="Choose your institution",
+        url="https://publisher.example/institution-access",
+        visible_text=(
+            "Choose your institution "
+            + "Search universities and research organizations. " * 20
+        ),
+        html="",
+    )
+
+    assert report.kind == ChallengeKind.SSO
