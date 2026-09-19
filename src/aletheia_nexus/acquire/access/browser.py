@@ -395,6 +395,85 @@ def _request_pdf_candidate(
             pass
 
 
+def _browser_response_to_file_attempt(
+    response,
+    *,
+    parent: FullTextCandidate,
+    source_page_url: str | None,
+    output_dir: str | Path,
+    expected_title: str | None,
+    config: BrowserAccessConfig,
+) -> BrowserFileAttempt:
+    """Validate PDF bytes already returned by the real browser request."""
+
+    try:
+        candidate = _candidate_for_url(parent, response.url)
+        body = response.body()
+        if len(body) > config.max_bytes:
+            return BrowserFileAttempt(
+                candidate=candidate,
+                source_page_url=source_page_url,
+                method="browser_response",
+                error=(
+                    "Browser PDF response exceeded max_bytes "
+                    f"({len(body)} > {config.max_bytes})"
+                ),
+            )
+
+        content_type = response.headers.get("content-type")
+        if b"%PDF-" not in body[:1024] and "pdf" not in (
+            content_type or ""
+        ).lower():
+            return BrowserFileAttempt(
+                candidate=candidate,
+                source_page_url=source_page_url,
+                method="browser_response",
+                error="Browser response was not PDF-like",
+            )
+
+        resource = _resource_from_bytes(
+            candidate=candidate,
+            final_url=response.url,
+            status=response.status,
+            content_type=content_type,
+            body=body,
+            output_dir=output_dir,
+        )
+        result = finalize_browser_resource(
+            candidate=candidate,
+            resource=resource,
+            output_dir=output_dir,
+            expected_title=expected_title,
+            keep_unverified=config.keep_unverified,
+            profile_name=config.profile_name,
+            source_page_url=source_page_url,
+            access_evidence=(
+                "Captured bytes from an authenticated browser network response",
+            ),
+        )
+        return BrowserFileAttempt(
+            candidate=candidate,
+            result=result,
+            source_page_url=source_page_url,
+            method="browser_response",
+        )
+    except Exception as exc:
+        try:
+            candidate = _candidate_for_url(parent, response.url)
+        except Exception:
+            candidate = replace(
+                parent,
+                url=getattr(response, "url", parent.url),
+                url_type=CandidateUrlType.PDF,
+            )
+        return BrowserFileAttempt(
+            candidate=candidate,
+            source_page_url=source_page_url,
+            method="browser_response",
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
+
 def _download_to_file_attempt(
     download,
     *,
@@ -505,6 +584,7 @@ def _attempt_source(
     file_attempts: list[BrowserFileAttempt] = []
     challenge_history: list[ChallengeReport] = []
     network_pdf_urls: list[str] = []
+    network_pdf_responses: list[object] = []
     downloads: list[object] = []
     interaction_used = False
 
@@ -516,6 +596,7 @@ def _attempt_source(
                 and response.url not in network_pdf_urls
             ):
                 network_pdf_urls.append(response.url)
+                network_pdf_responses.append(response)
         except Exception:
             return
 
@@ -651,6 +732,39 @@ def _attempt_source(
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
+    seen_browser_response_urls: set[str] = set()
+    for response in list(network_pdf_responses):
+        response_url = getattr(response, "url", "")
+        if not response_url or response_url in seen_browser_response_urls:
+            continue
+        seen_browser_response_urls.add(response_url)
+        attempt = _browser_response_to_file_attempt(
+            response,
+            parent=source,
+            source_page_url=page.url,
+            output_dir=output_dir,
+            expected_title=expected_title,
+            config=config,
+        )
+        file_attempts.append(attempt)
+        if (
+            attempt.result is not None
+            and attempt.result.status == AcquisitionStatus.VERIFIED
+        ):
+            return BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=page.url,
+                status=BrowserAttemptStatus.VERIFIED,
+                challenge_history=tuple(challenge_history),
+                file_attempts=tuple(file_attempts),
+                candidates_considered=len(file_attempts),
+                interaction_used=interaction_used,
+                evidence=(
+                    "Verified directly from authenticated browser response bytes",
+                ),
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
+
     candidates: list[FullTextCandidate] = []
     if source.url_type == CandidateUrlType.PDF:
         candidates.append(source)
@@ -779,6 +893,38 @@ def _attempt_source(
             _append_report(challenge_history, report)
         interaction_used = interaction_used or used
         if final.kind == ChallengeKind.NONE:
+            for response in list(network_pdf_responses):
+                response_url = getattr(response, "url", "")
+                if not response_url or response_url in seen_browser_response_urls:
+                    continue
+                seen_browser_response_urls.add(response_url)
+                attempt = _browser_response_to_file_attempt(
+                    response,
+                    parent=source,
+                    source_page_url=page.url,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    config=config,
+                )
+                file_attempts.append(attempt)
+                if (
+                    attempt.result is not None
+                    and attempt.result.status == AcquisitionStatus.VERIFIED
+                ):
+                    return BrowserAccessAttempt(
+                        source_candidate=source,
+                        final_url=page.url,
+                        status=BrowserAttemptStatus.VERIFIED,
+                        challenge_history=tuple(challenge_history),
+                        file_attempts=tuple(file_attempts),
+                        candidates_considered=len(file_attempts),
+                        interaction_used=interaction_used,
+                        evidence=(
+                            "PDF control produced a verified browser response",
+                        ),
+                        elapsed_seconds=time.perf_counter() - started_at,
+                    )
+
             for download in list(downloads):
                 attempt = _download_to_file_attempt(
                     download,
