@@ -293,7 +293,6 @@ def test_failed_context_request_validation_cleans_temp_file(
     assert list(output_dir.glob(".an-browser-*.part")) == []
 
 
-
 def test_captured_response_honors_content_length_before_body(tmp_path):
     class OversizedResponse:
         url = "https://cdn.example/article.pdf"
