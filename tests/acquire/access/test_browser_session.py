@@ -272,3 +272,44 @@ def test_browser_session_clears_route_event_buffers(monkeypatch, tmp_path):
         assert session._blocked_unsafe_urls == []
         assert session._pdf_responses == []
         assert session._downloads == []
+
+
+
+class _FailingManager:
+    def __enter__(self):
+        raise RuntimeError(
+            "failed at C:/Users/private/.aletheia-nexus/profile?token=super-secret"
+        )
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def test_browser_startup_error_does_not_persist_raw_exception_text(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(
+        browser,
+        "_load_playwright",
+        lambda: lambda: _FailingManager(),
+    )
+
+    session = browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+    )
+
+    try:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1)],
+            output_dir=tmp_path / "downloads",
+        )
+    except browser.BrowserCapabilityUnavailable as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("browser startup failure must be explicit")
+
+    assert message == "Playwright could not start: RuntimeError"
+    assert "super-secret" not in message
+    assert "Users/private" not in message
