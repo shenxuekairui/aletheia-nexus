@@ -84,3 +84,40 @@ def test_loaded_recaptcha_library_without_active_widget_is_not_a_challenge():
         ),
     )
     assert report.kind == ChallengeKind.NONE
+
+
+
+def test_article_about_captcha_is_not_itself_a_captcha_challenge():
+    report = classify_access_challenge(
+        title="CAPTCHA robustness in web security",
+        url="https://publisher.example/article",
+        visible_text=(
+            "CAPTCHA systems are widely studied. "
+            "This article compares verification methods."
+        ),
+        html="<main>CAPTCHA systems are widely studied.</main>",
+    )
+    assert report.kind == ChallengeKind.NONE
+
+
+def test_article_about_multifactor_authentication_is_not_mfa_prompt():
+    report = classify_access_challenge(
+        title="Multi-factor authentication in distributed systems",
+        url="https://publisher.example/article",
+        visible_text=(
+            "Multi-factor authentication and security codes are discussed "
+            "as research topics in this article."
+        ),
+        html="<main>Research article text</main>",
+    )
+    assert report.kind == ChallengeKind.NONE
+
+
+def test_imperative_mfa_prompt_is_still_detected():
+    report = classify_access_challenge(
+        title="Verification",
+        url="https://idp.example/login",
+        visible_text="Enter your verification code from your authenticator app",
+        html="<main>Enter your verification code from your authenticator app</main>",
+    )
+    assert report.kind == ChallengeKind.MFA
