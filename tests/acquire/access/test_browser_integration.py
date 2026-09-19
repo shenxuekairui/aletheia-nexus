@@ -222,50 +222,6 @@ def test_real_browser_recovers_pdf_opened_in_new_tab(
     tmp_path,
     local_article_server,
 ):
-    monkeypatch.setattr(
-        browser,
-        "validate_browser_network_url",
-        lambda url: url,
-    )
-    monkeypatch.setattr(
-        browser_route,
-        "validate_browser_network_url",
-        lambda url: url,
-    )
-
-    candidate = FullTextCandidate(
-        doi="10.1000/browser-integration",
-        url=f"{local_article_server}/popup-article",
-        provenance=(),
-        url_type=CandidateUrlType.LANDING_PAGE,
-    )
-    config = BrowserAccessConfig(
-        profile_name="popup-integration",
-        profile_root=tmp_path / "profiles",
-        headless=True,
-        interactive=False,
-        auto_challenge_grace=0,
-        interaction_timeout=0,
-    )
-
-    with BrowserSession(config) as session:
-        result = session.acquire(
-            doi=candidate.doi,
-            routes=[candidate],
-            output_dir=tmp_path / "downloads",
-            expected_title="Authenticated Browser Integration Article",
-        )
-
-    assert _Handler.popup_cookie_seen is True
-    assert result.verified_result is not None
-    assert result.verified_result.status == AcquisitionStatus.VERIFIED
-
-
-def test_real_browser_recovers_pdf_opened_in_new_tab(
-    monkeypatch,
-    tmp_path,
-    local_article_server,
-):
     # Production rejects local-network targets. The deterministic integration
     # fixture is intentionally local, so only the test replaces that policy.
     monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
