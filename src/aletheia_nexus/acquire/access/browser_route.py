@@ -33,7 +33,6 @@ from aletheia_nexus.acquire.fulltext.models import (
 from aletheia_nexus.acquire.fulltext.resolution.derivation import derive_pdf_candidates
 from aletheia_nexus.acquire.fulltext.resolution.identity import validate_page_identity
 from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
-from aletheia_nexus.acquire.fulltext.safety import validate_safe_url
 from aletheia_nexus.acquire.fulltext.urls import normalize_derived_url
 
 _BROWSER_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
@@ -221,7 +220,7 @@ def _safe_context_get(
 ) -> tuple[object, tuple[RedirectHop, ...]]:
     """GET through the shared browser cookie jar with safe manual redirects."""
 
-    current = validate_safe_url(url)
+    current = validate_browser_network_url(url)
     redirects: list[RedirectHop] = []
 
     for _ in range(_MAX_BROWSER_REDIRECTS + 1):
@@ -241,7 +240,7 @@ def _safe_context_get(
         if next_url is None:
             response.dispose()
             raise ValueError(f"Redirect exposed an unusable URL: {location!r}")
-        safe_next = validate_safe_url(next_url)
+        safe_next = validate_browser_network_url(next_url)
         redirects.append(
             RedirectHop(
                 from_url=current,
@@ -683,7 +682,7 @@ def attempt_browser_route(
             _append_report(challenge_history, direct_challenge)
 
     try:
-        safe_source_url = validate_safe_url(source.url)
+        safe_source_url = validate_browser_network_url(source.url)
     except Exception as exc:
         return BrowserAccessAttempt(
             source_candidate=source,
