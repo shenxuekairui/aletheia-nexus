@@ -201,12 +201,10 @@ def classify_access_challenge(
             "/cas/",
         )
     )
-    if sso_hits and (
-        login_url
-        or entitlement_hits
-        or "institution" in title_text
-        or "sign in" in title_text
-    ):
+    if sso_hits:
+        # Explicit institutional-access language is itself an access boundary.
+        # Waiting for an IdP/login URL would miss publisher paywall pages where
+        # the user must first click "Access through your institution".
         return ChallengeReport(
             kind=ChallengeKind.SSO,
             evidence=tuple(f"SSO signal: {term}" for term in sso_hits[:3]),
