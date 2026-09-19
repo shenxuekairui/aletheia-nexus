@@ -344,6 +344,24 @@ python scripts/manual_v06_access_acceptance.py `
 
 该本地文件已加入 `.gitignore`，不会被误当成通用公开 benchmark。
 
+如果 GitHub Actions runner（GitHub Actions 执行机）不可用，可以先在本机运行与
+CI 同级的确定性 Release Candidate（发布候选）检查：
+
+```powershell
+.\scripts\verify_v06_rc.ps1
+```
+
+如果本机已经安装 Playwright Chromium，并希望连同真实浏览器集成测试一起跑：
+
+```powershell
+.\scripts\verify_v06_rc.ps1 -Browser
+```
+
+该脚本依次检查 `pip check`、Ruff format（格式）、Ruff lint（静态检查）、
+`compileall` 和完整 `pytest`；`-Browser` 额外启动真实 Chromium 并运行
+access-layer browser integration tests（访问层浏览器集成测试）。它是 CI 的
+独立验证路径，但不能替代正式机构环境的 live acceptance（真实验收）。
+
 批量任务建议复用一个 live BrowserSession（实时浏览器会话），而不是每篇
 论文重新启动浏览器：
 
