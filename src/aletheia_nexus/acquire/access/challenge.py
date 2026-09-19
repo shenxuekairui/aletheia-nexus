@@ -24,12 +24,13 @@ _CAPTCHA_VISIBLE_TERMS = (
 _CAPTCHA_DOM_TERMS = (
     'class="g-recaptcha',
     "class='g-recaptcha",
-    "h-captcha",
-    "cf-turnstile",
-    "challenges.cloudflare.com/turnstile",
-    "www.google.com/recaptcha",
-    "www.recaptcha.net/recaptcha",
-    "hcaptcha.com/1/api.js",
+    'class="h-captcha',
+    "class='h-captcha",
+    'class="cf-turnstile',
+    "class='cf-turnstile",
+    "recaptcha/api2/anchor",
+    "hcaptcha.com/captcha",
+    "turnstile/v0/",
 )
 _MFA_TERMS = (
     "multi-factor authentication",
