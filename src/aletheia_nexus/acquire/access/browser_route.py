@@ -1159,6 +1159,85 @@ def attempt_browser_route(
         if handoff_result is not None:
             return handoff_result
 
+    initial_report = _report_for_page(page)
+    _append_report(challenge_history, initial_report)
+
+    # Publisher paywalls often expose an explicit "Access through your institution"
+    # control before any SSO/IdP URL exists. Use that deterministic control first;
+    # only then ask the user to complete login/MFA/CAPTCHA if the resulting auth
+    # surface still requires interaction.
+    if initial_report.kind == ChallengeKind.SSO and _allow_access_handoff:
+        (
+            handoff_started,
+            handoff_observed,
+            handoff_used,
+            handoff_report,
+        ) = _run_institution_handoff(
+            context,
+            page,
+            config=config,
+        )
+        for report in handoff_observed:
+            _append_report(challenge_history, report)
+        interaction_used = interaction_used or handoff_used
+
+        if handoff_started:
+            if handoff_report.kind != ChallengeKind.NONE:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=getattr(page, "url", None) or source.url,
+                    status=_status_from_challenge(handoff_report),
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    evidence=handoff_report.evidence,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
+            # Re-open the scholarly route after successful institutional
+            # authentication so the publisher can apply the new session state.
+            try:
+                page.goto(
+                    safe_source_url,
+                    wait_until="domcontentloaded",
+                    timeout=config.navigation_timeout * 1000,
+                )
+            except Exception as exc:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=getattr(page, "url", None) or source.url,
+                    status=BrowserAttemptStatus.NAVIGATION_ERROR,
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    error=(
+                        "Institutional authentication completed but the article "
+                        f"route could not be reopened: {type(exc).__name__}: {exc}"
+                    ),
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
+            try:
+                validate_browser_network_url(page.url)
+            except (TypeError, ValueError) as exc:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=redact_url_for_record(getattr(page, "url", None)),
+                    status=BrowserAttemptStatus.UNSAFE_URL,
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    evidence=(
+                        "Post-authentication article navigation ended at an unsafe "
+                        "network target",
+                    ),
+                    error=f"{type(exc).__name__}: {exc}",
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
     final_report, observed, used = _resolve_page_challenge(page, config=config)
     for report in observed:
         _append_report(challenge_history, report)
