@@ -8,10 +8,6 @@ from uuid import uuid4
 
 from aletheia_nexus.acquire.access.artifact import finalize_browser_resource
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
-from aletheia_nexus.acquire.access.security import (
-    redact_url_for_record,
-    validate_browser_network_url,
-)
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
@@ -19,6 +15,10 @@ from aletheia_nexus.acquire.access.models import (
     BrowserFileAttempt,
     ChallengeKind,
     ChallengeReport,
+)
+from aletheia_nexus.acquire.access.security import (
+    redact_url_for_record,
+    validate_browser_network_url,
 )
 from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import (
