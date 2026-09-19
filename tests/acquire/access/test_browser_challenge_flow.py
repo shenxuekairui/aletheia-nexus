@@ -168,11 +168,16 @@ def test_article_route_automatically_enters_institutional_sso(
         "validate_browser_network_url",
         lambda value: value,
     )
-    monkeypatch.setattr(
-        browser_route,
-        "_report_for_page",
-        lambda value: ChallengeReport(kind=ChallengeKind.SSO),
-    )
+    report_calls = 0
+
+    def page_report(value):
+        nonlocal report_calls
+        report_calls += 1
+        return ChallengeReport(
+            kind=ChallengeKind.SSO if report_calls == 1 else ChallengeKind.NONE
+        )
+
+    monkeypatch.setattr(browser_route, "_report_for_page", page_report)
 
     def handoff(context_value, page_value, *, config):
         handoff_calls.append((context_value, page_value))
