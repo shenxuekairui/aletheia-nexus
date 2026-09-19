@@ -294,8 +294,10 @@ ELSEVIER_INST_TOKEN      # optional
 ELSEVIER_BEARER_TOKEN    # optional
 ```
 
-程序中可通过 `ElsevierAccessConfig.from_env()` 读取。API key、institution
-token 和 bearer token 只进入请求 header，不进入 `.acquisition.json`。
+顶层 `acquire_full_text_maximized()` 默认会自动发现这些环境变量；也可以
+显式传入 `ElsevierAccessConfig`。如需完全禁用官方 API 自动发现，可设置
+`auto_official_api=False`。API key、institution token 和 bearer token
+只进入请求 header，不进入 `.acquisition.json`。
 
 真实验收时，除了固定 20 篇困难集，还应使用 `--entitled-doi` 加入
 **你已经人工确认在同一机构/账号下能下载的论文**。这些阳性对照如果任何
