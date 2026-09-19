@@ -242,8 +242,16 @@ class BrowserSession:
             limit=self.config.max_source_routes,
         )
         started_at = time.perf_counter()
-        context = self._ensure_started()
         attempts: list[BrowserAccessAttempt] = list(preflight_attempts)
+        if not normalized_routes:
+            return BrowserRecoveryResult(
+                doi=normalized_doi,
+                attempts=tuple(attempts),
+                profile_dir=self.profile_dir,
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
+
+        context = self._ensure_started()
         verified: AcquisitionResult | None = None
 
         for source in normalized_routes:
