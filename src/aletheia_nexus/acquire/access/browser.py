@@ -54,6 +54,12 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise ValueError(f"{name} must be a positive integer")
     if (
+        not isinstance(config.max_request_redirects, int)
+        or isinstance(config.max_request_redirects, bool)
+        or config.max_request_redirects < 0
+    ):
+        raise ValueError("max_request_redirects must be a non-negative integer")
+    if (
         not isinstance(config.max_bytes, int)
         or isinstance(config.max_bytes, bool)
         or config.max_bytes < 1
