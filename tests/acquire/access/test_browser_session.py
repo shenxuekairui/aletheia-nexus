@@ -175,3 +175,31 @@ def test_browser_session_reuses_one_live_context_across_dois(monkeypatch, tmp_pa
     assert [doi for _, doi in calls] == ["10.1000/first", "10.1000/second"]
     assert all(context_value is context for context_value, _ in calls)
     assert context.closed is True
+
+
+
+def test_all_unsafe_routes_return_without_starting_browser(monkeypatch, tmp_path):
+    started = False
+
+    def should_not_start():
+        nonlocal started
+        started = True
+        raise AssertionError("browser should not start")
+
+    monkeypatch.setattr(browser, "_load_playwright", should_not_start)
+    unsafe = FullTextCandidate(
+        doi="10.1000/session-limit",
+        url="http://127.0.0.1/private.pdf",
+        provenance=(),
+    )
+
+    result = browser.acquire_with_browser(
+        doi="10.1000/session-limit",
+        routes=[unsafe],
+        output_dir=tmp_path / "downloads",
+        config=BrowserAccessConfig(profile_root=tmp_path / "profiles"),
+    )
+
+    assert started is False
+    assert len(result.attempts) == 1
+    assert result.attempts[0].status == BrowserAttemptStatus.UNSAFE_URL
