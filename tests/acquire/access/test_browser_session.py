@@ -202,3 +202,37 @@ def test_all_unsafe_routes_return_without_starting_browser(monkeypatch, tmp_path
     assert started is False
     assert len(result.attempts) == 1
     assert result.attempts[0].status == BrowserAttemptStatus.UNSAFE_URL
+
+
+
+def test_unsafe_routes_also_consume_source_route_budget(monkeypatch, tmp_path):
+    started = False
+
+    def should_not_start():
+        nonlocal started
+        started = True
+        raise AssertionError("browser should not start")
+
+    monkeypatch.setattr(browser, "_load_playwright", should_not_start)
+    routes = [
+        _candidate(1, url="http://127.0.0.1/a"),
+        _candidate(2, url="http://10.0.0.1/b"),
+        _candidate(3, url="http://169.254.169.254/c"),
+    ]
+
+    result = browser.acquire_with_browser(
+        doi="10.1000/session-limit",
+        routes=routes,
+        output_dir=tmp_path / "downloads",
+        config=BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            max_source_routes=2,
+        ),
+    )
+
+    assert started is False
+    assert len(result.attempts) == 2
+    assert all(
+        attempt.status == BrowserAttemptStatus.UNSAFE_URL
+        for attempt in result.attempts
+    )
