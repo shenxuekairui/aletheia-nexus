@@ -181,6 +181,76 @@ def _error_type(value: str | None) -> str | None:
 
 
 def _serialize(result) -> dict[str, object]:
+    base = result.base_result
+    base_trace = {
+        "discovery": {
+            "candidate_count": len(base.discovery.candidates),
+            "providers": [
+                {
+                    "provider": provider.provider.value,
+                    "status": provider.status.value,
+                    "candidate_count": len(provider.candidates),
+                    "attempts": provider.attempts,
+                }
+                for provider in base.discovery.providers
+            ],
+        },
+        "route_attempts": [
+            {
+                "url": redact_url_for_record(attempt.candidate.url),
+                "origin": attempt.origin.value,
+                "status": attempt.result.status.value,
+                "depth": attempt.depth,
+                "parent_url": redact_url_for_record(attempt.parent_url),
+                "expansion_method": attempt.expansion_method,
+                "page_type": (
+                    attempt.result.page_type.value
+                    if attempt.result.page_type is not None
+                    else None
+                ),
+                "derived_candidate_count": len(attempt.result.candidates),
+            }
+            for attempt in base.route_attempts
+        ],
+        "file_attempts": [
+            {
+                "url": redact_url_for_record(attempt.candidate.url),
+                "origin": attempt.origin.value,
+                "status": attempt.result.status.value,
+                "parent_url": redact_url_for_record(attempt.parent_url),
+                "derivation_method": (
+                    attempt.derivation_method.value
+                    if attempt.derivation_method is not None
+                    else None
+                ),
+                "role_hint": attempt.role_hint.value,
+                "identity_status": (
+                    attempt.result.identity_validation.status.value
+                    if attempt.result.identity_validation is not None
+                    else None
+                ),
+                "document_role": (
+                    attempt.result.identity_validation.document_role.value
+                    if attempt.result.identity_validation is not None
+                    else None
+                ),
+            }
+            for attempt in base.file_attempts
+        ],
+        "stats": {
+            "duplicate_file_candidates_skipped": (
+                base.duplicate_file_candidates_skipped
+            ),
+            "duplicate_route_candidates_skipped": (
+                base.duplicate_route_candidates_skipped
+            ),
+            "supplement_candidates_skipped": base.supplement_candidates_skipped,
+            "page_route_attempts": base.page_route_attempts,
+            "route_expansions_enqueued": base.route_expansions_enqueued,
+            "max_route_depth_reached": base.max_route_depth_reached,
+        },
+    }
+
     browser_attempts = []
     for attempt in result.browser_attempts:
         browser_attempts.append(
@@ -218,6 +288,7 @@ def _serialize(result) -> dict[str, object]:
         "doi": result.doi,
         "status": result.status.value,
         "base_status": result.base_result.status.value,
+        "base_trace": base_trace,
         "verified_path": (
             str(result.verified_path) if result.verified_path is not None else None
         ),
