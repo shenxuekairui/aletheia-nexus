@@ -102,7 +102,6 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-
         if self.path == "/popup-article":
             body = b"""<!doctype html>
 <html>
@@ -260,7 +259,6 @@ def test_real_browser_recovers_pdf_opened_in_new_tab(
     assert _Handler.popup_cookie_seen is True
     assert result.verified_result is not None
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
-
 
 
 def test_real_browser_recovers_pdf_opened_in_new_tab(
