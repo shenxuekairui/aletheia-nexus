@@ -36,6 +36,7 @@ def _pdf_bytes() -> bytes:
 class _Handler(BaseHTTPRequestHandler):
     pdf_body = _pdf_bytes()
     pdf_cookie_seen = False
+    popup_cookie_seen = False
 
     def log_message(self, format, *args):
         return
@@ -55,6 +56,46 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Set-Cookie", "an_session=ok; Path=/; SameSite=Lax")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if self.path == "/popup-article":
+            body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Authenticated Browser Integration Article">
+<meta name="citation_doi" content="10.1000/browser-integration">
+<title>Authenticated Browser Integration Article</title>
+</head>
+<body>
+<button onclick="window.open('/popup.pdf', '_blank')">Download PDF</button>
+</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Set-Cookie", "an_session=ok; Path=/; SameSite=Lax")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if self.path == "/popup.pdf":
+            cookie = self.headers.get("Cookie", "")
+            type(self).popup_cookie_seen = "an_session=ok" in cookie
+            if not type(self).popup_cookie_seen:
+                body = b"<html><body>Sign in to access</body></html>"
+                self.send_response(401)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            body = type(self).pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -87,6 +128,7 @@ class _Handler(BaseHTTPRequestHandler):
 @pytest.fixture
 def local_article_server():
     _Handler.pdf_cookie_seen = False
+    _Handler.popup_cookie_seen = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -144,3 +186,48 @@ def test_real_browser_session_shares_cookie_with_authenticated_pdf_request(
     assert result.verified_result is not None
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
     assert result.verified_result.file_path is not None
+
+
+
+def test_real_browser_recovers_pdf_opened_in_new_tab(
+    monkeypatch,
+    tmp_path,
+    local_article_server,
+):
+    monkeypatch.setattr(
+        browser,
+        "validate_browser_network_url",
+        lambda url: url,
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "validate_browser_network_url",
+        lambda url: url,
+    )
+
+    candidate = FullTextCandidate(
+        doi="10.1000/browser-integration",
+        url=f"{local_article_server}/popup-article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    config = BrowserAccessConfig(
+        profile_name="popup-integration",
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+        auto_challenge_grace=0,
+        interaction_timeout=0,
+    )
+
+    with BrowserSession(config) as session:
+        result = session.acquire(
+            doi=candidate.doi,
+            routes=[candidate],
+            output_dir=tmp_path / "downloads",
+            expected_title="Authenticated Browser Integration Article",
+        )
+
+    assert _Handler.popup_cookie_seen is True
+    assert result.verified_result is not None
+    assert result.verified_result.status == AcquisitionStatus.VERIFIED
