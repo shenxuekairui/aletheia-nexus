@@ -4,6 +4,7 @@ from pypdf import PdfWriter
 
 from aletheia_nexus.acquire.access.browser_route import (
     _browser_response_to_file_attempt,
+    _context_get_with_safe_redirects,
     _download_to_file_attempt,
 )
 from aletheia_nexus.acquire.access.models import BrowserAccessConfig
@@ -173,3 +174,91 @@ def test_authenticated_request_rejects_redirect_to_private_network():
 
     assert first.disposed is True
     assert len(context.request.calls) == 1
+
+
+
+class _RedirectResponse:
+    def __init__(self, *, url, status, location=None):
+        self.url = url
+        self.status = status
+        self.headers = {}
+        if location is not None:
+            self.headers["location"] = location
+        self.disposed = False
+
+    def dispose(self):
+        self.disposed = True
+
+
+class _RequestClient:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return self.responses.pop(0)
+
+
+class _RequestContext:
+    def __init__(self, responses):
+        self.request = _RequestClient(responses)
+
+
+def test_authenticated_request_redirects_are_followed_manually_and_bounded(tmp_path):
+    first = _RedirectResponse(
+        url="https://publisher.example/start",
+        status=302,
+        location="https://cdn.example/article.pdf",
+    )
+    final = _RedirectResponse(
+        url="https://cdn.example/article.pdf",
+        status=200,
+    )
+    context = _RequestContext([first, final])
+    config = BrowserAccessConfig(
+        profile_root=tmp_path,
+        max_request_redirects=2,
+    )
+
+    response = _context_get_with_safe_redirects(
+        context,
+        url="https://publisher.example/start",
+        source_page_url="https://publisher.example/article",
+        config=config,
+    )
+
+    assert response is final
+    assert first.disposed is True
+    assert [call[0] for call in context.request.calls] == [
+        "https://publisher.example/start",
+        "https://cdn.example/article.pdf",
+    ]
+    assert all(call[1]["max_redirects"] == 0 for call in context.request.calls)
+
+
+def test_authenticated_request_rejects_unsafe_redirect_before_second_request(tmp_path):
+    first = _RedirectResponse(
+        url="https://publisher.example/start",
+        status=302,
+        location="http://127.0.0.1/private.pdf",
+    )
+    context = _RequestContext([first])
+    config = BrowserAccessConfig(
+        profile_root=tmp_path,
+        max_request_redirects=2,
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        _context_get_with_safe_redirects(
+            context,
+            url="https://publisher.example/start",
+            source_page_url=None,
+            config=config,
+        )
+
+    assert first.disposed is True
+    assert len(context.request.calls) == 1
+    assert context.request.calls[0][1]["max_redirects"] == 0
