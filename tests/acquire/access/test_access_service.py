@@ -312,7 +312,7 @@ def test_failed_elsevier_api_falls_through_to_browser(monkeypatch, tmp_path):
         elsevier_config=ElsevierAccessConfig(api_key="secret"),
     )
 
-    assert result.status == MaximizedAcquisitionStatus.EXHAUSTED
+    assert result.status == MaximizedAcquisitionStatus.ACCESS_DENIED
     assert result.elsevier_attempt == api_attempt
     assert result.browser_attempts == (browser_attempt,)
 
@@ -355,3 +355,73 @@ def test_elsevier_entitlement_is_preserved_after_browser_exhaustion():
 
     assert status == MaximizedAcquisitionStatus.ENTITLEMENT_REQUIRED
     assert "entitlement" in message.lower()
+
+
+
+def test_maximized_auto_discovers_elsevier_env_credentials(monkeypatch, tmp_path):
+    base = _base()
+    discovered = ElsevierAccessConfig(api_key="env-secret")
+    api_attempt = ElsevierAccessAttempt(
+        status=ElsevierAccessStatus.ACCESS_DENIED,
+        http_status=403,
+        credential_modes=("api_key",),
+    )
+    recovery = BrowserRecoveryResult(
+        doi="10.1000/target",
+        attempts=(),
+        profile_dir=tmp_path / "profile",
+    )
+
+    monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
+    monkeypatch.setattr(service, "_should_try_elsevier_api", lambda value: True)
+    monkeypatch.setattr(
+        ElsevierAccessConfig,
+        "from_env",
+        classmethod(lambda cls: discovered),
+    )
+
+    seen = {}
+
+    def fake_api(*args, **kwargs):
+        seen["config"] = kwargs["config"]
+        return api_attempt
+
+    monkeypatch.setattr(service, "acquire_elsevier_pdf", fake_api)
+    monkeypatch.setattr(service, "acquire_with_browser", lambda **kwargs: recovery)
+
+    result = service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+    )
+
+    assert seen["config"] is discovered
+    assert result.elsevier_attempt == api_attempt
+
+
+def test_maximized_can_disable_env_provider_discovery(monkeypatch, tmp_path):
+    base = _base()
+    recovery = BrowserRecoveryResult(
+        doi="10.1000/target",
+        attempts=(),
+        profile_dir=tmp_path / "profile",
+    )
+
+    monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
+
+    def should_not_read_env():
+        raise AssertionError("official provider env discovery must be disabled")
+
+    monkeypatch.setattr(
+        ElsevierAccessConfig,
+        "from_env",
+        classmethod(lambda cls: should_not_read_env()),
+    )
+    monkeypatch.setattr(service, "acquire_with_browser", lambda **kwargs: recovery)
+
+    result = service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+        auto_official_api=False,
+    )
+
+    assert result.elsevier_attempt is None
