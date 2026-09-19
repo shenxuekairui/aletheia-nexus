@@ -252,7 +252,6 @@ def test_freeze_gate_requires_real_v06_only_recovery():
     assert "at least one real v0.6-only recovery" in message
 
 
-
 def test_report_distinguishes_entitled_controls_from_full_freeze_gate(tmp_path):
     config = acceptance.BrowserAccessConfig(profile_root=tmp_path)
 
