@@ -250,3 +250,64 @@ def test_freeze_gate_requires_real_v06_only_recovery():
 
     assert code == 8
     assert "at least one real v0.6-only recovery" in message
+
+
+
+def test_report_distinguishes_entitled_controls_from_full_freeze_gate(tmp_path):
+    config = acceptance.BrowserAccessConfig(profile_root=tmp_path)
+
+    payload = acceptance._report_payload(
+        records=[],
+        stress_paths=[],
+        entitled_paths=[],
+        config=config,
+        base_verified=0,
+        verified=3,
+        entitled_controls=3,
+        entitled_verified=3,
+        entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
+        stress_cases=19,
+        v06_only_recoveries=0,
+        elsevier_enabled=False,
+        elsevier_recovered=0,
+        browser_recovered=0,
+        interaction_cases=0,
+        runner_errors=0,
+        final_statuses=acceptance.Counter(),
+        challenge_kinds=acceptance.Counter(),
+    )
+
+    assert payload["summary"]["entitled_controls_passed"] is True
+    assert payload["summary"]["freeze_gate_passed"] is False
+
+
+def test_report_marks_full_freeze_gate_only_when_every_machine_gate_passes(tmp_path):
+    config = acceptance.BrowserAccessConfig(profile_root=tmp_path)
+
+    payload = acceptance._report_payload(
+        records=[],
+        stress_paths=[],
+        entitled_paths=[],
+        config=config,
+        base_verified=6,
+        verified=7,
+        entitled_controls=3,
+        entitled_verified=3,
+        entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
+        stress_cases=20,
+        v06_only_recoveries=1,
+        elsevier_enabled=True,
+        elsevier_recovered=1,
+        browser_recovered=0,
+        interaction_cases=1,
+        runner_errors=0,
+        final_statuses=acceptance.Counter({"VERIFIED": 7}),
+        challenge_kinds=acceptance.Counter({"SSO": 1}),
+    )
+
+    assert payload["summary"]["entitled_controls_passed"] is True
+    assert payload["summary"]["freeze_gate_passed"] is True
+    assert payload["summary"]["v0.6_only_recoveries"] == 1
+    assert payload["corpus"]["stress_case_count"] == 20
