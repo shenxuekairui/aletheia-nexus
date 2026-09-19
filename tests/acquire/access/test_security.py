@@ -1,5 +1,6 @@
 import pytest
 
+from aletheia_nexus.acquire.access.browser_route import _safe_referer
 from aletheia_nexus.acquire.access.security import (
     redact_url_for_record,
     validate_browser_network_url,
@@ -66,3 +67,27 @@ def test_browser_network_url_rejects_embedded_credentials():
         validate_browser_network_url(
             "https://user:secret@publisher.example/article.pdf"
         )
+
+
+def test_authenticated_request_referer_strips_same_origin_query_secrets(monkeypatch):
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.access.browser_route.validate_browser_network_url",
+        lambda value: value,
+    )
+
+    assert _safe_referer(
+        "https://publisher.example/article?ticket=secret#viewer",
+        "https://publisher.example/article.pdf",
+    ) == "https://publisher.example/article"
+
+
+def test_authenticated_request_referer_is_origin_only_cross_origin(monkeypatch):
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.access.browser_route.validate_browser_network_url",
+        lambda value: value,
+    )
+
+    assert _safe_referer(
+        "https://publisher.example/article?ticket=secret",
+        "https://cdn.example/article.pdf",
+    ) == "https://publisher.example/"
