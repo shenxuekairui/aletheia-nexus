@@ -83,7 +83,7 @@ def test_sso_handoff_calls_user_callback_and_resumes(tmp_path):
         [
             (
                 "Institutional sign in",
-                "https://idp.example/login",
+                "https://idp.example/login?state=secret",
                 "Access through your institution",
                 "<main>Access through your institution</main>",
             ),
@@ -109,7 +109,12 @@ def test_sso_handoff_calls_user_callback_and_resumes(tmp_path):
         ),
     )
 
-    assert events == [(ChallengeKind.SSO, "https://idp.example/login")]
+    assert events == [
+        (
+            ChallengeKind.SSO,
+            "https://idp.example/login?state=%5Bredacted%5D",
+        )
+    ]
     assert report.kind == ChallengeKind.NONE
     assert history[0].kind == ChallengeKind.SSO
     assert interaction_used is True
