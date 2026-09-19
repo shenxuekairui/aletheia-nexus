@@ -451,7 +451,6 @@ def test_unexpected_browser_error_does_not_persist_secret_message(
     assert "publisher.example" not in result.message
 
 
-
 def test_mixed_browser_access_denied_is_not_downgraded_to_exhausted():
     base = _base()
     attempts = (
@@ -492,7 +491,6 @@ def test_all_browser_internal_failures_surface_error():
 
     assert status == MaximizedAcquisitionStatus.ERROR
     assert "browser/navigation errors" in message.lower()
-
 
 
 def test_browser_config_type_error_precedes_base_acquisition(monkeypatch, tmp_path):
