@@ -347,7 +347,6 @@ def test_report_marks_full_freeze_gate_only_when_every_machine_gate_passes(tmp_p
     assert payload["corpus"]["stress_case_count"] == 20
 
 
-
 def test_acceptance_report_preserves_redacted_v05_trace():
     candidate = FullTextCandidate(
         doi="10.1000/trace",
@@ -418,7 +417,6 @@ def test_acceptance_report_preserves_redacted_v05_trace():
     assert "super-secret" not in serialized
     assert "parent-secret" not in serialized
     assert "%5Bredacted%5D" in serialized
-
 
 
 def test_report_path_hides_absolute_local_directories(tmp_path):
