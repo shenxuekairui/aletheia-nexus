@@ -6,6 +6,7 @@ from aletheia_nexus.acquire.access.browser_route import attempt_browser_route
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
+    BrowserAttemptStatus,
     BrowserRecoveryResult,
 )
 from aletheia_nexus.acquire.access.security import validate_browser_network_url
@@ -88,7 +89,7 @@ def _normalize_routes(
     doi: str,
     routes: tuple[FullTextCandidate, ...] | list[FullTextCandidate],
     limit: int,
-) -> tuple[str, list[FullTextCandidate]]:
+) -> tuple[str, list[FullTextCandidate], list[BrowserAccessAttempt]]:
     normalized_doi = normalize_doi(doi)
     normalized_routes: list[FullTextCandidate] = []
     preflight_attempts: list[BrowserAccessAttempt] = []
@@ -131,7 +132,7 @@ def _normalize_routes(
         if len(normalized_routes) >= limit:
             break
 
-    return normalized_doi, normalized_routes
+    return normalized_doi, normalized_routes, preflight_attempts
 
 
 class BrowserSession:
@@ -235,7 +236,7 @@ class BrowserSession:
         if expected_title is not None and not isinstance(expected_title, str):
             raise TypeError("expected_title must be a string or None")
 
-        normalized_doi, normalized_routes = _normalize_routes(
+        normalized_doi, normalized_routes, preflight_attempts = _normalize_routes(
             doi=doi,
             routes=routes,
             limit=self.config.max_source_routes,
