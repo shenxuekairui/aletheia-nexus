@@ -103,6 +103,8 @@ def test_freeze_gate_passes_only_when_access_ceiling_is_met():
         entitled_verified=4,
         entitled_access_families=("publisher-a", "publisher-b"),
         entitled_controls_with_family=4,
+        stress_cases=20,
+        v06_only_recoveries=1,
         require_entitled_controls=True,
     )
 
@@ -218,3 +220,34 @@ def test_access_family_is_case_normalized(tmp_path):
     cases = acceptance._load_cases([], [entitled], [], [])
 
     assert cases[0]["access_family"] == "elsevier-sciencedirect"
+
+
+
+def test_freeze_gate_requires_full_stress_corpus():
+    code, message = acceptance._freeze_gate(
+        entitled_controls=3,
+        entitled_verified=3,
+        entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
+        stress_cases=19,
+        v06_only_recoveries=1,
+        require_entitled_controls=True,
+    )
+
+    assert code == 7
+    assert "at least 20 stress cases" in message
+
+
+def test_freeze_gate_requires_real_v06_only_recovery():
+    code, message = acceptance._freeze_gate(
+        entitled_controls=3,
+        entitled_verified=3,
+        entitled_access_families=("publisher-a", "publisher-b"),
+        entitled_controls_with_family=3,
+        stress_cases=20,
+        v06_only_recoveries=0,
+        require_entitled_controls=True,
+    )
+
+    assert code == 8
+    assert "at least one real v0.6-only recovery" in message
