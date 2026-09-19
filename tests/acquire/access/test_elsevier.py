@@ -192,7 +192,6 @@ def test_elsevier_credentials_are_not_forwarded_to_cross_origin_redirect(
     assert redirected_headers["accept"] == "application/pdf"
 
 
-
 def test_elsevier_author_manuscript_fallback_is_on_by_default(monkeypatch, tmp_path):
     seen_urls = []
 
@@ -230,7 +229,6 @@ def test_elsevier_author_manuscript_fallback_can_be_disabled(monkeypatch, tmp_pa
 
     assert len(seen_urls) == 1
     assert "amsRedirect" not in seen_urls[0]
-
 
 
 def test_elsevier_config_from_env_ignores_blank_optional_tokens(monkeypatch):
