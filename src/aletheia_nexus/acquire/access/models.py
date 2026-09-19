@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -73,6 +74,7 @@ class BrowserAccessConfig:
     headless: bool = False
     channel: str | None = None
     interactive: bool = True
+    interaction_callback: Callable[[ChallengeReport, str], None] | None = None
     navigation_timeout: float = 45.0
     request_timeout: float = 45.0
     auto_challenge_grace: float = 8.0
