@@ -85,6 +85,7 @@ class BrowserAccessConfig:
     poll_interval: float = 1.0
     max_source_routes: int = 12
     max_pdf_candidates: int = 12
+    max_request_redirects: int = 10
     max_bytes: int = 100 * 1024 * 1024
     keep_unverified: bool = False
 
