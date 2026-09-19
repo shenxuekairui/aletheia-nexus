@@ -80,29 +80,16 @@ def _load_playwright():
     return sync_playwright
 
 
-def acquire_with_browser(
+def _normalize_routes(
     *,
     doi: str,
     routes: tuple[FullTextCandidate, ...] | list[FullTextCandidate],
-    output_dir: str | Path,
-    expected_title: str | None = None,
-    config: BrowserAccessConfig | None = None,
-) -> BrowserRecoveryResult:
-    """Recover blocked/authenticated routes with one persistent browser session.
-
-    A dedicated profile is reused across calls so legitimate institutional/account
-    authentication can persist. Each source route gets a fresh page inside the same
-    browser context: session state is shared while page events remain isolated.
-    """
-
+    limit: int,
+) -> tuple[str, list[FullTextCandidate]]:
     normalized_doi = normalize_doi(doi)
-    config = config or BrowserAccessConfig()
-    _validate_config(config)
-    if expected_title is not None and not isinstance(expected_title, str):
-        raise TypeError("expected_title must be a string or None")
-
     normalized_routes: list[FullTextCandidate] = []
     seen: set[str] = set()
+
     for route in routes:
         if not isinstance(route, FullTextCandidate):
             raise TypeError("routes must contain FullTextCandidate values")
@@ -113,73 +100,173 @@ def acquire_with_browser(
             continue
         seen.add(key)
         normalized_routes.append(route)
-        if len(normalized_routes) >= config.max_source_routes:
+        if len(normalized_routes) >= limit:
             break
 
-    started_at = time.perf_counter()
-    profile = browser_profile_dir(config)
-    profile.mkdir(parents=True, exist_ok=True, mode=0o700)
-    try:
-        profile.chmod(0o700)
-    except OSError:
-        # Windows and some mounted filesystems may not implement POSIX modes.
-        pass
+    return normalized_doi, normalized_routes
 
-    sync_playwright = _load_playwright()
-    attempts: list[BrowserAccessAttempt] = []
-    verified: AcquisitionResult | None = None
 
-    with sync_playwright() as playwright:
+class BrowserSession:
+    """Reusable persistent browser context for one sequential acquisition batch.
+
+    The session starts lazily on the first browser recovery. Keeping it alive
+    across DOI-level acquisitions preserves session cookies and temporary
+    institutional/challenge state that may disappear when a browser closes.
+    The object is intentionally sequential; callers should not share one session
+    across concurrent acquisition tasks.
+    """
+
+    def __init__(self, config: BrowserAccessConfig | None = None) -> None:
+        self.config = config or BrowserAccessConfig()
+        _validate_config(self.config)
+        self.profile_dir = browser_profile_dir(self.config)
+        self._manager = None
+        self._context = None
+
+    @property
+    def active(self) -> bool:
+        return self._context is not None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
+    def _ensure_started(self):
+        if self._context is not None:
+            return self._context
+
+        self.profile_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            self.profile_dir.chmod(0o700)
+        except OSError:
+            # Windows and some mounted filesystems may not implement POSIX modes.
+            pass
+
+        sync_playwright = _load_playwright()
+        manager = sync_playwright()
+        try:
+            playwright = manager.__enter__()
+        except Exception as exc:
+            raise BrowserCapabilityUnavailable(
+                f"Playwright could not start: {type(exc).__name__}: {exc}"
+            ) from exc
+
         launch_kwargs: dict[str, object] = {
-            "headless": config.headless,
+            "headless": self.config.headless,
             "accept_downloads": True,
         }
-        if config.channel:
-            launch_kwargs["channel"] = config.channel
+        if self.config.channel:
+            launch_kwargs["channel"] = self.config.channel
 
         try:
             context = playwright.chromium.launch_persistent_context(
-                user_data_dir=profile,
+                user_data_dir=self.profile_dir,
                 **launch_kwargs,
             )
         except Exception as exc:
+            manager.__exit__(type(exc), exc, exc.__traceback__)
             raise BrowserCapabilityUnavailable(
                 "Playwright browser could not start. Install a browser with "
                 "'python -m playwright install chromium' or configure an "
                 f"available channel. Original error: {type(exc).__name__}: {exc}"
             ) from exc
 
-        try:
-            context.set_default_timeout(config.navigation_timeout * 1000)
-            for source in normalized_routes:
-                page = context.new_page()
-                try:
-                    attempt = attempt_browser_route(
-                        context,
-                        page,
-                        source=source,
-                        output_dir=output_dir,
-                        expected_title=expected_title,
-                        config=config,
-                    )
-                finally:
-                    if not page.is_closed():
-                        page.close()
+        context.set_default_timeout(self.config.navigation_timeout * 1000)
+        self._manager = manager
+        self._context = context
+        return context
 
-                attempts.append(attempt)
-                if (
-                    attempt.result is not None
-                    and attempt.result.status == AcquisitionStatus.VERIFIED
-                ):
-                    verified = attempt.result
-                    break
-        finally:
-            context.close()
+    def close(self) -> None:
+        context = self._context
+        manager = self._manager
+        self._context = None
+        self._manager = None
 
-    return BrowserRecoveryResult(
-        doi=normalized_doi,
-        attempts=tuple(attempts),
-        verified_result=verified,
-        profile_dir=profile,
-        elapsed_seconds=time.perf_counter() - started_at,
-    )
+        if context is not None:
+            try:
+                context.close()
+            finally:
+                if manager is not None:
+                    manager.__exit__(None, None, None)
+        elif manager is not None:
+            manager.__exit__(None, None, None)
+
+    def acquire(
+        self,
+        *,
+        doi: str,
+        routes: tuple[FullTextCandidate, ...] | list[FullTextCandidate],
+        output_dir: str | Path,
+        expected_title: str | None = None,
+    ) -> BrowserRecoveryResult:
+        """Recover one DOI while preserving this session for later DOI calls."""
+
+        if expected_title is not None and not isinstance(expected_title, str):
+            raise TypeError("expected_title must be a string or None")
+
+        normalized_doi, normalized_routes = _normalize_routes(
+            doi=doi,
+            routes=routes,
+            limit=self.config.max_source_routes,
+        )
+        started_at = time.perf_counter()
+        context = self._ensure_started()
+        attempts: list[BrowserAccessAttempt] = []
+        verified: AcquisitionResult | None = None
+
+        for source in normalized_routes:
+            page = context.new_page()
+            try:
+                attempt = attempt_browser_route(
+                    context,
+                    page,
+                    source=source,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    config=self.config,
+                )
+            finally:
+                if not page.is_closed():
+                    page.close()
+
+            attempts.append(attempt)
+            if (
+                attempt.result is not None
+                and attempt.result.status == AcquisitionStatus.VERIFIED
+            ):
+                verified = attempt.result
+                break
+
+        return BrowserRecoveryResult(
+            doi=normalized_doi,
+            attempts=tuple(attempts),
+            verified_result=verified,
+            profile_dir=self.profile_dir,
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
+
+
+def acquire_with_browser(
+    *,
+    doi: str,
+    routes: tuple[FullTextCandidate, ...] | list[FullTextCandidate],
+    output_dir: str | Path,
+    expected_title: str | None = None,
+    config: BrowserAccessConfig | None = None,
+) -> BrowserRecoveryResult:
+    """Recover one DOI with a temporary persistent-browser session wrapper.
+
+    For batch acquisition, use :class:`BrowserSession` directly so the live
+    browser context remains open across multiple DOI-level calls.
+    """
+
+    with BrowserSession(config) as session:
+        return session.acquire(
+            doi=doi,
+            routes=routes,
+            output_dir=output_dir,
+            expected_title=expected_title,
+        )
