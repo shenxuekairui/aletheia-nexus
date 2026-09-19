@@ -57,10 +57,10 @@ class _Manager:
         return False
 
 
-def _candidate(index):
+def _candidate(index, *, doi="10.1000/session-limit", url=None):
     return FullTextCandidate(
-        doi="10.1000/session-limit",
-        url=f"https://publisher.example/article/{index}",
+        doi=doi,
+        url=url or f"https://publisher.example/article/{index}",
         provenance=(),
     )
 
@@ -98,3 +98,30 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert len(result.attempts) == 2
     assert result.verified_result is None
     assert context.closed is True
+
+
+
+def test_all_unsafe_routes_do_not_start_browser(monkeypatch, tmp_path):
+    def should_not_load_playwright():
+        raise AssertionError("unsafe-only recovery must not start Playwright")
+
+    monkeypatch.setattr(browser, "_load_playwright", should_not_load_playwright)
+
+    session = browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+    )
+    result = session.acquire(
+        doi="10.1000/session-limit",
+        routes=[
+            _candidate(
+                1,
+                url="http://127.0.0.1/private.pdf",
+            )
+        ],
+        output_dir=tmp_path / "downloads",
+    )
+
+    assert session.active is False
+    assert len(result.attempts) == 1
+    assert result.attempts[0].status == BrowserAttemptStatus.UNSAFE_URL
+    assert result.verified_result is None
