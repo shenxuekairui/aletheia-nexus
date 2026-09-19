@@ -271,6 +271,8 @@ def _report_payload(
     config: BrowserAccessConfig,
     base_verified: int,
     verified: int,
+    stress_base_verified: int,
+    stress_verified: int,
     entitled_controls: int,
     entitled_verified: int,
     entitled_access_families: tuple[str, ...],
@@ -318,6 +320,15 @@ def _report_payload(
         "summary": {
             "v0.5_verified": base_verified,
             "v0.6_verified": verified,
+            "stress_v0.5_verified": stress_base_verified,
+            "stress_v0.6_verified": stress_verified,
+            "stress_uplift_count": stress_verified - stress_base_verified,
+            "stress_v0.5_verified_rate": (
+                stress_base_verified / stress_cases if stress_cases else None
+            ),
+            "stress_v0.6_verified_rate": (
+                stress_verified / stress_cases if stress_cases else None
+            ),
             "elsevier_recovered": elsevier_recovered,
             "browser_recovered": browser_recovered,
             "v0.6_only_recoveries": v06_only_recoveries,
@@ -360,6 +371,8 @@ def _write_report(
     config: BrowserAccessConfig,
     base_verified: int,
     verified: int,
+    stress_base_verified: int,
+    stress_verified: int,
     entitled_controls: int,
     entitled_verified: int,
     entitled_access_families: tuple[str, ...],
@@ -381,6 +394,8 @@ def _write_report(
         config=config,
         base_verified=base_verified,
         verified=verified,
+        stress_base_verified=stress_base_verified,
+        stress_verified=stress_verified,
         entitled_controls=entitled_controls,
         entitled_verified=entitled_verified,
         entitled_access_families=entitled_access_families,
@@ -578,6 +593,8 @@ def main() -> int:
     records: list[dict[str, object]] = []
     verified = 0
     base_verified = 0
+    stress_verified = 0
+    stress_base_verified = 0
     elsevier_recovered = 0
     browser_recovered = 0
     interaction_cases = 0
@@ -638,6 +655,8 @@ def main() -> int:
                     config=config,
                     base_verified=base_verified,
                     verified=verified,
+                    stress_base_verified=stress_base_verified,
+                    stress_verified=stress_verified,
                     entitled_controls=entitled_controls,
                     entitled_verified=entitled_verified,
                     entitled_access_families=entitled_access_families,
@@ -668,8 +687,12 @@ def main() -> int:
 
             if result.base_result.status.value == "VERIFIED":
                 base_verified += 1
+                if bool(case["stress_case"]):
+                    stress_base_verified += 1
             if result.status == MaximizedAcquisitionStatus.VERIFIED:
                 verified += 1
+                if bool(case["stress_case"]):
+                    stress_verified += 1
                 if bool(case["entitled_control"]):
                     entitled_verified += 1
                 if (
@@ -702,6 +725,8 @@ def main() -> int:
                 config=config,
                 base_verified=base_verified,
                 verified=verified,
+                stress_base_verified=stress_base_verified,
+                stress_verified=stress_verified,
                 entitled_controls=entitled_controls,
                 entitled_verified=entitled_verified,
                 entitled_access_families=entitled_access_families,
@@ -720,8 +745,13 @@ def main() -> int:
     print()
     print("Aletheia Nexus v0.6 acceptance summary")
     print(f"Cases:              {len(cases)}")
-    print(f"v0.5 VERIFIED:      {base_verified}")
-    print(f"v0.6 VERIFIED:      {verified}")
+    print(f"Total v0.5 VERIFIED:{base_verified:>6}")
+    print(f"Total v0.6 VERIFIED:{verified:>6}")
+    print(
+        "Stress v0.5/v0.6:   "
+        f"{stress_base_verified}/{stress_cases} -> {stress_verified}/{stress_cases}"
+    )
+    print(f"Stress uplift:       {stress_verified - stress_base_verified:+d}")
     print(f"Entitled controls:  {entitled_verified}/{entitled_controls}")
     print(
         "Access families:    "
