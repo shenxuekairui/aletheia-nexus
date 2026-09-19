@@ -101,7 +101,6 @@ def test_freeze_gate_passes_only_when_access_ceiling_is_met():
     assert message is None
 
 
-
 def test_freeze_gate_rejects_runner_errors():
     code, message = acceptance._freeze_gate(
         entitled_controls=3,
