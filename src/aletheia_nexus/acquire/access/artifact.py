@@ -51,10 +51,7 @@ def _sanitize_access_details(
             )
         return sanitized
     if isinstance(value, (list, tuple)):
-        return [
-            _sanitize_access_details(item, key_hint=key_hint)
-            for item in value
-        ]
+        return [_sanitize_access_details(item, key_hint=key_hint) for item in value]
     if isinstance(value, str) and "url" in key_hint:
         return redact_url_for_record(value)
     if value is None or isinstance(value, (str, int, float, bool)):
