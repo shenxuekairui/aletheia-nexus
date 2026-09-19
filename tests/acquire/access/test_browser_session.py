@@ -274,7 +274,6 @@ def test_browser_session_clears_route_event_buffers(monkeypatch, tmp_path):
         assert session._downloads == []
 
 
-
 class _FailingManager:
     def __enter__(self):
         raise RuntimeError(
