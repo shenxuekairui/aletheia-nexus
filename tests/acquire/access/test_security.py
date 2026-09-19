@@ -45,6 +45,11 @@ def test_redact_url_removes_embedded_userinfo_credentials():
         "http://localhost/paper.pdf",
         "http://lab.local/paper.pdf",
         "http://127.0.0.1/paper.pdf",
+        "http://127.0.0.1./paper.pdf",
+        "http://127.1/paper.pdf",
+        "http://2130706433/paper.pdf",
+        "http://0x7f000001/paper.pdf",
+        "http://0177.0.0.1/paper.pdf",
         "http://10.0.0.1/paper.pdf",
         "http://169.254.169.254/latest/meta-data",
         "http://[::1]/paper.pdf",
@@ -106,3 +111,11 @@ def test_redact_unparseable_url_fails_closed():
 
     assert value == "[unparseable-url]"
     assert "secret" not in value
+
+
+
+def test_browser_network_url_allows_canonical_public_ip():
+    assert (
+        validate_browser_network_url("https://8.8.8.8/article")
+        == "https://8.8.8.8/article"
+    )
