@@ -1,6 +1,10 @@
 import argparse
 import json
+import platform
+import sys
 from collections import Counter
+from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from aletheia_nexus.acquire.access import (
@@ -15,6 +19,89 @@ DEFAULT_BENCHMARKS = (
     Path("benchmarks/cdi_acquisition_10.json"),
     Path("benchmarks/seawater_desalination_10.json"),
 )
+
+
+def _package_version() -> str:
+    try:
+        return version("aletheia-nexus")
+    except PackageNotFoundError:
+        return "dev"
+
+
+def _report_payload(
+    *,
+    records: list[dict[str, object]],
+    benchmark_paths: list[Path],
+    config: BrowserAccessConfig,
+    base_verified: int,
+    verified: int,
+    browser_recovered: int,
+    interaction_cases: int,
+    final_statuses: Counter[str],
+    challenge_kinds: Counter[str],
+) -> dict[str, object]:
+    return {
+        "schema": "aletheia-nexus/v0.6-access-acceptance/v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "aletheia_nexus_version": _package_version(),
+        "environment": {
+            "python": sys.version.split()[0],
+            "platform": platform.system(),
+            "platform_release": platform.release(),
+        },
+        "corpus": {
+            "benchmarks": [str(path) for path in benchmark_paths],
+            "case_count": len(records),
+        },
+        "browser": {
+            "profile_name": config.profile_name,
+            "channel": config.channel,
+            "headless": config.headless,
+            "interactive": config.interactive,
+            "max_source_routes": config.max_source_routes,
+            "max_pdf_candidates": config.max_pdf_candidates,
+        },
+        "summary": {
+            "v0.5_verified": base_verified,
+            "v0.6_verified": verified,
+            "browser_recovered": browser_recovered,
+            "interaction_cases": interaction_cases,
+            "final_statuses": dict(sorted(final_statuses.items())),
+            "challenge_kinds": dict(sorted(challenge_kinds.items())),
+        },
+        "records": records,
+    }
+
+
+def _write_report(
+    path: Path,
+    *,
+    records: list[dict[str, object]],
+    benchmark_paths: list[Path],
+    config: BrowserAccessConfig,
+    base_verified: int,
+    verified: int,
+    browser_recovered: int,
+    interaction_cases: int,
+    final_statuses: Counter[str],
+    challenge_kinds: Counter[str],
+) -> None:
+    payload = _report_payload(
+        records=records,
+        benchmark_paths=benchmark_paths,
+        config=config,
+        base_verified=base_verified,
+        verified=verified,
+        browser_recovered=browser_recovered,
+        interaction_cases=interaction_cases,
+        final_statuses=final_statuses,
+        challenge_kinds=challenge_kinds,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _load_cases(paths: list[Path], dois: list[str]) -> list[dict[str, str | None]]:
@@ -208,10 +295,17 @@ def main() -> int:
                 f"verified={result.verified_path or '-'}"
             )
 
-            args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(
-                json.dumps(records, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
+            _write_report(
+                args.report,
+                records=records,
+                benchmark_paths=benchmark_paths,
+                config=config,
+                base_verified=base_verified,
+                verified=verified,
+                browser_recovered=browser_recovered,
+                interaction_cases=interaction_cases,
+                final_statuses=final_statuses,
+                challenge_kinds=challenge_kinds,
             )
 
     print()
