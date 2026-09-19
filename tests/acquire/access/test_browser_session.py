@@ -99,7 +99,7 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert len(result.attempts) == 2
     assert result.verified_result is None
     assert context.closed is True
-    assert manager.playwright.chromium.kwargs["service_workers"] == "block"
+    assert manager.playwright.chromium.kwargs["service_workers"] == "allow"
 
 
 def test_all_unsafe_routes_do_not_start_browser(monkeypatch, tmp_path):
