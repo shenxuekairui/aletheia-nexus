@@ -23,6 +23,8 @@ DEFAULT_BENCHMARKS = (
 )
 MIN_FREEZE_ENTITLED_CONTROLS = 3
 MIN_FREEZE_ACCESS_FAMILIES = 2
+MIN_FREEZE_STRESS_CASES = 20
+MIN_FREEZE_V06_ONLY_RECOVERIES = 1
 
 
 def _package_version() -> str:
@@ -273,6 +275,8 @@ def _report_payload(
     entitled_verified: int,
     entitled_access_families: tuple[str, ...],
     entitled_controls_with_family: int,
+    stress_cases: int,
+    v06_only_recoveries: int,
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -298,6 +302,7 @@ def _report_payload(
             "case_count": len(records),
             "entitled_positive_control_count": entitled_controls,
             "entitled_access_families": list(entitled_access_families),
+            "stress_case_count": stress_cases,
         },
         "official_api": {
             "elsevier_enabled": elsevier_enabled,
@@ -315,6 +320,7 @@ def _report_payload(
             "v0.6_verified": verified,
             "elsevier_recovered": elsevier_recovered,
             "browser_recovered": browser_recovered,
+            "v0.6_only_recoveries": v06_only_recoveries,
             "interaction_cases": interaction_cases,
             "runner_errors": runner_errors,
             "entitled_controls": entitled_controls,
@@ -329,6 +335,8 @@ def _report_payload(
                 and entitled_verified == entitled_controls
                 and entitled_controls_with_family == entitled_controls
                 and len(entitled_access_families) >= MIN_FREEZE_ACCESS_FAMILIES
+                and stress_cases >= MIN_FREEZE_STRESS_CASES
+                and v06_only_recoveries >= MIN_FREEZE_V06_ONLY_RECOVERIES
             ),
             "final_statuses": dict(sorted(final_statuses.items())),
             "challenge_kinds": dict(sorted(challenge_kinds.items())),
@@ -350,6 +358,8 @@ def _write_report(
     entitled_verified: int,
     entitled_access_families: tuple[str, ...],
     entitled_controls_with_family: int,
+    stress_cases: int,
+    v06_only_recoveries: int,
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -369,6 +379,8 @@ def _write_report(
         entitled_verified=entitled_verified,
         entitled_access_families=entitled_access_families,
         entitled_controls_with_family=entitled_controls_with_family,
+        stress_cases=stress_cases,
+        v06_only_recoveries=v06_only_recoveries,
         elsevier_enabled=elsevier_enabled,
         elsevier_recovered=elsevier_recovered,
         browser_recovered=browser_recovered,
@@ -391,6 +403,8 @@ def _freeze_gate(
     require_entitled_controls: bool,
     entitled_access_families: tuple[str, ...] = (),
     entitled_controls_with_family: int = 0,
+    stress_cases: int = 0,
+    v06_only_recoveries: int = 0,
     runner_errors: int = 0,
 ) -> tuple[int, str | None]:
     """Evaluate the live-release access ceiling gate deterministically."""
@@ -439,6 +453,23 @@ def _freeze_gate(
                     "Set access_family on entitled benchmark entries."
                 ),
             )
+        if stress_cases < MIN_FREEZE_STRESS_CASES:
+            return (
+                7,
+                (
+                    "freeze acceptance requires at least "
+                    f"{MIN_FREEZE_STRESS_CASES} stress cases; "
+                    f"received {stress_cases}."
+                ),
+            )
+        if v06_only_recoveries < MIN_FREEZE_V06_ONLY_RECOVERIES:
+            return (
+                8,
+                (
+                    "freeze acceptance requires at least one real v0.6-only "
+                    "recovery beyond the v0.5 baseline."
+                ),
+            )
     return 0, None
 
 
@@ -485,9 +516,10 @@ def main() -> int:
         "--require-entitled-controls",
         action="store_true",
         help=(
-            "Freeze gate: require >=3 entitled controls, access_family on every "
-            "control, >=2 distinct access families, all controls VERIFIED, and "
-            "zero unexpected runner errors."
+            "Freeze gate: require >=20 stress cases, >=3 entitled controls, "
+            "access_family on every control, >=2 distinct access families, "
+            "all controls VERIFIED, >=1 v0.6-only recovery, and zero unexpected "
+            "runner errors."
         ),
     )
     parser.add_argument("--output-dir", type=Path, default=Path("downloads/v06"))
@@ -544,6 +576,7 @@ def main() -> int:
     browser_recovered = 0
     interaction_cases = 0
     runner_errors = 0
+    stress_cases = sum(bool(case["stress_case"]) for case in cases)
     entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
     entitled_verified = 0
     entitled_controls_with_family = sum(
@@ -603,6 +636,8 @@ def main() -> int:
                     entitled_verified=entitled_verified,
                     entitled_access_families=entitled_access_families,
                     entitled_controls_with_family=entitled_controls_with_family,
+                    stress_cases=stress_cases,
+                    v06_only_recoveries=elsevier_recovered + browser_recovered,
                     elsevier_enabled=elsevier_config is not None,
                     elsevier_recovered=elsevier_recovered,
                     browser_recovered=browser_recovered,
@@ -665,6 +700,8 @@ def main() -> int:
                 entitled_verified=entitled_verified,
                 entitled_access_families=entitled_access_families,
                 entitled_controls_with_family=entitled_controls_with_family,
+                stress_cases=stress_cases,
+                v06_only_recoveries=elsevier_recovered + browser_recovered,
                 elsevier_enabled=elsevier_config is not None,
                 elsevier_recovered=elsevier_recovered,
                 browser_recovered=browser_recovered,
@@ -687,6 +724,8 @@ def main() -> int:
     )
     print(f"Elsevier recovered: {elsevier_recovered}")
     print(f"Browser recovered:  {browser_recovered}")
+    print(f"v0.6-only recovery: {elsevier_recovered + browser_recovered}")
+    print(f"Stress cases:        {stress_cases}")
     print(f"Interaction cases:  {interaction_cases}")
     print(f"Runner errors:       {runner_errors}")
     print("Final statuses:")
@@ -705,6 +744,8 @@ def main() -> int:
         entitled_verified=entitled_verified,
         entitled_access_families=entitled_access_families,
         entitled_controls_with_family=entitled_controls_with_family,
+        stress_cases=stress_cases,
+        v06_only_recoveries=elsevier_recovered + browser_recovered,
         require_entitled_controls=args.require_entitled_controls,
         runner_errors=runner_errors,
     )
