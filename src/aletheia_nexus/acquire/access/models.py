@@ -87,6 +87,7 @@ class ElsevierAccessConfig:
     timeout: float = 30.0
     max_bytes: int = 100 * 1024 * 1024
     max_redirects: int = 5
+    allow_author_manuscript_fallback: bool = True
     keep_unverified: bool = False
 
     @classmethod
