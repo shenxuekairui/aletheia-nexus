@@ -37,9 +37,11 @@ class _Handler(BaseHTTPRequestHandler):
     pdf_body = _pdf_bytes()
     popup_pdf_body = _pdf_bytes("Popup Browser Integration Article")
     institution_pdf_body = _pdf_bytes("Institutional Access Integration Article")
+    persistent_pdf_body = _pdf_bytes("Persistent Browser Integration Article")
     pdf_cookie_seen = False
     popup_cookie_seen = False
     institution_cookie_seen = False
+    persistent_cookie_seen = False
 
     def log_message(self, format, *args):
         return
@@ -156,6 +158,66 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if path == "/persistent-login":
+            body = b"<html><body>Session seeded</body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header(
+                "Set-Cookie",
+                "persistent_session=ok; Max-Age=3600; Path=/; SameSite=Lax",
+            )
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/persistent-article":
+            cookie = self.headers.get("Cookie", "")
+            authenticated = "persistent_session=ok" in cookie
+            if authenticated:
+                body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Persistent Browser Integration Article">
+<meta name="citation_doi" content="10.1000/browser-persistent">
+<meta name="citation_pdf_url" content="/persistent.pdf">
+<title>Persistent Browser Integration Article</title>
+</head>
+<body>Persistent authenticated article page</body>
+</html>"""
+            else:
+                body = b"""<!doctype html>
+<html>
+<head><title>Institutional access</title></head>
+<body>Access through your institution</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/persistent.pdf":
+            cookie = self.headers.get("Cookie", "")
+            type(self).persistent_cookie_seen = "persistent_session=ok" in cookie
+            if not type(self).persistent_cookie_seen:
+                body = b"<html><body>Sign in to access</body></html>"
+                self.send_response(401)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            body = type(self).persistent_pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/institution.pdf":
             cookie = self.headers.get("Cookie", "")
             type(self).institution_cookie_seen = "institution_session=ok" in cookie
@@ -185,6 +247,7 @@ def local_article_server():
     _Handler.pdf_cookie_seen = False
     _Handler.popup_cookie_seen = False
     _Handler.institution_cookie_seen = False
+    _Handler.persistent_cookie_seen = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -321,3 +384,54 @@ def test_real_browser_recovers_after_institution_access_handoff(
         "Institutional access handoff completed" in item
         for item in result.attempts[0].evidence
     )
+
+
+
+def test_real_browser_profile_persists_session_across_restarts(
+    monkeypatch,
+    tmp_path,
+    local_article_server,
+):
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+
+    profile_root = tmp_path / "profiles"
+    config = BrowserAccessConfig(
+        profile_name="persistent-integration",
+        profile_root=profile_root,
+        headless=True,
+        interactive=False,
+        auto_challenge_grace=0,
+        interaction_timeout=0,
+    )
+
+    seed = FullTextCandidate(
+        doi="10.1000/browser-persist-seed",
+        url=f"{local_article_server}/persistent-login",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    with BrowserSession(config) as session:
+        session.acquire(
+            doi=seed.doi,
+            routes=[seed],
+            output_dir=tmp_path / "seed-downloads",
+        )
+
+    article = FullTextCandidate(
+        doi="10.1000/browser-persistent",
+        url=f"{local_article_server}/persistent-article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    with BrowserSession(config) as session:
+        result = session.acquire(
+            doi=article.doi,
+            routes=[article],
+            output_dir=tmp_path / "downloads",
+            expected_title="Persistent Browser Integration Article",
+        )
+
+    assert _Handler.persistent_cookie_seen is True
+    assert result.verified_result is not None
+    assert result.verified_result.status == AcquisitionStatus.VERIFIED
