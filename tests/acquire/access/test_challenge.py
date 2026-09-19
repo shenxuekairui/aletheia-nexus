@@ -120,3 +120,47 @@ def test_imperative_mfa_prompt_is_still_detected():
         html="<main>Enter your verification code from your authenticator app</main>",
     )
     assert report.kind == ChallengeKind.MFA
+
+
+
+def test_cstcloud_oauth_login_is_classified_as_sso():
+    report = classify_access_challenge(
+        title="中国科技云通行证登录",
+        url="https://passport.escience.cn/oauth2/authorize?client_id=123",
+        visible_text=(
+            "登录 您正在登录 CSTCloud AAI用户服务系统 "
+            "使用中国科技云通行证登录"
+        ),
+        html="<main>使用中国科技云通行证登录</main>",
+    )
+    assert report.kind == ChallengeKind.SSO
+
+
+def test_carsi_institutional_login_is_classified_as_sso():
+    report = classify_access_challenge(
+        title="统一身份认证",
+        url="https://idp.example.edu.cn/cas/login",
+        visible_text="CARSI 统一身份认证 机构登录",
+        html="<main>CARSI 统一身份认证</main>",
+    )
+    assert report.kind == ChallengeKind.SSO
+
+
+def test_chinese_captcha_prompt_is_detected():
+    report = classify_access_challenge(
+        title="安全验证",
+        url="https://publisher.example/challenge",
+        visible_text="请完成人机验证后继续访问",
+        html="<main>请完成人机验证后继续访问</main>",
+    )
+    assert report.kind == ChallengeKind.CAPTCHA
+
+
+def test_chinese_article_mentioning_login_is_not_auth_prompt():
+    report = classify_access_challenge(
+        title="科研平台统一身份认证系统的设计",
+        url="https://publisher.example/article",
+        visible_text="本文研究统一身份认证系统的设计与实现。",
+        html="<main>本文研究统一身份认证系统的设计与实现。</main>",
+    )
+    assert report.kind == ChallengeKind.NONE
