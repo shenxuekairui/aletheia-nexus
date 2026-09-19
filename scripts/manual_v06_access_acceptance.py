@@ -10,6 +10,7 @@ from pathlib import Path
 from aletheia_nexus.acquire.access import (
     BrowserAccessConfig,
     BrowserSession,
+    ElsevierAccessConfig,
     MaximizedAcquisitionStatus,
     acquire_full_text_maximized,
 )
@@ -194,6 +195,16 @@ def _serialize(result) -> dict[str, object]:
         "verified_path": (
             str(result.verified_path) if result.verified_path is not None else None
         ),
+        "elsevier_attempt": (
+            {
+                "status": result.elsevier_attempt.status.value,
+                "http_status": result.elsevier_attempt.http_status,
+                "credential_modes": list(result.elsevier_attempt.credential_modes),
+                "error_type": _error_type(result.elsevier_attempt.error),
+            }
+            if result.elsevier_attempt is not None
+            else None
+        ),
         "browser_attempts": browser_attempts,
         "elapsed_seconds": result.elapsed_seconds,
         "message": result.message,
@@ -232,6 +243,11 @@ def main() -> int:
     parser.add_argument("--unpaywall-email", default=None)
     parser.add_argument("--openalex-api-key", default=None)
     parser.add_argument("--metadata-mailto", default=None)
+    parser.add_argument(
+        "--no-elsevier-api",
+        action="store_true",
+        help="Ignore ELSEVIER_* environment credentials even if configured.",
+    )
     args = parser.parse_args()
     if args.headless and not args.non_interactive:
         parser.error("--headless requires --non-interactive")
@@ -251,9 +267,14 @@ def main() -> int:
         interaction_callback=(None if args.non_interactive else _interaction_notice),
     )
 
+    elsevier_config = (
+        None if args.no_elsevier_api else ElsevierAccessConfig.from_env()
+    )
+
     records: list[dict[str, object]] = []
     verified = 0
     base_verified = 0
+    elsevier_recovered = 0
     interaction_cases = 0
     browser_recovered = 0
     final_statuses: Counter[str] = Counter()
@@ -268,6 +289,7 @@ def main() -> int:
                 doi,
                 output_dir=args.output_dir,
                 browser_session=browser_session,
+                elsevier_config=elsevier_config,
                 expected_title=title,
                 unpaywall_email=args.unpaywall_email,
                 openalex_api_key=args.openalex_api_key,
@@ -280,7 +302,12 @@ def main() -> int:
                 base_verified += 1
             if result.status == MaximizedAcquisitionStatus.VERIFIED:
                 verified += 1
-                if result.base_result.status.value != "VERIFIED":
+                if (
+                    result.elsevier_attempt is not None
+                    and result.elsevier_attempt.status.value == "VERIFIED"
+                ):
+                    elsevier_recovered += 1
+                elif result.base_result.status.value != "VERIFIED":
                     browser_recovered += 1
             final_statuses[result.status.value] += 1
             for attempt in result.browser_attempts:
@@ -313,6 +340,7 @@ def main() -> int:
     print(f"Cases:              {len(cases)}")
     print(f"v0.5 VERIFIED:      {base_verified}")
     print(f"v0.6 VERIFIED:      {verified}")
+    print(f"Elsevier recovered: {elsevier_recovered}")
     print(f"Browser recovered:  {browser_recovered}")
     print(f"Interaction cases:  {interaction_cases}")
     print("Final statuses:")
