@@ -31,3 +31,13 @@ def test_browser_profile_path_is_not_created_by_path_resolution(tmp_path):
     path = browser_profile_dir(config)
     assert isinstance(path, Path)
     assert not path.exists()
+
+
+def test_browser_interaction_callback_must_be_callable(tmp_path):
+    config = BrowserAccessConfig(
+        profile_name="bad-callback",
+        profile_root=tmp_path,
+        interaction_callback="not-callable",
+    )
+    with pytest.raises(TypeError):
+        browser_profile_dir(config)
