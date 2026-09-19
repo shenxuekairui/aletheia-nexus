@@ -179,6 +179,11 @@ def _final_status_from_browser(
             MaximizedAcquisitionStatus.ACCESS_DENIED,
             "All browser recovery routes ended at explicit access-denied pages.",
         )
+    if statuses and statuses <= {BrowserAttemptStatus.UNSAFE_URL}:
+        return (
+            MaximizedAcquisitionStatus.UNSAFE_URL,
+            "All browser recovery routes were rejected by browser URL safety preflight.",
+        )
 
     return (
         MaximizedAcquisitionStatus.EXHAUSTED,
