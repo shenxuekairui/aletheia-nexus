@@ -34,6 +34,13 @@ def _package_version() -> str:
         return "dev"
 
 
+def _report_path(path: Path) -> str:
+    """Return an auditable report path without exposing an absolute local directory."""
+
+    value = Path(path)
+    return value.name if value.is_absolute() else value.as_posix()
+
+
 def _read_benchmark(path: Path) -> list[dict[str, object]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
@@ -113,7 +120,7 @@ def _load_cases(
                 doi=doi,
                 title=str(item.get("title") or "").strip() or None,
                 case_id=str(item.get("id") or doi),
-                source=str(path),
+                source=_report_path(path),
                 stress=True,
                 entitled=False,
                 access_family=None,
@@ -126,7 +133,7 @@ def _load_cases(
                 doi=doi,
                 title=str(item.get("title") or "").strip() or None,
                 case_id=str(item.get("id") or doi),
-                source=str(path),
+                source=_report_path(path),
                 stress=False,
                 entitled=True,
                 access_family=(
@@ -290,7 +297,7 @@ def _serialize(result) -> dict[str, object]:
         "base_status": result.base_result.status.value,
         "base_trace": base_trace,
         "verified_path": (
-            str(result.verified_path) if result.verified_path is not None else None
+            result.verified_path.name if result.verified_path is not None else None
         ),
         "elsevier_attempt": (
             {
@@ -368,9 +375,9 @@ def _report_payload(
             "platform_release": platform.release(),
         },
         "corpus": {
-            "stress_benchmarks": [str(path) for path in stress_paths],
+            "stress_benchmarks": [_report_path(path) for path in stress_paths],
             "entitled_positive_control_benchmarks": [
-                str(path) for path in entitled_paths
+                _report_path(path) for path in entitled_paths
             ],
             "case_count": len(records),
             "entitled_positive_control_count": entitled_controls,
