@@ -55,7 +55,6 @@ def _page_snapshot(page) -> tuple[str, str, str, str]:
         visible_text = page.locator("body").inner_text(timeout=2000)
     except Exception:
         visible_text = ""
-    sync_session_events()
 
     try:
         html = page.content()
@@ -974,6 +973,8 @@ def attempt_browser_route(
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
+    sync_session_events()
+
     try:
         html = page.content()
         parsed = parse_html(html)
@@ -1201,6 +1202,7 @@ def attempt_browser_route(
         for report in popup_challenges:
             _append_report(challenge_history, report)
         interaction_used = interaction_used or popup_interaction_used
+        sync_session_events()
         if popup_verified is not None:
             return BrowserAccessAttempt(
                 source_candidate=source,
