@@ -61,3 +61,12 @@ def test_explicit_block_is_access_denied():
         html="<p>Your request has been blocked</p>",
     )
     assert report.kind == ChallengeKind.ACCESS_DENIED
+
+
+def test_optional_institution_link_on_accessible_article_is_not_a_challenge():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        html="<main>Full article text</main><a>Access through your institution</a>",
+    )
+    assert report.kind == ChallengeKind.NONE
