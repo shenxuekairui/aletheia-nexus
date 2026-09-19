@@ -956,6 +956,75 @@ def attempt_browser_route(
                 return attempt
         return None
 
+    def run_institution_handoff_and_retry() -> BrowserAccessAttempt | None:
+        nonlocal interaction_used
+
+        if not _allow_access_handoff:
+            return None
+
+        (
+            access_clicked,
+            access_reports,
+            access_interaction_used,
+            access_final,
+        ) = _run_institution_handoff(
+            context,
+            page,
+            config=config,
+        )
+        if not access_clicked:
+            return None
+
+        for report in access_reports:
+            _append_report(challenge_history, report)
+        interaction_used = interaction_used or access_interaction_used
+
+        if access_final.kind != ChallengeKind.NONE:
+            return BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=getattr(page, "url", None) or source.url,
+                status=_status_from_challenge(access_final),
+                challenge_history=tuple(challenge_history),
+                file_attempts=tuple(file_attempts),
+                candidates_considered=len(file_attempts),
+                interaction_used=interaction_used,
+                evidence=access_final.evidence,
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
+
+        retry = attempt_browser_route(
+            context,
+            page,
+            source=source,
+            output_dir=output_dir,
+            expected_title=expected_title,
+            config=config,
+            session_blocked_urls=session_blocked_urls,
+            session_pdf_responses=session_pdf_responses,
+            session_downloads=session_downloads,
+            _allow_access_handoff=False,
+        )
+
+        merged_history = list(challenge_history)
+        for report in retry.challenge_history:
+            _append_report(merged_history, report)
+        merged_file_attempts = [*file_attempts, *retry.file_attempts]
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=retry.final_url,
+            status=retry.status,
+            challenge_history=tuple(merged_history),
+            file_attempts=tuple(merged_file_attempts),
+            candidates_considered=len(merged_file_attempts),
+            interaction_used=interaction_used or retry.interaction_used,
+            evidence=(
+                "Institutional access handoff completed; route retried once",
+                *retry.evidence,
+            ),
+            error=retry.error,
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
+
     def on_response(response) -> None:
         try:
             content_type = (response.headers.get("content-type") or "").lower()
@@ -1082,6 +1151,12 @@ def attempt_browser_route(
             error=f"{type(exc).__name__}: {exc}",
             elapsed_seconds=time.perf_counter() - started_at,
         )
+
+    initial_report = _report_for_page(page)
+    if initial_report.kind == ChallengeKind.SSO:
+        handoff_result = run_institution_handoff_and_retry()
+        if handoff_result is not None:
+            return handoff_result
 
     final_report, observed, used = _resolve_page_challenge(page, config=config)
     for report in observed:
@@ -1468,67 +1543,9 @@ def attempt_browser_route(
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
 
-    if _allow_access_handoff:
-        (
-            access_clicked,
-            access_reports,
-            access_interaction_used,
-            access_final,
-        ) = _run_institution_handoff(
-            context,
-            page,
-            config=config,
-        )
-        if access_clicked:
-            for report in access_reports:
-                _append_report(challenge_history, report)
-            interaction_used = interaction_used or access_interaction_used
-
-            if access_final.kind != ChallengeKind.NONE:
-                return BrowserAccessAttempt(
-                    source_candidate=source,
-                    final_url=getattr(page, "url", None) or source.url,
-                    status=_status_from_challenge(access_final),
-                    challenge_history=tuple(challenge_history),
-                    file_attempts=tuple(file_attempts),
-                    candidates_considered=len(file_attempts),
-                    interaction_used=interaction_used,
-                    evidence=access_final.evidence,
-                    elapsed_seconds=time.perf_counter() - started_at,
-                )
-
-            retry = attempt_browser_route(
-                context,
-                page,
-                source=source,
-                output_dir=output_dir,
-                expected_title=expected_title,
-                config=config,
-                session_blocked_urls=session_blocked_urls,
-                session_pdf_responses=session_pdf_responses,
-                session_downloads=session_downloads,
-                _allow_access_handoff=False,
-            )
-
-            merged_history = list(challenge_history)
-            for report in retry.challenge_history:
-                _append_report(merged_history, report)
-            merged_file_attempts = [*file_attempts, *retry.file_attempts]
-            return BrowserAccessAttempt(
-                source_candidate=source,
-                final_url=retry.final_url,
-                status=retry.status,
-                challenge_history=tuple(merged_history),
-                file_attempts=tuple(merged_file_attempts),
-                candidates_considered=len(merged_file_attempts),
-                interaction_used=interaction_used or retry.interaction_used,
-                evidence=(
-                    "Institutional access handoff completed; route retried once",
-                    *retry.evidence,
-                ),
-                error=retry.error,
-                elapsed_seconds=time.perf_counter() - started_at,
-            )
+    handoff_result = run_institution_handoff_and_retry()
+    if handoff_result is not None:
+        return handoff_result
 
     any_retrieved = any(
         attempt.result is not None
