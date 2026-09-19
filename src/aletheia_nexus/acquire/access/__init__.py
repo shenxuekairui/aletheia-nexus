@@ -2,6 +2,7 @@
 
 from aletheia_nexus.acquire.access.browser import (
     BrowserCapabilityUnavailable,
+    BrowserSession,
     acquire_with_browser,
     browser_profile_dir,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "BrowserAttemptStatus",
     "BrowserCapabilityUnavailable",
     "BrowserFileAttempt",
+    "BrowserSession",
     "BrowserRecoveryResult",
     "ChallengeKind",
     "ChallengeReport",
