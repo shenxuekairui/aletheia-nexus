@@ -6,6 +6,7 @@ from aletheia_nexus.acquire.access.models import (
 )
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
 
+
 class _Page:
     def __init__(self):
         self.closed = False
@@ -15,6 +16,7 @@ class _Page:
 
     def close(self):
         self.closed = True
+
 
 class _Context:
     def __init__(self):
@@ -29,6 +31,7 @@ class _Context:
     def close(self):
         self.closed = True
 
+
 class _Chromium:
     def __init__(self, context):
         self.context = context
@@ -37,9 +40,11 @@ class _Chromium:
         self.kwargs = kwargs
         return self.context
 
+
 class _Playwright:
     def __init__(self, context):
         self.chromium = _Chromium(context)
+
 
 class _Manager:
     def __init__(self, context):
@@ -51,12 +56,14 @@ class _Manager:
     def __exit__(self, exc_type, exc, tb):
         return False
 
+
 def _candidate(index, *, doi="10.1000/session-limit", url=None):
     return FullTextCandidate(
         doi=doi,
         url=url or f"https://publisher.example/article/{index}",
         provenance=(),
     )
+
 
 def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     context = _Context()
@@ -94,6 +101,7 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert context.closed is True
     assert manager.playwright.chromium.kwargs["service_workers"] == "block"
 
+
 def test_all_unsafe_routes_do_not_start_browser(monkeypatch, tmp_path):
     def should_not_load_playwright():
         raise AssertionError("unsafe-only recovery must not start Playwright")
@@ -118,6 +126,7 @@ def test_all_unsafe_routes_do_not_start_browser(monkeypatch, tmp_path):
     assert len(result.attempts) == 1
     assert result.attempts[0].status == BrowserAttemptStatus.UNSAFE_URL
     assert result.verified_result is None
+
 
 def test_browser_session_reuses_one_live_context_across_dois(monkeypatch, tmp_path):
     context = _Context()
@@ -166,6 +175,7 @@ def test_browser_session_reuses_one_live_context_across_dois(monkeypatch, tmp_pa
     assert [doi for _, doi in calls] == ["10.1000/first", "10.1000/second"]
     assert all(context_value is context for context_value, _ in calls)
     assert context.closed is True
+
 
 def test_all_unsafe_routes_return_without_starting_browser(monkeypatch, tmp_path):
     started = False
