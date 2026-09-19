@@ -86,7 +86,6 @@ def test_loaded_recaptcha_library_without_active_widget_is_not_a_challenge():
     assert report.kind == ChallengeKind.NONE
 
 
-
 def test_article_about_captcha_is_not_itself_a_captcha_challenge():
     report = classify_access_challenge(
         title="CAPTCHA robustness in web security",
