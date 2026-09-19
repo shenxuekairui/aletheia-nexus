@@ -636,9 +636,7 @@ def _click_semantic_pdf_control(page) -> bool:
 def _click_semantic_institution_control(page) -> bool:
     """Click one explicit institutional-access control as a late fallback."""
 
-    locator = page.locator("a, button").filter(
-        has_text=_SEMANTIC_INSTITUTION_CONTROL
-    )
+    locator = page.locator("a, button").filter(has_text=_SEMANTIC_INSTITUTION_CONTROL)
     try:
         count = min(locator.count(), 8)
     except Exception:
