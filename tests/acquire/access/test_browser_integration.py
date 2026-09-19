@@ -7,7 +7,7 @@ import pytest
 from pypdf import PdfWriter
 
 from aletheia_nexus.acquire.access import BrowserAccessConfig, BrowserSession
-from aletheia_nexus.acquire.access import browser_route
+from aletheia_nexus.acquire.access import browser, browser_route
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
     FullTextCandidate,
@@ -102,6 +102,11 @@ def test_real_browser_session_shares_cookie_with_authenticated_pdf_request(
 ):
     # Production rejects local-network targets. This deterministic integration
     # test intentionally uses localhost, so only the test replaces that policy.
+    monkeypatch.setattr(
+        browser,
+        "validate_browser_network_url",
+        lambda url: url,
+    )
     monkeypatch.setattr(
         browser_route,
         "validate_browser_network_url",
