@@ -171,3 +171,40 @@ def test_authenticated_request_rejects_redirect_to_private_network():
     assert first.disposed is True
     assert len(context.request.calls) == 1
     assert context.request.calls[0][1]["max_redirects"] == 0
+
+
+
+def test_failed_browser_download_validation_cleans_temp_file(
+    monkeypatch,
+    tmp_path,
+):
+    source = tmp_path / "download.pdf"
+    source.write_bytes(_pdf_bytes())
+    output_dir = tmp_path / "out"
+    parent = FullTextCandidate(
+        doi="10.1000/captured-response",
+        url="https://publisher.example/article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    def fail_validation(**kwargs):
+        raise RuntimeError("validation failed")
+
+    monkeypatch.setattr(
+        "aletheia_nexus.acquire.access.browser_route.finalize_browser_resource",
+        fail_validation,
+    )
+
+    attempt = _download_to_file_attempt(
+        _BlobDownload(source),
+        parent=parent,
+        source_page_url=parent.url,
+        output_dir=output_dir,
+        expected_title="Captured Browser Response",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+    )
+
+    assert attempt.result is None
+    assert attempt.error == "RuntimeError: validation failed"
+    assert list(output_dir.glob(".an-browser-download-*.part")) == []
