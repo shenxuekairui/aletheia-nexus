@@ -218,7 +218,6 @@ def test_real_browser_session_shares_cookie_with_authenticated_pdf_request(
     assert result.verified_result.file_path is not None
 
 
-
 def test_real_browser_recovers_pdf_opened_in_new_tab(
     monkeypatch,
     tmp_path,
