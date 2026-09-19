@@ -1,4 +1,9 @@
-from aletheia_nexus.acquire.access.security import redact_url_for_record
+import pytest
+
+from aletheia_nexus.acquire.access.security import (
+    redact_url_for_record,
+    validate_browser_network_url,
+)
 
 
 def test_redact_url_preserves_route_shape_but_not_values():
@@ -31,3 +36,27 @@ def test_redact_url_removes_embedded_userinfo_credentials():
     assert value == ("https://example.com:8443/paper.pdf?token=%5Bredacted%5D")
     assert "user" not in value
     assert "secret" not in value
+
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost/paper.pdf",
+        "http://lab.local/paper.pdf",
+        "http://127.0.0.1/paper.pdf",
+        "http://10.0.0.1/paper.pdf",
+        "http://169.254.169.254/latest/meta-data",
+        "http://[::1]/paper.pdf",
+    ],
+)
+def test_browser_network_url_rejects_obvious_local_targets(url):
+    with pytest.raises(ValueError):
+        validate_browser_network_url(url)
+
+
+def test_browser_network_url_allows_public_hostname_without_local_dns_dependency():
+    assert (
+        validate_browser_network_url("https://publisher.example/article?token=abc")
+        == "https://publisher.example/article?token=abc"
+    )
