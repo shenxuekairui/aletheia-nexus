@@ -44,8 +44,8 @@ jobs:
       - name: Run static checks
         run: ruff check .
 
-      - name: Check source syntax
-        run: python -m compileall -q src
+      - name: Check source and runner syntax
+        run: python -m compileall -q src scripts
 
       - name: Run tests
         run: python -m pytest -q
