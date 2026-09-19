@@ -299,15 +299,30 @@ ELSEVIER_BEARER_TOKEN    # optional
 `auto_official_api=False`。API key、institution token 和 bearer token
 只进入请求 header，不进入 `.acquisition.json`。
 
-真实验收时，除了固定 20 篇困难集，还应使用 `--entitled-doi` 加入
-**你已经人工确认在同一机构/账号下能下载的论文**。这些阳性对照如果任何
-一篇不能 `VERIFIED`，0.6 就不能视为完成：
+真实验收时，固定 20 篇困难集只负责测覆盖率；还必须加入
+**Entitled Positive Controls（已确认有权限的阳性对照）**，也就是你已经
+人工确认在**同一机构 / 账号 / 网络环境**下能下载的论文。任何一篇阳性对照
+不能 `VERIFIED`，0.6 都不能视为完成。
+
+少量论文可以直接传 DOI：
 
 ```powershell
 python scripts/manual_v06_access_acceptance.py \
   --entitled-doi 10.xxxx/example1 \
-  --entitled-doi 10.xxxx/example2
+  --entitled-doi 10.xxxx/example2 \
+  --require-entitled-controls
 ```
+
+正式冻结建议把 ≥3 篇、覆盖 ≥2 个出版社/访问家族的阳性对照写到本地
+`benchmarks/v06_entitled_positive_controls.local.json`，再运行：
+
+```powershell
+python scripts/manual_v06_access_acceptance.py \
+  --entitled-benchmark benchmarks/v06_entitled_positive_controls.local.json \
+  --require-entitled-controls
+```
+
+该本地文件已加入 `.gitignore`，不会被误当成通用公开 benchmark。
 
 批量任务建议复用一个 live BrowserSession（实时浏览器会话），而不是每篇
 论文重新启动浏览器：
