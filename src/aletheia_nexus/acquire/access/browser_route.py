@@ -956,5 +956,3 @@ def attempt_browser_route(
         evidence=identity.evidence,
         elapsed_seconds=time.perf_counter() - started_at,
     )
-
-
