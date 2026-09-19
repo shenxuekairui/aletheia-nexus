@@ -183,3 +183,6 @@ cython_debug/
 # Aletheia Nexus local authenticated browser state / live reports
 .aletheia-nexus/
 v06-access-acceptance*.json
+
+# Local v0.6 access-ceiling controls confirmed for one institution/account
+benchmarks/v06_entitled_positive_controls.local.json
