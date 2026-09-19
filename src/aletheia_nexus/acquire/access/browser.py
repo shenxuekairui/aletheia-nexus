@@ -257,7 +257,7 @@ class BrowserSession:
         launch_kwargs: dict[str, object] = {
             "headless": self.config.headless,
             "accept_downloads": True,
-            "service_workers": "block",
+            "service_workers": "allow",
         }
         if self.config.channel:
             launch_kwargs["channel"] = self.config.channel
