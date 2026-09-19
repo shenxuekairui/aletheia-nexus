@@ -1,5 +1,6 @@
 import argparse
 import json
+from collections import Counter
 from pathlib import Path
 
 from aletheia_nexus.acquire.access import (
@@ -167,6 +168,9 @@ def main() -> int:
     verified = 0
     base_verified = 0
     interaction_cases = 0
+    browser_recovered = 0
+    final_statuses: Counter[str] = Counter()
+    challenge_kinds: Counter[str] = Counter()
 
     with BrowserSession(config) as browser_session:
         for index, case in enumerate(cases, start=1):
@@ -189,6 +193,12 @@ def main() -> int:
                 base_verified += 1
             if result.status == MaximizedAcquisitionStatus.VERIFIED:
                 verified += 1
+                if result.base_result.status.value != "VERIFIED":
+                    browser_recovered += 1
+            final_statuses[result.status.value] += 1
+            for attempt in result.browser_attempts:
+                for report in attempt.challenge_history:
+                    challenge_kinds[report.kind.value] += 1
             if any(attempt.interaction_used for attempt in result.browser_attempts):
                 interaction_cases += 1
 
@@ -209,8 +219,17 @@ def main() -> int:
     print(f"Cases:              {len(cases)}")
     print(f"v0.5 VERIFIED:      {base_verified}")
     print(f"v0.6 VERIFIED:      {verified}")
-    print(f"Browser recovered:  {max(verified - base_verified, 0)}")
+    print(f"Browser recovered:  {browser_recovered}")
     print(f"Interaction cases:  {interaction_cases}")
+    print("Final statuses:")
+    for name, count in sorted(final_statuses.items()):
+        print(f"  {name:<22} {count}")
+    print("Challenge observations:")
+    if challenge_kinds:
+        for name, count in sorted(challenge_kinds.items()):
+            print(f"  {name:<22} {count}")
+    else:
+        print("  (none)")
     print(f"Report:             {args.report}")
 
     return 0
