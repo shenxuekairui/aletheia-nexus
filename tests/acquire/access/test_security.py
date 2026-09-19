@@ -5,7 +5,6 @@ from aletheia_nexus.acquire.access.security import (
     validate_browser_network_url,
 )
 
-
 def test_redact_url_preserves_route_shape_but_not_values():
     value = redact_url_for_record(
         "https://cdn.example/paper.pdf?token=secret&download=true#viewer"
@@ -17,17 +16,14 @@ def test_redact_url_preserves_route_shape_but_not_values():
     assert "true" not in value
     assert "#viewer" not in value
 
-
 def test_redact_url_without_query_is_unchanged_except_fragment():
     assert (
         redact_url_for_record("https://publisher.example/article#section")
         == "https://publisher.example/article"
     )
 
-
 def test_redact_url_accepts_none():
     assert redact_url_for_record(None) is None
-
 
 def test_redact_url_removes_embedded_userinfo_credentials():
     value = redact_url_for_record(
@@ -36,8 +32,6 @@ def test_redact_url_removes_embedded_userinfo_credentials():
     assert value == ("https://example.com:8443/paper.pdf?token=%5Bredacted%5D")
     assert "user" not in value
     assert "secret" not in value
-
-
 
 @pytest.mark.parametrize(
     "url",
@@ -54,14 +48,11 @@ def test_browser_network_url_rejects_obvious_local_targets(url):
     with pytest.raises(ValueError):
         validate_browser_network_url(url)
 
-
 def test_browser_network_url_allows_public_hostname_without_local_dns_dependency():
     assert (
         validate_browser_network_url("https://publisher.example/article?token=abc")
         == "https://publisher.example/article?token=abc"
     )
-
-
 
 def test_browser_network_url_rejects_embedded_credentials():
     with pytest.raises(ValueError):
