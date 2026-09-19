@@ -37,18 +37,29 @@ def _delete_temp(resource: RetrievedResource) -> RetrievedResource:
     return replace(resource, local_path=None)
 
 
-def finalize_browser_resource(
+def finalize_access_resource(
     *,
     candidate: FullTextCandidate,
     resource: RetrievedResource,
     output_dir: str | Path,
     expected_title: str | None,
     keep_unverified: bool,
-    profile_name: str,
-    source_page_url: str | None,
+    transport: str,
+    access_details: dict[str, object],
     access_evidence: tuple[str, ...] = (),
 ) -> AcquisitionResult:
-    """Run the existing v0.5 scientific validation gates on browser-retrieved bytes."""
+    """Apply the scientific validation gates to any authenticated-access artifact.
+
+    Access mechanisms are intentionally decoupled from scholarly validation.
+    Browser sessions, official APIs, or future legitimate access providers may
+    retrieve bytes, but only PDF structure + identity + document-role validation
+    can create VERIFIED.
+    """
+
+    if not isinstance(transport, str) or not transport.strip():
+        raise ValueError("transport must be a non-empty string")
+    if not isinstance(access_details, dict):
+        raise TypeError("access_details must be a dict")
 
     started_at = time.perf_counter()
     normalized_doi = normalize_doi(candidate.doi)
@@ -57,7 +68,7 @@ def finalize_browser_resource(
 
     try:
         if resource.local_path is None:
-            raise ValueError("Browser resource has no local file")
+            raise ValueError("Access resource has no local file")
 
         inspection = inspect_pdf(resource.local_path)
         pdf_validation = inspection.report
@@ -97,10 +108,10 @@ def finalize_browser_resource(
             resource = replace(resource, local_path=file_path)
             elapsed_seconds = time.perf_counter() - started_at
             payload = {
-                "schema": "aletheia-nexus/browser-acquisition-record/v1",
+                "schema": "aletheia-nexus/access-acquisition-record/v1",
                 "acquired_at": datetime.now(timezone.utc).isoformat(),
                 "status": status.value,
-                "transport": "authenticated_browser_session",
+                "transport": transport,
                 "target": {
                     "doi": normalized_doi,
                     "expected_title": expected_title,
@@ -117,8 +128,7 @@ def finalize_browser_resource(
                     "provenance": [provider.value for provider in candidate.provenance],
                 },
                 "access": {
-                    "profile_name": profile_name,
-                    "source_page_url": redact_url_for_record(source_page_url),
+                    **access_details,
                     "evidence": list(access_evidence),
                     "sensitive_session_state_recorded": False,
                 },
@@ -178,3 +188,31 @@ def finalize_browser_resource(
         elif promoted_new:
             file_path.unlink(missing_ok=True)
         raise
+
+
+def finalize_browser_resource(
+    *,
+    candidate: FullTextCandidate,
+    resource: RetrievedResource,
+    output_dir: str | Path,
+    expected_title: str | None,
+    keep_unverified: bool,
+    profile_name: str,
+    source_page_url: str | None,
+    access_evidence: tuple[str, ...] = (),
+) -> AcquisitionResult:
+    """Validate browser-retrieved bytes with the shared authenticated-access gate."""
+
+    return finalize_access_resource(
+        candidate=candidate,
+        resource=resource,
+        output_dir=output_dir,
+        expected_title=expected_title,
+        keep_unverified=keep_unverified,
+        transport="authenticated_browser_session",
+        access_details={
+            "profile_name": profile_name,
+            "source_page_url": redact_url_for_record(source_page_url),
+        },
+        access_evidence=access_evidence,
+    )
