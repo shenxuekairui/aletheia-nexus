@@ -37,8 +37,6 @@ from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
 from aletheia_nexus.acquire.fulltext.urls import normalize_derived_url
 
 _BROWSER_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
-_MAX_BROWSER_REDIRECTS = 8
-
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 
 
@@ -269,13 +267,14 @@ def _safe_context_get(
     *,
     url: str,
     request_kwargs: dict[str, object],
+    max_redirects: int,
 ) -> tuple[object, tuple[RedirectHop, ...]]:
     """GET through the shared browser cookie jar with safe manual redirects."""
 
     current = validate_browser_network_url(url)
     redirects: list[RedirectHop] = []
 
-    for _ in range(_MAX_BROWSER_REDIRECTS + 1):
+    for _ in range(max_redirects + 1):
         response = context.request.get(
             current,
             max_redirects=0,
@@ -305,7 +304,7 @@ def _safe_context_get(
         current = safe_next
 
     raise RuntimeError(
-        f"Browser-authenticated request exceeded {_MAX_BROWSER_REDIRECTS} redirects"
+        f"Browser-authenticated request exceeded {max_redirects} redirects"
     )
 
 
@@ -343,6 +342,7 @@ def _request_pdf_candidate(
             context,
             url=candidate.url,
             request_kwargs=request_kwargs,
+            max_redirects=config.max_request_redirects,
         )
     except Exception as exc:
         return (
