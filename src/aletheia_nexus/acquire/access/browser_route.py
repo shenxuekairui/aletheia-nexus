@@ -619,6 +619,141 @@ def _install_browser_request_guard(page) -> list[str]:
     return blocked
 
 
+
+def _process_new_popup_pages(
+    context,
+    *,
+    original_page,
+    existing_page_ids: set[int],
+    source: FullTextCandidate,
+    output_dir: str | Path,
+    expected_title: str | None,
+    config: BrowserAccessConfig,
+) -> tuple[
+    list[BrowserFileAttempt],
+    list[ChallengeReport],
+    bool,
+    AcquisitionResult | None,
+]:
+    """Process a bounded set of pages opened by an explicit PDF control click."""
+
+    file_attempts: list[BrowserFileAttempt] = []
+    challenges: list[ChallengeReport] = []
+    interaction_used = False
+    new_pages = [
+        popup
+        for popup in context.pages
+        if id(popup) not in existing_page_ids and popup is not original_page
+    ][:4]
+
+    for popup in new_pages:
+        try:
+            try:
+                popup.wait_for_load_state(
+                    "domcontentloaded",
+                    timeout=min(config.navigation_timeout, 10.0) * 1000,
+                )
+            except Exception:
+                pass
+
+            report, observed, used = _resolve_page_challenge(
+                popup,
+                config=config,
+            )
+            for item in observed:
+                _append_report(challenges, item)
+            interaction_used = interaction_used or used
+            if report.kind != ChallengeKind.NONE:
+                continue
+
+            popup_url = str(getattr(popup, "url", "") or "")
+            try:
+                candidate = _candidate_for_url(source, popup_url)
+            except ValueError:
+                candidate = None
+
+            if candidate is not None:
+                attempt, challenge = _request_pdf_candidate(
+                    context,
+                    candidate=candidate,
+                    source_page_url=popup_url,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    config=config,
+                )
+                file_attempts.append(attempt)
+                if challenge is not None:
+                    _append_report(challenges, challenge)
+                if (
+                    attempt.result is not None
+                    and attempt.result.status == AcquisitionStatus.VERIFIED
+                ):
+                    return (
+                        file_attempts,
+                        challenges,
+                        interaction_used,
+                        attempt.result,
+                    )
+
+            try:
+                html = popup.content()
+                parsed = parse_html(html)
+                identity = validate_page_identity(
+                    target_doi=source.doi,
+                    parsed=parsed,
+                    expected_title=expected_title,
+                )
+            except Exception:
+                continue
+
+            if identity.status.value == "MISMATCH":
+                continue
+
+            try:
+                derived = derive_pdf_candidates(
+                    parent=source,
+                    parsed=parsed,
+                    source_page_url=popup_url,
+                )
+            except Exception:
+                derived = ()
+
+            popup_candidates = _dedupe_candidates(
+                [item.candidate for item in derived],
+                limit=config.max_pdf_candidates,
+            )
+            for popup_candidate in popup_candidates:
+                attempt, challenge = _request_pdf_candidate(
+                    context,
+                    candidate=popup_candidate,
+                    source_page_url=popup_url,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    config=config,
+                )
+                file_attempts.append(attempt)
+                if challenge is not None:
+                    _append_report(challenges, challenge)
+                if (
+                    attempt.result is not None
+                    and attempt.result.status == AcquisitionStatus.VERIFIED
+                ):
+                    return (
+                        file_attempts,
+                        challenges,
+                        interaction_used,
+                        attempt.result,
+                    )
+        finally:
+            try:
+                if not popup.is_closed():
+                    popup.close()
+            except Exception:
+                pass
+
+    return file_attempts, challenges, interaction_used, None
+
+
 def attempt_browser_route(
     context,
     page,
@@ -980,9 +1115,45 @@ def attempt_browser_route(
 
     # Last bounded generic fallback: explicit visible article-PDF control whose
     # JavaScript action was not represented by an href in the rendered HTML.
+    existing_page_ids = {id(open_page) for open_page in context.pages}
     clicked = _click_semantic_pdf_control(page)
     if clicked:
-        page.wait_for_timeout(1500)
+        try:
+            page.wait_for_timeout(1500)
+        except Exception:
+            pass
+
+        (
+            popup_attempts,
+            popup_challenges,
+            popup_interaction_used,
+            popup_verified,
+        ) = _process_new_popup_pages(
+            context,
+            original_page=page,
+            existing_page_ids=existing_page_ids,
+            source=source,
+            output_dir=output_dir,
+            expected_title=expected_title,
+            config=config,
+        )
+        file_attempts.extend(popup_attempts)
+        for report in popup_challenges:
+            _append_report(challenge_history, report)
+        interaction_used = interaction_used or popup_interaction_used
+        if popup_verified is not None:
+            return BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=page.url,
+                status=BrowserAttemptStatus.VERIFIED,
+                challenge_history=tuple(challenge_history),
+                file_attempts=tuple(file_attempts),
+                candidates_considered=len(file_attempts),
+                interaction_used=interaction_used,
+                evidence=("New browser tab yielded a verified article PDF",),
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
+
         final, observed, used = _resolve_page_challenge(page, config=config)
         for report in observed:
             _append_report(challenge_history, report)
