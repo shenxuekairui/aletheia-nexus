@@ -52,6 +52,8 @@ def _validate_config(config: ElsevierAccessConfig) -> None:
         raise ValueError("Elsevier max_bytes must be a positive integer")
     if not isinstance(config.allow_author_manuscript_fallback, bool):
         raise TypeError("Elsevier allow_author_manuscript_fallback must be a boolean")
+    if not isinstance(config.keep_unverified, bool):
+        raise TypeError("Elsevier keep_unverified must be a boolean")
     if (
         not isinstance(config.max_redirects, int)
         or isinstance(config.max_redirects, bool)
@@ -299,6 +301,6 @@ def acquire_elsevier_pdf(
         return ElsevierAccessAttempt(
             status=ElsevierAccessStatus.ERROR,
             credential_modes=credential_modes,
-            error=f"{type(exc).__name__}: {exc}",
+            error=type(exc).__name__,
             elapsed_seconds=time.perf_counter() - started_at,
         )
