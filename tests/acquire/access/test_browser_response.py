@@ -173,7 +173,6 @@ def test_authenticated_request_rejects_redirect_to_private_network():
     assert context.request.calls[0][1]["max_redirects"] == 0
 
 
-
 def test_failed_browser_download_validation_cleans_temp_file(
     monkeypatch,
     tmp_path,
