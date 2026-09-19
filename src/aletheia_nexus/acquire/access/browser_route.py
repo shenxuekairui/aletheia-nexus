@@ -621,7 +621,6 @@ def _install_browser_request_guard(page) -> list[str]:
     return blocked
 
 
-
 def _process_new_popup_pages(
     context,
     *,
@@ -1260,9 +1259,7 @@ def attempt_browser_route(
                     file_attempts=tuple(file_attempts),
                     candidates_considered=len(file_attempts),
                     interaction_used=interaction_used,
-                    evidence=(
-                        "Explicit article-PDF browser control produced a file",
-                    ),
+                    evidence=("Explicit article-PDF browser control produced a file",),
                     elapsed_seconds=time.perf_counter() - started_at,
                 )
 
