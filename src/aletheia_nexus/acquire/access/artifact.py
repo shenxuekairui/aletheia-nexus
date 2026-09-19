@@ -5,7 +5,6 @@ from pathlib import Path
 
 from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
-from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionResult,
