@@ -41,3 +41,15 @@ def test_browser_interaction_callback_must_be_callable(tmp_path):
     )
     with pytest.raises(TypeError):
         browser_profile_dir(config)
+
+
+
+def test_headless_browser_rejects_interactive_handoff(tmp_path):
+    config = BrowserAccessConfig(
+        profile_name="headless",
+        profile_root=tmp_path,
+        headless=True,
+        interactive=True,
+    )
+    with pytest.raises(ValueError):
+        browser_profile_dir(config)
