@@ -189,7 +189,7 @@ def test_failed_browser_download_validation_cleans_temp_file(
     )
 
     def fail_validation(**kwargs):
-        raise RuntimeError("validation failed")
+        raise RuntimeError("failed at https://cdn.example/pdf?token=super-secret")
 
     monkeypatch.setattr(
         "aletheia_nexus.acquire.access.browser_route.finalize_browser_resource",
@@ -206,7 +206,9 @@ def test_failed_browser_download_validation_cleans_temp_file(
     )
 
     assert attempt.result is None
-    assert attempt.error == "RuntimeError: validation failed"
+    assert attempt.error == "RuntimeError"
+    assert "super-secret" not in attempt.error
+    assert "cdn.example" not in attempt.error
     assert list(output_dir.glob(".an-browser-download-*.part")) == []
 
 
@@ -252,7 +254,7 @@ def test_failed_captured_response_validation_cleans_temp_file(
     )
 
     assert attempt.result is None
-    assert attempt.error == "RuntimeError: validation failed"
+    assert attempt.error == "RuntimeError"
     assert list(output_dir.glob(".an-browser-*.part")) == []
 
 
@@ -286,6 +288,6 @@ def test_failed_context_request_validation_cleans_temp_file(
 
     assert challenge is None
     assert attempt.result is None
-    assert attempt.error == "RuntimeError: validation failed"
+    assert attempt.error == "RuntimeError"
     assert response.disposed is True
     assert list(output_dir.glob(".an-browser-*.part")) == []
