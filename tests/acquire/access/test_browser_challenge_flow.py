@@ -256,7 +256,6 @@ def test_article_route_automatically_enters_institutional_sso(
     ]
 
 
-
 class _InstitutionControl:
     def __init__(self, text):
         self.text = text
