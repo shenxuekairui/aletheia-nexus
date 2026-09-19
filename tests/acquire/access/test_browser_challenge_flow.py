@@ -129,7 +129,6 @@ def test_sso_handoff_calls_user_callback_and_resumes(tmp_path):
     assert interaction_used is True
 
 
-
 class _RoutePage:
     def __init__(self, url):
         self.url = url
@@ -211,7 +210,11 @@ def test_article_route_automatically_enters_institutional_sso(
         ),
     )
     monkeypatch.setattr(browser_route, "derive_pdf_candidates", lambda **kwargs: ())
-    monkeypatch.setattr(browser_route, "_click_semantic_pdf_control", lambda page: False)
+    monkeypatch.setattr(
+        browser_route,
+        "_click_semantic_pdf_control",
+        lambda page: False,
+    )
 
     candidate = FullTextCandidate(
         doi="10.1000/institution-route",
