@@ -267,9 +267,7 @@ def main() -> int:
         interaction_callback=(None if args.non_interactive else _interaction_notice),
     )
 
-    elsevier_config = (
-        None if args.no_elsevier_api else ElsevierAccessConfig.from_env()
-    )
+    elsevier_config = None if args.no_elsevier_api else ElsevierAccessConfig.from_env()
 
     records: list[dict[str, object]] = []
     verified = 0
