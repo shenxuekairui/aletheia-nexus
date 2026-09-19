@@ -207,3 +207,18 @@ def test_authenticator_push_is_classified_as_mfa():
     )
 
     assert report.kind == ChallengeKind.MFA
+
+
+
+def test_article_page_with_institution_link_is_not_false_sso():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        visible_text=(
+            "Target Article Abstract Introduction Results "
+            "Access through your institution References"
+        ),
+        html="<main>Full article content is visible</main>",
+    )
+
+    assert report.kind == ChallengeKind.NONE
