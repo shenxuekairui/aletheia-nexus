@@ -21,6 +21,8 @@ DEFAULT_BENCHMARKS = (
     Path("benchmarks/cdi_acquisition_10.json"),
     Path("benchmarks/seawater_desalination_10.json"),
 )
+MIN_FREEZE_ENTITLED_CONTROLS = 3
+MIN_FREEZE_ACCESS_FAMILIES = 2
 
 
 def _package_version() -> str:
@@ -64,6 +66,7 @@ def _load_cases(
         source: str | None,
         stress: bool,
         entitled: bool,
+        access_family: str | None = None,
     ) -> None:
         raw = doi.strip()
         if not raw:
@@ -77,6 +80,7 @@ def _load_cases(
                 "id": case_id,
                 "stress_case": stress,
                 "entitled_control": entitled,
+                "access_family": access_family,
                 "sources": [source] if source else [],
             }
             by_doi[value] = existing
@@ -85,6 +89,14 @@ def _load_cases(
 
         existing["stress_case"] = bool(existing["stress_case"]) or stress
         existing["entitled_control"] = bool(existing["entitled_control"]) or entitled
+        if access_family:
+            prior_family = existing.get("access_family")
+            if prior_family and prior_family != access_family:
+                raise ValueError(
+                    f"Conflicting access_family values for {value}: "
+                    f"{prior_family!r} vs {access_family!r}"
+                )
+            existing["access_family"] = access_family
         if not existing["title"] and title:
             existing["title"] = title
         sources = existing["sources"]
@@ -102,6 +114,7 @@ def _load_cases(
                 source=str(path),
                 stress=True,
                 entitled=False,
+                access_family=None,
             )
 
     for path in entitled_paths:
@@ -114,6 +127,9 @@ def _load_cases(
                 source=str(path),
                 stress=False,
                 entitled=True,
+                access_family=(
+                    str(item.get("access_family") or "").strip() or None
+                ),
             )
 
     for doi in dois:
@@ -125,6 +141,7 @@ def _load_cases(
             source=None,
             stress=False,
             entitled=False,
+            access_family=None,
         )
 
     for doi in entitled_dois:
@@ -136,6 +153,7 @@ def _load_cases(
             source=None,
             stress=False,
             entitled=True,
+            access_family=None,
         )
 
     return cases
@@ -252,6 +270,7 @@ def _report_payload(
     verified: int,
     entitled_controls: int,
     entitled_verified: int,
+    entitled_access_families: tuple[str, ...],
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -276,6 +295,7 @@ def _report_payload(
             ],
             "case_count": len(records),
             "entitled_positive_control_count": entitled_controls,
+            "entitled_access_families": list(entitled_access_families),
         },
         "official_api": {
             "elsevier_enabled": elsevier_enabled,
@@ -298,8 +318,12 @@ def _report_payload(
             "entitled_controls": entitled_controls,
             "entitled_verified": entitled_verified,
             "entitled_failures": entitled_controls - entitled_verified,
+            "entitled_access_family_count": len(entitled_access_families),
+            "entitled_access_families": list(entitled_access_families),
             "entitled_controls_passed": (
-                entitled_controls > 0 and entitled_verified == entitled_controls
+                entitled_controls >= MIN_FREEZE_ENTITLED_CONTROLS
+                and entitled_verified == entitled_controls
+                and len(entitled_access_families) >= MIN_FREEZE_ACCESS_FAMILIES
             ),
             "final_statuses": dict(sorted(final_statuses.items())),
             "challenge_kinds": dict(sorted(challenge_kinds.items())),
@@ -319,6 +343,7 @@ def _write_report(
     verified: int,
     entitled_controls: int,
     entitled_verified: int,
+    entitled_access_families: tuple[str, ...],
     elsevier_enabled: bool,
     elsevier_recovered: int,
     browser_recovered: int,
@@ -336,6 +361,7 @@ def _write_report(
         verified=verified,
         entitled_controls=entitled_controls,
         entitled_verified=entitled_verified,
+        entitled_access_families=entitled_access_families,
         elsevier_enabled=elsevier_enabled,
         elsevier_recovered=elsevier_recovered,
         browser_recovered=browser_recovered,
@@ -375,8 +401,26 @@ def _freeze_gate(
                 "were not VERIFIED."
             ),
         )
-    if require_entitled_controls and entitled_controls == 0:
-        return 3, "no entitled positive controls were supplied."
+    if require_entitled_controls:
+        if entitled_controls < MIN_FREEZE_ENTITLED_CONTROLS:
+            return (
+                3,
+                (
+                    "freeze acceptance requires at least "
+                    f"{MIN_FREEZE_ENTITLED_CONTROLS} entitled positive controls; "
+                    f"received {entitled_controls}."
+                ),
+            )
+        if len(entitled_access_families) < MIN_FREEZE_ACCESS_FAMILIES:
+            return (
+                4,
+                (
+                    "freeze acceptance requires at least "
+                    f"{MIN_FREEZE_ACCESS_FAMILIES} distinct publisher/access families; "
+                    f"received {len(entitled_access_families)}. "
+                    "Set access_family on entitled benchmark entries."
+                ),
+            )
     return 0, None
 
 
@@ -483,6 +527,15 @@ def main() -> int:
     runner_errors = 0
     entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
     entitled_verified = 0
+    entitled_access_families = tuple(
+        sorted(
+            {
+                str(case["access_family"])
+                for case in cases
+                if case["entitled_control"] and case.get("access_family")
+            }
+        )
+    )
     final_statuses: Counter[str] = Counter()
     challenge_kinds: Counter[str] = Counter()
 
@@ -541,6 +594,7 @@ def main() -> int:
                     "case_id": case["id"],
                     "stress_case": bool(case["stress_case"]),
                     "entitled_control": bool(case["entitled_control"]),
+                    "access_family": case.get("access_family"),
                     "sources": list(case["sources"]),
                 }
             )
@@ -584,6 +638,7 @@ def main() -> int:
                 verified=verified,
                 entitled_controls=entitled_controls,
                 entitled_verified=entitled_verified,
+                entitled_access_families=entitled_access_families,
                 elsevier_enabled=elsevier_config is not None,
                 elsevier_recovered=elsevier_recovered,
                 browser_recovered=browser_recovered,
@@ -599,6 +654,11 @@ def main() -> int:
     print(f"v0.5 VERIFIED:      {base_verified}")
     print(f"v0.6 VERIFIED:      {verified}")
     print(f"Entitled controls:  {entitled_verified}/{entitled_controls}")
+    print(
+        "Access families:    "
+        f"{len(entitled_access_families)} "
+        f"({', '.join(entitled_access_families) or '-'})"
+    )
     print(f"Elsevier recovered: {elsevier_recovered}")
     print(f"Browser recovered:  {browser_recovered}")
     print(f"Interaction cases:  {interaction_cases}")
@@ -617,6 +677,7 @@ def main() -> int:
     exit_code, freeze_error = _freeze_gate(
         entitled_controls=entitled_controls,
         entitled_verified=entitled_verified,
+        entitled_access_families=entitled_access_families,
         require_entitled_controls=args.require_entitled_controls,
         runner_errors=runner_errors,
     )
