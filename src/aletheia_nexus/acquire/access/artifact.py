@@ -17,6 +17,52 @@ from aletheia_nexus.acquire.fulltext.storage import promote_resource, write_json
 from aletheia_nexus.acquire.fulltext.validation import inspect_pdf
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
+_SENSITIVE_ACCESS_KEY_MARKERS = (
+    "api_key",
+    "apikey",
+    "token",
+    "secret",
+    "password",
+    "cookie",
+    "authorization",
+)
+
+
+def _sanitize_access_details(
+    value: object,
+    *,
+    key_hint: str = "",
+) -> object:
+    """Reject credential-like fields and redact URL values before persistence."""
+
+    if isinstance(value, dict):
+        sanitized: dict[str, object] = {}
+        for raw_key, item in value.items():
+            if not isinstance(raw_key, str):
+                raise TypeError("access_details keys must be strings")
+            lowered = raw_key.lower()
+            if any(marker in lowered for marker in _SENSITIVE_ACCESS_KEY_MARKERS):
+                raise ValueError(
+                    f"Refusing to persist credential-like access detail: {raw_key}"
+                )
+            sanitized[raw_key] = _sanitize_access_details(
+                item,
+                key_hint=lowered,
+            )
+        return sanitized
+    if isinstance(value, (list, tuple)):
+        return [
+            _sanitize_access_details(item, key_hint=key_hint)
+            for item in value
+        ]
+    if isinstance(value, str) and "url" in key_hint:
+        return redact_url_for_record(value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError(
+        "access_details values must be JSON-compatible primitives, lists, or dicts"
+    )
+
 
 def _classify(
     identity_status: IdentityStatus,
@@ -60,6 +106,7 @@ def finalize_access_resource(
         raise ValueError("transport must be a non-empty string")
     if not isinstance(access_details, dict):
         raise TypeError("access_details must be a dict")
+    safe_access_details = _sanitize_access_details(access_details)
 
     started_at = time.perf_counter()
     normalized_doi = normalize_doi(candidate.doi)
@@ -128,7 +175,7 @@ def finalize_access_resource(
                     "provenance": [provider.value for provider in candidate.provenance],
                 },
                 "access": {
-                    **access_details,
+                    **safe_access_details,
                     "evidence": list(access_evidence),
                     "sensitive_session_state_recorded": False,
                 },
