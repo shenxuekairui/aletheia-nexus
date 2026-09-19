@@ -217,6 +217,31 @@ def _serialize(result) -> dict[str, object]:
     }
 
 
+def _runner_error_record(
+    *,
+    doi: str,
+    case: dict[str, object],
+    exc: Exception,
+) -> dict[str, object]:
+    """Serialize an unexpected per-case runner error without persisting its message."""
+
+    return {
+        "doi": doi,
+        "status": "RUNNER_ERROR",
+        "base_status": None,
+        "verified_path": None,
+        "elsevier_attempt": None,
+        "browser_attempts": [],
+        "elapsed_seconds": None,
+        "message": None,
+        "runner_error_type": type(exc).__name__,
+        "case_id": case["id"],
+        "stress_case": bool(case["stress_case"]),
+        "entitled_control": bool(case["entitled_control"]),
+        "sources": list(case["sources"]),
+    }
+
+
 def _report_payload(
     *,
     records: list[dict[str, object]],
@@ -231,6 +256,7 @@ def _report_payload(
     elsevier_recovered: int,
     browser_recovered: int,
     interaction_cases: int,
+    runner_errors: int,
     final_statuses: Counter[str],
     challenge_kinds: Counter[str],
 ) -> dict[str, object]:
@@ -268,6 +294,7 @@ def _report_payload(
             "elsevier_recovered": elsevier_recovered,
             "browser_recovered": browser_recovered,
             "interaction_cases": interaction_cases,
+            "runner_errors": runner_errors,
             "entitled_controls": entitled_controls,
             "entitled_verified": entitled_verified,
             "entitled_failures": entitled_controls - entitled_verified,
@@ -296,6 +323,7 @@ def _write_report(
     elsevier_recovered: int,
     browser_recovered: int,
     interaction_cases: int,
+    runner_errors: int,
     final_statuses: Counter[str],
     challenge_kinds: Counter[str],
 ) -> None:
@@ -312,6 +340,7 @@ def _write_report(
         elsevier_recovered=elsevier_recovered,
         browser_recovered=browser_recovered,
         interaction_cases=interaction_cases,
+        runner_errors=runner_errors,
         final_statuses=final_statuses,
         challenge_kinds=challenge_kinds,
     )
@@ -327,8 +356,15 @@ def _freeze_gate(
     entitled_controls: int,
     entitled_verified: int,
     require_entitled_controls: bool,
+    runner_errors: int = 0,
 ) -> tuple[int, str | None]:
     """Evaluate the live-release access ceiling gate deterministically."""
+
+    if runner_errors:
+        return (
+            4,
+            f"{runner_errors} acceptance case(s) raised unexpected runner errors.",
+        )
 
     entitled_failures = entitled_controls - entitled_verified
     if entitled_failures:
@@ -444,6 +480,7 @@ def main() -> int:
     elsevier_recovered = 0
     browser_recovered = 0
     interaction_cases = 0
+    runner_errors = 0
     entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
     entitled_verified = 0
     final_statuses: Counter[str] = Counter()
@@ -455,17 +492,48 @@ def main() -> int:
             title = case["title"]
             print(f"[{index}/{len(cases)}] {doi}")
 
-            result = acquire_full_text_maximized(
-                doi,
-                output_dir=args.output_dir,
-                browser_session=browser_session,
-                elsevier_config=elsevier_config,
-                auto_official_api=not args.no_elsevier_api,
-                expected_title=title if isinstance(title, str) else None,
-                unpaywall_email=args.unpaywall_email,
-                openalex_api_key=args.openalex_api_key,
-                metadata_mailto=args.metadata_mailto,
-            )
+            try:
+                result = acquire_full_text_maximized(
+                    doi,
+                    output_dir=args.output_dir,
+                    browser_session=browser_session,
+                    elsevier_config=elsevier_config,
+                    auto_official_api=not args.no_elsevier_api,
+                    expected_title=title if isinstance(title, str) else None,
+                    unpaywall_email=args.unpaywall_email,
+                    openalex_api_key=args.openalex_api_key,
+                    metadata_mailto=args.metadata_mailto,
+                )
+            except Exception as exc:
+                runner_errors += 1
+                final_statuses["RUNNER_ERROR"] += 1
+                records.append(
+                    _runner_error_record(
+                        doi=doi,
+                        case=case,
+                        exc=exc,
+                    )
+                )
+                print(f"  runner_error={type(exc).__name__}")
+                _write_report(
+                    args.report,
+                    records=records,
+                    stress_paths=stress_paths,
+                    entitled_paths=entitled_paths,
+                    config=config,
+                    base_verified=base_verified,
+                    verified=verified,
+                    entitled_controls=entitled_controls,
+                    entitled_verified=entitled_verified,
+                    elsevier_enabled=elsevier_config is not None,
+                    elsevier_recovered=elsevier_recovered,
+                    browser_recovered=browser_recovered,
+                    interaction_cases=interaction_cases,
+                    runner_errors=runner_errors,
+                    final_statuses=final_statuses,
+                    challenge_kinds=challenge_kinds,
+                )
+                continue
 
             record = _serialize(result)
             record.update(
@@ -520,6 +588,7 @@ def main() -> int:
                 elsevier_recovered=elsevier_recovered,
                 browser_recovered=browser_recovered,
                 interaction_cases=interaction_cases,
+                runner_errors=runner_errors,
                 final_statuses=final_statuses,
                 challenge_kinds=challenge_kinds,
             )
@@ -533,6 +602,7 @@ def main() -> int:
     print(f"Elsevier recovered: {elsevier_recovered}")
     print(f"Browser recovered:  {browser_recovered}")
     print(f"Interaction cases:  {interaction_cases}")
+    print(f"Runner errors:       {runner_errors}")
     print("Final statuses:")
     for name, count in sorted(final_statuses.items()):
         print(f"  {name:<22} {count}")
@@ -548,6 +618,7 @@ def main() -> int:
         entitled_controls=entitled_controls,
         entitled_verified=entitled_verified,
         require_entitled_controls=args.require_entitled_controls,
+        runner_errors=runner_errors,
     )
     if freeze_error is not None:
         print(f"FREEZE GATE FAILED: {freeze_error}", file=sys.stderr)
