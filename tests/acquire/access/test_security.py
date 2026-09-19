@@ -60,3 +60,11 @@ def test_browser_network_url_allows_public_hostname_without_local_dns_dependency
         validate_browser_network_url("https://publisher.example/article?token=abc")
         == "https://publisher.example/article?token=abc"
     )
+
+
+
+def test_browser_network_url_rejects_embedded_credentials():
+    with pytest.raises(ValueError):
+        validate_browser_network_url(
+            "https://user:secret@publisher.example/article.pdf"
+        )
