@@ -55,6 +55,8 @@ def _page_snapshot(page) -> tuple[str, str, str, str]:
         visible_text = page.locator("body").inner_text(timeout=2000)
     except Exception:
         visible_text = ""
+    sync_session_events()
+
     try:
         html = page.content()
     except Exception:
@@ -762,6 +764,9 @@ def attempt_browser_route(
     output_dir: str | Path,
     expected_title: str | None,
     config: BrowserAccessConfig,
+    session_blocked_urls: list[str] | None = None,
+    session_pdf_responses: list[object] | None = None,
+    session_downloads: list[object] | None = None,
 ) -> BrowserAccessAttempt:
     started_at = time.perf_counter()
     file_attempts: list[BrowserFileAttempt] = []
@@ -769,8 +774,61 @@ def attempt_browser_route(
     network_pdf_urls: list[str] = []
     network_pdf_responses: list[object] = []
     downloads: list[object] = []
+    processed_downloads: set[int] = set()
     interaction_used = False
-    blocked_unsafe_urls = _install_browser_request_guard(page)
+
+    blocked_unsafe_urls = (
+        session_blocked_urls
+        if session_blocked_urls is not None
+        else _install_browser_request_guard(page)
+    )
+    blocked_start = len(blocked_unsafe_urls)
+    pdf_cursor = len(session_pdf_responses) if session_pdf_responses is not None else 0
+    download_cursor = len(session_downloads) if session_downloads is not None else 0
+
+    def sync_session_events() -> None:
+        nonlocal pdf_cursor, download_cursor
+
+        if session_pdf_responses is not None:
+            for response in session_pdf_responses[pdf_cursor:]:
+                try:
+                    url = str(response.url)
+                except Exception:
+                    continue
+                if url not in network_pdf_urls:
+                    network_pdf_urls.append(url)
+                    network_pdf_responses.append(response)
+            pdf_cursor = len(session_pdf_responses)
+
+        if session_downloads is not None:
+            downloads.extend(session_downloads[download_cursor:])
+            download_cursor = len(session_downloads)
+
+    def new_blocked_urls() -> tuple[str, ...]:
+        return tuple(blocked_unsafe_urls[blocked_start:])
+
+    def process_pending_downloads() -> BrowserFileAttempt | None:
+        sync_session_events()
+        for download in downloads:
+            marker = id(download)
+            if marker in processed_downloads:
+                continue
+            processed_downloads.add(marker)
+            attempt = _download_to_file_attempt(
+                download,
+                parent=source,
+                source_page_url=getattr(page, "url", None) or source.url,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                config=config,
+            )
+            file_attempts.append(attempt)
+            if (
+                attempt.result is not None
+                and attempt.result.status == AcquisitionStatus.VERIFIED
+            ):
+                return attempt
+        return None
 
     def on_response(response) -> None:
         try:
@@ -841,7 +899,8 @@ def attempt_browser_route(
             timeout=config.navigation_timeout * 1000,
         )
     except Exception as exc:
-        if blocked_unsafe_urls:
+        blocked_now = new_blocked_urls()
+        if blocked_now:
             return BrowserAccessAttempt(
                 source_candidate=source,
                 final_url=getattr(page, "url", None),
@@ -850,39 +909,27 @@ def attempt_browser_route(
                 file_attempts=tuple(file_attempts),
                 candidates_considered=len(file_attempts),
                 evidence=tuple(
-                    f"Blocked unsafe browser request: {url}"
-                    for url in blocked_unsafe_urls
+                    f"Blocked unsafe browser request: {url}" for url in blocked_now
                 ),
                 error="Browser navigation attempted an unsafe local-network URL",
                 elapsed_seconds=time.perf_counter() - started_at,
             )
 
         # A direct PDF navigation can become a browser download; allow a short
-        # event flush before deciding the route truly failed.
+        # event flush before deciding the route truly failed. Context-level
+        # capture also sees downloads created by a popup/new tab.
         page.wait_for_timeout(500)
-        if downloads:
-            attempt = _download_to_file_attempt(
-                downloads[0],
-                parent=source,
-                source_page_url=source.url,
-                output_dir=output_dir,
-                expected_title=expected_title,
-                config=config,
+        verified_download = process_pending_downloads()
+        if verified_download is not None:
+            return BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=source.url,
+                status=BrowserAttemptStatus.VERIFIED,
+                file_attempts=tuple(file_attempts),
+                candidates_considered=len(file_attempts),
+                evidence=("Direct browser navigation produced a download",),
+                elapsed_seconds=time.perf_counter() - started_at,
             )
-            file_attempts.append(attempt)
-            if (
-                attempt.result is not None
-                and attempt.result.status == AcquisitionStatus.VERIFIED
-            ):
-                return BrowserAccessAttempt(
-                    source_candidate=source,
-                    final_url=source.url,
-                    status=BrowserAttemptStatus.VERIFIED,
-                    file_attempts=tuple(file_attempts),
-                    candidates_considered=len(file_attempts),
-                    evidence=("Direct browser navigation produced a download",),
-                    elapsed_seconds=time.perf_counter() - started_at,
-                )
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=getattr(page, "url", None),
@@ -1113,6 +1160,20 @@ def attempt_browser_route(
             except Exception:
                 pass
 
+            verified_download = process_pending_downloads()
+            if verified_download is not None:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=getattr(page, "url", None) or source.url,
+                    status=BrowserAttemptStatus.VERIFIED,
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    evidence=("Authenticated PDF navigation produced a download",),
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
     # Last bounded generic fallback: explicit visible article-PDF control whose
     # JavaScript action was not represented by an href in the rendered HTML.
     existing_page_ids = {id(open_page) for open_page in context.pages}
@@ -1189,33 +1250,21 @@ def attempt_browser_route(
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
 
-            for download in list(downloads):
-                attempt = _download_to_file_attempt(
-                    download,
-                    parent=source,
-                    source_page_url=page.url,
-                    output_dir=output_dir,
-                    expected_title=expected_title,
-                    config=config,
+            verified_download = process_pending_downloads()
+            if verified_download is not None:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=page.url,
+                    status=BrowserAttemptStatus.VERIFIED,
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    evidence=(
+                        "Explicit article-PDF browser control produced a file",
+                    ),
+                    elapsed_seconds=time.perf_counter() - started_at,
                 )
-                file_attempts.append(attempt)
-                if (
-                    attempt.result is not None
-                    and attempt.result.status == AcquisitionStatus.VERIFIED
-                ):
-                    return BrowserAccessAttempt(
-                        source_candidate=source,
-                        final_url=page.url,
-                        status=BrowserAttemptStatus.VERIFIED,
-                        challenge_history=tuple(challenge_history),
-                        file_attempts=tuple(file_attempts),
-                        candidates_considered=len(file_attempts),
-                        interaction_used=interaction_used,
-                        evidence=(
-                            "Explicit article-PDF browser control produced a file",
-                        ),
-                        elapsed_seconds=time.perf_counter() - started_at,
-                    )
 
             post_click: list[FullTextCandidate] = []
             for url in network_pdf_urls:
