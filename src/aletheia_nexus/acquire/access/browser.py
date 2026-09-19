@@ -106,6 +106,14 @@ def _normalize_routes(
             raise TypeError("routes must contain FullTextCandidate values")
         if normalize_doi(route.doi) != normalized_doi:
             raise ValueError("all browser routes must belong to the requested DOI")
+
+        raw_key = route.url.strip().split("#", 1)[0]
+        if raw_key in seen:
+            continue
+        if len(seen) >= limit:
+            break
+        seen.add(raw_key)
+
         try:
             safe_url = validate_browser_network_url(route.url)
         except (TypeError, ValueError) as exc:
@@ -130,13 +138,7 @@ def _normalize_routes(
             source_name=route.source_name,
             is_best=route.is_best,
         )
-        key = route.url.split("#", 1)[0]
-        if key in seen:
-            continue
-        seen.add(key)
         normalized_routes.append(route)
-        if len(normalized_routes) >= limit:
-            break
 
     return normalized_doi, normalized_routes, preflight_attempts
 
