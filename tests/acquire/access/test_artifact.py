@@ -88,3 +88,59 @@ def test_browser_artifact_rejects_non_pdf_and_cleans_temp_file(tmp_path):
     assert result.retrieved is not None
     assert result.retrieved.local_path is None
     assert not source.exists()
+
+
+
+def test_access_details_reject_credential_like_fields(tmp_path):
+    source = tmp_path / "browser-secret.part"
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.add_metadata({"/Title": "Expected Browser Article"})
+    with source.open("wb") as handle:
+        writer.write(handle)
+
+    from aletheia_nexus.acquire.access.artifact import finalize_access_resource
+
+    try:
+        finalize_access_resource(
+            candidate=_candidate(),
+            resource=_resource(source),
+            output_dir=tmp_path / "out",
+            expected_title="Expected Browser Article",
+            keep_unverified=False,
+            transport="test",
+            access_details={"api_key": "must-not-persist"},
+        )
+    except ValueError as exc:
+        assert "credential-like" in str(exc)
+    else:
+        raise AssertionError("credential-like access details must be rejected")
+
+
+def test_access_detail_urls_are_redacted_before_persistence(tmp_path):
+    source = tmp_path / "browser-url.part"
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.add_metadata({"/Title": "Expected Browser Article"})
+    with source.open("wb") as handle:
+        writer.write(handle)
+
+    from aletheia_nexus.acquire.access.artifact import finalize_access_resource
+
+    result = finalize_access_resource(
+        candidate=_candidate(),
+        resource=_resource(source),
+        output_dir=tmp_path / "out",
+        expected_title="Expected Browser Article",
+        keep_unverified=False,
+        transport="test",
+        access_details={
+            "source_url": "https://idp.example/login?state=super-secret"
+        },
+    )
+
+    payload = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert payload["access"]["source_url"] == (
+        "https://idp.example/login?state=%5Bredacted%5D"
+    )
+    assert "super-secret" not in json.dumps(payload)
