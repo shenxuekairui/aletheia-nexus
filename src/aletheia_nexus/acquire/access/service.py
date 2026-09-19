@@ -5,6 +5,7 @@ from urllib.parse import quote, urlsplit
 
 from aletheia_nexus.acquire.access.browser import (
     BrowserCapabilityUnavailable,
+    BrowserSession,
     acquire_with_browser,
 )
 from aletheia_nexus.acquire.access.models import (
@@ -191,6 +192,7 @@ def acquire_full_text_maximized(
     *,
     output_dir: str | Path,
     browser_config: BrowserAccessConfig | None = None,
+    browser_session: BrowserSession | None = None,
     expected_title: str | None = None,
     unpaywall_email: str | None = None,
     openalex_api_key: str | None = None,
@@ -218,9 +220,18 @@ def acquire_full_text_maximized(
     user to complete SSO/MFA/CAPTCHA, but it never weakens scientific validation.
     """
 
+    if browser_session is not None and not isinstance(browser_session, BrowserSession):
+        raise TypeError("browser_session must be a BrowserSession or None")
+    if browser_session is not None and browser_config is not None:
+        raise ValueError("browser_config and browser_session are mutually exclusive")
+
     normalized_doi = normalize_doi(doi)
     started_at = time.perf_counter()
-    config = browser_config or BrowserAccessConfig()
+    config = (
+        browser_session.config
+        if browser_session is not None
+        else browser_config or BrowserAccessConfig()
+    )
 
     base = acquire_full_text(
         normalized_doi,
@@ -264,13 +275,21 @@ def acquire_full_text_maximized(
     )
 
     try:
-        recovery = acquire_with_browser(
-            doi=normalized_doi,
-            routes=routes,
-            output_dir=output_dir,
-            expected_title=base.expected_title,
-            config=config,
-        )
+        if browser_session is not None:
+            recovery = browser_session.acquire(
+                doi=normalized_doi,
+                routes=routes,
+                output_dir=output_dir,
+                expected_title=base.expected_title,
+            )
+        else:
+            recovery = acquire_with_browser(
+                doi=normalized_doi,
+                routes=routes,
+                output_dir=output_dir,
+                expected_title=base.expected_title,
+                config=config,
+            )
     except BrowserCapabilityUnavailable as exc:
         return MaximizedAcquisitionResult(
             doi=normalized_doi,
