@@ -201,16 +201,61 @@ def classify_access_challenge(
             "/cas/",
         )
     )
-    if sso_hits:
-        # Explicit institutional-access language is itself an access boundary.
-        # Waiting for an IdP/login URL would miss publisher paywall pages where
-        # the user must first click "Access through your institution".
+    auth_hits = _contains_any(semantic, _AUTH_TERMS)
+
+    # Institutional terminology also appears in ordinary article chrome and in
+    # scholarly content about authentication itself. Require evidence that the
+    # text belongs to the current access surface rather than treating one keyword
+    # as a challenge.
+    sso_title_markers = (
+        "institutional sign in",
+        "institutional login",
+        "single sign-on",
+        "single sign on",
+        "统一身份认证",
+        "机构登录",
+        "机构认证",
+        "中国科技云通行证登录",
+    )
+    title_is_access_surface = any(
+        title_text == marker
+        or (
+            title_text.startswith(marker)
+            and len(title_text) <= len(marker) + 24
+        )
+        for marker in sso_title_markers
+    )
+    visible_is_access_surface = any(
+        visible == term
+        or (
+            visible.startswith(term)
+            and len(visible) <= len(term) + 80
+        )
+        for term in sso_hits
+    )
+    multiple_sso_signals = len(set(sso_hits)) >= 2
+
+    if sso_hits and (
+        login_url
+        or entitlement_hits
+        or auth_hits
+        or title_is_access_surface
+        or visible_is_access_surface
+        or multiple_sso_signals
+    ):
+        evidence = [f"SSO signal: {term}" for term in sso_hits[:3]]
+        if login_url:
+            evidence.append("SSO/login-like URL")
+        if entitlement_hits:
+            evidence.append("Institutional access option appears at an entitlement boundary")
+        if title_is_access_surface:
+            evidence.append("Page title is an institutional authentication surface")
         return ChallengeReport(
             kind=ChallengeKind.SSO,
-            evidence=tuple(f"SSO signal: {term}" for term in sso_hits[:3]),
+            evidence=tuple(evidence),
         )
 
-    auth_hits = _contains_any(semantic, _AUTH_TERMS)
+
     if auth_hits or (
         login_url
         and any(
