@@ -315,3 +315,44 @@ def test_failed_elsevier_api_falls_through_to_browser(monkeypatch, tmp_path):
     assert result.status == MaximizedAcquisitionStatus.EXHAUSTED
     assert result.elsevier_attempt == api_attempt
     assert result.browser_attempts == (browser_attempt,)
+
+
+
+def test_elsevier_auth_failure_is_preserved_after_browser_exhaustion():
+    from aletheia_nexus.acquire.access.models import (
+        ElsevierAccessAttempt,
+        ElsevierAccessStatus,
+    )
+
+    base = _base()
+    status, message = service._final_status_from_browser(
+        base,
+        (),
+        elsevier_attempt=ElsevierAccessAttempt(
+            status=ElsevierAccessStatus.AUTH_REQUIRED,
+            http_status=401,
+        ),
+    )
+
+    assert status == MaximizedAcquisitionStatus.AUTH_REQUIRED
+    assert "credentials" in message.lower()
+
+
+def test_elsevier_entitlement_is_preserved_after_browser_exhaustion():
+    from aletheia_nexus.acquire.access.models import (
+        ElsevierAccessAttempt,
+        ElsevierAccessStatus,
+    )
+
+    base = _base()
+    status, message = service._final_status_from_browser(
+        base,
+        (),
+        elsevier_attempt=ElsevierAccessAttempt(
+            status=ElsevierAccessStatus.ENTITLEMENT_REQUIRED,
+            http_status=403,
+        ),
+    )
+
+    assert status == MaximizedAcquisitionStatus.ENTITLEMENT_REQUIRED
+    assert "entitlement" in message.lower()
