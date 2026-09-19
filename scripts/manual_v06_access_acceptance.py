@@ -460,6 +460,7 @@ def main() -> int:
                 output_dir=args.output_dir,
                 browser_session=browser_session,
                 elsevier_config=elsevier_config,
+                auto_official_api=not args.no_elsevier_api,
                 expected_title=title if isinstance(title, str) else None,
                 unpaywall_email=args.unpaywall_email,
                 openalex_api_key=args.openalex_api_key,
