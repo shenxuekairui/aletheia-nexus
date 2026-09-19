@@ -10,6 +10,9 @@ from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
     BrowserAttemptStatus,
     BrowserRecoveryResult,
+    ElsevierAccessAttempt,
+    ElsevierAccessConfig,
+    ElsevierAccessStatus,
     MaximizedAcquisitionStatus,
 )
 from aletheia_nexus.acquire.discovery.models import (
@@ -230,3 +233,87 @@ def test_browser_config_and_session_are_mutually_exclusive(tmp_path):
         assert "mutually exclusive" in str(exc)
     else:
         raise AssertionError("expected mutually exclusive browser options to fail")
+
+
+
+def test_official_elsevier_api_stops_before_browser_when_verified(
+    monkeypatch,
+    tmp_path,
+):
+    base = _base()
+    verified = AcquisitionResult(
+        candidate=_candidate(
+            "https://api.elsevier.com/content/article/doi/10.1000/target",
+            url_type=CandidateUrlType.PDF,
+        ),
+        status=AcquisitionStatus.VERIFIED,
+        file_path=tmp_path / "elsevier.pdf",
+    )
+    api_attempt = ElsevierAccessAttempt(
+        status=ElsevierAccessStatus.VERIFIED,
+        result=verified,
+        http_status=200,
+        credential_modes=("api_key",),
+    )
+
+    monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
+    monkeypatch.setattr(service, "_should_try_elsevier_api", lambda value: True)
+    monkeypatch.setattr(
+        service,
+        "acquire_elsevier_pdf",
+        lambda *args, **kwargs: api_attempt,
+    )
+
+    def should_not_open_browser(**kwargs):
+        raise AssertionError("browser must not run after official API VERIFIED")
+
+    monkeypatch.setattr(service, "acquire_with_browser", should_not_open_browser)
+
+    result = service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+        elsevier_config=ElsevierAccessConfig(api_key="secret"),
+    )
+
+    assert result.status == MaximizedAcquisitionStatus.VERIFIED
+    assert result.verified_result == verified
+    assert result.elsevier_attempt == api_attempt
+    assert result.browser_attempts == ()
+
+
+def test_failed_elsevier_api_falls_through_to_browser(monkeypatch, tmp_path):
+    base = _base()
+    api_attempt = ElsevierAccessAttempt(
+        status=ElsevierAccessStatus.ACCESS_DENIED,
+        http_status=403,
+        credential_modes=("api_key",),
+    )
+    browser_attempt = BrowserAccessAttempt(
+        source_candidate=_candidate(),
+        final_url="https://publisher.example/article",
+        status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+    )
+    recovery = BrowserRecoveryResult(
+        doi="10.1000/target",
+        attempts=(browser_attempt,),
+        profile_dir=tmp_path / "profile",
+    )
+
+    monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
+    monkeypatch.setattr(service, "_should_try_elsevier_api", lambda value: True)
+    monkeypatch.setattr(
+        service,
+        "acquire_elsevier_pdf",
+        lambda *args, **kwargs: api_attempt,
+    )
+    monkeypatch.setattr(service, "acquire_with_browser", lambda **kwargs: recovery)
+
+    result = service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+        elsevier_config=ElsevierAccessConfig(api_key="secret"),
+    )
+
+    assert result.status == MaximizedAcquisitionStatus.EXHAUSTED
+    assert result.elsevier_attempt == api_attempt
+    assert result.browser_attempts == (browser_attempt,)
