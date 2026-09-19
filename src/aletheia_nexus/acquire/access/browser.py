@@ -8,6 +8,7 @@ from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
     BrowserRecoveryResult,
 )
+from aletheia_nexus.acquire.access.security import validate_browser_network_url
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
 from aletheia_nexus.acquire.fulltext.models import AcquisitionResult, AcquisitionStatus
 from aletheia_nexus.core.identifiers.doi import normalize_doi
@@ -33,6 +34,8 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         config.interaction_callback
     ):
         raise TypeError("interaction_callback must be callable or None")
+    if config.headless and config.interactive:
+        raise ValueError("headless browser mode cannot use interactive human handoff")
     for name in (
         "navigation_timeout",
         "request_timeout",
@@ -88,6 +91,7 @@ def _normalize_routes(
 ) -> tuple[str, list[FullTextCandidate]]:
     normalized_doi = normalize_doi(doi)
     normalized_routes: list[FullTextCandidate] = []
+    preflight_attempts: list[BrowserAccessAttempt] = []
     seen: set[str] = set()
 
     for route in routes:
@@ -95,6 +99,30 @@ def _normalize_routes(
             raise TypeError("routes must contain FullTextCandidate values")
         if normalize_doi(route.doi) != normalized_doi:
             raise ValueError("all browser routes must belong to the requested DOI")
+        try:
+            safe_url = validate_browser_network_url(route.url)
+        except (TypeError, ValueError) as exc:
+            preflight_attempts.append(
+                BrowserAccessAttempt(
+                    source_candidate=route,
+                    final_url=None,
+                    status=BrowserAttemptStatus.UNSAFE_URL,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            continue
+        route = FullTextCandidate(
+            doi=route.doi,
+            url=safe_url,
+            provenance=route.provenance,
+            url_type=route.url_type,
+            access_type=route.access_type,
+            version=route.version,
+            host_type=route.host_type,
+            license=route.license,
+            source_name=route.source_name,
+            is_best=route.is_best,
+        )
         key = route.url.split("#", 1)[0]
         if key in seen:
             continue
@@ -214,7 +242,7 @@ class BrowserSession:
         )
         started_at = time.perf_counter()
         context = self._ensure_started()
-        attempts: list[BrowserAccessAttempt] = []
+        attempts: list[BrowserAccessAttempt] = list(preflight_attempts)
         verified: AcquisitionResult | None = None
 
         for source in normalized_routes:
