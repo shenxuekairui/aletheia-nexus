@@ -32,6 +32,7 @@ _SEMANTIC_PDF_CONTROL = re.compile(
     re.IGNORECASE,
 )
 
+
 def _page_snapshot(page) -> tuple[str, str, str, str]:
     try:
         title = page.title()
