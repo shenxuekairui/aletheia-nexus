@@ -40,6 +40,8 @@ def _report_payload(
     elsevier_recovered: int,
     browser_recovered: int,
     interaction_cases: int,
+    entitled_controls: int,
+    entitled_verified: int,
     final_statuses: Counter[str],
     challenge_kinds: Counter[str],
 ) -> dict[str, object]:
@@ -73,6 +75,9 @@ def _report_payload(
             "elsevier_recovered": elsevier_recovered,
             "browser_recovered": browser_recovered,
             "interaction_cases": interaction_cases,
+            "entitled_controls": entitled_controls,
+            "entitled_verified": entitled_verified,
+            "entitled_failures": entitled_controls - entitled_verified,
             "final_statuses": dict(sorted(final_statuses.items())),
             "challenge_kinds": dict(sorted(challenge_kinds.items())),
         },
@@ -92,6 +97,8 @@ def _write_report(
     elsevier_recovered: int,
     browser_recovered: int,
     interaction_cases: int,
+    entitled_controls: int,
+    entitled_verified: int,
     final_statuses: Counter[str],
     challenge_kinds: Counter[str],
 ) -> None:
@@ -105,6 +112,8 @@ def _write_report(
         elsevier_recovered=elsevier_recovered,
         browser_recovered=browser_recovered,
         interaction_cases=interaction_cases,
+        entitled_controls=entitled_controls,
+        entitled_verified=entitled_verified,
         final_statuses=final_statuses,
         challenge_kinds=challenge_kinds,
     )
@@ -115,9 +124,13 @@ def _write_report(
     )
 
 
-def _load_cases(paths: list[Path], dois: list[str]) -> list[dict[str, str | None]]:
-    cases: list[dict[str, str | None]] = []
-    seen: set[str] = set()
+def _load_cases(
+    paths: list[Path],
+    dois: list[str],
+    entitled_dois: list[str],
+) -> list[dict[str, object]]:
+    cases: list[dict[str, object]] = []
+    by_doi: dict[str, dict[str, object]] = {}
 
     for path in paths:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -125,25 +138,47 @@ def _load_cases(paths: list[Path], dois: list[str]) -> list[dict[str, str | None
             raise ValueError(f"Benchmark must contain a JSON list: {path}")
         for item in payload:
             doi = str(item["doi"]).strip()
-            if doi in seen:
+            if doi in by_doi:
                 continue
-            seen.add(doi)
-            cases.append(
-                {
-                    "doi": doi,
-                    "title": str(item.get("title") or "").strip() or None,
-                    "id": str(item.get("id") or doi),
-                }
-            )
+            case: dict[str, object] = {
+                "doi": doi,
+                "title": str(item.get("title") or "").strip() or None,
+                "id": str(item.get("id") or doi),
+                "entitled_control": False,
+            }
+            by_doi[doi] = case
+            cases.append(case)
 
     for doi in dois:
         value = doi.strip()
-        if value and value not in seen:
-            seen.add(value)
-            cases.append({"doi": value, "title": None, "id": value})
+        if value and value not in by_doi:
+            case = {
+                "doi": value,
+                "title": None,
+                "id": value,
+                "entitled_control": False,
+            }
+            by_doi[value] = case
+            cases.append(case)
+
+    for doi in entitled_dois:
+        value = doi.strip()
+        if not value:
+            continue
+        case = by_doi.get(value)
+        if case is None:
+            case = {
+                "doi": value,
+                "title": None,
+                "id": value,
+                "entitled_control": True,
+            }
+            by_doi[value] = case
+            cases.append(case)
+        else:
+            case["entitled_control"] = True
 
     return cases
-
 
 def _interaction_notice(challenge, url: str) -> None:
     safe_url = redact_url_for_record(url)
@@ -238,6 +273,15 @@ def main() -> int:
         default=[],
         help="Additional DOI to test. Repeat as needed.",
     )
+    parser.add_argument(
+        "--entitled-doi",
+        action="append",
+        default=[],
+        help=(
+            "DOI manually confirmed downloadable with the same account/institution. "
+            "Repeat for positive controls; any failure makes the runner exit non-zero."
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("downloads/v06"))
     parser.add_argument(
         "--report",
@@ -263,7 +307,7 @@ def main() -> int:
         parser.error("--headless requires --non-interactive")
 
     benchmark_paths = args.benchmark or list(DEFAULT_BENCHMARKS)
-    cases = _load_cases(benchmark_paths, args.doi)
+    cases = _load_cases(benchmark_paths, args.doi, args.entitled_doi)
     if not cases:
         raise SystemExit("No acceptance cases were provided")
 
@@ -284,6 +328,8 @@ def main() -> int:
     base_verified = 0
     elsevier_recovered = 0
     interaction_cases = 0
+    entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
+    entitled_verified = 0
     browser_recovered = 0
     final_statuses: Counter[str] = Counter()
     challenge_kinds: Counter[str] = Counter()
@@ -304,12 +350,15 @@ def main() -> int:
                 metadata_mailto=args.metadata_mailto,
             )
             record = _serialize(result)
+            record["entitled_control"] = bool(case["entitled_control"])
             records.append(record)
 
             if result.base_result.status.value == "VERIFIED":
                 base_verified += 1
             if result.status == MaximizedAcquisitionStatus.VERIFIED:
                 verified += 1
+                if bool(case["entitled_control"]):
+                    entitled_verified += 1
                 if (
                     result.elsevier_attempt is not None
                     and result.elsevier_attempt.status.value == "VERIFIED"
@@ -341,6 +390,8 @@ def main() -> int:
                 elsevier_recovered=elsevier_recovered,
                 browser_recovered=browser_recovered,
                 interaction_cases=interaction_cases,
+                entitled_controls=entitled_controls,
+                entitled_verified=entitled_verified,
                 final_statuses=final_statuses,
                 challenge_kinds=challenge_kinds,
             )
@@ -353,6 +404,7 @@ def main() -> int:
     print(f"Elsevier recovered: {elsevier_recovered}")
     print(f"Browser recovered:  {browser_recovered}")
     print(f"Interaction cases:  {interaction_cases}")
+    print(f"Entitled controls:  {entitled_verified}/{entitled_controls}")
     print("Final statuses:")
     for name, count in sorted(final_statuses.items()):
         print(f"  {name:<22} {count}")
@@ -364,6 +416,13 @@ def main() -> int:
         print("  (none)")
     print(f"Report:             {args.report}")
 
+    entitled_failures = entitled_controls - entitled_verified
+    if entitled_failures:
+        print(
+            f"FAIL: {entitled_failures} manually confirmed entitled control(s) "
+            "were not VERIFIED."
+        )
+        return 2
     return 0
 
 
