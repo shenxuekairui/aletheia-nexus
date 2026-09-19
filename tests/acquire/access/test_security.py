@@ -49,8 +49,6 @@ def test_redact_url_removes_embedded_userinfo_credentials():
         "http://[::1]/paper.pdf",
     ],
 )
-
-
 def test_browser_network_url_rejects_obvious_local_targets(url):
     with pytest.raises(ValueError):
         validate_browser_network_url(url)
