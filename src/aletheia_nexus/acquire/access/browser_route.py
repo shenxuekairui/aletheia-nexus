@@ -347,7 +347,7 @@ def _request_pdf_candidate(
             BrowserFileAttempt(
                 candidate=candidate,
                 source_page_url=source_page_url,
-                error=f"{type(exc).__name__}: {exc}",
+                error=type(exc).__name__,
             ),
             None,
         )
@@ -436,7 +436,7 @@ def _request_pdf_candidate(
             BrowserFileAttempt(
                 candidate=candidate,
                 source_page_url=source_page_url,
-                error=f"{type(exc).__name__}: {exc}",
+                error=type(exc).__name__,
             ),
             None,
         )
@@ -523,7 +523,7 @@ def _browser_response_to_file_attempt(
             candidate=candidate,
             source_page_url=source_page_url,
             method="browser_response",
-            error=f"{type(exc).__name__}: {exc}",
+            error=type(exc).__name__,
         )
 
 
@@ -607,7 +607,7 @@ def _download_to_file_attempt(
             candidate=candidate,
             source_page_url=source_page_url,
             method="browser_download",
-            error=f"{type(exc).__name__}: {exc}",
+            error=type(exc).__name__,
         )
 
 
@@ -1101,7 +1101,7 @@ def attempt_browser_route(
             challenge_history=tuple(challenge_history),
             file_attempts=tuple(file_attempts),
             candidates_considered=len(file_attempts),
-            error=f"{type(exc).__name__}: {exc}",
+            error=type(exc).__name__,
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
@@ -1150,7 +1150,7 @@ def attempt_browser_route(
             challenge_history=tuple(challenge_history),
             file_attempts=tuple(file_attempts),
             candidates_considered=len(file_attempts),
-            error=f"{type(exc).__name__}: {exc}",
+            error=type(exc).__name__,
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
@@ -1166,7 +1166,7 @@ def attempt_browser_route(
             file_attempts=tuple(file_attempts),
             candidates_considered=len(file_attempts),
             evidence=("Browser navigation ended at an unsafe network target",),
-            error=f"{type(exc).__name__}: {exc}",
+            error=type(exc).__name__,
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
@@ -1214,7 +1214,7 @@ def attempt_browser_route(
             file_attempts=tuple(file_attempts),
             candidates_considered=len(file_attempts),
             interaction_used=interaction_used,
-            error=f"{type(exc).__name__}: {exc}",
+            error=type(exc).__name__,
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
