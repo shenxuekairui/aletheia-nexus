@@ -300,7 +300,6 @@ def test_standard_federated_login_controls_are_clicked():
         assert page.control.clicked is True
 
 
-
 def test_institution_chooser_is_treated_as_sso_handoff(tmp_path):
     events = []
     page = _Page(
