@@ -42,6 +42,12 @@ _SEMANTIC_PDF_CONTROL = re.compile(
     r"(?:download|view|read|open)?\s*(?:full[- ]?text\s*)?(?:article\s*)?pdf",
     re.IGNORECASE,
 )
+_SEMANTIC_INSTITUTION_CONTROL = re.compile(
+    r"(?:access|sign\s*in|log\s*in).{0,50}(?:institution|organization)"
+    r"|(?:institutional|organization).{0,50}(?:access|sign\s*in|login)"
+    r"|carsi|中国科技云通行证|统一身份认证|机构(?:登录|认证|访问)",
+    re.IGNORECASE,
+)
 
 
 def _page_snapshot(page) -> tuple[str, str, str, str]:
@@ -627,6 +633,90 @@ def _click_semantic_pdf_control(page) -> bool:
     return False
 
 
+def _click_semantic_institution_control(page) -> bool:
+    """Click one explicit institutional-access control as a late fallback."""
+
+    locator = page.locator("a, button").filter(
+        has_text=_SEMANTIC_INSTITUTION_CONTROL
+    )
+    try:
+        count = min(locator.count(), 8)
+    except Exception:
+        return False
+
+    for index in range(count):
+        item = locator.nth(index)
+        try:
+            text = " ".join(item.inner_text().split())
+        except Exception:
+            continue
+        if (
+            not text
+            or len(text) > 140
+            or not _SEMANTIC_INSTITUTION_CONTROL.search(text)
+        ):
+            continue
+        try:
+            item.click(timeout=5000)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _run_institution_handoff(
+    context,
+    page,
+    *,
+    config: BrowserAccessConfig,
+) -> tuple[bool, tuple[ChallengeReport, ...], bool, ChallengeReport]:
+    """Use one explicit institution-access control, then observe legitimate auth."""
+
+    existing_page_ids = {id(open_page) for open_page in context.pages}
+    if not _click_semantic_institution_control(page):
+        return False, (), False, ChallengeReport(kind=ChallengeKind.NONE)
+
+    try:
+        page.wait_for_timeout(1000)
+    except Exception:
+        pass
+
+    new_pages = [
+        popup
+        for popup in context.pages
+        if id(popup) not in existing_page_ids and popup is not page
+    ][:4]
+    auth_page = new_pages[-1] if new_pages else page
+
+    try:
+        try:
+            auth_page.wait_for_load_state(
+                "domcontentloaded",
+                timeout=min(config.navigation_timeout, 10.0) * 1000,
+            )
+        except Exception:
+            pass
+
+        report, observed, used = _resolve_page_challenge(
+            auth_page,
+            config=config,
+        )
+        if auth_page is not page and used:
+            try:
+                if auth_page.is_closed():
+                    report = ChallengeReport(kind=ChallengeKind.NONE)
+            except Exception:
+                pass
+        return True, observed, used, report
+    finally:
+        for popup in new_pages:
+            try:
+                if not popup.is_closed():
+                    popup.close()
+            except Exception:
+                pass
+
+
 def _status_from_challenge(report: ChallengeReport) -> BrowserAttemptStatus:
     if report.kind == ChallengeKind.ENTITLEMENT:
         return BrowserAttemptStatus.ENTITLEMENT_REQUIRED
@@ -804,6 +894,7 @@ def attempt_browser_route(
     session_blocked_urls: list[str] | None = None,
     session_pdf_responses: list[object] | None = None,
     session_downloads: list[object] | None = None,
+    _allow_access_handoff: bool = True,
 ) -> BrowserAccessAttempt:
     started_at = time.perf_counter()
     file_attempts: list[BrowserFileAttempt] = []
@@ -1344,6 +1435,68 @@ def attempt_browser_route(
                         ),
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
+
+    if _allow_access_handoff:
+        (
+            access_clicked,
+            access_reports,
+            access_interaction_used,
+            access_final,
+        ) = _run_institution_handoff(
+            context,
+            page,
+            config=config,
+        )
+        if access_clicked:
+            for report in access_reports:
+                _append_report(challenge_history, report)
+            interaction_used = interaction_used or access_interaction_used
+
+            if access_final.kind != ChallengeKind.NONE:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=getattr(page, "url", None) or source.url,
+                    status=_status_from_challenge(access_final),
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    evidence=access_final.evidence,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
+            retry = attempt_browser_route(
+                context,
+                page,
+                source=source,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                config=config,
+                session_blocked_urls=session_blocked_urls,
+                session_pdf_responses=session_pdf_responses,
+                session_downloads=session_downloads,
+                _allow_access_handoff=False,
+            )
+
+            merged_history = list(challenge_history)
+            for report in retry.challenge_history:
+                _append_report(merged_history, report)
+            merged_file_attempts = [*file_attempts, *retry.file_attempts]
+            return BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=retry.final_url,
+                status=retry.status,
+                challenge_history=tuple(merged_history),
+                file_attempts=tuple(merged_file_attempts),
+                candidates_considered=len(merged_file_attempts),
+                interaction_used=interaction_used or retry.interaction_used,
+                evidence=(
+                    "Institutional access handoff completed; route retried once",
+                    *retry.evidence,
+                ),
+                error=retry.error,
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
 
     any_retrieved = any(
         attempt.result is not None
