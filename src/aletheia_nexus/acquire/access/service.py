@@ -275,8 +275,8 @@ def acquire_full_text_maximized(
     v0.5 remains the first stage because it is cheap, deterministic and hardened.
     Configured official-provider credentials are discovered from the environment by
     default, or may be supplied explicitly. An applicable authenticated API is tried
-    next. Only
-    remaining non-VERIFIED outcomes escalate to persistent browser recovery.
+    next. Only remaining non-VERIFIED outcomes escalate to persistent browser
+    recovery.
     No access mechanism may weaken scientific validation.
     """
 
@@ -337,10 +337,9 @@ def acquire_full_text_maximized(
                 "was unnecessary."
             ),
         )
-    
+
     if elsevier_config is None and auto_official_api:
         elsevier_config = ElsevierAccessConfig.from_env()
-
 
     elsevier_attempt = None
     if elsevier_config is not None and _should_try_elsevier_api(base):
