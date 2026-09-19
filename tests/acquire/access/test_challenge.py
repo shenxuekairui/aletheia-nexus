@@ -237,3 +237,15 @@ def test_long_institution_chooser_page_is_sso():
     )
 
     assert report.kind == ChallengeKind.SSO
+
+
+
+def test_challenge_classifier_ignores_far_tail_article_text():
+    report = classify_access_challenge(
+        title="Readable Article",
+        url="https://publisher.example/article",
+        visible_text=("normal article text " * 10_000) + " please sign in",
+        html="<main>Readable article</main>",
+    )
+
+    assert report.kind == ChallengeKind.NONE
