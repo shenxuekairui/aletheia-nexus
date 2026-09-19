@@ -8,6 +8,10 @@ from uuid import uuid4
 
 from aletheia_nexus.acquire.access.artifact import finalize_browser_resource
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
+from aletheia_nexus.acquire.access.security import (
+    redact_url_for_record,
+    validate_browser_network_url,
+)
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
@@ -132,7 +136,8 @@ def _resolve_page_challenge(
     # legitimate SSO, MFA, CAPTCHA or other account verification. AN never records
     # credentials or challenge answers; it only observes when the page becomes usable.
     if config.interaction_callback is not None:
-        config.interaction_callback(report, page.url)
+        callback_url = redact_url_for_record(page.url) or ""
+        config.interaction_callback(report, callback_url)
     report = _wait_until_challenge_changes(
         page,
         initial=report,
@@ -147,9 +152,10 @@ def _candidate_for_url(parent: FullTextCandidate, url: str) -> FullTextCandidate
     normalized = normalize_derived_url(url, base_url=parent.url)
     if normalized is None:
         raise ValueError(f"Browser exposed an unusable HTTP(S) URL: {url!r}")
+    safe_url = validate_browser_network_url(normalized)
     return replace(
         parent,
-        url=normalized,
+        url=safe_url,
         url_type=CandidateUrlType.PDF,
         host_type=refine_host_type(normalized, parent.host_type),
     )
@@ -529,6 +535,30 @@ def _status_from_challenge(report: ChallengeReport) -> BrowserAttemptStatus:
     return BrowserAttemptStatus.INTERACTION_REQUIRED
 
 
+def _install_browser_request_guard(page) -> list[str]:
+    """Block obvious local-network HTTP(S) requests made by a browser page."""
+
+    blocked: list[str] = []
+
+    def guard(route) -> None:
+        request_url = str(route.request.url)
+        if not request_url.lower().startswith(("http://", "https://")):
+            route.continue_()
+            return
+        try:
+            validate_browser_network_url(request_url)
+        except (TypeError, ValueError):
+            safe_url = redact_url_for_record(request_url) or ""
+            if safe_url not in blocked:
+                blocked.append(safe_url)
+            route.abort("blockedbyclient")
+            return
+        route.continue_()
+
+    page.route("**/*", guard)
+    return blocked
+
+
 def attempt_browser_route(
     context,
     page,
@@ -545,6 +575,7 @@ def attempt_browser_route(
     network_pdf_responses: list[object] = []
     downloads: list[object] = []
     interaction_used = False
+    blocked_unsafe_urls = _install_browser_request_guard(page)
 
     def on_response(response) -> None:
         try:
@@ -601,6 +632,22 @@ def attempt_browser_route(
             timeout=config.navigation_timeout * 1000,
         )
     except Exception as exc:
+        if blocked_unsafe_urls:
+            return BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=getattr(page, "url", None),
+                status=BrowserAttemptStatus.UNSAFE_URL,
+                challenge_history=tuple(challenge_history),
+                file_attempts=tuple(file_attempts),
+                candidates_considered=len(file_attempts),
+                evidence=tuple(
+                    f"Blocked unsafe browser request: {url}"
+                    for url in blocked_unsafe_urls
+                ),
+                error="Browser navigation attempted an unsafe local-network URL",
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
+
         # A direct PDF navigation can become a browser download; allow a short
         # event flush before deciding the route truly failed.
         page.wait_for_timeout(500)
