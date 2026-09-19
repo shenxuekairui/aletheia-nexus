@@ -22,7 +22,7 @@ FINAL / HARDENED / FROZEN
 ```text
 Aletheia Nexus v0.6
 Acquisition Maximization
-authenticated / institutional / browser-session access
+official API / authenticated / institutional / browser-session access
 ```
 
 v0.6 不修改已经冻结的 v0.5 HTTP 核心，而是在 v0.5 无法得到
@@ -53,6 +53,7 @@ Direct PDF Acquisition            ✅ v0.5.0
 PDF + Paper Identity Validation   ✅ v0.5.0
 Route Resolution                  ✅ v0.5.1
 Multi-route Acquisition           ✅ v0.5.2
+Official Authenticated API Access 🚧 v0.6
 Authenticated Browser Access      🚧 v0.6
 Acquisition Maximization          🚧 v0.6
 
@@ -61,7 +62,7 @@ Knowledge / Workflow / Agent      → later
 Lab / Scientific World Model      → long term
 ```
 
-当前 v0.5 已闭合 **unauthenticated HTTP(S) full-text acquisition（未认证 HTTP(S) 全文获取）**链路。v0.6 将浏览器登录、JavaScript challenge、机构认证和 Human-in-the-loop 放在独立 Access Layer（访问层）中，而不是污染 v0.5 HTTP core。AN 不做付费墙绕过、凭据猜测或 CAPTCHA-solving service（验证码代答服务）。
+当前 v0.5 已闭合 **unauthenticated HTTP(S) full-text acquisition（未认证 HTTP(S) 全文获取）**链路。v0.6 将官方认证 API、浏览器登录、JavaScript challenge、机构认证和 Human-in-the-loop 放在独立 Access Layer（访问层）中，而不是污染 v0.5 HTTP core。AN 不做付费墙绕过、凭据猜测或 CAPTCHA-solving service（验证码代答服务）。
 
 ## Architecture
 
@@ -265,7 +266,11 @@ print(result.verified_path)
 ```text
 v0.5 public/direct routes
 ↓
-未 VERIFIED 才升级
+未 VERIFIED
+↓
+official authenticated API when configured/applicable
+↓
+仍未 VERIFIED
 ↓
 persistent browser profile
 ↓
@@ -280,6 +285,17 @@ VERIFIED
 
 核心原则仍然是：**浏览器和认证只能提高“拿到文件”的能力，不能降低
 `VERIFIED` 标准。**
+
+Elsevier ScienceDirect 官方 API 可选配置使用环境变量，避免把密钥写进代码或命令行：
+
+```text
+ELSEVIER_API_KEY
+ELSEVIER_INST_TOKEN      # optional
+ELSEVIER_BEARER_TOKEN    # optional
+```
+
+程序中可通过 `ElsevierAccessConfig.from_env()` 读取。API key、institution
+token 和 bearer token 只进入请求 header，不进入 `.acquisition.json`。
 
 批量任务建议复用一个 live BrowserSession（实时浏览器会话），而不是每篇
 论文重新启动浏览器：
@@ -542,7 +558,7 @@ v0.5 解决：
 
 v0.6 补上：
 
-> **怎样在用户具有合法访问条件时，把机构权限、浏览器登录态和必要的人机协作纳入统一获取系统，最大化最终 VERIFIED 获取率。**
+> **怎样在用户具有合法访问条件时，把官方认证 API、机构权限、浏览器登录态和必要的人机协作纳入统一获取系统，最大化最终 VERIFIED 获取率。**
 
 v0.6 稳定后，v0.7 才进入：
 
