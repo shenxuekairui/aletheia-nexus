@@ -175,6 +175,17 @@ def test_bare_institution_access_is_sso_handoff():
     assert report.kind == ChallengeKind.SSO
 
 
+def test_bare_organization_access_is_sso_handoff():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        visible_text="Access through your organization",
+        html="<a>Access through your organization</a>",
+    )
+
+    assert report.kind == ChallengeKind.SSO
+
+
 def test_institution_access_prompt_with_short_instruction_is_sso_handoff():
     report = classify_access_challenge(
         title="Target Article",
