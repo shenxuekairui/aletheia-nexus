@@ -256,9 +256,7 @@ def test_elsevier_error_does_not_persist_secret_url(monkeypatch, tmp_path):
     transport = httpx.MockTransport(
         lambda request: httpx.Response(
             302,
-            headers={
-                "Location": "https://cdn.example/article.pdf?token=super-secret"
-            },
+            headers={"Location": "https://cdn.example/article.pdf?token=super-secret"},
         )
     )
 
