@@ -256,3 +256,20 @@ def test_challenge_classifier_ignores_far_tail_article_text():
     )
 
     assert report.kind == ChallengeKind.NONE
+
+def test_live_sciencedirect_turnstile_challenge_is_classified():
+    report = classify_access_challenge(
+        title="请稍候…",
+        url="https://www.sciencedirect.com/science/article/pii/example",
+        visible_text=(
+            "Are you a robot? Please confirm you are a human by completing "
+            "the captcha challenge below."
+        ),
+        html=(
+            '<iframe src="https://challenges.cloudflare.com/cdn-cgi/'
+            'challenge-platform/h/g/turnstile/f/av0/example"></iframe>'
+        ),
+    )
+
+    assert report.kind == ChallengeKind.CAPTCHA
+
