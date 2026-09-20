@@ -103,12 +103,20 @@ def _wait_until_challenge_changes(
         return report
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        if page.is_closed():
+        try:
+            if page.is_closed():
+                return report
+            page.wait_for_timeout(
+                min(poll_interval, max(deadline - time.monotonic(), 0.01)) * 1000
+            )
+            report = _report_for_page(page)
+        except Exception:
+            # A user may close a stuck CAPTCHA/authentication tab or the browser
+            # may invalidate the target while Playwright is polling. Preserve the
+            # last confirmed challenge instead of replacing useful access state
+            # with a generic TargetClosedError at the DOI level.
             return report
-        page.wait_for_timeout(
-            min(poll_interval, max(deadline - time.monotonic(), 0.01)) * 1000
-        )
-        report = _report_for_page(page)
+
         _append_report(history, report)
         if report.kind == ChallengeKind.NONE:
             return report
