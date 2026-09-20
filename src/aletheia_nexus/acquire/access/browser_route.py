@@ -1201,7 +1201,7 @@ def attempt_browser_route(
                     error="Browser navigation attempted an unsafe local-network URL",
                     elapsed_seconds=time.perf_counter() - started_at,
                 )
-    
+
             # A direct PDF navigation can become a browser download; allow a short
             # event flush before deciding the route truly failed. Context-level
             # capture also sees downloads created by a popup/new tab.
@@ -1227,7 +1227,7 @@ def attempt_browser_route(
                 error=type(exc).__name__,
                 elapsed_seconds=time.perf_counter() - started_at,
             )
-    
+
     try:
         validate_browser_network_url(page.url)
     except (TypeError, ValueError) as exc:
