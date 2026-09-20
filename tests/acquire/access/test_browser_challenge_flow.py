@@ -312,6 +312,29 @@ def test_accessible_organization_control_is_clicked_without_visible_text():
     assert page.control.clicked is True
 
 
+def test_visible_institution_text_fallback_clicks_nonsemantic_node():
+    class EmptyLocator:
+        def count(self):
+            return 0
+
+    class TextOnlyPage:
+        def __init__(self):
+            self.control = _InstitutionControl("Access through your organization")
+
+        def locator(self, selector):
+            assert selector == "a, button, [role='button'], [role='link']"
+            return EmptyLocator()
+
+        def get_by_text(self, pattern):
+            assert pattern is browser_route._SEMANTIC_INSTITUTION_CONTROL
+            return _InstitutionLocator(self.control)
+
+    page = TextOnlyPage()
+
+    assert browser_route._click_semantic_institution_control(page) is True
+    assert page.control.clicked is True
+
+
 def test_accessible_pdf_control_is_clicked_without_visible_text():
     page = _InstitutionPage(aria_label="View PDF")
 
