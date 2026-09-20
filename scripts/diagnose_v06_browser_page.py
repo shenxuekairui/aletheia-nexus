@@ -1,7 +1,5 @@
 import argparse
 import re
-from pathlib import Path
-
 from aletheia_nexus.acquire.access import BrowserAccessConfig, browser_profile_dir
 from aletheia_nexus.acquire.access.security import redact_url_for_record
 
