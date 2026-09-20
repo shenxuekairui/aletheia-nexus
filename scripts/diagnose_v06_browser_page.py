@@ -1,4 +1,5 @@
 import argparse
+import re
 from pathlib import Path
 
 from aletheia_nexus.acquire.access import BrowserAccessConfig, browser_profile_dir
@@ -23,11 +24,15 @@ INTERACTIVE_SELECTOR = (
     "[aria-label], [title]"
 )
 
+_IPV4_RE = re.compile(r"(?<![\\d.])(?:\\d{1,3}\\.){3}\\d{1,3}(?![\\d.])")
+
 
 def _safe(value: str | None, limit: int = 300) -> str:
     if not value:
         return ""
-    return " ".join(str(value).split())[:limit]
+    text = " ".join(str(value).split())
+    text = _IPV4_RE.sub("[redacted-ip]", text)
+    return text[:limit]
 
 
 def _safe_href(value: str | None) -> str:
