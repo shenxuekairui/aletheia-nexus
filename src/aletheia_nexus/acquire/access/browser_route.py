@@ -979,6 +979,7 @@ def attempt_browser_route(
     session_downloads: list[object] | None = None,
     _allow_access_handoff: bool = True,
     _navigate_source: bool = True,
+    _browser_native_only: bool = False,
 ) -> BrowserAccessAttempt:
     started_at = time.perf_counter()
     file_attempts: list[BrowserFileAttempt] = []
@@ -1090,6 +1091,7 @@ def attempt_browser_route(
             session_downloads=session_downloads,
             _allow_access_handoff=False,
             _navigate_source=False,
+            _browser_native_only=_browser_native_only,
         )
 
         merged_history = list(challenge_history)
@@ -1127,12 +1129,15 @@ def attempt_browser_route(
     def on_download(download) -> None:
         downloads.append(download)
 
-    page.on("response", on_response)
-    page.on("download", on_download)
+    if not _browser_native_only:
+        page.on("response", on_response)
+        page.on("download", on_download)
 
     # If a persistent session is already authenticated, a direct PDF request can
-    # succeed without opening a page at all.
-    if source.url_type == CandidateUrlType.PDF:
+    # succeed without opening a page at all. External browser handoff deliberately
+    # avoids BrowserContext.request because strict WAFs may reject it even when the
+    # real tab is already authorized.
+    if source.url_type == CandidateUrlType.PDF and not _browser_native_only:
         direct, direct_challenge = _request_pdf_candidate(
             context,
             candidate=source,
@@ -1372,103 +1377,104 @@ def attempt_browser_route(
 
     candidates = list(_dedupe_candidates(candidates, limit=config.max_pdf_candidates))
 
-    retried_auth_urls: set[str] = set()
-    for candidate in candidates:
-        attempt, challenge = _request_pdf_candidate(
-            context,
-            candidate=candidate,
-            source_page_url=page.url,
-            output_dir=output_dir,
-            expected_title=expected_title,
-            config=config,
-        )
-        file_attempts.append(attempt)
-        if (
-            attempt.result is not None
-            and attempt.result.status == AcquisitionStatus.VERIFIED
-        ):
-            return BrowserAccessAttempt(
-                source_candidate=source,
-                final_url=page.url,
-                status=BrowserAttemptStatus.VERIFIED,
-                challenge_history=tuple(challenge_history),
-                file_attempts=tuple(file_attempts),
-                candidates_considered=len(file_attempts),
-                interaction_used=interaction_used,
-                evidence=identity.evidence,
-                elapsed_seconds=time.perf_counter() - started_at,
+    if not _browser_native_only:
+        retried_auth_urls: set[str] = set()
+        for candidate in candidates:
+            attempt, challenge = _request_pdf_candidate(
+                context,
+                candidate=candidate,
+                source_page_url=page.url,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                config=config,
             )
-
-        # Some PDF endpoints perform their own authentication redirect. Surface
-        # that endpoint in the browser once, let the legitimate session recover,
-        # then retry the exact same concrete file URL at most once.
-        if (
-            challenge is not None
-            and candidate.url not in retried_auth_urls
-            and challenge.kind
-            in {
-                ChallengeKind.BOT_CHALLENGE,
-                ChallengeKind.CAPTCHA,
-                ChallengeKind.AUTHENTICATION,
-                ChallengeKind.SSO,
-                ChallengeKind.MFA,
-            }
-        ):
-            retried_auth_urls.add(candidate.url)
-            _append_report(challenge_history, challenge)
-            try:
-                page.goto(
-                    candidate.url,
-                    wait_until="domcontentloaded",
-                    timeout=config.navigation_timeout * 1000,
-                )
-                final, observed, used = _resolve_page_challenge(page, config=config)
-                for report in observed:
-                    _append_report(challenge_history, report)
-                interaction_used = interaction_used or used
-                if final.kind == ChallengeKind.NONE:
-                    retry, retry_challenge = _request_pdf_candidate(
-                        context,
-                        candidate=candidate,
-                        source_page_url=page.url,
-                        output_dir=output_dir,
-                        expected_title=expected_title,
-                        config=config,
-                    )
-                    file_attempts.append(retry)
-                    if retry_challenge is not None:
-                        _append_report(challenge_history, retry_challenge)
-                    if (
-                        retry.result is not None
-                        and retry.result.status == AcquisitionStatus.VERIFIED
-                    ):
-                        return BrowserAccessAttempt(
-                            source_candidate=source,
-                            final_url=page.url,
-                            status=BrowserAttemptStatus.VERIFIED,
-                            challenge_history=tuple(challenge_history),
-                            file_attempts=tuple(file_attempts),
-                            candidates_considered=len(file_attempts),
-                            interaction_used=interaction_used,
-                            evidence=("Authenticated concrete PDF endpoint recovered",),
-                            elapsed_seconds=time.perf_counter() - started_at,
-                        )
-            except Exception:
-                pass
-
-            verified_download = process_pending_downloads()
-            if verified_download is not None:
+            file_attempts.append(attempt)
+            if (
+                attempt.result is not None
+                and attempt.result.status == AcquisitionStatus.VERIFIED
+            ):
                 return BrowserAccessAttempt(
                     source_candidate=source,
-                    final_url=getattr(page, "url", None) or source.url,
+                    final_url=page.url,
                     status=BrowserAttemptStatus.VERIFIED,
                     challenge_history=tuple(challenge_history),
                     file_attempts=tuple(file_attempts),
                     candidates_considered=len(file_attempts),
                     interaction_used=interaction_used,
-                    evidence=("Authenticated PDF navigation produced a download",),
+                    evidence=identity.evidence,
                     elapsed_seconds=time.perf_counter() - started_at,
                 )
+
+            # Some PDF endpoints perform their own authentication redirect. Surface
+            # that endpoint in the browser once, let the legitimate session recover,
+            # then retry the exact same concrete file URL at most once.
+            if (
+                challenge is not None
+                and candidate.url not in retried_auth_urls
+                and challenge.kind
+                in {
+                    ChallengeKind.BOT_CHALLENGE,
+                    ChallengeKind.CAPTCHA,
+                    ChallengeKind.AUTHENTICATION,
+                    ChallengeKind.SSO,
+                    ChallengeKind.MFA,
+                }
+            ):
+                retried_auth_urls.add(candidate.url)
+                _append_report(challenge_history, challenge)
+                try:
+                    page.goto(
+                        candidate.url,
+                        wait_until="domcontentloaded",
+                        timeout=config.navigation_timeout * 1000,
+                    )
+                    final, observed, used = _resolve_page_challenge(page, config=config)
+                    for report in observed:
+                        _append_report(challenge_history, report)
+                    interaction_used = interaction_used or used
+                    if final.kind == ChallengeKind.NONE:
+                        retry, retry_challenge = _request_pdf_candidate(
+                            context,
+                            candidate=candidate,
+                            source_page_url=page.url,
+                            output_dir=output_dir,
+                            expected_title=expected_title,
+                            config=config,
+                        )
+                        file_attempts.append(retry)
+                        if retry_challenge is not None:
+                            _append_report(challenge_history, retry_challenge)
+                        if (
+                            retry.result is not None
+                            and retry.result.status == AcquisitionStatus.VERIFIED
+                        ):
+                            return BrowserAccessAttempt(
+                                source_candidate=source,
+                                final_url=page.url,
+                                status=BrowserAttemptStatus.VERIFIED,
+                                challenge_history=tuple(challenge_history),
+                                file_attempts=tuple(file_attempts),
+                                candidates_considered=len(file_attempts),
+                                interaction_used=interaction_used,
+                                evidence=("Authenticated concrete PDF endpoint recovered",),
+                                elapsed_seconds=time.perf_counter() - started_at,
+                            )
+                except Exception:
+                    pass
+
+                verified_download = process_pending_downloads()
+                if verified_download is not None:
+                    return BrowserAccessAttempt(
+                        source_candidate=source,
+                        final_url=getattr(page, "url", None) or source.url,
+                        status=BrowserAttemptStatus.VERIFIED,
+                        challenge_history=tuple(challenge_history),
+                        file_attempts=tuple(file_attempts),
+                        candidates_considered=len(file_attempts),
+                        interaction_used=interaction_used,
+                        evidence=("Authenticated PDF navigation produced a download",),
+                        elapsed_seconds=time.perf_counter() - started_at,
+                    )
 
     # Last bounded generic fallback: explicit visible article-PDF control whose
     # JavaScript action was not represented by an href in the rendered HTML.
