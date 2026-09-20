@@ -102,6 +102,36 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert manager.playwright.chromium.kwargs["service_workers"] == "allow"
 
 
+def test_browser_session_stops_after_interaction_required(monkeypatch, tmp_path):
+    context = _Context()
+    manager = _Manager(context)
+    calls = []
+
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page, *, source, **kwargs):
+        calls.append(source.url)
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=source.url,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    result = browser.acquire_with_browser(
+        doi="10.1000/session-limit",
+        routes=[_candidate(1), _candidate(2)],
+        output_dir=tmp_path / "downloads",
+        config=BrowserAccessConfig(profile_root=tmp_path / "profiles"),
+    )
+
+    assert calls == ["https://publisher.example/article/1"]
+    assert len(result.attempts) == 1
+    assert result.attempts[0].status == BrowserAttemptStatus.INTERACTION_REQUIRED
+    assert context.closed is True
+
+
 def test_all_unsafe_routes_do_not_start_browser(monkeypatch, tmp_path):
     def should_not_load_playwright():
         raise AssertionError("unsafe-only recovery must not start Playwright")
