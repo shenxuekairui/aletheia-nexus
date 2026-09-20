@@ -29,11 +29,11 @@ Invoke-AnCheck "Installed dependency consistency" {
 }
 
 Invoke-AnCheck "Ruff formatting" {
-    python -m ruff format --check .
+    python -m ruff format --check src tests scripts
 }
 
 Invoke-AnCheck "Ruff static checks" {
-    python -m ruff check .
+    python -m ruff check src tests scripts
 }
 
 Invoke-AnCheck "Python syntax / bytecode compilation" {
