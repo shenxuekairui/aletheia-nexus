@@ -257,6 +257,7 @@ def test_challenge_classifier_ignores_far_tail_article_text():
 
     assert report.kind == ChallengeKind.NONE
 
+
 def test_live_sciencedirect_turnstile_challenge_is_classified():
     report = classify_access_challenge(
         title="请稍候…",
