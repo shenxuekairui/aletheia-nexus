@@ -78,7 +78,7 @@ def test_acceptance_cases_merge_stress_and_entitled_controls(tmp_path):
     assert first["entitled_control"] is True
     assert first["title"] == "Stress title"
     assert first["access_family"] == "publisher-a"
-    assert first["sources"] == [str(stress), str(entitled)]
+    assert first["sources"] == ["stress.json", "entitled.json"]
 
 
 def test_entitled_doi_promotes_existing_stress_case(tmp_path):
