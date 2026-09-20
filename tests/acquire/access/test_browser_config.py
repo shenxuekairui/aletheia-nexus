@@ -100,3 +100,31 @@ def test_browser_profile_name_type_error_is_explicit(tmp_path):
 
     with pytest.raises(TypeError, match="profile_name"):
         browser_profile_dir(config)
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "",
+        "ws://127.0.0.1:9222",
+        "http://192.168.1.10:9222",
+        "http://user:pass@127.0.0.1:9222",
+    ],
+)
+def test_browser_cdp_endpoint_must_be_safe_loopback_http(tmp_path, endpoint):
+    config = BrowserAccessConfig(
+        profile_root=tmp_path,
+        cdp_endpoint=endpoint,
+    )
+
+    with pytest.raises((TypeError, ValueError), match="cdp_endpoint"):
+        browser_profile_dir(config)
+
+
+def test_browser_cdp_endpoint_accepts_loopback_http(tmp_path):
+    config = BrowserAccessConfig(
+        profile_root=tmp_path,
+        cdp_endpoint="http://127.0.0.1:9222",
+    )
+
+    assert browser_profile_dir(config) == tmp_path / "default"
