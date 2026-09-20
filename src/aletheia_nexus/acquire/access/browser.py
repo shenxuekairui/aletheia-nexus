@@ -381,6 +381,13 @@ class BrowserSession:
                 verified = attempt.result
                 break
 
+            # An unresolved interactive challenge is a terminal state for this
+            # recovery pass. Continuing through alternate resolver/publisher
+            # routes after the user has closed or abandoned the challenge can
+            # repeat the same prompt and may operate on an invalidated context.
+            if attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED:
+                break
+
         return BrowserRecoveryResult(
             doi=normalized_doi,
             attempts=tuple(attempts),
