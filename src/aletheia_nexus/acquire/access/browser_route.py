@@ -693,12 +693,43 @@ def _click_semantic_institution_control(page) -> bool:
         locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
         count = min(locator.count(), 120)
     except Exception:
-        return False
+        locator = None
+        count = 0
 
     for index in range(count):
         item = locator.nth(index)
         text = _control_semantics(item)
         if not text or not _SEMANTIC_INSTITUTION_CONTROL.search(text):
+            continue
+        try:
+            item.click(timeout=5000)
+            return True
+        except Exception:
+            continue
+
+    # Some modern publisher UIs render the visible access label inside a plain
+    # span/div while a React/JavaScript ancestor owns the click behavior. In that
+    # case there is no semantic a/button/role node for the first pass to match.
+    # Playwright's text locator clicks the rendered text element and lets the
+    # browser dispatch/bubble the event normally, without publisher-specific DOM
+    # selectors or synthetic credential handling.
+    try:
+        text_locator = page.get_by_text(_SEMANTIC_INSTITUTION_CONTROL)
+        text_count = min(text_locator.count(), 40)
+    except Exception:
+        return False
+
+    for index in range(text_count):
+        item = text_locator.nth(index)
+        try:
+            text = " ".join(item.inner_text().split())
+        except Exception:
+            text = ""
+        if (
+            not text
+            or len(text) > 180
+            or not _SEMANTIC_INSTITUTION_CONTROL.search(text)
+        ):
             continue
         try:
             item.click(timeout=5000)
