@@ -434,9 +434,7 @@ def test_unexpected_browser_error_does_not_persist_secret_message(
     monkeypatch.setattr(service, "acquire_full_text", lambda *args, **kwargs: base)
 
     def explode(**kwargs):
-        raise RuntimeError(
-            "failed at https://publisher.example/pdf?token=super-secret"
-        )
+        raise RuntimeError("failed at https://publisher.example/pdf?token=super-secret")
 
     monkeypatch.setattr(service, "acquire_with_browser", explode)
 
@@ -495,7 +493,9 @@ def test_all_browser_internal_failures_surface_error():
 
 def test_browser_config_type_error_precedes_base_acquisition(monkeypatch, tmp_path):
     def should_not_run_base(*args, **kwargs):
-        raise AssertionError("invalid browser_config must fail before v0.5 network work")
+        raise AssertionError(
+            "invalid browser_config must fail before v0.5 network work"
+        )
 
     monkeypatch.setattr(service, "acquire_full_text", should_not_run_base)
 
