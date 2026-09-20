@@ -43,11 +43,12 @@ _SEMANTIC_PDF_CONTROL = re.compile(
     re.IGNORECASE,
 )
 _SEMANTIC_INSTITUTION_CONTROL = re.compile(
-    r"(?:access|sign\s*in|log\s*in).{0,50}(?:institution|organization)"
-    r"|(?:institutional|organization).{0,50}(?:access|sign\s*in|login)"
+    r"(?:access|sign\s*in|log\s*in).{0,50}(?:institution|organization|organisation)"
+    r"|(?:institutional|organization|organisation).{0,50}(?:access|sign\s*in|login)"
     r"|carsi|shibboleth|openathens|中国科技云通行证|统一身份认证|机构(?:登录|认证|访问)",
     re.IGNORECASE,
 )
+_INTERACTIVE_CONTROL_SELECTOR = "a, button, [role='button'], [role='link']"
 
 
 def _page_snapshot(page) -> tuple[str, str, str, str]:
@@ -627,25 +628,43 @@ def _download_to_file_attempt(
         )
 
 
+def _control_semantics(item) -> str:
+    """Return bounded user-facing semantics for one interactive browser control."""
+
+    values: list[str] = []
+    try:
+        values.append(item.inner_text())
+    except Exception:
+        pass
+
+    getter = getattr(item, "get_attribute", None)
+    if callable(getter):
+        for attribute in ("aria-label", "title", "href"):
+            try:
+                value = getter(attribute)
+            except Exception:
+                value = None
+            if value:
+                values.append(str(value))
+
+    return " ".join(" ".join(value.split()) for value in values if value).strip()[:1000]
+
+
 def _click_semantic_pdf_control(page) -> bool:
     """Click at most one explicit article-PDF control as a bounded fallback."""
 
-    locator = page.locator("a, button").filter(has_text=_SEMANTIC_PDF_CONTROL)
     try:
-        count = min(locator.count(), 8)
+        locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
+        count = min(locator.count(), 120)
     except Exception:
         return False
 
     for index in range(count):
         item = locator.nth(index)
-        try:
-            text = " ".join(item.inner_text().split())
-        except Exception:
-            continue
+        text = _control_semantics(item)
         lowered = text.lower()
         if (
             not text
-            or len(text) > 100
             or not _SEMANTIC_PDF_CONTROL.search(text)
             or any(
                 marker in lowered
@@ -670,23 +689,16 @@ def _click_semantic_pdf_control(page) -> bool:
 def _click_semantic_institution_control(page) -> bool:
     """Click one explicit institutional-access control as a late fallback."""
 
-    locator = page.locator("a, button").filter(has_text=_SEMANTIC_INSTITUTION_CONTROL)
     try:
-        count = min(locator.count(), 8)
+        locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
+        count = min(locator.count(), 120)
     except Exception:
         return False
 
     for index in range(count):
         item = locator.nth(index)
-        try:
-            text = " ".join(item.inner_text().split())
-        except Exception:
-            continue
-        if (
-            not text
-            or len(text) > 140
-            or not _SEMANTIC_INSTITUTION_CONTROL.search(text)
-        ):
+        text = _control_semantics(item)
+        if not text or not _SEMANTIC_INSTITUTION_CONTROL.search(text):
             continue
         try:
             item.click(timeout=5000)
