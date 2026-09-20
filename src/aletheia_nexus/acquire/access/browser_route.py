@@ -978,6 +978,7 @@ def attempt_browser_route(
     session_pdf_responses: list[object] | None = None,
     session_downloads: list[object] | None = None,
     _allow_access_handoff: bool = True,
+    _navigate_source: bool = True,
 ) -> BrowserAccessAttempt:
     started_at = time.perf_counter()
     file_attempts: list[BrowserFileAttempt] = []
@@ -1088,6 +1089,7 @@ def attempt_browser_route(
             session_pdf_responses=session_pdf_responses,
             session_downloads=session_downloads,
             _allow_access_handoff=False,
+            _navigate_source=False,
         )
 
         merged_history = list(challenge_history)
@@ -1103,7 +1105,7 @@ def attempt_browser_route(
             candidates_considered=len(merged_file_attempts),
             interaction_used=interaction_used or retry.interaction_used,
             evidence=(
-                "Institutional access handoff completed; route retried once",
+                "Institutional access handoff completed; current browser page resumed",
                 *retry.evidence,
             ),
             error=retry.error,
@@ -1172,55 +1174,60 @@ def attempt_browser_route(
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
-    try:
-        navigation_response = page.goto(
-            safe_source_url,
-            wait_until="domcontentloaded",
-            timeout=config.navigation_timeout * 1000,
-        )
-    except Exception as exc:
-        blocked_now = new_blocked_urls()
-        if blocked_now:
+    # After a successful institutional/human handoff, continue from the page
+    # the browser has already reached. Re-navigating the original publisher
+    # URL here can discard useful transient state and re-trigger WAF/CAPTCHA.
+    navigation_response = None
+    if _navigate_source:
+        try:
+            navigation_response = page.goto(
+                safe_source_url,
+                wait_until="domcontentloaded",
+                timeout=config.navigation_timeout * 1000,
+            )
+        except Exception as exc:
+            blocked_now = new_blocked_urls()
+            if blocked_now:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=getattr(page, "url", None),
+                    status=BrowserAttemptStatus.UNSAFE_URL,
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    evidence=tuple(
+                        f"Blocked unsafe browser request: {url}" for url in blocked_now
+                    ),
+                    error="Browser navigation attempted an unsafe local-network URL",
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+    
+            # A direct PDF navigation can become a browser download; allow a short
+            # event flush before deciding the route truly failed. Context-level
+            # capture also sees downloads created by a popup/new tab.
+            page.wait_for_timeout(500)
+            verified_download = process_pending_downloads()
+            if verified_download is not None:
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=source.url,
+                    status=BrowserAttemptStatus.VERIFIED,
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    evidence=("Direct browser navigation produced a download",),
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
             return BrowserAccessAttempt(
                 source_candidate=source,
                 final_url=getattr(page, "url", None),
-                status=BrowserAttemptStatus.UNSAFE_URL,
+                status=BrowserAttemptStatus.NAVIGATION_ERROR,
                 challenge_history=tuple(challenge_history),
                 file_attempts=tuple(file_attempts),
                 candidates_considered=len(file_attempts),
-                evidence=tuple(
-                    f"Blocked unsafe browser request: {url}" for url in blocked_now
-                ),
-                error="Browser navigation attempted an unsafe local-network URL",
+                error=type(exc).__name__,
                 elapsed_seconds=time.perf_counter() - started_at,
             )
-
-        # A direct PDF navigation can become a browser download; allow a short
-        # event flush before deciding the route truly failed. Context-level
-        # capture also sees downloads created by a popup/new tab.
-        page.wait_for_timeout(500)
-        verified_download = process_pending_downloads()
-        if verified_download is not None:
-            return BrowserAccessAttempt(
-                source_candidate=source,
-                final_url=source.url,
-                status=BrowserAttemptStatus.VERIFIED,
-                file_attempts=tuple(file_attempts),
-                candidates_considered=len(file_attempts),
-                evidence=("Direct browser navigation produced a download",),
-                elapsed_seconds=time.perf_counter() - started_at,
-            )
-        return BrowserAccessAttempt(
-            source_candidate=source,
-            final_url=getattr(page, "url", None),
-            status=BrowserAttemptStatus.NAVIGATION_ERROR,
-            challenge_history=tuple(challenge_history),
-            file_attempts=tuple(file_attempts),
-            candidates_considered=len(file_attempts),
-            error=type(exc).__name__,
-            elapsed_seconds=time.perf_counter() - started_at,
-        )
-
+    
     try:
         validate_browser_network_url(page.url)
     except (TypeError, ValueError) as exc:
