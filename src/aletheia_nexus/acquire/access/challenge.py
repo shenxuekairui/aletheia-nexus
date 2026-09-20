@@ -25,6 +25,9 @@ _CAPTCHA_VISIBLE_TERMS = (
     "verify that you are human",
     "prove you are human",
     "human verification required",
+    "are you a robot",
+    "please confirm you are a human",
+    "captcha challenge below",
     "请完成人机验证",
     "人机验证",
     "图形验证码",
@@ -45,6 +48,8 @@ _CAPTCHA_DOM_TERMS = (
     "recaptcha/api2/anchor",
     "hcaptcha.com/captcha",
     "turnstile/v0/",
+    "challenges.cloudflare.com/cdn-cgi/challenge-platform",
+    "/turnstile/",
 )
 _MFA_TERMS = (
     "enter the verification code",
