@@ -257,12 +257,20 @@ def test_article_route_automatically_enters_institutional_sso(
 
 
 class _InstitutionControl:
-    def __init__(self, text):
+    def __init__(self, text="", *, aria_label=None, title=None, href=None):
         self.text = text
+        self.attributes = {
+            "aria-label": aria_label,
+            "title": title,
+            "href": href,
+        }
         self.clicked = False
 
     def inner_text(self):
         return self.text
+
+    def get_attribute(self, name):
+        return self.attributes.get(name)
 
     def click(self, timeout=0):
         self.clicked = True
@@ -271,9 +279,6 @@ class _InstitutionControl:
 class _InstitutionLocator:
     def __init__(self, control):
         self.control = control
-
-    def filter(self, **kwargs):
-        return self
 
     def count(self):
         return 1
@@ -284,11 +289,11 @@ class _InstitutionLocator:
 
 
 class _InstitutionPage:
-    def __init__(self, text):
-        self.control = _InstitutionControl(text)
+    def __init__(self, text="", **attributes):
+        self.control = _InstitutionControl(text, **attributes)
 
     def locator(self, selector):
-        assert selector == "a, button"
+        assert selector == "a, button, [role='button'], [role='link']"
         return _InstitutionLocator(self.control)
 
 
@@ -298,6 +303,20 @@ def test_standard_federated_login_controls_are_clicked():
 
         assert browser_route._click_semantic_institution_control(page) is True
         assert page.control.clicked is True
+
+
+def test_accessible_organization_control_is_clicked_without_visible_text():
+    page = _InstitutionPage(aria_label="Access through your organization")
+
+    assert browser_route._click_semantic_institution_control(page) is True
+    assert page.control.clicked is True
+
+
+def test_accessible_pdf_control_is_clicked_without_visible_text():
+    page = _InstitutionPage(aria_label="View PDF")
+
+    assert browser_route._click_semantic_pdf_control(page) is True
+    assert page.control.clicked is True
 
 
 def test_institution_chooser_is_treated_as_sso_handoff(tmp_path):
