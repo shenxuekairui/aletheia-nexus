@@ -81,7 +81,12 @@ def test_closed_challenge_target_preserves_last_known_challenge(tmp_path):
     )
 
     assert report.kind == ChallengeKind.CAPTCHA
-    assert history == (ChallengeReport(kind=ChallengeKind.CAPTCHA, evidence=report.evidence),)
+    assert history == (
+        ChallengeReport(
+            kind=ChallengeKind.CAPTCHA,
+            evidence=report.evidence,
+        ),
+    )
     assert interaction_used is True
 
 
