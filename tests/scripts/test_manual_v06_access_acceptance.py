@@ -165,9 +165,7 @@ def test_runner_error_record_does_not_persist_exception_message():
     record = acceptance._runner_error_record(
         doi="10.1000/target",
         case=case,
-        exc=RuntimeError(
-            "failed at https://publisher.example/pdf?token=super-secret"
-        ),
+        exc=RuntimeError("failed at https://publisher.example/pdf?token=super-secret"),
     )
 
     serialized = json.dumps(record)
