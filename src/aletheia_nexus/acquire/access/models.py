@@ -121,6 +121,7 @@ class BrowserAccessConfig:
     profile_root: Path | None = None
     headless: bool = False
     channel: str | None = None
+    cdp_endpoint: str | None = None
     interactive: bool = True
     interaction_callback: Callable[[ChallengeReport, str], None] | None = None
     navigation_timeout: float = 45.0
