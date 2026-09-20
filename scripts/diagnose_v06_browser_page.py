@@ -20,8 +20,7 @@ KEYWORDS = (
 )
 
 INTERACTIVE_SELECTOR = (
-    "a, button, [role='button'], [role='link'], input, "
-    "[aria-label], [title]"
+    "a, button, [role='button'], [role='link'], input, [aria-label], [title]"
 )
 
 _IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
@@ -101,7 +100,15 @@ def _print_frame(frame, index: int) -> None:
             continue
         found += 1
         print(f"  [{found}] index={item_index}")
-        for key in ("tag", "role", "text", "aria-label", "title", "href", "data-testid"):
+        for key in (
+            "tag",
+            "role",
+            "text",
+            "aria-label",
+            "title",
+            "href",
+            "data-testid",
+        ):
             if values[key]:
                 print(f"      {key}: {values[key]}")
 
@@ -138,7 +145,15 @@ def _print_frame(frame, index: int) -> None:
         values = _describe(item)
         found_text += 1
         print(f"  [{found_text}] index={item_index}")
-        for key in ("tag", "role", "text", "aria-label", "title", "href", "data-testid"):
+        for key in (
+            "tag",
+            "role",
+            "text",
+            "aria-label",
+            "title",
+            "href",
+            "data-testid",
+        ):
             if values[key]:
                 print(f"      {key}: {values[key]}")
         if found_text >= 80:
