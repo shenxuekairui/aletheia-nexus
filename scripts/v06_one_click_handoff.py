@@ -10,6 +10,7 @@ from aletheia_nexus.acquire.access import (
     BrowserAccessConfig,
     acquire_full_text_maximized,
 )
+from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 
@@ -146,7 +147,7 @@ def main() -> int:
                 f"interaction={attempt.interaction_used}"
             )
             if attempt.final_url:
-                print(f"      page={attempt.final_url}")
+                print(f"      page={redact_url_for_record(attempt.final_url)}")
             if attempt.challenge_history:
                 kinds = " -> ".join(
                     report.kind.value for report in attempt.challenge_history
