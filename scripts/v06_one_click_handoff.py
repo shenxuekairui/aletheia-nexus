@@ -135,6 +135,40 @@ def main() -> int:
         print("VERIFIED PDF: -")
     if result.message:
         print(f"Message: {result.message}")
+
+    if result.browser_attempts:
+        print()
+        print("Browser diagnosis:")
+        for index, attempt in enumerate(result.browser_attempts, start=1):
+            print(
+                f"  [{index}] status={attempt.status.value} "
+                f"files={len(attempt.file_attempts)} "
+                f"interaction={attempt.interaction_used}"
+            )
+            if attempt.final_url:
+                print(f"      page={attempt.final_url}")
+            if attempt.challenge_history:
+                kinds = " -> ".join(
+                    report.kind.value for report in attempt.challenge_history
+                )
+                print(f"      challenges={kinds}")
+            if attempt.error:
+                print(f"      error={attempt.error}")
+            for file_index, file_attempt in enumerate(
+                attempt.file_attempts,
+                start=1,
+            ):
+                status = (
+                    file_attempt.result.status.value
+                    if file_attempt.result is not None
+                    else "-"
+                )
+                print(
+                    f"      file[{file_index}] "
+                    f"method={file_attempt.method} status={status} "
+                    f"error={file_attempt.error or '-'}"
+                )
+
     print("=" * 64)
 
     return 0 if result.verified_path is not None else 1
