@@ -1,6 +1,7 @@
 import re
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from aletheia_nexus.acquire.access.browser_route import attempt_browser_route
 from aletheia_nexus.acquire.access.models import (
@@ -44,6 +45,19 @@ def _validate_config(config: BrowserAccessConfig) -> None:
             raise TypeError("channel must be a string or None")
         if not config.channel.strip():
             raise ValueError("channel must not be blank")
+    if config.cdp_endpoint is not None:
+        if not isinstance(config.cdp_endpoint, str):
+            raise TypeError("cdp_endpoint must be a string or None")
+        endpoint = config.cdp_endpoint.strip()
+        if not endpoint:
+            raise ValueError("cdp_endpoint must not be blank")
+        parsed = urlsplit(endpoint)
+        if parsed.scheme not in {"http", "https"}:
+            raise ValueError("cdp_endpoint must use http or https")
+        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("cdp_endpoint must point to a loopback browser endpoint")
+        if parsed.username or parsed.password:
+            raise ValueError("cdp_endpoint must not contain credentials")
     if config.interaction_callback is not None and not callable(
         config.interaction_callback
     ):
@@ -149,6 +163,22 @@ def _install_context_event_capture(
         attach_page(page)
 
 
+def _select_attached_page(context):
+    """Choose the most recent ordinary web page from an attached real browser."""
+
+    pages = list(getattr(context, "pages", ()) or ())
+    for page in reversed(pages):
+        try:
+            if page.is_closed():
+                continue
+            url = str(page.url or "")
+        except Exception:
+            continue
+        if url.lower().startswith(("http://", "https://")):
+            return page
+    return None
+
+
 def _load_playwright():
     try:
         from playwright.sync_api import sync_playwright
@@ -229,6 +259,8 @@ class BrowserSession:
         self.profile_dir = browser_profile_dir(self.config)
         self._manager = None
         self._context = None
+        self._attached_browser = None
+        self._attached_external = False
         self._blocked_unsafe_urls: list[str] = []
         self._pdf_responses: list[object] = []
         self._downloads: list[object] = []
@@ -263,6 +295,35 @@ class BrowserSession:
             raise BrowserCapabilityUnavailable(
                 f"Playwright could not start: {type(exc).__name__}"
             ) from exc
+
+        if self.config.cdp_endpoint is not None:
+            try:
+                browser = playwright.chromium.connect_over_cdp(
+                    self.config.cdp_endpoint.strip(),
+                    timeout=self.config.navigation_timeout * 1000,
+                )
+                contexts = list(browser.contexts)
+                if not contexts:
+                    raise RuntimeError("attached browser exposed no BrowserContext")
+                context = contexts[0]
+            except Exception as exc:
+                manager.__exit__(type(exc), exc, exc.__traceback__)
+                raise BrowserCapabilityUnavailable(
+                    "Could not attach to the external browser CDP endpoint. "
+                    f"Error type: {type(exc).__name__}"
+                ) from exc
+
+            context.set_default_timeout(self.config.navigation_timeout * 1000)
+            _install_context_event_capture(
+                context,
+                pdf_responses=self._pdf_responses,
+                downloads=self._downloads,
+            )
+            self._manager = manager
+            self._context = context
+            self._attached_browser = browser
+            self._attached_external = True
+            return context
 
         launch_kwargs: dict[str, object] = {
             "headless": self.config.headless,
@@ -299,19 +360,24 @@ class BrowserSession:
     def close(self) -> None:
         context = self._context
         manager = self._manager
+        attached_external = self._attached_external
         self._context = None
         self._manager = None
+        self._attached_browser = None
+        self._attached_external = False
         self._blocked_unsafe_urls = []
         self._pdf_responses = []
         self._downloads = []
 
-        if context is not None:
+        if context is not None and not attached_external:
             try:
                 context.close()
             finally:
                 if manager is not None:
                     manager.__exit__(None, None, None)
         elif manager is not None:
+            # In CDP attach mode, disconnect Playwright without closing the
+            # user-controlled external browser or its tabs.
             manager.__exit__(None, None, None)
 
     def acquire(
@@ -353,7 +419,19 @@ class BrowserSession:
             self._pdf_responses.clear()
             self._downloads.clear()
 
-            page = context.new_page()
+            attached_page = self._attached_external
+            page = _select_attached_page(context) if attached_page else context.new_page()
+            if page is None:
+                attempts.append(
+                    BrowserAccessAttempt(
+                        source_candidate=source,
+                        final_url=None,
+                        status=BrowserAttemptStatus.BROWSER_UNAVAILABLE,
+                        error="External browser has no open HTTP(S) page to resume",
+                    )
+                )
+                break
+
             try:
                 attempt = attempt_browser_route(
                     context,
@@ -362,12 +440,15 @@ class BrowserSession:
                     output_dir=output_dir,
                     expected_title=expected_title,
                     config=self.config,
-                    session_blocked_urls=self._blocked_unsafe_urls,
+                    session_blocked_urls=(
+                        None if attached_page else self._blocked_unsafe_urls
+                    ),
                     session_pdf_responses=self._pdf_responses,
                     session_downloads=self._downloads,
+                    _navigate_source=not attached_page,
                 )
             finally:
-                if not page.is_closed():
+                if not attached_page and not page.is_closed():
                     page.close()
                 self._blocked_unsafe_urls.clear()
                 self._pdf_responses.clear()
