@@ -681,8 +681,7 @@ def main() -> int:
     entitled_controls = sum(bool(case["entitled_control"]) for case in cases)
     entitled_verified = 0
     entitled_controls_with_family = sum(
-        bool(case["entitled_control"] and case.get("access_family"))
-        for case in cases
+        bool(case["entitled_control"] and case.get("access_family")) for case in cases
     )
     entitled_access_families = tuple(
         sorted(
