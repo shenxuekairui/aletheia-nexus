@@ -163,9 +163,11 @@ def _install_context_event_capture(
         attach_page(page)
 
 
-def _select_attached_page(context):
-    """Choose the most recent ordinary web page from an attached real browser."""
+def _select_attached_page(context, *, preferred_url: str):
+    """Choose the best existing web page from an attached real browser."""
 
+    preferred_host = urlsplit(preferred_url).hostname
+    fallback = None
     pages = list(getattr(context, "pages", ()) or ())
     for page in reversed(pages):
         try:
@@ -174,9 +176,16 @@ def _select_attached_page(context):
             url = str(page.url or "")
         except Exception:
             continue
-        if url.lower().startswith(("http://", "https://")):
-            return page
-    return None
+        if not url.lower().startswith(("http://", "https://")):
+            continue
+        if fallback is None:
+            fallback = page
+        try:
+            if preferred_host and urlsplit(url).hostname == preferred_host:
+                return page
+        except ValueError:
+            continue
+    return fallback
 
 
 def _load_playwright():
@@ -420,7 +429,11 @@ class BrowserSession:
             self._downloads.clear()
 
             attached_page = self._attached_external
-            page = _select_attached_page(context) if attached_page else context.new_page()
+            page = (
+                _select_attached_page(context, preferred_url=source.url)
+                if attached_page
+                else context.new_page()
+            )
             if page is None:
                 attempts.append(
                     BrowserAccessAttempt(
