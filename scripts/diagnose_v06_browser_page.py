@@ -24,7 +24,7 @@ INTERACTIVE_SELECTOR = (
     "[aria-label], [title]"
 )
 
-_IPV4_RE = re.compile(r"(?<![\\d.])(?:\\d{1,3}\\.){3}\\d{1,3}(?![\\d.])")
+_IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 
 
 def _safe(value: str | None, limit: int = 300) -> str:
