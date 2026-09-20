@@ -415,10 +415,7 @@ def acquire_full_text_maximized(
             base_result=base,
             elsevier_attempt=elsevier_attempt,
             elapsed_seconds=time.perf_counter() - started_at,
-            message=(
-                "Browser recovery failed unexpectedly: "
-                f"{type(exc).__name__}"
-            ),
+            message=(f"Browser recovery failed unexpectedly: {type(exc).__name__}"),
         )
 
     if recovery.verified_result is not None:
