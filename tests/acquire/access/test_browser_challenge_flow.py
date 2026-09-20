@@ -53,6 +53,38 @@ class _Page:
         return False
 
 
+class _ClosingPage(_Page):
+    def wait_for_timeout(self, milliseconds):
+        raise RuntimeError("TargetClosedError")
+
+
+def test_closed_challenge_target_preserves_last_known_challenge(tmp_path):
+    page = _ClosingPage(
+        [
+            (
+                "Are you a robot?",
+                "https://publisher.example/challenge",
+                "Please confirm you are a human by completing the captcha challenge below.",
+                '<iframe src="https://challenges.cloudflare.com/turnstile/"></iframe>',
+            )
+        ]
+    )
+
+    report, history, interaction_used = _resolve_page_challenge(
+        page,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            auto_challenge_grace=0,
+            interaction_timeout=1,
+            poll_interval=0.001,
+        ),
+    )
+
+    assert report.kind == ChallengeKind.CAPTCHA
+    assert history == (ChallengeReport(kind=ChallengeKind.CAPTCHA, evidence=report.evidence),)
+    assert interaction_used is True
+
+
 def test_browser_native_challenge_can_clear_without_human_interaction(tmp_path):
     page = _Page(
         [
