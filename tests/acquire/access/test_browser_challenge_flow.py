@@ -282,11 +282,11 @@ def test_article_route_automatically_enters_institutional_sso(
     )
 
     assert handoff_calls == [(context, page)]
-    assert page.goto_calls == [
-        "https://publisher.example/article",
-        "https://publisher.example/article",
-    ]
+    assert page.goto_calls == ["https://publisher.example/article"]
     assert result.status == BrowserAttemptStatus.NO_FILE_CANDIDATES
+    assert result.evidence[0] == (
+        "Institutional access handoff completed; current browser page resumed"
+    )
     assert [report.kind for report in result.challenge_history] == [
         ChallengeKind.SSO,
         ChallengeKind.NONE,
