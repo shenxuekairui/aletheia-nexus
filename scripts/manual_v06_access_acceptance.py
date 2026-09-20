@@ -390,6 +390,7 @@ def _report_payload(
         "browser": {
             "profile_name": config.profile_name,
             "channel": config.channel,
+            "external_cdp_attach": config.cdp_endpoint is not None,
             "headless": config.headless,
             "interactive": config.interactive,
             "max_source_routes": config.max_source_routes,
@@ -630,6 +631,15 @@ def main() -> int:
     parser.add_argument("--profile", default="institution")
     parser.add_argument("--profile-root", type=Path, default=None)
     parser.add_argument("--channel", default=None)
+    parser.add_argument(
+        "--cdp-endpoint",
+        default=None,
+        help=(
+            "Attach to an already-running user-controlled Chromium browser over "
+            "a loopback CDP endpoint, for example http://127.0.0.1:9222. "
+            "The current HTTP(S) tab is reused instead of being re-navigated."
+        ),
+    )
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--interaction-timeout", type=float, default=180.0)
@@ -661,6 +671,7 @@ def main() -> int:
         profile_name=args.profile,
         profile_root=args.profile_root,
         channel=args.channel,
+        cdp_endpoint=args.cdp_endpoint,
         headless=args.headless,
         interactive=not args.non_interactive,
         interaction_timeout=args.interaction_timeout,
