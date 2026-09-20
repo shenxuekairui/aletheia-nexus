@@ -37,10 +37,15 @@ class _Handler(BaseHTTPRequestHandler):
     pdf_body = _pdf_bytes()
     popup_pdf_body = _pdf_bytes("Popup Browser Integration Article")
     institution_pdf_body = _pdf_bytes("Institutional Access Integration Article")
+    accessible_institution_pdf_body = _pdf_bytes(
+        "Accessible Institutional Access Integration Article"
+    )
+    accessible_pdf_body = _pdf_bytes("Accessible PDF Control Integration Article")
     persistent_pdf_body = _pdf_bytes("Persistent Browser Integration Article")
     pdf_cookie_seen = False
     popup_cookie_seen = False
     institution_cookie_seen = False
+    accessible_institution_cookie_seen = False
     persistent_cookie_seen = False
 
     def log_message(self, format, *args):
@@ -158,6 +163,101 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if path == "/accessible-institution-article":
+            cookie = self.headers.get("Cookie", "")
+            authenticated = "accessible_institution_session=ok" in cookie
+            if authenticated:
+                body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Accessible Institutional Access Integration Article">
+<meta name="citation_doi" content="10.1000/browser-accessible-institution">
+<meta name="citation_pdf_url" content="/accessible-institution.pdf">
+<title>Accessible Institutional Access Integration Article</title>
+</head>
+<body>Authenticated article page</body>
+</html>"""
+            else:
+                body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Accessible Institutional Access Integration Article">
+<meta name="citation_doi" content="10.1000/browser-accessible-institution">
+<title>Accessible Institutional Access Integration Article</title>
+</head>
+<body>
+<div role="button" aria-label="Access through your organization"
+     onclick="location.href='/accessible-institution-login'"></div>
+</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/accessible-institution-login":
+            self.send_response(302)
+            self.send_header("Location", "/accessible-institution-article")
+            self.send_header(
+                "Set-Cookie",
+                "accessible_institution_session=ok; Path=/; SameSite=Lax",
+            )
+            self.end_headers()
+            return
+
+        if path == "/accessible-institution.pdf":
+            cookie = self.headers.get("Cookie", "")
+            type(self).accessible_institution_cookie_seen = (
+                "accessible_institution_session=ok" in cookie
+            )
+            if not type(self).accessible_institution_cookie_seen:
+                body = b"<html><body>Sign in to access</body></html>"
+                self.send_response(401)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            body = type(self).accessible_institution_pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/accessible-pdf-article":
+            body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="Accessible PDF Control Integration Article">
+<meta name="citation_doi" content="10.1000/browser-accessible-pdf">
+<title>Accessible PDF Control Integration Article</title>
+</head>
+<body>
+<div role="button" aria-label="View PDF"
+     onclick="location.href='/accessible-control.pdf'"></div>
+</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/accessible-control.pdf":
+            body = type(self).accessible_pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/persistent-login":
             body = b"<html><body>Session seeded</body></html>"
             self.send_response(200)
@@ -247,6 +347,7 @@ def local_article_server():
     _Handler.pdf_cookie_seen = False
     _Handler.popup_cookie_seen = False
     _Handler.institution_cookie_seen = False
+    _Handler.accessible_institution_cookie_seen = False
     _Handler.persistent_cookie_seen = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -384,6 +485,77 @@ def test_real_browser_recovers_after_institution_access_handoff(
         "Institutional access handoff completed" in item
         for item in result.attempts[0].evidence
     )
+
+
+def test_real_browser_clicks_accessibility_named_institution_control(
+    monkeypatch,
+    tmp_path,
+    local_article_server,
+):
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+
+    candidate = FullTextCandidate(
+        doi="10.1000/browser-accessible-institution",
+        url=f"{local_article_server}/accessible-institution-article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    config = BrowserAccessConfig(
+        profile_name="accessible-institution-integration",
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+        auto_challenge_grace=0,
+        interaction_timeout=0,
+    )
+
+    with BrowserSession(config) as session:
+        result = session.acquire(
+            doi=candidate.doi,
+            routes=[candidate],
+            output_dir=tmp_path / "downloads",
+            expected_title="Accessible Institutional Access Integration Article",
+        )
+
+    assert _Handler.accessible_institution_cookie_seen is True
+    assert result.verified_result is not None
+    assert result.verified_result.status == AcquisitionStatus.VERIFIED
+
+
+def test_real_browser_clicks_accessibility_named_pdf_control(
+    monkeypatch,
+    tmp_path,
+    local_article_server,
+):
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+
+    candidate = FullTextCandidate(
+        doi="10.1000/browser-accessible-pdf",
+        url=f"{local_article_server}/accessible-pdf-article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    config = BrowserAccessConfig(
+        profile_name="accessible-pdf-integration",
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+        auto_challenge_grace=0,
+        interaction_timeout=0,
+    )
+
+    with BrowserSession(config) as session:
+        result = session.acquire(
+            doi=candidate.doi,
+            routes=[candidate],
+            output_dir=tmp_path / "downloads",
+            expected_title="Accessible PDF Control Integration Article",
+        )
+
+    assert result.verified_result is not None
+    assert result.verified_result.status == AcquisitionStatus.VERIFIED
 
 
 def test_real_browser_profile_persists_session_across_restarts(
