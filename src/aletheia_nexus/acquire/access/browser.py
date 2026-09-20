@@ -1,5 +1,6 @@
 import re
 import time
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -14,7 +15,8 @@ from aletheia_nexus.acquire.access.security import (
     redact_url_for_record,
     validate_browser_network_url,
 )
-from aletheia_nexus.acquire.discovery.models import FullTextCandidate
+from aletheia_nexus.acquire.discovery.hosts import refine_host_type
+from aletheia_nexus.acquire.discovery.models import CandidateUrlType, FullTextCandidate
 from aletheia_nexus.acquire.fulltext.models import AcquisitionResult, AcquisitionStatus
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
@@ -186,6 +188,31 @@ def _select_attached_page(context, *, preferred_url: str):
         except ValueError:
             continue
     return fallback
+
+
+def _source_for_attached_page(
+    routes: list[FullTextCandidate],
+    *,
+    page_url: str,
+) -> FullTextCandidate:
+    """Represent the user's current browser tab as the authoritative handoff route."""
+
+    safe_url = validate_browser_network_url(page_url)
+    page_host = (urlsplit(safe_url).hostname or "").lower()
+    parent = routes[0]
+    for route in routes:
+        route_host = (urlsplit(route.url).hostname or "").lower()
+        if page_host and route_host == page_host:
+            parent = route
+            break
+
+    return replace(
+        parent,
+        url=safe_url,
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=refine_host_type(safe_url, parent.host_type),
+        source_name="External browser current page",
+    )
 
 
 def _load_playwright():
@@ -420,6 +447,79 @@ class BrowserSession:
         context = self._ensure_started()
         verified: AcquisitionResult | None = None
 
+        if self._attached_external:
+            page = _select_attached_page(
+                context,
+                preferred_url=normalized_routes[0].url,
+            )
+            if page is None:
+                attempts.append(
+                    BrowserAccessAttempt(
+                        source_candidate=normalized_routes[0],
+                        final_url=None,
+                        status=BrowserAttemptStatus.BROWSER_UNAVAILABLE,
+                        error="External browser has no open HTTP(S) page to resume",
+                    )
+                )
+                return BrowserRecoveryResult(
+                    doi=normalized_doi,
+                    attempts=tuple(attempts),
+                    profile_dir=self.profile_dir,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
+            try:
+                source = _source_for_attached_page(
+                    normalized_routes,
+                    page_url=page.url,
+                )
+            except (TypeError, ValueError) as exc:
+                attempts.append(
+                    BrowserAccessAttempt(
+                        source_candidate=normalized_routes[0],
+                        final_url=redact_url_for_record(getattr(page, "url", None)),
+                        status=BrowserAttemptStatus.UNSAFE_URL,
+                        error=type(exc).__name__,
+                    )
+                )
+                return BrowserRecoveryResult(
+                    doi=normalized_doi,
+                    attempts=tuple(attempts),
+                    profile_dir=self.profile_dir,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+
+            self._pdf_responses.clear()
+            self._downloads.clear()
+            attempt = attempt_browser_route(
+                context,
+                page,
+                source=source,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                config=self.config,
+                session_blocked_urls=None,
+                session_pdf_responses=self._pdf_responses,
+                session_downloads=self._downloads,
+                _navigate_source=False,
+            )
+            attempts.append(attempt)
+            if (
+                attempt.result is not None
+                and attempt.result.status == AcquisitionStatus.VERIFIED
+            ):
+                verified = attempt.result
+
+            self._pdf_responses.clear()
+            self._downloads.clear()
+            return BrowserRecoveryResult(
+                doi=normalized_doi,
+                attempts=tuple(attempts),
+                verified_result=verified,
+                profile_dir=self.profile_dir,
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
+
         for source in normalized_routes:
             # Context-wide handlers append into these reusable lists. Clear them
             # per route so a long batch preserves authentication state without
@@ -428,23 +528,7 @@ class BrowserSession:
             self._pdf_responses.clear()
             self._downloads.clear()
 
-            attached_page = self._attached_external
-            page = (
-                _select_attached_page(context, preferred_url=source.url)
-                if attached_page
-                else context.new_page()
-            )
-            if page is None:
-                attempts.append(
-                    BrowserAccessAttempt(
-                        source_candidate=source,
-                        final_url=None,
-                        status=BrowserAttemptStatus.BROWSER_UNAVAILABLE,
-                        error="External browser has no open HTTP(S) page to resume",
-                    )
-                )
-                break
-
+            page = context.new_page()
             try:
                 attempt = attempt_browser_route(
                     context,
@@ -453,15 +537,12 @@ class BrowserSession:
                     output_dir=output_dir,
                     expected_title=expected_title,
                     config=self.config,
-                    session_blocked_urls=(
-                        None if attached_page else self._blocked_unsafe_urls
-                    ),
+                    session_blocked_urls=self._blocked_unsafe_urls,
                     session_pdf_responses=self._pdf_responses,
                     session_downloads=self._downloads,
-                    _navigate_source=not attached_page,
                 )
             finally:
-                if not attached_page and not page.is_closed():
+                if not page.is_closed():
                     page.close()
                 self._blocked_unsafe_urls.clear()
                 self._pdf_responses.clear()
