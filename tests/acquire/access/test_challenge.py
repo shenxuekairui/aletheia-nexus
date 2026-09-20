@@ -273,4 +273,3 @@ def test_live_sciencedirect_turnstile_challenge_is_classified():
     )
 
     assert report.kind == ChallengeKind.CAPTCHA
-
