@@ -187,6 +187,7 @@ class _Handler(BaseHTTPRequestHandler):
 </head>
 <body>
 <div role="button" aria-label="Access through your organization"
+     style="display:block;width:200px;height:32px"
      onclick="location.href='/accessible-institution-login'"></div>
 </body>
 </html>"""
@@ -239,6 +240,7 @@ class _Handler(BaseHTTPRequestHandler):
 </head>
 <body>
 <div role="button" aria-label="View PDF"
+     style="display:block;width:120px;height:32px"
      onclick="location.href='/accessible-control.pdf'"></div>
 </body>
 </html>"""
