@@ -1,6 +1,6 @@
 import re
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -25,6 +25,19 @@ _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 class BrowserCapabilityUnavailable(RuntimeError):
     """Raised when the optional browser capability cannot be started."""
+
+
+@dataclass(slots=True)
+class _CapturedBrowserResponse:
+    """Stable PDF response bytes captured while the real browser target is alive."""
+
+    url: str
+    status: int
+    headers: dict[str, str]
+    _body: bytes
+
+    def body(self) -> bytes:
+        return self._body
 
 
 def _validate_config(config: BrowserAccessConfig) -> None:
@@ -139,6 +152,8 @@ def _install_context_event_capture(
     *,
     pdf_responses: list[object],
     downloads: list[object],
+    snapshot_pdf_responses: bool = False,
+    max_bytes: int | None = None,
 ) -> None:
     """Capture PDF responses and downloads from every page, including popups."""
 
@@ -147,9 +162,35 @@ def _install_context_event_capture(
 
     def on_response(response) -> None:
         try:
-            content_type = (response.headers.get("content-type") or "").lower()
-            if "application/pdf" in content_type:
+            headers = dict(response.headers)
+            content_type = (headers.get("content-type") or "").lower()
+            if "application/pdf" not in content_type:
+                return
+
+            if not snapshot_pdf_responses:
                 pdf_responses.append(response)
+                return
+
+            content_length = headers.get("content-length")
+            if content_length and max_bytes is not None:
+                try:
+                    if int(content_length) > max_bytes:
+                        return
+                except ValueError:
+                    pass
+
+            body = response.body()
+            if max_bytes is not None and len(body) > max_bytes:
+                return
+
+            pdf_responses.append(
+                _CapturedBrowserResponse(
+                    url=str(response.url),
+                    status=int(response.status),
+                    headers=headers,
+                    _body=body,
+                )
+            )
         except Exception:
             return
 
@@ -354,6 +395,8 @@ class BrowserSession:
                 context,
                 pdf_responses=self._pdf_responses,
                 downloads=self._downloads,
+                snapshot_pdf_responses=True,
+                max_bytes=self.config.max_bytes,
             )
             self._manager = manager
             self._context = context
@@ -388,6 +431,7 @@ class BrowserSession:
             context,
             pdf_responses=self._pdf_responses,
             downloads=self._downloads,
+            max_bytes=self.config.max_bytes,
         )
         self._manager = manager
         self._context = context
@@ -502,6 +546,7 @@ class BrowserSession:
                 session_pdf_responses=self._pdf_responses,
                 session_downloads=self._downloads,
                 _navigate_source=False,
+                _browser_native_only=True,
             )
             attempts.append(attempt)
             if (
