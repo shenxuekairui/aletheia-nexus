@@ -659,7 +659,7 @@ def _control_semantics(item) -> str:
 
 
 def _click_semantic_pdf_control(page) -> bool:
-    """Click at most one explicit article-PDF control as a bounded fallback."""
+    """Click one explicit main-article PDF control, preferring downloads."""
 
     try:
         locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
@@ -667,6 +667,7 @@ def _click_semantic_pdf_control(page) -> bool:
     except Exception:
         return False
 
+    choices: list[tuple[int, int, object]] = []
     for index in range(count):
         item = locator.nth(index)
         text = _control_semantics(item)
@@ -686,6 +687,17 @@ def _click_semantic_pdf_control(page) -> bool:
             )
         ):
             continue
+
+        score = 0
+        if "download" in lowered:
+            score += 100
+        if "pdf" in lowered:
+            score += 20
+        if "view" in lowered or "open" in lowered or "read" in lowered:
+            score += 10
+        choices.append((score, index, item))
+
+    for _, _, item in sorted(choices, key=lambda value: (-value[0], value[1])):
         try:
             item.click(timeout=5000)
             return True
