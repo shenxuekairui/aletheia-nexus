@@ -342,3 +342,90 @@ def test_browser_startup_error_does_not_persist_raw_exception_text(
     assert message == "Playwright could not start: RuntimeError"
     assert "super-secret" not in message
     assert "Users/private" not in message
+
+
+class _AttachedPage(_Page):
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+
+
+class _AttachedContext(_Context):
+    def __init__(self, page):
+        super().__init__()
+        self.pages = [page]
+
+
+class _AttachedBrowser:
+    def __init__(self, context):
+        self.contexts = [context]
+
+
+class _AttachedChromium(_Chromium):
+    def __init__(self, context):
+        super().__init__(context)
+        self.endpoint = None
+        self.browser = _AttachedBrowser(context)
+
+    def connect_over_cdp(self, endpoint, **kwargs):
+        self.endpoint = endpoint
+        self.connect_kwargs = kwargs
+        return self.browser
+
+
+class _AttachedPlaywright(_Playwright):
+    def __init__(self, context):
+        self.chromium = _AttachedChromium(context)
+
+
+class _AttachedManager(_Manager):
+    def __init__(self, context):
+        self.playwright = _AttachedPlaywright(context)
+
+
+def test_cdp_attach_reuses_existing_page_without_navigating_or_closing(
+    monkeypatch,
+    tmp_path,
+):
+    page = _AttachedPage("https://publisher.example/article/1")
+    context = _AttachedContext(page)
+    manager = _AttachedManager(context)
+    observed = {}
+
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page_value, *, source, **kwargs):
+        observed["context"] = context_value
+        observed["page"] = page_value
+        observed["navigate_source"] = kwargs["_navigate_source"]
+        observed["blocked_urls"] = kwargs["session_blocked_urls"]
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=page_value.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+        )
+    ) as session:
+        result = session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1)],
+            output_dir=tmp_path / "downloads",
+        )
+
+        assert session.active is True
+        assert result.verified_result is None
+        assert observed["context"] is context
+        assert observed["page"] is page
+        assert observed["navigate_source"] is False
+        assert observed["blocked_urls"] is None
+
+    assert manager.playwright.chromium.endpoint == "http://127.0.0.1:9222"
+    assert page.closed is False
+    assert context.closed is False
