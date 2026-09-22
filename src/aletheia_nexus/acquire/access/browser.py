@@ -1,8 +1,10 @@
 import re
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from aletheia_nexus.acquire.access.browser_route import attempt_browser_route
 from aletheia_nexus.acquire.access.models import (
@@ -52,7 +54,13 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         raise ValueError(
             "profile_name must be 1-64 safe characters and may not be '.' or '..'"
         )
-    for name in ("headless", "interactive", "keep_unverified"):
+    for name in (
+        "headless",
+        "interactive",
+        "wait_for_interaction",
+        "keep_unverified",
+        "cdp_resume_existing_page",
+    ):
         if not isinstance(getattr(config, name), bool):
             raise TypeError(f"{name} must be a bool")
     if config.channel is not None:
@@ -164,7 +172,15 @@ def _install_context_event_capture(
         try:
             headers = dict(response.headers)
             content_type = (headers.get("content-type") or "").lower()
-            if "application/pdf" not in content_type:
+            disposition = (headers.get("content-disposition") or "").lower()
+            path = urlsplit(str(response.url)).path.lower()
+            if not (
+                "application/pdf" in content_type
+                or ".pdf" in disposition
+                or path.endswith(".pdf")
+                or "/pdfdirect/" in path
+                or "/doi/pdf/" in path
+            ):
                 return
 
             if not snapshot_pdf_responses:
@@ -206,13 +222,79 @@ def _install_context_event_capture(
         attach_page(page)
 
 
-def _select_attached_page(context, *, preferred_url: str):
+def _normalized_page_title(value: str | None) -> str:
+    if not value:
+        return ""
+    return " ".join(str(value).casefold().split())
+
+
+def _attached_page_is_pdf(url: str) -> bool:
+    try:
+        return urlsplit(url).path.lower().endswith(".pdf")
+    except ValueError:
+        return False
+
+
+def _attached_page_has_expired_signature(url: str) -> bool:
+    """Detect an expired AWS-style signed URL without retaining its secrets."""
+
+    try:
+        query = parse_qs(urlsplit(url).query)
+        raw_date = query.get("X-Amz-Date", [None])[0]
+        raw_expires = query.get("X-Amz-Expires", [None])[0]
+        if raw_date is None or raw_expires is None:
+            return False
+        issued_at = datetime.strptime(raw_date, "%Y%m%dT%H%M%SZ").replace(
+            tzinfo=timezone.utc
+        )
+        expires = float(raw_expires)
+        if expires < 0:
+            return True
+        return datetime.now(timezone.utc) >= issued_at + timedelta(seconds=expires)
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
+def _preferred_document_tokens(preferred_url: str) -> tuple[str, ...]:
+    """Return conservative identifier tokens usable for PDF-tab correlation."""
+
+    try:
+        suffix = urlsplit(preferred_url).path.rstrip("/").rsplit("/", 1)[-1]
+    except ValueError:
+        return ()
+    compact = re.sub(r"[^a-z0-9]", "", suffix.casefold())
+    if not compact:
+        return ()
+    tokens = [compact]
+    # ACS article filenames abbreviate the journal but preserve article codes,
+    # e.g. acsnano.5c01551 -> nn5c01551.pdf. The code is specific enough to
+    # distinguish an article without guessing a publisher URL.
+    tail = re.search(r"\d+[a-z]\d{4,}$", compact)
+    if tail is not None and tail.group(0) != compact:
+        tokens.append(tail.group(0))
+    return tuple(tokens)
+
+
+def _select_attached_page(
+    context,
+    *,
+    preferred_url: str,
+    expected_title: str | None = None,
+    minimum_score: int = 0,
+):
     """Choose the best existing web page from an attached real browser."""
 
     preferred_host = urlsplit(preferred_url).hostname
-    fallback = None
+    preferred_document_url = preferred_url.split("#", 1)[0]
+    preferred_path = urlsplit(preferred_url).path.lower()
+    preferred_tokens = _preferred_document_tokens(preferred_url)
+    preferred_is_pdf_route = _attached_page_is_pdf(preferred_url) or (
+        "/doi/pdf/" in preferred_path or preferred_path.endswith("/pdf")
+    )
     pages = list(getattr(context, "pages", ()) or ())
-    for page in reversed(pages):
+    expected = _normalized_page_title(expected_title)
+    ranked: list[tuple[int, int, object]] = []
+    for index, page in enumerate(pages):
         try:
             if page.is_closed():
                 continue
@@ -221,14 +303,50 @@ def _select_attached_page(context, *, preferred_url: str):
             continue
         if not url.lower().startswith(("http://", "https://")):
             continue
-        if fallback is None:
-            fallback = page
+        score = 0
+        if (
+            preferred_is_pdf_route
+            and url.split("#", 1)[0] == preferred_document_url
+        ):
+            score += 500
         try:
             if preferred_host and urlsplit(url).hostname == preferred_host:
-                return page
+                score += 100
         except ValueError:
-            continue
-    return fallback
+            pass
+
+        pdf_page = _attached_page_is_pdf(url)
+        if pdf_page:
+            score += 150
+            if _attached_page_has_expired_signature(url):
+                score -= 700
+
+        compact_url = re.sub(r"[^a-z0-9]", "", url.casefold())
+        if any(len(token) >= 6 and token in compact_url for token in preferred_tokens):
+            score += 450
+
+        if expected:
+            try:
+                observed = _normalized_page_title(page.title())
+            except Exception:
+                observed = ""
+            if observed:
+                similarity = SequenceMatcher(None, expected, observed).ratio()
+                if similarity >= 0.92:
+                    score += 300
+                    if pdf_page:
+                        score += 100
+
+        # Later pages win exact ties. This follows the normal handoff workflow,
+        # where the researcher leaves the most recently opened target tab active.
+        ranked.append((score, index, page))
+
+    if not ranked:
+        return None
+    winner = max(ranked, key=lambda item: (item[0], item[1]))
+    if winner[0] < minimum_score:
+        return None
+    return winner[2]
 
 
 def _source_for_attached_page(
@@ -247,10 +365,15 @@ def _source_for_attached_page(
             parent = route
             break
 
+    url_type = (
+        CandidateUrlType.PDF
+        if _attached_page_is_pdf(safe_url)
+        else CandidateUrlType.LANDING_PAGE
+    )
     return replace(
         parent,
         url=safe_url,
-        url_type=CandidateUrlType.LANDING_PAGE,
+        url_type=url_type,
         host_type=refine_host_type(safe_url, parent.host_type),
         source_name="External browser current page",
     )
@@ -408,6 +531,9 @@ class BrowserSession:
             "headless": self.config.headless,
             "accept_downloads": True,
             "service_workers": "allow",
+            # Process-scoped direct connection. This does not modify the OS proxy
+            # or the user's everyday browser profile/settings.
+            "args": ["--no-proxy-server"],
         }
         if self.config.channel:
             launch_kwargs["channel"] = self.config.channel
@@ -491,11 +617,24 @@ class BrowserSession:
         context = self._ensure_started()
         verified: AcquisitionResult | None = None
 
+        attached_page = None
         if self._attached_external:
-            page = _select_attached_page(
+            attached_page = _select_attached_page(
                 context,
                 preferred_url=normalized_routes[0].url,
+                expected_title=expected_title,
+                # Automatic batch navigation may leave a challenge tab open.
+                # Resume it only when its title strongly matches this paper;
+                # never fall back to an arbitrary browser tab.
+                minimum_score=(
+                    0 if self.config.cdp_resume_existing_page else 300
+                ),
             )
+
+        if self._attached_external and (
+            self.config.cdp_resume_existing_page or attached_page is not None
+        ):
+            page = attached_page
             if page is None:
                 attempts.append(
                     BrowserAccessAttempt(
@@ -574,6 +713,7 @@ class BrowserSession:
             self._downloads.clear()
 
             page = context.new_page()
+            attempt = None
             try:
                 attempt = attempt_browser_route(
                     context,
@@ -587,7 +727,12 @@ class BrowserSession:
                     session_downloads=self._downloads,
                 )
             finally:
-                if not page.is_closed():
+                preserve_interaction_page = (
+                    self._attached_external
+                    and attempt is not None
+                    and attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
+                )
+                if not preserve_interaction_page and not page.is_closed():
                     page.close()
                 self._blocked_unsafe_urls.clear()
                 self._pdf_responses.clear()

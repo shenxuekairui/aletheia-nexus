@@ -4,7 +4,10 @@ from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
     BrowserAttemptStatus,
 )
-from aletheia_nexus.acquire.discovery.models import FullTextCandidate
+from aletheia_nexus.acquire.discovery.models import (
+    CandidateUrlType,
+    FullTextCandidate,
+)
 
 
 class _Page:
@@ -100,6 +103,7 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert result.verified_result is None
     assert context.closed is True
     assert manager.playwright.chromium.kwargs["service_workers"] == "allow"
+    assert manager.playwright.chromium.kwargs["args"] == ["--no-proxy-server"]
 
 
 def test_browser_session_stops_after_interaction_required(monkeypatch, tmp_path):
@@ -345,15 +349,19 @@ def test_browser_startup_error_does_not_persist_raw_exception_text(
 
 
 class _AttachedPage(_Page):
-    def __init__(self, url):
+    def __init__(self, url, *, title=""):
         super().__init__()
         self.url = url
+        self._title = title
+
+    def title(self):
+        return self._title
 
 
 class _AttachedContext(_Context):
-    def __init__(self, page):
+    def __init__(self, page, *additional_pages):
         super().__init__()
-        self.pages = [page]
+        self.pages = [page, *additional_pages]
 
 
 class _AttachedBrowser:
@@ -429,3 +437,347 @@ def test_cdp_attach_reuses_existing_page_without_navigating_or_closing(
     assert manager.playwright.chromium.endpoint == "http://127.0.0.1:9222"
     assert page.closed is False
     assert context.closed is False
+
+
+def test_cdp_batch_navigation_opens_and_closes_temporary_pages(
+    monkeypatch,
+    tmp_path,
+):
+    attached_page = _AttachedPage("https://publisher.example/unrelated")
+    context = _AttachedContext(attached_page)
+    created_pages = []
+
+    def new_page():
+        page = _Page()
+        created_pages.append(page)
+        return page
+
+    context.new_page = new_page
+    manager = _AttachedManager(context)
+    observed = []
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page_value, *, source, **kwargs):
+        observed.append((context_value, page_value, source.url))
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=source.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+            cdp_resume_existing_page=False,
+        )
+    ) as session:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1), _candidate(2)],
+            output_dir=tmp_path / "downloads",
+        )
+
+    assert [item[2] for item in observed] == [
+        "https://publisher.example/article/1",
+        "https://publisher.example/article/2",
+    ]
+    assert all(item[0] is context for item in observed)
+    assert [item[1] for item in observed] == created_pages
+    assert all(page.closed for page in created_pages)
+    assert attached_page.closed is False
+    assert context.closed is False
+
+
+def test_cdp_batch_navigation_preserves_page_needing_interaction(
+    monkeypatch,
+    tmp_path,
+):
+    attached_page = _AttachedPage("https://publisher.example/unrelated")
+    context = _AttachedContext(attached_page)
+    created_pages = []
+
+    def new_page():
+        page = _Page()
+        created_pages.append(page)
+        return page
+
+    context.new_page = new_page
+    manager = _AttachedManager(context)
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(
+        browser,
+        "attempt_browser_route",
+        lambda context_value, page_value, *, source, **kwargs: (
+            BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=source.url,
+                status=BrowserAttemptStatus.INTERACTION_REQUIRED,
+            )
+        ),
+    )
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+            cdp_resume_existing_page=False,
+        )
+    ) as session:
+        result = session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1), _candidate(2)],
+            output_dir=tmp_path / "downloads",
+        )
+
+    assert len(result.attempts) == 1
+    assert len(created_pages) == 1
+    assert created_pages[0].closed is False
+    assert context.closed is False
+
+
+def test_cdp_batch_navigation_resumes_strong_title_match(
+    monkeypatch,
+    tmp_path,
+):
+    title = "Target Fuel Cell Article"
+    retained_page = _AttachedPage(
+        "https://publisher.example/article/target",
+        title=title,
+    )
+    context = _AttachedContext(retained_page)
+    manager = _AttachedManager(context)
+    observed = {}
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page_value, *, source, **kwargs):
+        observed["page"] = page_value
+        observed["navigate_source"] = kwargs["_navigate_source"]
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=page_value.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+            cdp_resume_existing_page=False,
+        )
+    ) as session:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1)],
+            output_dir=tmp_path / "downloads",
+            expected_title=title,
+        )
+
+    assert observed["page"] is retained_page
+    assert observed["navigate_source"] is False
+    assert retained_page.closed is False
+    assert context.closed is False
+
+
+def test_cdp_batch_navigation_resumes_exact_pdf_url_without_title_match(
+    monkeypatch,
+    tmp_path,
+):
+    retained_page = _AttachedPage(
+        "https://publisher.example/doi/pdf/10.1000/session-limit",
+        title="article.pdf",
+    )
+    context = _AttachedContext(retained_page)
+    manager = _AttachedManager(context)
+    observed = {}
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page_value, *, source, **kwargs):
+        observed["page"] = page_value
+        observed["navigate_source"] = kwargs["_navigate_source"]
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=page_value.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+            cdp_resume_existing_page=False,
+        )
+    ) as session:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[
+                _candidate(
+                    1,
+                    url=(
+                        "https://publisher.example/doi/pdf/"
+                        "10.1000/session-limit"
+                    ),
+                )
+            ],
+            output_dir=tmp_path / "downloads",
+            expected_title="Target Article",
+        )
+
+    assert observed["page"] is retained_page
+    assert observed["navigate_source"] is False
+    assert retained_page.closed is False
+
+
+def test_cdp_attach_prefers_title_matching_pdf_tab(monkeypatch, tmp_path):
+    title = "Target Catalysis Article"
+    article = _AttachedPage(
+        "https://publisher.example/article/1",
+        title=title,
+    )
+    unrelated_pdf = _AttachedPage(
+        "https://cdn.example/unrelated.pdf",
+        title="Unrelated Article",
+    )
+    target_pdf = _AttachedPage(
+        "https://cdn.example/target.pdf?signature=short-lived",
+        title=title,
+    )
+    context = _AttachedContext(article, unrelated_pdf, target_pdf)
+    manager = _AttachedManager(context)
+    observed = {}
+
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page_value, *, source, **kwargs):
+        observed["page"] = page_value
+        observed["source"] = source
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=page_value.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+        )
+    ) as session:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1)],
+            output_dir=tmp_path / "downloads",
+            expected_title=title,
+        )
+
+    assert observed["page"] is target_pdf
+    assert observed["source"].url == target_pdf.url
+    assert observed["source"].url_type.value == "pdf"
+
+
+def test_cdp_attach_matches_acs_article_code_when_pdf_title_is_blank(
+    monkeypatch,
+    tmp_path,
+):
+    unrelated_pdf = _AttachedPage(
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC8000292/pdf/"
+        "membranes-11-00183.pdf",
+        title="",
+    )
+    target_pdf = _AttachedPage(
+        "https://pubs.acs.org/ancac3/article-pdf/19/19/18409/42251451/"
+        "nn5c01551.pdf",
+        title="",
+    )
+    context = _AttachedContext(target_pdf, unrelated_pdf)
+    manager = _AttachedManager(context)
+    observed = {}
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page_value, *, source, **kwargs):
+        observed["page"] = page_value
+        observed["source"] = source
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=page_value.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+        )
+    ) as session:
+        session.acquire(
+            doi="10.1021/acsnano.5c01551",
+            routes=[
+                FullTextCandidate(
+                    doi="10.1021/acsnano.5c01551",
+                    url="https://doi.org/10.1021/acsnano.5c01551",
+                    provenance=(),
+                    url_type=CandidateUrlType.LANDING_PAGE,
+                )
+            ],
+            output_dir=tmp_path / "downloads",
+            expected_title=(
+                "Tunable Hydrated Channels in Covalent Organic Framework "
+                "Membrane for Seawater Desalination"
+            ),
+        )
+
+    assert observed["page"] is target_pdf
+    assert observed["source"].url == target_pdf.url
+
+
+def test_cdp_attach_avoids_expired_signed_pdf_tab(monkeypatch, tmp_path):
+    title = "Target Catalysis Article"
+    article = _AttachedPage(
+        "https://publisher.example/article/1",
+        title=title,
+    )
+    expired_pdf = _AttachedPage(
+        "https://cdn.example/target.pdf?"
+        "X-Amz-Date=20000101T000000Z&X-Amz-Expires=300&X-Amz-Signature=secret",
+        title=title,
+    )
+    context = _AttachedContext(article, expired_pdf)
+    manager = _AttachedManager(context)
+    observed = {}
+
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    def attempt(context_value, page_value, *, source, **kwargs):
+        observed["page"] = page_value
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=page_value.url,
+            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+        )
+
+    monkeypatch.setattr(browser, "attempt_browser_route", attempt)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path / "profiles",
+            cdp_endpoint="http://127.0.0.1:9222",
+        )
+    ) as session:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1)],
+            output_dir=tmp_path / "downloads",
+            expected_title=title,
+        )
+
+    assert observed["page"] is article

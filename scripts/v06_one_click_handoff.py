@@ -1,6 +1,5 @@
 import argparse
 import subprocess
-import sys
 import time
 from pathlib import Path
 from urllib.error import URLError
@@ -12,7 +11,6 @@ from aletheia_nexus.acquire.access import (
 )
 from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.core.identifiers.doi import normalize_doi
-
 
 CDP_ENDPOINT = "http://127.0.0.1:9222"
 
@@ -64,6 +62,9 @@ def _start_browser(doi: str) -> None:
             str(browser),
             "--remote-debugging-port=9222",
             f"--user-data-dir={profile}",
+            "--no-proxy-server",
+            "--no-first-run",
+            "--no-default-browser-check",
             target,
         ],
         stdout=subprocess.DEVNULL,
@@ -169,6 +170,26 @@ def main() -> int:
                     f"method={file_attempt.method} status={status} "
                     f"error={file_attempt.error or '-'}"
                 )
+                if file_attempt.result is not None:
+                    resource = file_attempt.result.retrieved
+                    validation = file_attempt.result.pdf_validation
+                    if resource is not None:
+                        print(
+                            "          response="
+                            f"http:{resource.http_status} "
+                            f"type:{resource.content_type or '-'} "
+                            f"bytes:{resource.size_bytes} "
+                            "url:"
+                            f"{redact_url_for_record(resource.final_url) or '-'}"
+                        )
+                    if validation is not None:
+                        print(
+                            "          pdf="
+                            f"magic:{validation.magic_bytes_ok} "
+                            f"parseable:{validation.parseable} "
+                            f"pages:{validation.page_count} "
+                            f"warning:{validation.warning or '-'}"
+                        )
 
     print("=" * 64)
 

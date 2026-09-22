@@ -122,7 +122,9 @@ class BrowserAccessConfig:
     headless: bool = False
     channel: str | None = None
     cdp_endpoint: str | None = None
+    cdp_resume_existing_page: bool = True
     interactive: bool = True
+    wait_for_interaction: bool = False
     interaction_callback: Callable[[ChallengeReport, str], None] | None = None
     navigation_timeout: float = 45.0
     request_timeout: float = 45.0

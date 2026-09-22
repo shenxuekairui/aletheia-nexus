@@ -1,3 +1,4 @@
+import re
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -57,6 +58,61 @@ def _resolver_candidate(doi: str) -> FullTextCandidate:
     )
 
 
+def _canonical_publisher_pdf_candidate(
+    candidate: FullTextCandidate,
+) -> FullTextCandidate | None:
+    """Derive a documented same-publisher DOI PDF route for supported hosts."""
+
+    parts = urlsplit(candidate.url)
+    host = (parts.hostname or "").lower()
+    doi_pdf_hosts = (
+        host == "pubs.acs.org"
+        or host == "onlinelibrary.wiley.com"
+        or host.endswith(".onlinelibrary.wiley.com")
+        or host in {"tandfonline.com", "www.tandfonline.com"}
+        or host == "ascelibrary.org"
+        or host.endswith(".ascelibrary.org")
+    )
+    if doi_pdf_hosts:
+        return replace(
+            candidate,
+            url=(
+                f"{parts.scheme or 'https'}://{parts.netloc}/doi/pdf/"
+                f"{quote(candidate.doi, safe='/')}"
+            ),
+            url_type=CandidateUrlType.PDF,
+            host_type=HostType.PUBLISHER,
+            source_name="Publisher canonical DOI PDF route",
+        )
+
+    if host in {"mdpi.com", "www.mdpi.com"}:
+        path = parts.path.rstrip("/")
+        if re.fullmatch(r"/\d{4}-\d{4}/\d+/\d+/\d+", path):
+            return replace(
+                candidate,
+                url=f"{parts.scheme or 'https'}://{parts.netloc}{path}/pdf",
+                url_type=CandidateUrlType.PDF,
+                host_type=HostType.PUBLISHER,
+                source_name="Publisher canonical article PDF route",
+            )
+
+    if host == "ieeexplore.ieee.org":
+        match = re.fullmatch(r"/document/(\d+)/?", parts.path)
+        if match:
+            article_number = match.group(1)
+            return replace(
+                candidate,
+                url=(
+                    "https://ieeexplore.ieee.org/stamp/stamp.jsp"
+                    f"?tp=&arnumber={article_number}"
+                ),
+                url_type=CandidateUrlType.PDF,
+                host_type=HostType.PUBLISHER,
+                source_name="Publisher canonical IEEE PDF viewer route",
+            )
+    return None
+
+
 def _browser_route_score(
     candidate: FullTextCandidate,
     *,
@@ -75,10 +131,21 @@ def _browser_route_score(
         score += 50
     if candidate.url_type == CandidateUrlType.LANDING_PAGE:
         score += 40
+    elif candidate.url_type == CandidateUrlType.PDF:
+        # An authenticated browser can add the most value to a concrete
+        # publisher PDF endpoint that public HTTP retrieval could not access.
+        score += 300
     elif candidate.url_type == CandidateUrlType.UNKNOWN:
         score += 20
     if urlsplit(candidate.url).scheme.lower() == "https":
         score += 5
+    if candidate.source_name and candidate.source_name.startswith(
+        "Publisher canonical"
+    ):
+        score += 700
+    path = urlsplit(candidate.url).path.casefold()
+    if any(marker in path for marker in ("_si_", "/supp", "supplement")):
+        score -= 800
     return score
 
 
@@ -150,6 +217,28 @@ def browser_recovery_routes(
 
     for candidate in base_result.discovery.candidates:
         add(candidate, barrier=False)
+
+    # Supported publishers expose stable, official PDF paths even when their
+    # rendered entitlement page omits the PDF anchor. These are legitimate
+    # publisher endpoints, not access-control bypasses; any login, CAPTCHA, or
+    # subscription response is still handled by the normal browser workflow.
+    source_candidates = list(base_result.discovery.candidates)
+    source_candidates.extend(
+        attempt.candidate for attempt in base_result.route_attempts
+    )
+    for attempt in base_result.route_attempts:
+        if attempt.result.page is None or not attempt.result.page.final_url:
+            continue
+        try:
+            source_candidates.append(
+                replace(attempt.candidate, url=attempt.result.page.final_url)
+            )
+        except (TypeError, ValueError):
+            continue
+    for candidate in source_candidates:
+        canonical_pdf = _canonical_publisher_pdf_candidate(candidate)
+        if canonical_pdf is not None:
+            add(canonical_pdf, barrier=False)
 
     add(_resolver_candidate(base_result.doi), barrier=False)
 

@@ -130,6 +130,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-live/
 env/
 venv/
 ENV/
@@ -183,6 +184,9 @@ cython_debug/
 # Aletheia Nexus local authenticated browser state / live reports
 .aletheia-nexus/
 v06-access-acceptance*.json
+.tmp-pytest-*/
+.tmp-cdp-unit-*/
+.tmp-live-browser*/
 
 # Local v0.6 access-ceiling controls confirmed for one institution/account
 benchmarks/v06_entitled_positive_controls.local.json

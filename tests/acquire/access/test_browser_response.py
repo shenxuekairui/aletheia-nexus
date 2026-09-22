@@ -5,6 +5,7 @@ from pypdf import PdfWriter
 
 from aletheia_nexus.acquire.access.browser_route import (
     _browser_response_to_file_attempt,
+    _CdpDownloadCapture,
     _download_to_file_attempt,
     _request_pdf_candidate,
     _safe_context_get,
@@ -35,6 +36,80 @@ def _pdf_bytes() -> bytes:
     writer.add_metadata({"/Title": "Captured Browser Response"})
     writer.write(output)
     return output.getvalue()
+
+
+class _CdpSession:
+    def __init__(self):
+        self.handlers = {}
+        self.commands = []
+        self.detached = False
+
+    def on(self, event, callback):
+        self.handlers[event] = callback
+
+    def send(self, method, params=None):
+        self.commands.append((method, params or {}))
+
+    def detach(self):
+        self.detached = True
+
+
+class _CdpBrowser:
+    def __init__(self):
+        self.session = _CdpSession()
+
+    def new_browser_cdp_session(self):
+        return self.session
+
+
+class _CdpContext:
+    def __init__(self):
+        self.browser = _CdpBrowser()
+
+
+class _WaitPage:
+    url = "https://publisher.example/article.pdf"
+
+    def wait_for_timeout(self, value):
+        return None
+
+
+def test_cdp_download_capture_uses_completed_browser_domain_file(tmp_path):
+    context = _CdpContext()
+    capture = _CdpDownloadCapture(context, tmp_path)
+    session = context.browser.session
+
+    behavior = session.commands[0]
+    assert behavior[0] == "Browser.setDownloadBehavior"
+    assert behavior[1]["behavior"] == "allowAndName"
+    staging_dir = capture.staging_dir
+    assert staging_dir is not None
+    saved = staging_dir / "download-guid"
+    saved.write_bytes(_pdf_bytes())
+    session.handlers["Browser.downloadWillBegin"](
+        {
+            "guid": "download-guid",
+            "url": "https://publisher.example/article.pdf",
+        }
+    )
+    session.handlers["Browser.downloadProgress"](
+        {
+            "guid": "download-guid",
+            "state": "completed",
+            "filePath": str(saved),
+        }
+    )
+
+    result = capture.wait(_WaitPage(), 1)
+    assert result == (saved, "https://publisher.example/article.pdf")
+
+    capture.close()
+    assert session.commands[-1] == (
+        "Browser.setDownloadBehavior",
+        {"behavior": "default"},
+    )
+    assert session.detached is True
+    assert not staging_dir.exists()
 
 
 def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
@@ -68,6 +143,15 @@ class _BlobDownload:
         return str(self._path)
 
 
+class _SaveAsDownload(_BlobDownload):
+    def path(self):
+        raise FileNotFoundError("Chromium temp path was already reclaimed")
+
+    def save_as(self, destination):
+        destination = type(self._path)(destination)
+        destination.write_bytes(self._path.read_bytes())
+
+
 def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
     source = tmp_path / "blob-download.pdf"
     source.write_bytes(_pdf_bytes())
@@ -93,6 +177,29 @@ def test_blob_download_is_validated_using_parent_route_provenance(tmp_path):
     assert attempt.result.retrieved is not None
     assert attempt.result.retrieved.final_url == parent.url
     assert attempt.result.candidate.url == parent.url
+
+
+def test_browser_download_prefers_save_as_over_ephemeral_path(tmp_path):
+    source = tmp_path / "download.pdf"
+    source.write_bytes(_pdf_bytes())
+    parent = FullTextCandidate(
+        doi="10.1000/captured-response",
+        url="https://publisher.example/article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    attempt = _download_to_file_attempt(
+        _SaveAsDownload(source),
+        parent=parent,
+        source_page_url=parent.url,
+        output_dir=tmp_path / "out",
+        expected_title="Captured Browser Response",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+    )
+
+    assert attempt.result is not None
+    assert attempt.result.status == AcquisitionStatus.VERIFIED
 
 
 class _RedirectResponse:

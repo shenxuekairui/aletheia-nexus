@@ -1,3 +1,4 @@
+import base64
 from types import SimpleNamespace
 
 from aletheia_nexus.acquire.access import browser_route
@@ -372,11 +373,509 @@ def test_visible_institution_text_fallback_clicks_nonsemantic_node():
     assert page.control.clicked is True
 
 
+def test_cross_origin_institution_popup_is_preserved_when_unclassified(
+    monkeypatch,
+    tmp_path,
+):
+    class AuthPage:
+        url = "https://login.university.example/saml"
+
+        def __init__(self):
+            self.closed = False
+
+        def wait_for_load_state(self, state, timeout=0):
+            return None
+
+        def is_closed(self):
+            return self.closed
+
+        def close(self):
+            self.closed = True
+
+    class ArticlePage:
+        url = "https://publisher.example/article"
+
+        def wait_for_timeout(self, milliseconds):
+            context.pages.append(auth_page)
+
+    article_page = ArticlePage()
+    auth_page = AuthPage()
+    context = SimpleNamespace(pages=[article_page])
+    monkeypatch.setattr(
+        browser_route,
+        "_click_semantic_institution_control",
+        lambda page: True,
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "_resolve_page_challenge",
+        lambda page, *, config: (
+            ChallengeReport(kind=ChallengeKind.NONE),
+            (ChallengeReport(kind=ChallengeKind.NONE),),
+            False,
+        ),
+    )
+
+    clicked, history, interaction_used, report = (
+        browser_route._run_institution_handoff(
+            context,
+            article_page,
+            config=BrowserAccessConfig(profile_root=tmp_path),
+        )
+    )
+
+    assert clicked is True
+    assert interaction_used is True
+    assert report.kind == ChallengeKind.SSO
+    assert history[-1] == report
+    assert auth_page.closed is False
+
+
+def test_unbounded_handoff_waits_until_user_clears_challenge(tmp_path):
+    events = []
+    page = _Page(
+        [
+            (
+                "Verify you are human",
+                "https://publisher.example/challenge",
+                "Complete the captcha",
+                '<div class="g-recaptcha"></div>',
+            ),
+            (
+                "Verify you are human",
+                "https://publisher.example/challenge",
+                "Complete the captcha",
+                '<div class="g-recaptcha"></div>',
+            ),
+            (
+                "Article",
+                "https://publisher.example/article",
+                "Article abstract",
+                "<main>Article abstract</main>",
+            ),
+        ]
+    )
+
+    report, history, interaction_used = _resolve_page_challenge(
+        page,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            auto_challenge_grace=0,
+            interaction_timeout=0,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+            interaction_callback=lambda challenge, url: events.append(
+                (challenge.kind, url)
+            ),
+        ),
+    )
+
+    assert events == [
+        (ChallengeKind.CAPTCHA, "https://publisher.example/challenge")
+    ]
+    assert report.kind == ChallengeKind.NONE
+    assert history[0].kind == ChallengeKind.CAPTCHA
+    assert history[-1].kind == ChallengeKind.NONE
+    assert interaction_used is True
+
+
+def test_external_idp_transient_plain_page_does_not_finish_handoff(tmp_path):
+    events = []
+    page = _Page(
+        [
+            (
+                "查找您的组织",
+                "https://id.publisher.example/authorization",
+                "查找您的组织",
+                "<main>查找您的组织</main>",
+            ),
+            (
+                "Redirecting",
+                "https://login.university.example/saml",
+                "Please wait",
+                "<main>Please wait</main>",
+            ),
+            (
+                "Article",
+                "https://publisher.example/article",
+                "Article abstract",
+                "<main>Article abstract</main>",
+            ),
+        ]
+    )
+
+    report, history, interaction_used = (
+        browser_route._resolve_external_auth_page(
+            page,
+            source_host="publisher.example",
+            config=BrowserAccessConfig(
+                profile_root=tmp_path,
+                wait_for_interaction=True,
+                poll_interval=0.001,
+                interaction_callback=lambda challenge, url: events.append(
+                    (challenge.kind, url)
+                ),
+            ),
+        )
+    )
+
+    assert events == [
+        (ChallengeKind.SSO, "https://id.publisher.example/authorization")
+    ]
+    assert report.kind == ChallengeKind.NONE
+    assert history[0].kind == ChallengeKind.SSO
+    assert history[-1].kind == ChallengeKind.NONE
+    assert interaction_used is True
+
+
+def test_unbounded_handoff_stops_at_entitlement_boundary(tmp_path):
+    page = _Page(
+        [
+            (
+                "Institutional sign in",
+                "https://publisher.example/login",
+                "Access through your institution",
+                "<main>Institutional sign in</main>",
+            ),
+            (
+                "Purchase article",
+                "https://publisher.example/article",
+                "Buy this article",
+                "<main>Buy this article</main>",
+            ),
+        ]
+    )
+
+    report, history, interaction_used = _resolve_page_challenge(
+        page,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            auto_challenge_grace=0,
+            interaction_timeout=0,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+        ),
+    )
+
+    assert report.kind == ChallengeKind.ENTITLEMENT
+    assert history[-1].kind == ChallengeKind.ENTITLEMENT
+    assert interaction_used is True
+
+
 def test_accessible_pdf_control_is_clicked_without_visible_text():
     page = _InstitutionPage(aria_label="View PDF")
 
     assert browser_route._click_semantic_pdf_control(page) is True
     assert page.control.clicked is True
+
+
+def test_pdf_control_closes_incidental_modal_and_ignores_its_recommendations():
+    class ListLocator:
+        def __init__(self, items):
+            self.items = items
+
+        def count(self):
+            return len(self.items)
+
+        def nth(self, index):
+            return self.items[index]
+
+    class Control(_InstitutionControl):
+        def __init__(self, page, text="", *, inside_modal=False, closes=False):
+            super().__init__(text)
+            self.page = page
+            self.inside_modal = inside_modal
+            self.closes = closes
+
+        def evaluate(self, expression):
+            return self.inside_modal
+
+        def click(self, timeout=0):
+            if self.closes:
+                self.page.modal_open = False
+                self.clicked = True
+                return
+            if self.page.modal_open:
+                raise TimeoutError("modal intercepts pointer events")
+            self.clicked = True
+
+    class Modal:
+        def __init__(self, page):
+            self.page = page
+            self.close = Control(page, "", inside_modal=True, closes=True)
+            self.close.attributes["aria-label"] = "close window"
+
+        def is_visible(self):
+            return self.page.modal_open
+
+        def locator(self, selector):
+            assert selector == browser_route._INTERACTIVE_CONTROL_SELECTOR
+            return ListLocator([self.close])
+
+    class Page:
+        def __init__(self):
+            self.modal_open = True
+            self.recommended = Control(self, "View PDF", inside_modal=True)
+            self.article = Control(self, "View PDF")
+            self.modal = Modal(self)
+
+        def locator(self, selector):
+            if selector == browser_route._INTERACTIVE_CONTROL_SELECTOR:
+                return ListLocator([self.recommended, self.article])
+            assert selector in browser_route._MODAL_SELECTORS
+            if selector == ".js-react-modal":
+                return ListLocator([self.modal])
+            return ListLocator([])
+
+        def wait_for_timeout(self, milliseconds):
+            assert milliseconds == 350
+
+    page = Page()
+
+    assert browser_route._click_semantic_pdf_control(page) is True
+    assert page.modal.close.clicked is True
+    assert page.recommended.clicked is False
+    assert page.article.clicked is True
+
+
+def test_popup_processing_can_defer_close_until_response_body_is_consumed(
+    monkeypatch,
+    tmp_path,
+):
+    class Popup:
+        url = "about:blank"
+
+        def __init__(self):
+            self.closed = False
+
+        def wait_for_load_state(self, state, timeout=0):
+            return None
+
+        def content(self):
+            raise RuntimeError("no HTML document")
+
+        def is_closed(self):
+            return self.closed
+
+        def close(self):
+            self.closed = True
+
+    original = object()
+    popup = Popup()
+    context = SimpleNamespace(pages=[original, popup])
+    monkeypatch.setattr(
+        browser_route,
+        "_resolve_page_challenge",
+        lambda page, *, config: (
+            ChallengeReport(kind=ChallengeKind.NONE),
+            (ChallengeReport(kind=ChallengeKind.NONE),),
+            False,
+        ),
+    )
+    source = FullTextCandidate(
+        doi="10.1000/defer-popup-close",
+        url="https://publisher.example/article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    browser_route._process_new_popup_pages(
+        context,
+        original_page=original,
+        existing_page_ids={id(original)},
+        source=source,
+        output_dir=tmp_path,
+        expected_title="Target article",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+        close_pages=False,
+    )
+
+    assert popup.closed is False
+
+
+def test_pdf_viewer_shell_triggers_bounded_same_origin_fetch():
+    class ViewerPage:
+        url = "https://cdn.example/article.pdf?signature=secret"
+
+        def __init__(self):
+            self.max_bytes = None
+
+        def evaluate(self, script, max_bytes):
+            assert "fetch(location.href" in script
+            assert "cache: 'no-store'" in script
+            self.max_bytes = max_bytes
+            return True
+
+    page = ViewerPage()
+
+    assert (
+        browser_route._trigger_pdf_viewer_same_origin_fetch(
+            page,
+            max_bytes=12_345,
+        )
+        is True
+    )
+    assert page.max_bytes == 12_345
+
+
+def test_embedded_pdf_frame_triggers_bounded_same_origin_fetch():
+    class Locator:
+        def count(self):
+            return 1
+
+    class Frame:
+        url = "https://publisher.example/doi/pdfdirect/10.1000/target"
+
+        def locator(self, selector):
+            assert "application/pdf" in selector
+            return Locator()
+
+    class Page:
+        url = "https://publisher.example/doi/pdf/10.1000/target"
+
+        def __init__(self, frame):
+            self.frames = [frame]
+            self.args = None
+
+        def evaluate(self, script, args):
+            assert "fetch(url" in script
+            assert "cache: 'force-cache'" in script
+            self.args = args
+            return {
+                "url": "https://publisher.example/doi/pdfdirect/10.1000/target",
+                "bodyBase64": base64.b64encode(b"%PDF-test").decode("ascii"),
+            }
+
+    frame = Frame()
+    page = Page(frame)
+
+    assert browser_route._trigger_embedded_pdf_frame_fetch(
+        page,
+        max_bytes=54_321,
+    ) == (
+        "https://publisher.example/doi/pdfdirect/10.1000/target",
+        b"%PDF-test",
+    )
+    assert page.args == {
+        "url": "https://publisher.example/doi/pdfdirect/10.1000/target",
+        "maxBytes": 54_321,
+    }
+
+
+def test_pdfdirect_response_is_captured_with_generic_content_type():
+    response = SimpleNamespace(
+        url="https://publisher.example/doi/pdfdirect/10.1000/target",
+        headers={"content-type": "application/octet-stream"},
+    )
+
+    assert browser_route._response_is_pdf_candidate(response) is True
+
+
+def test_ieee_runtime_document_url_yields_pdf_viewer_candidate():
+    source = FullTextCandidate(
+        doi="10.1109/ICEET.2009.450",
+        url="https://doi.org/10.1109/ICEET.2009.450",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    candidate = browser_route._runtime_publisher_pdf_candidate(
+        source,
+        "https://ieeexplore.ieee.org/document/5366888/",
+    )
+
+    assert candidate is not None
+    assert candidate.url == (
+        "https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5366888"
+    )
+    assert candidate.url_type == CandidateUrlType.PDF
+
+
+def test_select_pdf_viewer_target_matches_expected_article_title():
+    targets = [
+        {
+            "type": "webview",
+            "title": "Unrelated Paper",
+            "url": (
+                "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/"
+                "edge_pdf/index.html"
+            ),
+        },
+        {
+            "type": "webview",
+            "title": "Ceramic Fuel Cells",
+            "url": (
+                "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/"
+                "edge_pdf/index.html"
+            ),
+        },
+    ]
+
+    selected = browser_route._select_pdf_viewer_target(
+        targets,
+        doi="10.1111/j.1151-2916.1993.tb03645.x",
+        expected_title="Ceramic Fuel Cells",
+        page_title=(
+            "Ceramic Fuel Cells - Minh - Journal of the American Ceramic Society"
+        ),
+        page_url=(
+            "https://ceramics.onlinelibrary.wiley.com/doi/pdf/"
+            "10.1111/j.1151-2916.1993.tb03645.x"
+        ),
+    )
+
+    assert selected is targets[1]
+
+
+def test_select_pdf_viewer_target_rejects_unrelated_webview():
+    selected = browser_route._select_pdf_viewer_target(
+        [
+            {
+                "type": "webview",
+                "title": "Completely Different Paper",
+                "url": (
+                    "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/"
+                    "edge_pdf/index.html"
+                ),
+            }
+        ],
+        doi="10.1111/j.1151-2916.1993.tb03645.x",
+        expected_title="Ceramic Fuel Cells",
+        page_title="Ceramic Fuel Cells - Wiley Online Library",
+        page_url=(
+            "https://ceramics.onlinelibrary.wiley.com/doi/pdf/"
+            "10.1111/j.1151-2916.1993.tb03645.x"
+        ),
+    )
+
+    assert selected is None
+
+
+def test_select_pdf_viewer_target_matches_doi_filename_on_signed_cdn():
+    target = {
+        "type": "webview",
+        "title": "d6ta02244h.pdf",
+        "url": (
+            "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/"
+            "edge_pdf/index.html"
+        ),
+    }
+
+    selected = browser_route._select_pdf_viewer_target(
+        [target],
+        doi="10.1039/D6TA02244H",
+        expected_title=(
+            "Capacitive deionization for targeted anion removal: mechanisms, "
+            "advances, and future directions"
+        ),
+        page_title="d6ta02244h.pdf",
+        page_url=(
+            "https://rsci.silverchair-cdn.com/rsci/content_public/journal/ta/"
+            "14/32/10.1039_d6ta02244h/1/d6ta02244h.pdf?signature=redacted"
+        ),
+    )
+
+    assert selected is target
 
 
 def test_institution_chooser_is_treated_as_sso_handoff(tmp_path):

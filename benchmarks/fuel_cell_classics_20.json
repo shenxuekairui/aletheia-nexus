@@ -1,0 +1,142 @@
+[
+  {
+    "doi": "10.1038/35104620",
+    "title": "Materials for fuel-cell technologies",
+    "publisher": "Springer Nature",
+    "year": 2001,
+    "topic": "fuel-cell materials overview"
+  },
+  {
+    "doi": "10.1038/nature02863",
+    "title": "A high-performance cathode for the next generation of solid-oxide fuel cells",
+    "publisher": "Springer Nature",
+    "year": 2004,
+    "topic": "solid-oxide fuel cells"
+  },
+  {
+    "doi": "10.1038/nature11115",
+    "title": "Electrocatalyst approaches and challenges for automotive fuel cells",
+    "publisher": "Springer Nature",
+    "year": 2012,
+    "topic": "automotive PEM fuel cells"
+  },
+  {
+    "doi": "10.1038/nchem.367",
+    "title": "Alloys of platinum and early transition metals as oxygen reduction electrocatalysts",
+    "publisher": "Springer Nature",
+    "year": 2009,
+    "topic": "oxygen-reduction electrocatalysis"
+  },
+  {
+    "doi": "10.1038/ncomms1427",
+    "title": "Iron-based cathode catalyst with enhanced power density in polymer electrolyte membrane fuel cells",
+    "publisher": "Springer Nature",
+    "year": 2011,
+    "topic": "non-precious PEMFC catalysts"
+  },
+  {
+    "doi": "10.1126/science.1135941",
+    "title": "Improved Oxygen Reduction Activity on Pt3Ni(111) via Increased Surface Site Availability",
+    "publisher": "AAAS",
+    "year": 2007,
+    "topic": "oxygen-reduction electrocatalysis"
+  },
+  {
+    "doi": "10.1126/science.1170051",
+    "title": "Iron-Based Catalysts with Improved Oxygen Reduction Activity in Polymer Electrolyte Fuel Cells",
+    "publisher": "AAAS",
+    "year": 2009,
+    "topic": "non-precious PEMFC catalysts"
+  },
+  {
+    "doi": "10.1126/science.1204090",
+    "title": "Lowering the Temperature of Solid Oxide Fuel Cells",
+    "publisher": "AAAS",
+    "year": 2011,
+    "topic": "solid-oxide fuel cells"
+  },
+  {
+    "doi": "10.1126/science.288.5473.2031",
+    "title": "A Low-Operating-Temperature Solid Oxide Fuel Cell in Hydrocarbon-Air Mixtures",
+    "publisher": "AAAS",
+    "year": 2000,
+    "topic": "solid-oxide fuel cells"
+  },
+  {
+    "doi": "10.1021/cr050182l",
+    "title": "Scientific Aspects of Polymer Electrolyte Fuel Cell Durability and Degradation",
+    "publisher": "American Chemical Society",
+    "year": 2007,
+    "topic": "PEMFC durability"
+  },
+  {
+    "doi": "10.1021/cr020711a",
+    "title": "Alternative Polymer Systems for Proton Exchange Membranes (PEMs)",
+    "publisher": "American Chemical Society",
+    "year": 2004,
+    "topic": "proton-exchange membranes"
+  },
+  {
+    "doi": "10.1021/es0605016",
+    "title": "Microbial Fuel Cells: Methodology and Technology",
+    "publisher": "American Chemical Society",
+    "year": 2006,
+    "topic": "microbial fuel cells"
+  },
+  {
+    "doi": "10.1039/c0ee00011f",
+    "title": "Recent advances in non-precious metal catalysis for oxygen-reduction reaction in polymer electrolyte fuel cells",
+    "publisher": "Royal Society of Chemistry",
+    "year": 2011,
+    "topic": "non-precious PEMFC catalysts"
+  },
+  {
+    "doi": "10.1039/b703315j",
+    "title": "Electrocatalysis of oxygen reduction and small alcohol oxidation in alkaline media",
+    "publisher": "Royal Society of Chemistry",
+    "year": 2007,
+    "topic": "alkaline fuel-cell electrocatalysis"
+  },
+  {
+    "doi": "10.1039/c4ee01303d",
+    "title": "Anion-exchange membranes in electrochemical energy systems",
+    "publisher": "Royal Society of Chemistry",
+    "year": 2014,
+    "topic": "anion-exchange membrane fuel cells"
+  },
+  {
+    "doi": "10.1016/j.apcatb.2004.06.021",
+    "title": "Activity benchmarks and requirements for Pt, Pt-alloy, and non-Pt oxygen reduction catalysts for PEMFCs",
+    "publisher": "Elsevier",
+    "year": 2005,
+    "topic": "PEMFC catalyst benchmarks"
+  },
+  {
+    "doi": "10.1016/j.apenergy.2010.09.030",
+    "title": "A review of polymer electrolyte membrane fuel cells: Technology, applications, and needs on fundamental research",
+    "publisher": "Elsevier",
+    "year": 2011,
+    "topic": "PEMFC review"
+  },
+  {
+    "doi": "10.1016/s0167-2738(00)00452-5",
+    "title": "Advances in solid oxide fuel cell technology",
+    "publisher": "Elsevier",
+    "year": 2000,
+    "topic": "solid-oxide fuel cells"
+  },
+  {
+    "doi": "10.1016/s0167-2738(99)00319-7",
+    "title": "Appraisal of Ce1-yGdyO2-y/2 electrolytes for IT-SOFC operation at 500°C",
+    "publisher": "Elsevier",
+    "year": 2000,
+    "topic": "solid-oxide electrolytes"
+  },
+  {
+    "doi": "10.1111/j.1151-2916.1993.tb03645.x",
+    "title": "Ceramic Fuel Cells",
+    "publisher": "Wiley",
+    "year": 1993,
+    "topic": "ceramic fuel cells"
+  }
+]

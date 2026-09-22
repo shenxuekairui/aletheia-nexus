@@ -59,6 +59,7 @@ def test_headless_browser_rejects_interactive_handoff(tmp_path):
     [
         ("headless", 1),
         ("interactive", "yes"),
+        ("wait_for_interaction", "yes"),
         ("keep_unverified", 0),
     ],
 )

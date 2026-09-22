@@ -53,6 +53,24 @@ def test_explicit_no_entitlement_is_not_called_authentication():
     assert report.kind == ChallengeKind.ENTITLEMENT
 
 
+def test_pdf_control_no_access_message_is_an_entitlement_boundary():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        visible_text="PDF You do not have access to this PDF",
+    )
+    assert report.kind == ChallengeKind.ENTITLEMENT
+
+
+def test_institution_option_outranks_sign_in_or_purchase_boundary():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        visible_text="Institutional Sign In Sign In or Purchase",
+    )
+    assert report.kind == ChallengeKind.SSO
+
+
 def test_explicit_block_is_access_denied():
     report = classify_access_challenge(
         title="Access denied",
@@ -81,6 +99,19 @@ def test_loaded_recaptcha_library_without_active_widget_is_not_a_challenge():
         html=(
             "<main>Full article text</main>"
             '<script src="https://www.google.com/recaptcha/api.js"></script>'
+        ),
+    )
+    assert report.kind == ChallengeKind.NONE
+
+
+def test_inactive_recaptcha_container_on_article_is_not_a_challenge():
+    report = classify_access_challenge(
+        title="Target Article",
+        url="https://publisher.example/article",
+        visible_text="Full article text",
+        html=(
+            "<main>Full article text</main>"
+            '<div class="g-recaptcha" hidden></div>'
         ),
     )
     assert report.kind == ChallengeKind.NONE
@@ -140,6 +171,16 @@ def test_carsi_institutional_login_is_classified_as_sso():
         url="https://idp.example.edu.cn/cas/login",
         visible_text="CARSI 统一身份认证 机构登录",
         html="<main>CARSI 统一身份认证</main>",
+    )
+    assert report.kind == ChallengeKind.SSO
+
+
+def test_chinese_find_your_organization_is_classified_as_sso():
+    report = classify_access_challenge(
+        title="查找您的组织",
+        url="https://id.publisher.example/authorization",
+        visible_text="查找您的组织以访问 ScienceDirect",
+        html="<main>查找您的组织</main>",
     )
     assert report.kind == ChallengeKind.SSO
 

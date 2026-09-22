@@ -1,5 +1,6 @@
 import argparse
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 from aletheia_nexus.acquire.access import BrowserAccessConfig, browser_profile_dir
 from aletheia_nexus.acquire.access.security import redact_url_for_record
@@ -42,6 +43,21 @@ def _safe_href(value: str | None) -> str:
     return _safe(value)
 
 
+def _safe_resource_ref(value: str | None) -> str:
+    if not value:
+        return ""
+    lowered = value.lower()
+    if lowered.startswith(("http://", "https://")):
+        return redact_url_for_record(value) or "[unparseable-url]"
+    if "://" in value:
+        try:
+            parts = urlsplit(value)
+            return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        except ValueError:
+            return "[unparseable-resource]"
+    return _safe(value)
+
+
 def _describe(locator) -> dict[str, str]:
     values: dict[str, str] = {}
     try:
@@ -69,7 +85,7 @@ def _matches(values: dict[str, str]) -> bool:
     return any(keyword in haystack for keyword in KEYWORDS)
 
 
-def _print_frame(frame, index: int) -> None:
+def _print_frame(frame, index: int, *, include_visible_text: bool = True) -> None:
     print()
     print("=" * 80)
     print(f"FRAME #{index}")
@@ -113,6 +129,34 @@ def _print_frame(frame, index: int) -> None:
 
     if found == 0:
         print("  <none>")
+
+    print()
+    print("Embedded document elements:")
+    embedded_found = 0
+    for selector in ("embed", "iframe"):
+        try:
+            embedded = frame.locator(selector)
+            embedded_count = min(embedded.count(), 8)
+        except Exception:
+            continue
+        for embedded_index in range(embedded_count):
+            item = embedded.nth(embedded_index)
+            try:
+                media_type = _safe(item.get_attribute("type"))
+                source = _safe_resource_ref(item.get_attribute("src"))
+                original = _safe_resource_ref(item.get_attribute("original-url"))
+            except Exception:
+                continue
+            embedded_found += 1
+            print(
+                f"  tag={selector} type={media_type or '-'} "
+                f"src={source or '-'} original={original or '-'}"
+            )
+    if embedded_found == 0:
+        print("  <none>")
+
+    if not include_visible_text:
+        return
 
     print()
     print("Relevant visible-text nodes:")
@@ -163,6 +207,18 @@ def _print_frame(frame, index: int) -> None:
         print("  <none>")
 
 
+def _print_page(page, *, controls_only: bool) -> None:
+    print()
+    print("Page URL:", redact_url_for_record(page.url) or "")
+    print("Frame count:", len(page.frames))
+    for index, frame in enumerate(page.frames, start=1):
+        _print_frame(
+            frame,
+            index,
+            include_visible_text=not controls_only,
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Safely inspect a live publisher page for v0.6 browser routing."
@@ -170,7 +226,22 @@ def main() -> int:
     parser.add_argument("url")
     parser.add_argument("--profile-name", default="institution")
     parser.add_argument("--channel", default=None)
+    parser.add_argument(
+        "--cdp-endpoint",
+        default=None,
+        help="Attach to an existing loopback Chromium CDP endpoint.",
+    )
+    parser.add_argument(
+        "--navigate-if-missing",
+        action="store_true",
+        help="In CDP mode, open the target in a temporary tab when no host matches.",
+    )
     parser.add_argument("--wait-seconds", type=float, default=5.0)
+    parser.add_argument(
+        "--controls-only",
+        action="store_true",
+        help="Inspect bounded interactive-control metadata without visible-text nodes.",
+    )
     args = parser.parse_args()
 
     if args.wait_seconds < 0:
@@ -193,11 +264,51 @@ def main() -> int:
     print("No cookies, storage values, request headers, or page HTML are printed.")
 
     with sync_playwright() as playwright:
+        if args.cdp_endpoint:
+            browser = playwright.chromium.connect_over_cdp(args.cdp_endpoint)
+            if not browser.contexts:
+                raise RuntimeError("Attached browser exposed no context")
+            context = browser.contexts[0]
+            preferred_host = urlsplit(args.url).hostname
+            pages = [
+                page
+                for page in context.pages
+                if not page.is_closed()
+                and page.url.lower().startswith(("http://", "https://"))
+                and (
+                    preferred_host is None
+                    or urlsplit(page.url).hostname == preferred_host
+                )
+            ]
+            temporary_page = None
+            if not pages and args.navigate_if_missing:
+                temporary_page = context.new_page()
+                try:
+                    temporary_page.goto(
+                        args.url,
+                        wait_until="domcontentloaded",
+                        timeout=45_000,
+                    )
+                except Exception:
+                    pass
+                if args.wait_seconds:
+                    temporary_page.wait_for_timeout(args.wait_seconds * 1000)
+                pages = [temporary_page]
+            if not pages:
+                raise RuntimeError("Attached browser has no matching HTTP(S) page")
+            page = pages[-1]
+            print("Mode: attached CDP (read-only diagnosis)")
+            _print_page(page, controls_only=args.controls_only)
+            if temporary_page is not None and not temporary_page.is_closed():
+                temporary_page.close()
+            return 0
+
         launch_kwargs: dict[str, object] = {
             "user_data_dir": str(profile),
             "headless": False,
             "accept_downloads": True,
             "service_workers": "allow",
+            "args": ["--no-proxy-server"],
         }
         if args.channel:
             launch_kwargs["channel"] = args.channel
@@ -209,12 +320,7 @@ def main() -> int:
             if args.wait_seconds:
                 page.wait_for_timeout(args.wait_seconds * 1000)
 
-            print()
-            print("Page URL:", redact_url_for_record(page.url) or "")
-            print("Frame count:", len(page.frames))
-
-            for index, frame in enumerate(page.frames, start=1):
-                _print_frame(frame, index)
+            _print_page(page, controls_only=args.controls_only)
         finally:
             context.close()
 

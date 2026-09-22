@@ -1,5 +1,11 @@
 """Authenticated/browser access and acquisition-maximization capability."""
 
+from aletheia_nexus.acquire.access.batch import (
+    BatchAcquisitionItem,
+    BatchAcquisitionResult,
+    BatchItemStatus,
+    acquire_full_text_batch_maximized,
+)
 from aletheia_nexus.acquire.access.browser import (
     BrowserCapabilityUnavailable,
     BrowserSession,
@@ -28,6 +34,9 @@ from aletheia_nexus.acquire.access.service import (
 )
 
 __all__ = [
+    "BatchAcquisitionItem",
+    "BatchAcquisitionResult",
+    "BatchItemStatus",
     "BrowserAccessAttempt",
     "BrowserAccessConfig",
     "BrowserAttemptStatus",
@@ -43,6 +52,7 @@ __all__ = [
     "MaximizedAcquisitionResult",
     "MaximizedAcquisitionStatus",
     "acquire_elsevier_pdf",
+    "acquire_full_text_batch_maximized",
     "acquire_full_text_maximized",
     "acquire_with_browser",
     "browser_profile_dir",

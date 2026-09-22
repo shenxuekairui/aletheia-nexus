@@ -38,13 +38,15 @@ _CAPTCHA_VISIBLE_TERMS = (
     "拖动滑块完成验证",
     "滑块验证",
 )
-_CAPTCHA_DOM_TERMS = (
+_CAPTCHA_WIDGET_TERMS = (
     'class="g-recaptcha',
     "class='g-recaptcha",
     'class="h-captcha',
     "class='h-captcha",
     'class="cf-turnstile',
     "class='cf-turnstile",
+)
+_CAPTCHA_DOM_TERMS = (
     "recaptcha/api2/anchor",
     "hcaptcha.com/captcha",
     "turnstile/v0/",
@@ -114,6 +116,11 @@ _SSO_TERMS = (
     "选择机构",
     "选择您的机构",
     "查找您的机构",
+    "选择组织",
+    "选择您的组织",
+    "查找您的组织",
+    "组织登录",
+    "组织认证",
     "使用中国科技云通行证登录",
     "中国科技云通行证账号登录",
     "carsi",
@@ -140,6 +147,8 @@ _ENTITLEMENT_TERMS = (
     "purchase this article",
     "rent or buy",
     "buy this article",
+    "sign in or purchase",
+    "you do not have access to this pdf",
     "您的机构没有访问权限",
     "您的机构无权访问",
     "当前机构没有访问权限",
@@ -183,10 +192,30 @@ def classify_access_challenge(
     semantic = " ".join((title_text, url_text, visible[:50_000]))
 
     visible_hits = _contains_any(semantic, _CAPTCHA_VISIBLE_TERMS)
+    widget_hits = _contains_any(html_text, _CAPTCHA_WIDGET_TERMS)
     dom_hits = _contains_any(html_text, _CAPTCHA_DOM_TERMS)
-    if visible_hits or dom_hits:
+    captcha_surface = any(
+        marker in " ".join((title_text, url_text))
+        for marker in (
+            "captcha",
+            "challenge",
+            "security check",
+            "security verification",
+            "verify you are human",
+            "verify that you are human",
+            "human verification",
+            "人机验证",
+            "安全验证",
+        )
+    )
+    if visible_hits or dom_hits or (widget_hits and captcha_surface):
         evidence = [
             *(f"CAPTCHA visible signal: {term}" for term in visible_hits[:2]),
+            *(
+                f"CAPTCHA widget signal: {term}"
+                for term in widget_hits[:2]
+                if captcha_surface
+            ),
             *(f"CAPTCHA DOM signal: {term}" for term in dom_hits[:2]),
         ]
         return ChallengeReport(
@@ -254,6 +283,11 @@ def classify_access_challenge(
         "选择机构",
         "选择您的机构",
         "查找您的机构",
+        "选择组织",
+        "选择您的组织",
+        "查找您的组织",
+        "组织登录",
+        "组织认证",
         "single sign-on",
         "single sign on",
         "统一身份认证",

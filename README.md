@@ -34,7 +34,7 @@ Release snapshot：
 ```text
 Tag:       v0.5.2
 Commit:    4f831eb75a38f19735cf6c98bcd64458fac344c0
-Tests:     510 passed on Python 3.11
+Tests:     707 passed, 6 skipped on Python 3.11
 CI:        Python 3.11 / 3.14 ✅
 Released:  2026-09-17
 ```
@@ -275,12 +275,17 @@ persistent browser profile
 ↓
 session reuse / JavaScript / SSO / login / MFA / CAPTCHA handoff
 ↓
-captured PDF response / authenticated request / browser download
+captured PDF response / authenticated request / browser or PDF-viewer save
 ↓
 原有 PDF + paper identity + document-role validation
 ↓
 VERIFIED
 ```
+
+对于 Wiley 等把已授权文献放在 Chromium 内置 PDF 查看器中的站点，AN 会在
+标题与当前论文匹配后调用查看器自身的 Save 控件，将文件写入隔离的临时目录，
+再执行同一套 PDF 结构、论文身份和文档角色验证。该路径只保存浏览器已经取得的
+文件，不绕过登录、CAPTCHA、订阅或机构权限。
 
 核心原则仍然是：**浏览器和认证只能提高“拿到文件”的能力，不能降低
 `VERIFIED` 标准。**
@@ -384,6 +389,77 @@ with BrowserSession(config) as session:
 
 这样不仅复用磁盘 cookie，也保留同一批任务中的短期 SSO / challenge state
 （挑战状态）。
+
+### v0.6 批量下载、断点续跑与权限处理
+
+0.6 提供正式的顺序批量 API。它复用一个惰性启动的 `BrowserSession`，逐篇保存
+原子检查点，并且只跳过仍然存在且 SHA-256 与检查点一致的 `VERIFIED` 文件：
+
+```python
+from aletheia_nexus.acquire.access import acquire_full_text_batch_maximized
+
+batch = acquire_full_text_batch_maximized(
+    ["10.1038/nphys1170", "10.1000/example"],
+    output_dir="downloads/v06-batch",
+    checkpoint_path="downloads/v06-batch/batch-checkpoint.json",
+)
+
+print(batch.status_counts)
+```
+
+权限、登录和验证按以下方式处理：
+
+- 合法登录 cookie、机构 SSO 和短期 challenge 状态在同一批次复用；
+- 已配置的 Elsevier 官方 API 凭据仍会优先用于适用论文；
+- 登录、MFA、CAPTCHA 由可见浏览器中的 Human-in-the-loop 完成；
+- 交互式 CLI 会立即打印挑战类型和安全脱敏后的页面地址，并持续等待，直到
+  登录、MFA 或 CAPTCHA 真正消失；
+- 用户按 `Ctrl+C` 取消、关闭挑战页面，或显式设置的交互超时耗尽后，当前 DOI
+  返回 `INTERACTION_REQUIRED`，默认继续后续论文；只有显式传入
+  `--stop-on-interaction` 才暂停整批；
+- `AUTH_REQUIRED`、`INTERACTION_REQUIRED`、`ENTITLEMENT_REQUIRED` 和
+  `ACCESS_DENIED` 分开报告，下一次运行会重新尝试；
+- 检查点不记录 cookie、token、URL 或异常消息；只有验证成功且哈希一致的文件
+  才会被断点续跑直接复用。
+
+安装 editable package 后，也可以直接运行 CLI。输入支持每行一个 DOI 的文本、
+JSON 列表，或包含 `doi` / 可选 `title` 列的 CSV：
+
+```powershell
+python scripts/batch_v06_download.py dois.csv `
+  --output-dir downloads/v06-batch `
+  --unpaywall-email you@example.com
+```
+
+CLI 默认写入 `batch-checkpoint.json` 和 `batch-report.json`，内部错误最多尝试两次。
+交互模式下不传 `--interaction-timeout` 时，AN 会在可见浏览器挑战处持续等待并在
+挑战解除后自动继续。可传 `--interaction-timeout N` 改为最多等待 N 秒；无人值守
+任务应显式使用 `--non-interactive`。AN 不会自动重试明确的无权限或无订阅状态。
+
+连接本机真实 Edge/Chrome 做大批量测试时，可以让 CLI 自动启动专用持久配置，
+逐篇导航，并为公共解析和浏览器候选设置独立预算：
+
+```powershell
+python -u scripts/batch_v06_download.py dois.json `
+  --output-dir downloads/v06-batch `
+  --cdp-endpoint http://127.0.0.1:9222 `
+  --cdp-navigate `
+  --base-timeout 10 --request-timeout 15 `
+  --max-route-attempts 4 --max-file-attempts 6 `
+  --max-source-routes 3 --max-pdf-candidates 6
+```
+
+AN 自动启动的浏览器始终带有进程级 `--no-proxy-server`，因此文献访问使用
+直连，不读取 Windows 系统代理。它同时使用独立的 AN `user-data-dir`，不会修改
+日常 Edge/Chrome 的代理、配置文件或启动方式。批量工具在本机 CDP 端点不可用时
+会默认自动启动 AN 专用直连浏览器；无需提前
+打开。只有显式传入 `--no-start-browser-if-needed` 才会禁止自动启动。对于用户
+自行启动的外部 CDP 浏览器，AN 会继承该进程已有的网络设置，无法在附加后安全地
+切换代理。
+
+如果用户取消等待或挑战页面被关闭，认证标签会尽量保留；再次执行相同命令时，
+AN 会优先复用标题强匹配的已放行标签，不会为同一篇反复新开标签。报告中的
+`diagnostics` 只保存挑战类型、稳定状态和错误类别，不保存凭据、正文或签名 URL。
 
 ## v0.5 full-text acquisition
 
@@ -536,7 +612,7 @@ pytest            ✅
 最终确定性测试：
 
 ```text
-510 passed on Python 3.11
+707 passed, 6 skipped on Python 3.11
 Python 3.14 also passes the complete CI workflow
 ```
 
@@ -564,7 +640,35 @@ Seawater desalination     2 / 10 VERIFIED
 Combined                  6 / 20 = 30%
 ```
 
+2026-09-23 使用 v0.6 真实浏览器、独立直连配置、断点检查点和收紧的单路预算
+复测：
+
+```text
+Fuel-cell classics       14 / 20 VERIFIED
+CDI                       9 / 10 VERIFIED
+Seawater desalination     8 / 10 VERIFIED
+------------------------------------------
+Combined                 31 / 40 = 77.5%
+```
+
+CDI 余下 1 篇为明确的 `ENTITLEMENT_REQUIRED`。海水淡化余下 ASCE 与 IEEE
+均为 `INTERACTION_REQUIRED`，而不是 PDF 入口或身份验证错误。MDPI 曾出现
+Edge 已下载但 AN 未接管文件的情况；修复后使用 Browser-domain 完成事件和隔离
+临时目录保存，真实单篇及 10 篇集内回归均为 `VERIFIED`。用户放弃 ASCE 机构
+登录后，IEEE 现会继续执行，不再被错误标成 `DEFERRED`。
+
+燃料电池集中的 3 篇 ScienceDirect 在完成国科大机构认证后的独立真实回归为
+3/3 `VERIFIED`；上表仍采用同一批次短预算结果（其中这 3 篇为
+`EXHAUSTED`），避免把单篇结果混入批次统计。该差异表明短预算和站点挑战状态
+仍会造成批次波动，而不是文件身份验证降级。
+
 该小型困难语料用于暴露路径解析、访问阻断和错误验证问题，**不是通用下载成功率**。测试中没有观察到 false `VERIFIED`；当前剩余主要瓶颈已经转向 publisher/index access layer（出版社/索引访问层），而不是 PDF 身份验证层。
+
+历史失败样本中，Wiley、Taylor & Francis、RSC、ACS 与 MDPI 已分别完成真实
+浏览器回归。ACS 修复了空标题 PDF 标签页关联和首页导航文字导致的补充材料
+误判；RSC/Wiley 的 Chromium PDF 查看器可自动保存后验证。所有真实测试均无
+false `VERIFIED`。运行报告写入本地 `downloads/`，不提交可能含短期签名地址的
+运行产物。
 
 ## Scope boundary
 

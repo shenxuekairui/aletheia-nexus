@@ -1,4 +1,7 @@
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from aletheia_nexus.acquire.access import service
 from aletheia_nexus.acquire.access.browser import (
@@ -28,6 +31,13 @@ from aletheia_nexus.acquire.fulltext.models import (
 from aletheia_nexus.acquire.fulltext.orchestration.models import (
     FullTextAcquisitionStatus,
     MultiRouteAcquisitionResult,
+    RouteAttempt,
+    RouteCandidateOrigin,
+)
+from aletheia_nexus.acquire.fulltext.resolution.models import (
+    ResolutionStatus,
+    RetrievedPage,
+    RouteResolutionResult,
 )
 
 
@@ -75,6 +85,187 @@ def test_browser_recovery_plan_includes_discovery_and_resolver():
     assert routes[0].url == "https://publisher.example/article"
     assert any(
         route.url.startswith("https://doi.org/10.1000/target") for route in routes
+    )
+
+
+def test_browser_recovery_plan_adds_acs_canonical_pdf_route():
+    candidate = FullTextCandidate(
+        doi="10.1021/cr050182l",
+        url="https://pubs.acs.org/doi/10.1021/cr050182l",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.PUBLISHER,
+    )
+    base = MultiRouteAcquisitionResult(
+        doi=candidate.doi,
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=DiscoveryResult(
+            doi=candidate.doi,
+            candidates=(candidate,),
+            providers=(),
+        ),
+        expected_title="Target Article",
+    )
+
+    routes = service.browser_recovery_routes(base, limit=3)
+
+    assert routes[0].url == "https://pubs.acs.org/doi/pdf/10.1021/cr050182l"
+    assert routes[0].url_type == CandidateUrlType.PDF
+
+
+def test_browser_recovery_plan_adds_wiley_subdomain_pdf_route():
+    candidate = FullTextCandidate(
+        doi="10.1111/j.1151-2916.1993.tb03645.x",
+        url=(
+            "https://ceramics.onlinelibrary.wiley.com/doi/"
+            "10.1111/j.1151-2916.1993.tb03645.x"
+        ),
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.PUBLISHER,
+    )
+    base = MultiRouteAcquisitionResult(
+        doi=candidate.doi,
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=DiscoveryResult(
+            doi=candidate.doi,
+            candidates=(candidate,),
+            providers=(),
+        ),
+        expected_title="Target Article",
+    )
+
+    routes = service.browser_recovery_routes(base, limit=3)
+
+    assert routes[0].url.endswith(
+        "/doi/pdf/10.1111/j.1151-2916.1993.tb03645.x"
+    )
+    assert routes[0].url_type == CandidateUrlType.PDF
+
+
+def test_browser_recovery_derives_canonical_route_from_resolved_final_url():
+    resolver = FullTextCandidate(
+        doi="10.1002/ente.202100008",
+        url="https://doi.org/10.1002/ente.202100008",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.RESOLVER,
+    )
+    final_url = "https://onlinelibrary.wiley.com/doi/10.1002/ente.202100008"
+    resolved = RouteResolutionResult(
+        source_candidate=resolver,
+        status=ResolutionStatus.ACCESS_BLOCKED,
+        page=RetrievedPage(
+            requested_url=resolver.url,
+            final_url=final_url,
+            http_status=403,
+            content_type="text/html",
+            text=None,
+            size_bytes=0,
+        ),
+    )
+    base = MultiRouteAcquisitionResult(
+        doi=resolver.doi,
+        status=FullTextAcquisitionStatus.ACCESS_BLOCKED,
+        discovery=DiscoveryResult(
+            doi=resolver.doi,
+            candidates=(resolver,),
+            providers=(),
+        ),
+        route_attempts=(
+            RouteAttempt(
+                candidate=resolver,
+                origin=RouteCandidateOrigin.DOI_RESOLVER_FALLBACK,
+                result=resolved,
+            ),
+        ),
+        expected_title="Target Article",
+    )
+
+    routes = service.browser_recovery_routes(base, limit=2)
+
+    assert routes[0].url == (
+        "https://onlinelibrary.wiley.com/doi/pdf/10.1002/ente.202100008"
+    )
+
+
+@pytest.mark.parametrize(
+    ("doi", "landing_url", "expected_url"),
+    [
+        (
+            "10.1002/ente.202100008",
+            "https://onlinelibrary.wiley.com/doi/10.1002/ente.202100008",
+            "https://onlinelibrary.wiley.com/doi/pdf/10.1002/ente.202100008",
+        ),
+        (
+            "10.1080/19443994.2012.719466",
+            "https://www.tandfonline.com/doi/full/10.1080/19443994.2012.719466",
+            "https://www.tandfonline.com/doi/pdf/10.1080/19443994.2012.719466",
+        ),
+        (
+            "10.1061/(ASCE)0733-9372(2007)133:11(1004)",
+            (
+                "https://ascelibrary.org/doi/10.1061/"
+                "%28ASCE%290733-9372%282007%29133%3A11%281004%29"
+            ),
+            (
+                "https://ascelibrary.org/doi/pdf/10.1061/"
+                "%28ASCE%290733-9372%282007%29133%3A11%281004%29"
+            ),
+        ),
+        (
+            "10.3390/membranes11030183",
+            "https://www.mdpi.com/2077-0375/11/3/183",
+            "https://www.mdpi.com/2077-0375/11/3/183/pdf",
+        ),
+        (
+            "10.1109/ICEET.2009.450",
+            "https://ieeexplore.ieee.org/document/5366888/",
+            "https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5366888",
+        ),
+    ],
+)
+def test_supported_publishers_derive_canonical_pdf_route(
+    doi,
+    landing_url,
+    expected_url,
+):
+    candidate = FullTextCandidate(
+        doi=doi,
+        url=landing_url,
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.PUBLISHER,
+    )
+
+    derived = service._canonical_publisher_pdf_candidate(candidate)
+
+    assert derived is not None
+    assert derived.url == expected_url
+    assert derived.url_type == CandidateUrlType.PDF
+
+
+def test_canonical_article_route_outranks_supplement_route():
+    canonical = FullTextCandidate(
+        doi="10.1021/acs.est.0c06552",
+        url="https://pubs.acs.org/doi/pdf/10.1021/acs.est.0c06552",
+        provenance=(),
+        url_type=CandidateUrlType.PDF,
+        host_type=HostType.PUBLISHER,
+        source_name="Publisher canonical DOI PDF route",
+    )
+    supplement = replace(
+        canonical,
+        url="https://acs.figshare.com/ndownloader/files/es0c06552_si_001.pdf",
+        source_name="Publisher supplement",
+    )
+
+    assert service._browser_route_score(
+        canonical,
+        explicit_access_barrier=False,
+    ) > service._browser_route_score(
+        supplement,
+        explicit_access_barrier=True,
     )
 
 
