@@ -26,6 +26,9 @@ so a simple failure does not spend time setting up Chromium.
 This is a **cost policy**, not a reduced release standard. A draft PR cannot be
 merged. GitHub still records ordinary draft PR events, but jobs are skipped
 before runner allocation; a skipped check is **not** proof that tests passed.
+GitHub can display a skipped job as a successful required check, so release
+review must inspect the actual job conclusion (`success`, not `skipped`) and
+the head SHA, rather than trusting a green PR badge alone.
 For an early cloud check on a specific draft head, apply the `ci:full` label
 to the PR: that **label event** runs the complete matrix once. To repeat it on
 a later draft head, remove and reapply the label. A label left on the PR does
@@ -66,7 +69,8 @@ real-network job consuming minutes while nobody is preparing a release.
    the intended institutional environment, as defined in
    `docs/v0.6-acquisition-maximization.md`. Record results without credentials.
 3. Make the final release commit, then mark the PR ready for review. Wait for
-   all three CI jobs to pass **on that commit**. If a subsequent commit lands,
+   all three CI jobs to conclude `success` **on that commit**. If a subsequent
+   commit lands,
    repeat the full gate. Never treat a skipped draft job as a green release gate.
 4. Merge only after CI and live acceptance both pass; tag the merged `main`
    commit, not an unmerged PR commit.
