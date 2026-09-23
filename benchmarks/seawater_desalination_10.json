@@ -1,0 +1,72 @@
+[
+  {
+    "id": "nature-cof-desalination",
+    "doi": "10.1038/s41893-022-00870-3",
+    "title": "Ultrafast seawater desalination with covalent organic framework membranes",
+    "publisher": "Springer Nature / Nature Sustainability",
+    "route_goal": "Nature-family article; tests publisher landing-page resolution and article versus supplementary-material paths."
+  },
+  {
+    "id": "elsevier-electric-field-md",
+    "doi": "10.1016/j.desal.2024.118495",
+    "title": "Enhancement of membrane distillation in seawater desalination process using inhomogeneous electric field",
+    "publisher": "Elsevier / Desalination",
+    "route_goal": "ScienceDirect article; tests Elsevier landing routes, access boundaries, and alternate routes."
+  },
+  {
+    "id": "acs-cof-membrane",
+    "doi": "10.1021/acsnano.5c01551",
+    "title": "Tunable Hydrated Channels in Covalent Organic Framework Membrane for Seawater Desalination",
+    "publisher": "American Chemical Society / ACS Nano",
+    "route_goal": "ACS article; tests publisher access blocking and article versus supporting-information candidates."
+  },
+  {
+    "id": "wiley-energy-efficient",
+    "doi": "10.1002/ente.202100008",
+    "title": "Energy Efficient Seawater Desalination: Strategies and Opportunities",
+    "publisher": "Wiley",
+    "route_goal": "Wiley Online Library ecosystem; tests publisher and repository fallback paths."
+  },
+  {
+    "id": "rsc-copper-sulfide",
+    "doi": "10.1039/D1VA00043H",
+    "title": "A flexible copper sulfide composite membrane with tunable plasmonic resonance absorption for near-infrared light-driven seawater desalination",
+    "publisher": "Royal Society of Chemistry",
+    "route_goal": "RSC open-access article with supplementary files; tests access semantics and document-role filtering."
+  },
+  {
+    "id": "mdpi-cta-hollow-fiber",
+    "doi": "10.3390/membranes11030183",
+    "title": "Cellulose Triacetate (CTA) Hollow-Fiber (HF) Membranes for Sustainable Seawater Desalination: A Review",
+    "publisher": "MDPI / Membranes",
+    "route_goal": "Open-access MDPI article; tests publisher-PDF and repository fallback behavior."
+  },
+  {
+    "id": "frontiers-pvdf-md",
+    "doi": "10.3389/frmst.2023.1165678",
+    "title": "Carbon nanotubes and silver nanoparticles modification of PVDF membranes for improved seawater desalination in direct contact membrane distillation",
+    "publisher": "Frontiers",
+    "route_goal": "Frontiers open-access article; tests its independent direct-PDF routing pattern."
+  },
+  {
+    "id": "tandf-direct-contact-md",
+    "doi": "10.1080/19443994.2012.719466",
+    "title": "Direct contact membrane distillation for seawater desalination",
+    "publisher": "Taylor & Francis / migrated platform",
+    "route_goal": "Legacy DOI with publisher migration; tests bridge-page and next-hop route expansion."
+  },
+  {
+    "id": "asce-nanofiltration",
+    "doi": "10.1061/(ASCE)0733-9372(2007)133:11(1004)",
+    "title": "Bench-Scale Testing of Nanofiltration for Seawater Desalination",
+    "publisher": "ASCE",
+    "route_goal": "Complex legacy DOI containing parentheses and colon; tests DOI handling plus access boundaries."
+  },
+  {
+    "id": "ieee-solar-desalination",
+    "doi": "10.1109/ICEET.2009.450",
+    "title": "The Study of Solar Desalination System with Falling Film Evaporation and Its Operation",
+    "publisher": "IEEE",
+    "route_goal": "IEEE conference-paper ecosystem; tests dynamic publisher pages and access boundaries."
+  }
+]

@@ -1,0 +1,72 @@
+[
+  {
+    "id": "nature-communications-oa",
+    "doi": "10.1038/s41467-025-56694-0",
+    "title": "Unveiling the neglected role of oxygen doping in nitrogen-doped carbon for enhanced capacitive deionization performance",
+    "publisher": "Springer Nature / Nature Communications",
+    "route_goal": "Open-access publisher article; exercises Nature landing-page to PDF resolution."
+  },
+  {
+    "id": "npj-clean-water-oa",
+    "doi": "10.1038/s41545-021-00109-2",
+    "title": "Long-lasting, monovalent-selective capacitive deionization electrodes",
+    "publisher": "Springer Nature / npj Clean Water",
+    "route_goal": "Open-access Nature-family article with publisher and repository routes."
+  },
+  {
+    "id": "springer-pmc-oa",
+    "doi": "10.1186/s11671-016-1284-1",
+    "title": "Preparation and Application of Electrodes in Capacitive Deionization (CDI): a State-of-Art Review",
+    "publisher": "Springer Nature / Nanoscale Research Letters",
+    "route_goal": "Older open-access Springer article with PMC-style repository diversity."
+  },
+  {
+    "id": "acs-est-open-access",
+    "doi": "10.1021/acs.est.0c06552",
+    "title": "Flow Electrode Capacitive Deionization (FCDI): Recent Developments, Environmental Applications, and Future Perspectives",
+    "publisher": "American Chemical Society / Environmental Science & Technology",
+    "route_goal": "ACS open-access article; tests article-PDF versus supporting-information evidence."
+  },
+  {
+    "id": "acs-est-paywalled",
+    "doi": "10.1021/acs.est.5b04640",
+    "title": "Flow-Electrode Capacitive Deionization Using an Aqueous Electrolyte with a High Salt Concentration",
+    "publisher": "American Chemical Society / Environmental Science & Technology",
+    "route_goal": "Older ACS subscription article; exercises explicit access boundaries."
+  },
+  {
+    "id": "elsevier-open-access",
+    "doi": "10.1016/j.desal.2024.118392",
+    "title": "Exploring flow-electrode capacitive deionization: An overview and new insights",
+    "publisher": "Elsevier / Desalination",
+    "route_goal": "Elsevier open-access article; exercises ScienceDirect and repository landing routes."
+  },
+  {
+    "id": "elsevier-open-manuscript",
+    "doi": "10.1016/j.desal.2023.117146",
+    "title": "Ion-selectivity advancements in capacitive deionization: A comprehensive review",
+    "publisher": "Elsevier / Desalination",
+    "route_goal": "Elsevier article with organization-access and open-manuscript behavior."
+  },
+  {
+    "id": "wiley-open-access",
+    "doi": "10.1002/celc.202400277",
+    "title": "Commercialization Efforts of Capacitive Deionization Technology in Water Treatment Processes",
+    "publisher": "Wiley / ChemElectroChem",
+    "route_goal": "Wiley open-access article with publisher and repository paths."
+  },
+  {
+    "id": "rsc-open-access",
+    "doi": "10.1039/D6TA02244H",
+    "title": "Capacitive deionization for targeted anion removal: mechanisms, advances, and future directions",
+    "publisher": "Royal Society of Chemistry / Journal of Materials Chemistry A",
+    "route_goal": "RSC open-access article; exercises access-blocked versus authentication semantics."
+  },
+  {
+    "id": "nature-water-subscription",
+    "doi": "10.1038/s44221-024-00340-4",
+    "title": "Curvature-induced ion docking effect in capacitive deionization",
+    "publisher": "Springer Nature / Nature Water",
+    "route_goal": "Nature Water subscription-style article; tests no-file and access-boundary outcomes."
+  }
+]

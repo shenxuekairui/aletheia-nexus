@@ -1,0 +1,20 @@
+[
+  {
+    "id": "replace-control-1",
+    "doi": "10.0000/replace-me-1",
+    "title": "Replace with an article you manually confirmed downloadable",
+    "access_family": "replace-publisher-family-a"
+  },
+  {
+    "id": "replace-control-2",
+    "doi": "10.0000/replace-me-2",
+    "title": "Replace with a second manually confirmed downloadable article",
+    "access_family": "replace-publisher-family-b"
+  },
+  {
+    "id": "replace-control-3",
+    "doi": "10.0000/replace-me-3",
+    "title": "Replace with a third manually confirmed downloadable article",
+    "access_family": "replace-publisher-family-a"
+  }
+]
