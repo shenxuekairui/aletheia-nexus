@@ -350,8 +350,11 @@ python scripts/manual_v06_access_acceptance.py `
 
 该本地文件已加入 `.gitignore`，不会被误当成通用公开 benchmark。
 
-如果 GitHub Actions runner（GitHub Actions 执行机）不可用，可以先在本机运行与
-CI 同级的确定性 Release Candidate（发布候选）检查：
+CI 现按 [分层架构](docs/CI_ARCHITECTURE.md) 运行：草稿 PR 做 Python 3.11
+完整确定性检查；PR 转为 ready、合并队列或 `main` 更新时，追加 Python 3.14
+和真实 Chromium 集成测试。真实出版社网络与机构授权验收仍在本地进行。
+GitHub Actions 额度耗尽时，新架构也不能让云端 runner 启动；可以先在本机运行
+Release Candidate（发布候选）检查：
 
 ```powershell
 .\scripts\verify_v06_rc.ps1
@@ -365,8 +368,9 @@ CI 同级的确定性 Release Candidate（发布候选）检查：
 
 该脚本依次检查 `pip check`、Ruff format（格式）、Ruff lint（静态检查）、
 `compileall` 和完整 `pytest`；`-Browser` 额外启动真实 Chromium 并运行
-access-layer browser integration tests（访问层浏览器集成测试）。它是 CI 的
-独立验证路径，但不能替代正式机构环境的 live acceptance（真实验收）。
+access-layer browser integration tests（访问层浏览器集成测试）。分别在 Python
+3.11 和 3.14 环境运行，才等同覆盖 CI 的两个版本。它是 CI 的独立验证路径，
+但不能替代正式机构环境的 live acceptance（真实验收）。
 
 批量任务建议复用一个 live BrowserSession（实时浏览器会话），而不是每篇
 论文重新启动浏览器：
