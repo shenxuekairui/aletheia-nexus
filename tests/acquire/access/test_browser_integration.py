@@ -42,6 +42,7 @@ class _Handler(BaseHTTPRequestHandler):
     )
     accessible_pdf_body = _pdf_bytes("Accessible PDF Control Integration Article")
     persistent_pdf_body = _pdf_bytes("Persistent Browser Integration Article")
+    ieee_pdf_body = _pdf_bytes("IEEE Browser Integration Article")
     pdf_cookie_seen = False
     popup_cookie_seen = False
     institution_cookie_seen = False
@@ -53,6 +54,35 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+
+        if path == "/ieee-document":
+            body = b"""<!doctype html>
+<html>
+<head>
+<meta name="citation_title" content="IEEE Browser Integration Article">
+<meta name="citation_doi" content="10.1109/TEST.2026.1234567">
+<title>IEEE Browser Integration Article</title>
+</head>
+<body><button onclick="location.href='/ieee-download'">Download PDF</button></body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/ieee-download":
+            body = type(self).ieee_pdf_body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header(
+                "Content-Disposition", 'attachment; filename="ieee-article.pdf"'
+            )
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         if path == "/article":
             body = b"""<!doctype html>
@@ -453,6 +483,42 @@ def test_real_browser_recovers_pdf_opened_in_new_tab(
         )
         for a in result.attempts
     ]
+    assert result.verified_result.status == AcquisitionStatus.VERIFIED
+    assert result.verified_result.file_path is not None
+
+
+def test_real_browser_clicks_ieee_style_download_control(
+    monkeypatch,
+    tmp_path,
+    local_article_server,
+):
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+
+    candidate = FullTextCandidate(
+        doi="10.1109/test.2026.1234567",
+        url=f"{local_article_server}/ieee-document",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    config = BrowserAccessConfig(
+        profile_name="ieee-integration",
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+        auto_challenge_grace=0,
+        interaction_timeout=0,
+    )
+
+    with BrowserSession(config) as session:
+        result = session.acquire(
+            doi=candidate.doi,
+            routes=[candidate],
+            output_dir=tmp_path / "downloads",
+            expected_title="IEEE Browser Integration Article",
+        )
+
+    assert result.verified_result is not None
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
     assert result.verified_result.file_path is not None
 

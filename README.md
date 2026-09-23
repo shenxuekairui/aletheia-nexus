@@ -17,7 +17,7 @@ Unauthenticated Full-text Acquisition
 FINAL / HARDENED / FROZEN
 ```
 
-当前开发主线：
+当前开发主线（0.6 发布候选；稳定标签仍受下文验收门槛约束）：
 
 ```text
 Aletheia Nexus v0.6
@@ -170,8 +170,9 @@ python -m playwright install chromium
 python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```
 
-稳定标签 `v0.5.2` 应输出 `0.5.2`。v0.6 开发分支在冻结前使用
-`0.6.0.dev0`。
+稳定标签 `v0.5.2` 应输出 `0.5.2`。v0.6 发布候选在冻结前使用
+`0.6.0.dev0`；只有完成 [v0.6 退出标准](docs/v0.6-acquisition-maximization.md#16-exit-criteria)
+后才能改为 `0.6.0` 并创建稳定标签。
 
 ## Main APIs
 
@@ -412,8 +413,10 @@ print(batch.status_counts)
 - 合法登录 cookie、机构 SSO 和短期 challenge 状态在同一批次复用；
 - 已配置的 Elsevier 官方 API 凭据仍会优先用于适用论文；
 - 登录、MFA、CAPTCHA 由可见浏览器中的 Human-in-the-loop 完成；
-- IEEE Xplore 按其站点机器人使用条款走用户操作路径：AN 不自动访问或批量请求
-  Xplore；用户自行下载单篇后，AN 接管指定的本地 PDF，执行同一套科学验证；
+- IEEE DOI 现在进入与其他出版社相同的自动发现、浏览器页面和 PDF 下载流程；
+  浏览器会尝试页面上的 PDF 控件，并对取得的文件执行同一套科学验证；
+  如 PDF 弹窗显示已记住的“Access Through …”机构入口，AN 会点击、等待约 5 秒，
+  然后在当前页面重试一次 PDF；仍需账号登录时返回交互状态；
 - 交互式 CLI 会立即打印挑战类型和安全脱敏后的页面地址，并持续等待，直到
   登录、MFA 或 CAPTCHA 真正消失；
 - 用户按 `Ctrl+C` 取消、关闭挑战页面，或显式设置的交互超时耗尽后，当前 DOI
@@ -433,9 +436,9 @@ python scripts/batch_v06_download.py dois.csv `
   --unpaywall-email you@example.com
 ```
 
-IEEE DOI 在交互式终端会暂停并提示用户自行打开 DOI 链接、保存单篇 PDF、输入
-本地路径；无人值守运行会返回 `INTERACTION_REQUIRED` 并继续后续项目。已下载的
-文件可在重跑时显式提供，无需再次访问 Xplore：
+IEEE DOI 默认自动尝试网页下载。需要无人值守运行时可传 `--non-interactive`；
+登录、订阅或页面挑战无法自动完成时会返回相应状态。已有 PDF 可在重跑时
+显式提供；如需下载失败后提示输入本地文件路径，可加 `--manual-ieee-fallback`：
 
 ```powershell
 python scripts/batch_v06_download.py dois.csv `
@@ -444,8 +447,8 @@ python scripts/batch_v06_download.py dois.csv `
   --local-pdf "10.1109/ICEET.2009.450=C:\path\to\paper.pdf"
 ```
 
-将示例 DOI 和路径替换成真实值。AN 只复制并验证用户
-指定的文件，不修改原件；错误论文或非 PDF 不能成为 `VERIFIED`。
+将示例 DOI 和路径替换成真实值。显式提供的本地文件只会被复制并验证，
+原件不会被修改；错误论文或非 PDF 不能成为 `VERIFIED`。
 
 CLI 默认写入 `batch-checkpoint.json` 和 `batch-report.json`，内部错误最多尝试两次。
 交互模式下不传 `--interaction-timeout` 时，AN 会在可见浏览器挑战处持续等待并在
@@ -668,8 +671,8 @@ Combined                 31 / 40 = 77.5%
 ```
 
 CDI 余下 1 篇为明确的 `ENTITLEMENT_REQUIRED`。海水淡化余下 ASCE 与 IEEE
-在原始批次均为 `INTERACTION_REQUIRED`；IEEE 后续改为用户操作/本地文件导入，
-不再自动请求 Xplore。MDPI 曾出现
+在原始批次均为 `INTERACTION_REQUIRED`；IEEE 此后经用户完成机构认证，由 AN
+复用持久浏览器会话自动下载 `10.1109/ICEET.2009.450` 并验证为正文。MDPI 曾出现
 Edge 已下载但 AN 未接管文件的情况；修复后使用 Browser-domain 完成事件和隔离
 临时目录保存，真实单篇及 10 篇集内回归均为 `VERIFIED`。用户放弃 ASCE 机构
 登录后，后续项目现会继续执行，不再被错误标成 `DEFERRED`。
@@ -688,13 +691,34 @@ Nature 失败项的独立真实复测进一步定位到两个不同原因：
 要求购买文章，归类为 `ENTITLEMENT_REQUIRED`，未绕过订阅权限。这些单篇复测
 不回填上面的原始 40 篇批次统计。
 
+按同一 40 篇论文去重，汇总上述后续真实单篇复测，**累计 37/40 已
+`VERIFIED`**（并非一次完整重跑的成功率）。未成功的 3 篇是：
+
+- `10.1038/nchem.367`：Nature 页面要求购买，`ENTITLEMENT_REQUIRED`。
+- `10.1038/s44221-024-00340-4`：Nature 页面要求购买，`ENTITLEMENT_REQUIRED`。
+- `10.1061/(ASCE)0733-9372(2007)133:11(1004)`：机构登录未完成；原始批次为
+  `INTERACTION_REQUIRED`，尚不能判定是否有订阅权限。
+
+PDF 审核仍坚持“正确 DOI/标题 + 正文而非附件”的标准。Nature 两篇的首页标题
+提取边界、ACS 正文首页导航中的 “Supporting Information” 误判都已有回归修复；
+这解决了已复现的过严误判，**不保证所有新出版社版式都不会产生 false negative**。
+
 该小型困难语料用于暴露路径解析、访问阻断和错误验证问题，**不是通用下载成功率**。测试中没有观察到 false `VERIFIED`；剩余瓶颈既有 publisher/index access layer（出版社/索引访问层），也有 PDF 文本提取与身份判定的边界情况。
 
 历史失败样本中，Wiley、Taylor & Francis、RSC、ACS 与 MDPI 已分别完成真实
 浏览器回归。ACS 修复了空标题 PDF 标签页关联和首页导航文字导致的补充材料
 误判；RSC/Wiley 的 Chromium PDF 查看器可自动保存后验证。所有真实测试均无
 false `VERIFIED`。运行报告写入本地 `downloads/`，不提交可能含短期签名地址的
-运行产物。
+URL 运行产物。
+
+另一次用户指定的 20 篇实测使用
+`benchmarks/user_20260923_20_with_titles.json`，在 AN 持久 Edge 会话和用户完成
+机构登录/CAPTCHA 后，经检查点续跑及独立复测回填，最终报告为 **19/20
+`VERIFIED`**。最后一篇 `10.1055/a-2508-9744` 的官方 PDF 入口返回购买页；
+用户确认当前无订阅权限。报告中的 `EXHAUSTED` 是该轮自动尝试结果，不应解释
+为文件验证失败。ACS `10.1021/jacs.6c03536` 的正文第一页包含
+“Supporting Information”导航文字且标题词被 PDF 提取器连写；修复后已通过
+完整标题与正文首页验证为主文，而非补充材料。
 
 ## Scope boundary
 
@@ -715,6 +739,10 @@ knowledge-base / autonomous Agent logic
 这些不是 v0.5 “漏掉的功能”，而是应当保持独立边界的后续能力层。
 
 ## Documentation
+
+完整中文使用说明（安装、批量下载、登录续跑、结果审查与排障）：
+
+[Aletheia Nexus 0.6 使用说明书](docs/USER_MANUAL.md)
 
 v0.6 获取率最大化规范：
 

@@ -8,7 +8,7 @@ from aletheia_nexus.acquire.fulltext.validation import PdfInspection
 
 
 def _inspection(
-    *, text="", title=None, encrypted=False, page_count=3, first_page_text=""
+    *, text="", title=None, encrypted=False, page_count=3, first_page_text=None
 ):
     return PdfInspection(
         report=PdfValidationReport(
@@ -20,7 +20,7 @@ def _inspection(
         ),
         metadata_title=title,
         extracted_text=text,
-        first_page_text=first_page_text,
+        first_page_text=text if first_page_text is None else first_page_text,
     )
 
 
@@ -28,12 +28,49 @@ def test_exact_doi_match_verifies_article_identity():
     result = validate_paper_identity(
         target_doi="10.1000/xyz123",
         source_url="https://example.org/paper.pdf",
-        inspection=_inspection(text="Article DOI: 10.1000/xyz123"),
+        inspection=_inspection(
+            text="Article DOI: 10.1000/xyz123",
+            first_page_text="Article DOI: 10.1000/xyz123",
+        ),
     )
 
     assert result.status == IdentityStatus.MATCH
     assert result.document_role == DocumentRole.ARTICLE
     assert result.doi_match is True
+
+
+def test_doi_only_in_later_pages_does_not_verify_cited_article():
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        source_url="https://example.org/other-paper.pdf",
+        inspection=_inspection(
+            text=(
+                "A different paper DOI 10.9999/other. "
+                "References include DOI 10.1000/target."
+            ),
+            first_page_text="A different paper DOI 10.9999/other.",
+        ),
+    )
+
+    assert result.doi_match is True
+    assert result.status == IdentityStatus.UNKNOWN
+    assert result.document_role == DocumentRole.UNKNOWN
+
+
+def test_later_page_doi_with_exact_first_page_title_still_verifies():
+    title = "Electrochemical Transformation of Carbon Dioxide at Copper Interfaces"
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        source_url="https://example.org/paper.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            text=f"{title} ABSTRACT: Results. DOI 10.1000/target",
+            first_page_text=f"{title} ABSTRACT: Results.",
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
 
 
 def test_metadata_title_can_verify_when_doi_is_absent():
@@ -64,6 +101,7 @@ def test_title_lead_matching_tolerates_split_chemical_formula_typography():
                 "operation at 500 C Authors and affiliations"
             ),
             title="Elsevier main.pdf",
+            first_page_text="",
         ),
     )
 
@@ -84,6 +122,7 @@ def test_similar_title_in_late_reference_text_does_not_verify_identity():
                 ("Unrelated article body words " * 80)
                 + " Electrocatalytic Water Activation at Interfaces"
             ),
+            first_page_text="Unrelated article body words " * 80,
         ),
     )
 
@@ -241,6 +280,36 @@ def test_article_navigation_supporting_information_label_does_not_override_front
 
     assert result.status == IdentityStatus.MATCH
     assert result.document_role == DocumentRole.ARTICLE
+
+
+def test_fused_acs_title_and_supporting_information_nav_are_main_article():
+    title = (
+        "Electrosynthesis of Ethylene Glycol from Methanol via Oxidative C-C Coupling"
+    )
+    result = validate_paper_identity(
+        target_doi="10.1021/jacs.6c03536",
+        source_url="https://pubs.acs.org/jacsat/article-pdf/ja6c03536.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            text=(
+                "ElectrosynthesisofEthyleneGlycolfromMethanolviaOxidative "
+                "C−CCoupling Authors Cite This Supporting Information "
+                "ABSTRACT: Ethylene glycol is a commodity chemical. "
+                "DOI 10.1021/jacs.6c03536"
+            ),
+            first_page_text=(
+                "ElectrosynthesisofEthyleneGlycolfromMethanolviaOxidative "
+                "C−CCoupling Authors Cite This Supporting Information "
+                "ABSTRACT: Ethylene glycol is a commodity chemical. "
+                "DOI 10.1021/jacs.6c03536"
+            ),
+            title="ja6c03536 1..10",
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
+    assert result.title_similarity == 1.0
 
 
 def test_true_supplement_heading_without_article_abstract_remains_supplement():

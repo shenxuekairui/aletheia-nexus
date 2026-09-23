@@ -20,7 +20,7 @@ from aletheia_nexus.acquire.access.models import (
     MaximizedAcquisitionResult,
     MaximizedAcquisitionStatus,
 )
-from aletheia_nexus.acquire.access.publisher_routes import requires_user_operated_access
+from aletheia_nexus.acquire.access.publisher_routes import is_ieee_doi
 from aletheia_nexus.acquire.access.service import acquire_full_text_maximized
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
@@ -344,7 +344,7 @@ def acquire_full_text_batch_maximized(
                     )
                     if (
                         result.status == MaximizedAcquisitionStatus.INTERACTION_REQUIRED
-                        and requires_user_operated_access(doi)
+                        and is_ieee_doi(doi)
                         and doi not in local_files
                         and manual_file_callback is not None
                     ):

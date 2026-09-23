@@ -20,7 +20,6 @@ from aletheia_nexus.acquire.access.models import (
 )
 from aletheia_nexus.acquire.access.publisher_routes import (
     canonical_pdf_route,
-    requires_user_operated_access,
 )
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
@@ -190,6 +189,7 @@ def browser_recovery_routes(
     # publisher endpoints, not access-control bypasses; any login, CAPTCHA, or
     # subscription response is still handled by the normal browser workflow.
     source_candidates = list(base_result.discovery.candidates)
+    source_candidates.append(_resolver_candidate(base_result.doi))
     source_candidates.extend(
         attempt.candidate for attempt in base_result.route_attempts
     )
@@ -371,10 +371,8 @@ def acquire_full_text_maximized(
         else browser_config or BrowserAccessConfig()
     )
 
-    # Explicit user files and IEEE Xplore's user-operated access boundary are
-    # resolved before network discovery. IEEE's published bot policy forbids
-    # agent access; a local file can still pass the exact same science gate.
-    if local_pdf_path is not None or requires_user_operated_access(normalized_doi):
+    # An explicitly supplied file takes precedence over network acquisition.
+    if local_pdf_path is not None:
         return replace(
             resolve_user_operated_access(
                 normalized_doi,

@@ -160,6 +160,8 @@ _DENIED_TERMS = (
     "request has been blocked",
     "you have been blocked",
     "403 forbidden",
+    "unusual traffic detected",
+    "unusual request pattern",
     "拒绝访问",
     "请求已被阻止",
 )

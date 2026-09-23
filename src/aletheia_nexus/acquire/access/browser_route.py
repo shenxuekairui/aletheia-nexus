@@ -49,6 +49,7 @@ _SEMANTIC_PDF_CONTROL = re.compile(
 )
 _SEMANTIC_INSTITUTION_CONTROL = re.compile(
     r"(?:access|sign\s*in|log\s*in).{0,50}(?:institution|organization|organisation)"
+    r"|access\s+through.{0,50}(?:university|academy|college|library)"
     r"|(?:institutional|organization|organisation).{0,50}(?:access|sign\s*in|login)"
     r"|carsi|shibboleth|openathens|中国科技云通行证|统一身份认证|机构(?:登录|认证|访问)",
     re.IGNORECASE,
@@ -59,6 +60,7 @@ _MODAL_DISMISS_LABELS = frozenset(
     {
         "cancel",
         "close",
+        "close button",
         "close dialog",
         "close modal",
         "close window",
@@ -266,12 +268,69 @@ def _page_snapshot(page) -> tuple[str, str, str, str]:
 
 def _report_for_page(page) -> ChallengeReport:
     title, url, visible_text, html = _page_snapshot(page)
-    return classify_access_challenge(
+    report = classify_access_challenge(
         title=title,
         url=url,
         visible_text=visible_text,
         html=html,
     )
+    # Xplore's article chrome advertises institutional sign-in and purchase
+    # before the PDF is clicked. Treat that chrome as an access boundary only
+    # once the actual access dialog appears; otherwise it masks the PDF control.
+    try:
+        parts = urlsplit(url)
+        if (
+            parts.hostname == "ieeexplore.ieee.org"
+            and re.fullmatch(r"/document/\d+/?", parts.path)
+            and report.kind
+            in {
+                ChallengeKind.SSO,
+                ChallengeKind.AUTHENTICATION,
+                ChallengeKind.ENTITLEMENT,
+            }
+        ):
+            pdf_controls = page.locator("a, button").filter(
+                has_text=re.compile(r"\bPDF\b", re.IGNORECASE)
+            )
+            has_pdf_control = any(
+                pdf_controls.nth(index).is_visible()
+                for index in range(min(pdf_controls.count(), 20))
+            )
+            dialogs = page.locator("dialog, [role='dialog'], .js-react-modal").filter(
+                has_text="Full text access may be available"
+            )
+            access_dialog_open = any(
+                dialogs.nth(index).is_visible()
+                for index in range(min(dialogs.count(), 8))
+            )
+            if has_pdf_control and not access_dialog_open:
+                return ChallengeReport(kind=ChallengeKind.NONE)
+    except Exception:
+        pass
+    return report
+
+
+def _wait_for_ieee_article_controls(page) -> None:
+    """Let Xplore hydrate its article controls after DOMContentLoaded."""
+
+    try:
+        parts = urlsplit(str(page.url))
+        if parts.hostname != "ieeexplore.ieee.org" or not re.fullmatch(
+            r"/document/\d+/?", parts.path
+        ):
+            return
+        page.wait_for_function(
+            """() => Array.from(document.querySelectorAll(
+              'a, button, [role="button"], [role="link"]'
+            )).some(element => /\\bpdf\\b/i.test([
+              element.innerText || '',
+              element.getAttribute('aria-label') || ''
+            ].join(' ')))""",
+            timeout=8000,
+        )
+    except Exception:
+        # A slow or blocked page should still reach normal challenge detection.
+        pass
 
 
 def _append_report(
@@ -486,12 +545,32 @@ def _challenge_from_non_pdf_response(response, body: bytes) -> ChallengeReport:
         return ChallengeReport(kind=ChallengeKind.NONE)
     text = body[:500_000].decode("utf-8", errors="ignore")
     parsed = parse_html(text)
-    return classify_access_challenge(
+    report = classify_access_challenge(
         title=parsed.title or "",
         url=response.url,
         visible_text=parsed.visible_text,
         html=text,
     )
+    if report.kind == ChallengeKind.NONE:
+        # Thieme's DOI PDF endpoint redirects unsubscribed visitors to its
+        # abstract page. Its paywall button says "Buy Article" (without "this").
+        parts = urlsplit(response.url)
+        if (
+            (parts.hostname or "").lower()
+            in {
+                "thieme-connect.com",
+                "www.thieme-connect.com",
+                "thieme-connect.de",
+                "www.thieme-connect.de",
+            }
+            and "/products/ejournals/abstract/" in parts.path.lower()
+            and "buy article" in parsed.visible_text.lower()
+        ):
+            return ChallengeReport(
+                kind=ChallengeKind.ENTITLEMENT,
+                evidence=("Publisher PDF route returned a Buy Article page",),
+            )
+    return report
 
 
 def _safe_referer(source_page_url: str, target_url: str) -> str | None:
@@ -1293,6 +1372,34 @@ def _click_semantic_pdf_control(page) -> bool:
 def _click_semantic_institution_control(page) -> bool:
     """Click one explicit institutional-access control as a late fallback."""
 
+    # The Xplore PDF dialog can show a previously selected institution. Its
+    # blue "Access Through ..." action is more specific than the page header's
+    # generic "Institutional Sign In" link.
+    try:
+        if (urlsplit(str(page.url)).hostname or "").lower() == "ieeexplore.ieee.org":
+            dialogs = page.locator("dialog, [role='dialog'], .js-react-modal").filter(
+                has_text="Full text access may be available"
+            )
+            for dialog_index in range(min(dialogs.count(), 8)):
+                dialog = dialogs.nth(dialog_index)
+                if not dialog.is_visible():
+                    continue
+                controls = dialog.locator(_INTERACTIVE_CONTROL_SELECTOR)
+                for control_index in range(min(controls.count(), 40)):
+                    control = controls.nth(control_index)
+                    if not control.is_visible():
+                        continue
+                    if not re.match(
+                        r"^access\s+through\b",
+                        _control_semantics(control),
+                        re.IGNORECASE,
+                    ):
+                        continue
+                    control.click(timeout=5000)
+                    return True
+    except Exception:
+        pass
+
     try:
         locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
         count = min(locator.count(), 120)
@@ -1343,11 +1450,41 @@ def _click_semantic_institution_control(page) -> bool:
     return False
 
 
+def _ieee_selected_institution_available(page) -> bool:
+    """Distinguish a remembered institution from the institution chooser."""
+
+    try:
+        if (urlsplit(str(page.url)).hostname or "").lower() != "ieeexplore.ieee.org":
+            return False
+        dialogs = page.locator("dialog, [role='dialog'], .js-react-modal").filter(
+            has_text="Full text access may be available"
+        )
+        for dialog_index in range(min(dialogs.count(), 8)):
+            dialog = dialogs.nth(dialog_index)
+            if not dialog.is_visible():
+                continue
+            controls = dialog.locator(_INTERACTIVE_CONTROL_SELECTOR)
+            for control_index in range(min(controls.count(), 40)):
+                control = controls.nth(control_index)
+                if not control.is_visible():
+                    continue
+                label = _control_semantics(control).casefold()
+                if label.startswith("access through ") and not label.startswith(
+                    "access through your institution"
+                ):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def _resolve_external_auth_page(
     page,
     *,
     source_host: str,
     config: BrowserAccessConfig,
+    context=None,
+    existing_page_ids: set[int] | None = None,
 ) -> tuple[ChallengeReport, tuple[ChallengeReport, ...], bool]:
     """Wait for an external IdP to close or return to the publisher.
 
@@ -1363,12 +1500,45 @@ def _resolve_external_auth_page(
     )
 
     def observe() -> tuple[ChallengeReport, bool]:
+        # Some IdPs leave the original redirect tab open after completing SSO
+        # in another tab. A newly opened usable publisher tab is sufficient to
+        # retry the article; the normal PDF validation still decides success.
+        if context is not None and existing_page_ids is not None:
+            try:
+                for candidate in context.pages:
+                    if candidate is page or id(candidate) in existing_page_ids:
+                        continue
+                    if candidate.is_closed():
+                        continue
+                    candidate_host = (urlsplit(candidate.url).hostname or "").lower()
+                    if candidate_host != source_host:
+                        continue
+                    candidate_report = _report_for_page(candidate)
+                    if candidate_report.kind == ChallengeKind.NONE:
+                        return candidate_report, True
+            except Exception:
+                pass
         try:
             if page.is_closed():
                 return ChallengeReport(kind=ChallengeKind.NONE), True
             current_host = (urlsplit(page.url).hostname or "").lower()
         except Exception:
             return fallback, False
+        if not current_host and context is not None:
+            # An IdP may finish by leaving its original tab at about:blank and
+            # returning the user to a publisher tab that was already open.
+            try:
+                for candidate in context.pages:
+                    if candidate is page or candidate.is_closed():
+                        continue
+                    candidate_host = (urlsplit(candidate.url).hostname or "").lower()
+                    if (
+                        candidate_host == source_host
+                        and _report_for_page(candidate).kind == ChallengeKind.NONE
+                    ):
+                        return ChallengeReport(kind=ChallengeKind.NONE), True
+            except Exception:
+                pass
         report = _report_for_page(page)
         returned = bool(source_host and current_host == source_host)
         if returned:
@@ -1440,11 +1610,12 @@ def _run_institution_handoff(
     except Exception:
         source_host = ""
     existing_page_ids = {id(open_page) for open_page in context.pages}
+    ieee_selected_institution = _ieee_selected_institution_available(page)
     if not _click_semantic_institution_control(page):
         return False, (), False, ChallengeReport(kind=ChallengeKind.NONE)
 
     try:
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(5000 if ieee_selected_institution else 1000)
     except Exception:
         pass
 
@@ -1453,6 +1624,16 @@ def _run_institution_handoff(
         for popup in context.pages
         if id(popup) not in existing_page_ids and popup is not page
     ][:4]
+    if ieee_selected_institution and not new_pages:
+        try:
+            current_host = (urlsplit(page.url).hostname or "").lower()
+        except Exception:
+            current_host = ""
+        if current_host == source_host and _dismiss_blocking_modal(page):
+            try:
+                page.wait_for_timeout(350)
+            except Exception:
+                pass
     auth_page = new_pages[-1] if new_pages else page
     preserve_auth_pages = False
 
@@ -1477,6 +1658,8 @@ def _run_institution_handoff(
                 auth_page,
                 source_host=source_host,
                 config=config,
+                context=context,
+                existing_page_ids=existing_page_ids,
             )
         else:
             report, observed, used = _resolve_page_challenge(
@@ -2070,6 +2253,9 @@ def attempt_browser_route(
         )
 
     initial_report = _report_for_page(page)
+    if initial_report.kind == ChallengeKind.NONE:
+        _wait_for_ieee_article_controls(page)
+        initial_report = _report_for_page(page)
     _append_report(challenge_history, initial_report)
     if initial_report.kind == ChallengeKind.SSO:
         handoff_result = run_institution_handoff_and_retry()
@@ -2428,11 +2614,17 @@ def attempt_browser_route(
                 retried_auth_urls.add(candidate.url)
                 _append_report(challenge_history, challenge)
                 try:
-                    page.goto(
-                        candidate.url,
-                        wait_until="domcontentloaded",
-                        timeout=config.navigation_timeout * 1000,
-                    )
+                    try:
+                        page.goto(
+                            candidate.url,
+                            wait_until="domcontentloaded",
+                            timeout=config.navigation_timeout * 1000,
+                        )
+                    except Exception:
+                        # PDF navigations may raise ERR_ABORTED or time out after
+                        # the browser has already rendered the access challenge.
+                        # Inspect the visible page before abandoning handoff.
+                        pass
                     final, observed, used = _resolve_page_challenge(page, config=config)
                     for report in observed:
                         _append_report(challenge_history, report)

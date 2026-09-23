@@ -126,7 +126,7 @@ def resolve_user_operated_access(
             status=MaximizedAcquisitionStatus.INTERACTION_REQUIRED,
             base_result=base,
             message=(
-                "IEEE Xplore requires user-operated access. Open "
+                "No local PDF was selected. Open "
                 f"https://doi.org/{quote(normalized_doi, safe='/')} yourself, "
                 "save the single article PDF, then provide its local path."
             ),

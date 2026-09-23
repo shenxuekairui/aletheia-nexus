@@ -56,6 +56,10 @@ def _normalize_title(value: str) -> str:
     return " ".join(value.split())
 
 
+def _compact_title(value: str) -> str:
+    return _normalize_title(value).replace(" ", "")
+
+
 def _semantic_context(value: str) -> str:
     value = unicodedata.normalize("NFKC", value).lower()
     value = re.sub(r"[_.-]+", " ", value)
@@ -89,6 +93,14 @@ def _title_score(
     # this fallback to later pages, where a reference title could be mistaken
     # for the article's own title.
     if expected in _normalize_title(inspection.first_page_text):
+        return 1.0, "Expected title found on PDF first page", True
+    # Some ACS PDFs fuse every word of the heading during text extraction.
+    # A long exact compact match on page one is still strong front-matter
+    # evidence, unlike loose token overlap elsewhere in the document.
+    compact_expected = _compact_title(expected_title)
+    if len(compact_expected) >= 40 and compact_expected in _compact_title(
+        inspection.first_page_text
+    ):
         return 1.0, "Expected title found on PDF first page", True
 
     # PDF text extraction often separates chemical subscripts/superscripts and
@@ -151,9 +163,17 @@ def _non_main_evidence(
         # signals above remain authoritative.
         article_lead = _semantic_context(inspection.extracted_text[:2_000])
         expected = _normalize_title(expected_title or "")
+        compact_expected = _compact_title(expected_title or "")
+        lead_title = _normalize_title(inspection.extracted_text[:2_000])
         main_article_front_matter = bool(
             expected
-            and expected in _normalize_title(inspection.extracted_text[:2_000])
+            and (
+                expected in lead_title
+                or (
+                    len(compact_expected) >= 40
+                    and compact_expected in lead_title.replace(" ", "")
+                )
+            )
             and re.search(r"\babstract\b", article_lead)
         )
         if not main_article_front_matter:
@@ -177,6 +197,7 @@ def validate_paper_identity(
     evidence: list[str] = []
     extracted_dois = tuple(extract_dois(inspection.extracted_text))
     doi_match = normalized_doi in extracted_dois
+    first_page_doi_match = normalized_doi in extract_dois(inspection.first_page_text)
     locked_encrypted = (
         inspection.report.encrypted and inspection.report.page_count is None
     )
@@ -213,10 +234,14 @@ def validate_paper_identity(
             "Encrypted PDF could not be opened; metadata alone is insufficient "
             "for scholarly identity verification"
         )
-    elif doi_match or title_match:
+    elif first_page_doi_match or title_match:
         identity_status = IdentityStatus.MATCH
     else:
         identity_status = IdentityStatus.UNKNOWN
+        if doi_match:
+            evidence.append(
+                "Target DOI appears outside PDF first page without matching title"
+            )
         if (
             extracted_dois
             and expected_title

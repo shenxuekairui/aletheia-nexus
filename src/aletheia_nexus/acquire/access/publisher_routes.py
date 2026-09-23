@@ -30,6 +30,41 @@ def canonical_pdf_route(doi: str, page_url: str) -> tuple[str, str] | None:
         )
 
     path = parts.path.rstrip("/")
+    if (
+        doi.casefold().startswith("10.1021/")
+        and host in {"doi.org", "dx.doi.org"}
+        and path.casefold() == f"/{doi}".casefold()
+    ):
+        return (
+            f"https://pubs.acs.org/doi/pdf/{quote(doi, safe='/')}",
+            "Publisher canonical DOI PDF route",
+        )
+
+    if (
+        doi.casefold().startswith("10.1055/")
+        and host in {"doi.org", "dx.doi.org"}
+        and path.casefold() == f"/{doi}".casefold()
+    ):
+        return (
+            f"https://www.thieme-connect.com/products/ejournals/pdf/{quote(doi, safe='/')}.pdf",
+            "Publisher canonical DOI PDF route",
+        )
+
+    if host in {
+        "thieme-connect.com",
+        "www.thieme-connect.com",
+        "thieme-connect.de",
+        "www.thieme-connect.de",
+    } and re.fullmatch(
+        rf"/products/ejournals/(?:abstract|html|pdf)/{re.escape(doi)}(?:\.pdf)?",
+        path,
+        flags=re.IGNORECASE,
+    ):
+        return (
+            f"https://{parts.netloc}/products/ejournals/pdf/{quote(doi, safe='/')}.pdf",
+            "Publisher canonical article PDF route",
+        )
+
     if host in {"mdpi.com", "www.mdpi.com"} and re.fullmatch(
         r"/\d{4}-\d{4}/\d+/\d+/\d+", path
     ):
@@ -48,7 +83,7 @@ def canonical_pdf_route(doi: str, page_url: str) -> tuple[str, str] | None:
     return None
 
 
-def requires_user_operated_access(doi: str) -> bool:
-    """IEEE Xplore disallows bot/agent access; use explicit local-file import."""
+def is_ieee_doi(doi: str) -> bool:
+    """Identify IEEE DOI items eligible for the optional local-file fallback."""
 
     return doi.casefold().startswith("10.1109/")

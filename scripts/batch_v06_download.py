@@ -139,7 +139,7 @@ def _interaction_notice(challenge, url: str) -> None:
 
 def _manual_pdf_prompt(doi: str) -> Path | None:
     print(
-        "\n[manual IEEE download] Open "
+        "\n[IEEE browser fallback] Automatic page download did not finish. Open "
         f"https://doi.org/{doi} in your own browser, use your authorized "
         "account to save this single article PDF, then enter its full local "
         "path. Leave blank to continue with INTERACTION_REQUIRED.\n",
@@ -286,6 +286,11 @@ def main() -> int:
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument(
+        "--manual-ieee-fallback",
+        action="store_true",
+        help="Prompt for a locally saved IEEE PDF if automatic acquisition fails.",
+    )
+    parser.add_argument(
         "--local-pdf",
         action="append",
         default=[],
@@ -397,7 +402,9 @@ def main() -> int:
         local_pdfs=local_pdfs,
         manual_file_callback=(
             _manual_pdf_prompt
-            if not args.non_interactive and sys.stdin.isatty()
+            if args.manual_ieee_fallback
+            and not args.non_interactive
+            and sys.stdin.isatty()
             else None
         ),
         browser_config=config,

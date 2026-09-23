@@ -81,6 +81,18 @@ def test_explicit_block_is_access_denied():
     assert report.kind == ChallengeKind.ACCESS_DENIED
 
 
+def test_ieee_unusual_traffic_page_is_access_denied():
+    report = classify_access_challenge(
+        title="IEEE Xplore - Unable to Load Page",
+        url="https://ieeexplore.ieee.org/document/5366888/",
+        visible_text=(
+            "Unusual Traffic Detected (Error 418). IEEE Xplore has detected "
+            "an unusual request pattern. This action has been restricted."
+        ),
+    )
+    assert report.kind == ChallengeKind.ACCESS_DENIED
+
+
 def test_optional_institution_link_on_accessible_article_is_not_a_challenge():
     report = classify_access_challenge(
         title="Target Article",

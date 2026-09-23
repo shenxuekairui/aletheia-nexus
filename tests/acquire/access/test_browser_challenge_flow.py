@@ -59,6 +59,22 @@ class _ClosingPage(_Page):
         raise RuntimeError("TargetClosedError")
 
 
+def test_thieme_pdf_redirect_to_buy_article_is_entitlement():
+    response = SimpleNamespace(
+        headers={"content-type": "text/html"},
+        url=(
+            "https://www.thieme-connect.com/products/ejournals/abstract/"
+            "10.1055/a-2508-9744"
+        ),
+    )
+    report = browser_route._challenge_from_non_pdf_response(
+        response,
+        b"<html><head><title>Article</title></head><body>Buy Article</body></html>",
+    )
+
+    assert report.kind == ChallengeKind.ENTITLEMENT
+
+
 def test_closed_challenge_target_preserves_last_known_challenge(tmp_path):
     page = _ClosingPage(
         [
@@ -313,6 +329,9 @@ class _InstitutionControl:
     def click(self, timeout=0):
         self.clicked = True
 
+    def is_visible(self):
+        return True
+
 
 class _InstitutionLocator:
     def __init__(self, control):
@@ -348,6 +367,103 @@ def test_accessible_organization_control_is_clicked_without_visible_text():
 
     assert browser_route._click_semantic_institution_control(page) is True
     assert page.control.clicked is True
+
+
+def test_ieee_access_through_university_control_is_clicked():
+    page = _InstitutionPage("Access Through University of Chinese Academy")
+
+    assert browser_route._click_semantic_institution_control(page) is True
+    assert page.control.clicked is True
+
+
+def test_ieee_remembered_institution_is_distinguished_from_chooser():
+    class Modal:
+        def __init__(self, label):
+            self.control = _InstitutionControl(label)
+
+        def is_visible(self):
+            return True
+
+        def locator(self, selector):
+            assert selector == browser_route._INTERACTIVE_CONTROL_SELECTOR
+            return _InstitutionLocator(self.control)
+
+    class Dialogs:
+        def __init__(self, label):
+            self.modal = Modal(label)
+
+        def filter(self, *, has_text):
+            assert has_text == "Full text access may be available"
+            return self
+
+        def count(self):
+            return 1
+
+        def nth(self, index):
+            assert index == 0
+            return self.modal
+
+    class Page:
+        url = "https://ieeexplore.ieee.org/document/5366888/"
+
+        def __init__(self, label):
+            self.dialogs = Dialogs(label)
+
+        def locator(self, selector):
+            assert selector == "dialog, [role='dialog'], .js-react-modal"
+            return self.dialogs
+
+    assert browser_route._ieee_selected_institution_available(
+        Page("Access Through University of Chinese Academy")
+    )
+    assert not browser_route._ieee_selected_institution_available(
+        Page("Access Through Your Institution")
+    )
+
+
+def test_ieee_remembered_institution_waits_then_returns_to_article(
+    monkeypatch, tmp_path
+):
+    class Page:
+        url = "https://ieeexplore.ieee.org/document/5366888/"
+
+        def __init__(self):
+            self.waits = []
+
+        def wait_for_timeout(self, milliseconds):
+            self.waits.append(milliseconds)
+
+        def wait_for_load_state(self, state, timeout):
+            assert state == "domcontentloaded"
+
+    page = Page()
+    context = SimpleNamespace(pages=[page])
+    monkeypatch.setattr(
+        browser_route, "_ieee_selected_institution_available", lambda page: True
+    )
+    monkeypatch.setattr(
+        browser_route, "_click_semantic_institution_control", lambda page: True
+    )
+    monkeypatch.setattr(browser_route, "_dismiss_blocking_modal", lambda page: True)
+    monkeypatch.setattr(
+        browser_route,
+        "_resolve_page_challenge",
+        lambda page, *, config: (
+            ChallengeReport(kind=ChallengeKind.NONE),
+            (ChallengeReport(kind=ChallengeKind.NONE),),
+            False,
+        ),
+    )
+
+    clicked, _, _, report = browser_route._run_institution_handoff(
+        context,
+        page,
+        config=BrowserAccessConfig(profile_root=tmp_path),
+    )
+
+    assert clicked is True
+    assert report.kind == ChallengeKind.NONE
+    assert page.waits == [5000, 350]
 
 
 def test_visible_institution_text_fallback_clicks_nonsemantic_node():
@@ -516,6 +632,91 @@ def test_external_idp_transient_plain_page_does_not_finish_handoff(tmp_path):
     assert events == [(ChallengeKind.SSO, "https://id.publisher.example/authorization")]
     assert report.kind == ChallengeKind.NONE
     assert history[0].kind == ChallengeKind.SSO
+    assert history[-1].kind == ChallengeKind.NONE
+    assert interaction_used is True
+
+
+def test_external_idp_can_finish_in_new_publisher_tab(tmp_path):
+    publisher_page = _Page(
+        [
+            (
+                "Article",
+                "https://publisher.example/article",
+                "Article abstract",
+                "<main>Article abstract</main>",
+            )
+        ]
+    )
+    context = SimpleNamespace(pages=[])
+
+    class _AuthPage(_Page):
+        def wait_for_timeout(self, milliseconds):
+            context.pages.append(publisher_page)
+
+    auth_page = _AuthPage(
+        [
+            (
+                "Institutional sign in",
+                "https://id.publisher.example/login",
+                "Institutional sign in",
+                "<main>Institutional sign in</main>",
+            )
+        ]
+    )
+    context.pages.append(auth_page)
+    report, history, interaction_used = browser_route._resolve_external_auth_page(
+        auth_page,
+        source_host="publisher.example",
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+        ),
+        context=context,
+        existing_page_ids={id(auth_page)},
+    )
+
+    assert report.kind == ChallengeKind.NONE
+    assert history[-1].kind == ChallengeKind.NONE
+    assert interaction_used is True
+
+
+def test_external_idp_blank_tab_can_return_to_existing_publisher_tab(tmp_path):
+    publisher_page = _Page(
+        [
+            (
+                "Article",
+                "https://publisher.example/article",
+                "Article abstract",
+                "<main>Article abstract</main>",
+            )
+        ]
+    )
+    auth_page = _Page(
+        [
+            (
+                "Institutional sign in",
+                "https://id.publisher.example/login",
+                "Institutional sign in",
+                "<main>Institutional sign in</main>",
+            ),
+            ("about:blank", "about:blank", "", "<html></html>"),
+        ]
+    )
+    context = SimpleNamespace(pages=[publisher_page, auth_page])
+    report, history, interaction_used = browser_route._resolve_external_auth_page(
+        auth_page,
+        source_host="publisher.example",
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+        ),
+        context=context,
+        existing_page_ids={id(publisher_page), id(auth_page)},
+    )
+
+    assert report.kind == ChallengeKind.NONE
     assert history[-1].kind == ChallengeKind.NONE
     assert interaction_used is True
 

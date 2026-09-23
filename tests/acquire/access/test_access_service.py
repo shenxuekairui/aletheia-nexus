@@ -113,6 +113,36 @@ def test_browser_recovery_plan_adds_acs_canonical_pdf_route():
     assert routes[0].url_type == CandidateUrlType.PDF
 
 
+def test_browser_recovery_plan_adds_acs_pdf_route_from_doi():
+    doi = "10.1021/jacs.6c03536"
+    base = MultiRouteAcquisitionResult(
+        doi=doi,
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=DiscoveryResult(doi=doi, candidates=(), providers=()),
+        expected_title="Target Article",
+    )
+
+    routes = service.browser_recovery_routes(base, limit=3)
+
+    assert routes[0].url == "https://pubs.acs.org/doi/pdf/10.1021/jacs.6c03536"
+
+
+def test_browser_recovery_plan_adds_thieme_pdf_route_from_doi():
+    doi = "10.1055/a-2508-9744"
+    base = MultiRouteAcquisitionResult(
+        doi=doi,
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=DiscoveryResult(doi=doi, candidates=(), providers=()),
+        expected_title="Target Article",
+    )
+
+    routes = service.browser_recovery_routes(base, limit=3)
+
+    assert routes[0].url == (
+        "https://www.thieme-connect.com/products/ejournals/pdf/10.1055/a-2508-9744.pdf"
+    )
+
+
 def test_browser_recovery_plan_prioritizes_nature_article_pdf():
     candidate = FullTextCandidate(
         doi="10.1038/35104620",
@@ -251,6 +281,16 @@ def test_browser_recovery_derives_canonical_route_from_resolved_final_url():
             "https://www.nature.com/articles/nature02863",
             "https://www.nature.com/articles/nature02863.pdf",
         ),
+        (
+            "10.1055/a-2508-9744",
+            "https://www.thieme-connect.com/products/ejournals/abstract/10.1055/a-2508-9744",
+            "https://www.thieme-connect.com/products/ejournals/pdf/10.1055/a-2508-9744.pdf",
+        ),
+        (
+            "10.1055/a-2508-9744",
+            "https://doi.org/10.1055/a-2508-9744",
+            "https://www.thieme-connect.com/products/ejournals/pdf/10.1055/a-2508-9744.pdf",
+        ),
     ],
 )
 def test_supported_publishers_derive_canonical_pdf_route(
@@ -303,21 +343,44 @@ def test_publisher_route_rejects_credentialed_or_nonstandard_port_url():
     )
 
 
-def test_ieee_maximized_requires_user_file_without_network(monkeypatch, tmp_path):
-    def forbid_network(*args, **kwargs):
-        raise AssertionError("IEEE network access must be user-operated")
+def test_ieee_maximized_uses_browser_page_after_public_routes(monkeypatch, tmp_path):
+    doi = "10.1109/iceet.2009.450"
+    candidate = FullTextCandidate(
+        doi=doi,
+        url="https://ieeexplore.ieee.org/document/5366888/",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.PUBLISHER,
+    )
+    base = MultiRouteAcquisitionResult(
+        doi=doi,
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=DiscoveryResult(doi=doi, candidates=(candidate,), providers=()),
+        expected_title="Test IEEE article",
+    )
+    calls = []
 
-    monkeypatch.setattr(service, "acquire_full_text", forbid_network)
-    monkeypatch.setattr(service, "acquire_with_browser", forbid_network)
+    def fake_public(requested_doi, **kwargs):
+        calls.append(("public", requested_doi))
+        return base
+
+    def fake_browser(**kwargs):
+        calls.append(("browser", kwargs["doi"]))
+        assert kwargs["routes"][0].url == candidate.url
+        assert kwargs["expected_title"] == "Test IEEE article"
+        return BrowserRecoveryResult(doi=doi)
+
+    monkeypatch.setattr(service, "acquire_full_text", fake_public)
+    monkeypatch.setattr(service, "acquire_with_browser", fake_browser)
 
     result = service.acquire_full_text_maximized(
-        "10.1109/ICEET.2009.450",
+        doi,
         output_dir=tmp_path,
         expected_title="Test IEEE article",
     )
 
-    assert result.status == MaximizedAcquisitionStatus.INTERACTION_REQUIRED
-    assert "https://doi.org/10.1109/iceet.2009.450" in result.message
+    assert calls == [("public", doi), ("browser", doi)]
+    assert result.status == MaximizedAcquisitionStatus.EXHAUSTED
 
 
 def test_canonical_article_route_outranks_supplement_route():
