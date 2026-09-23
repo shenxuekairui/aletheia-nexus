@@ -7,7 +7,7 @@ from aletheia_nexus.acquire.fulltext.models import (
 from aletheia_nexus.acquire.fulltext.validation import PdfInspection
 
 
-def _inspection(*, text="", title=None, encrypted=False, page_count=3):
+def _inspection(*, text="", title=None, encrypted=False, page_count=3, first_page_text=""):
     return PdfInspection(
         report=PdfValidationReport(
             valid_pdf=True,
@@ -18,6 +18,7 @@ def _inspection(*, text="", title=None, encrypted=False, page_count=3):
         ),
         metadata_title=title,
         extracted_text=text,
+        first_page_text=first_page_text,
     )
 
 
@@ -87,6 +88,36 @@ def test_similar_title_in_late_reference_text_does_not_verify_identity():
 
     assert result.status == IdentityStatus.UNKNOWN
     assert result.document_role == DocumentRole.UNKNOWN
+
+
+def test_exact_title_late_in_first_page_extraction_verifies_identity():
+    title = "Materials for fuel-cell technologies"
+    first_page = "Unrelated column extraction order " * 230 + title
+    result = validate_paper_identity(
+        target_doi="10.1038/35104620",
+        source_url="https://www.nature.com/articles/35104620.pdf",
+        expected_title=title,
+        inspection=_inspection(text=first_page, first_page_text=first_page),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
+    assert "Expected title found on PDF first page" in result.evidence
+
+
+def test_exact_title_on_later_page_still_does_not_verify_identity():
+    title = "Materials for fuel-cell technologies"
+    result = validate_paper_identity(
+        target_doi="10.1038/35104620",
+        source_url="https://www.nature.com/articles/35104620.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            text="Unrelated article body " * 100 + title,
+            first_page_text="Unrelated article body " * 100,
+        ),
+    )
+
+    assert result.status == IdentityStatus.UNKNOWN
 
 
 def test_locked_encrypted_pdf_cannot_be_verified_from_metadata_title_alone():

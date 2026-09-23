@@ -1058,6 +1058,15 @@ def _runtime_publisher_pdf_candidate(
         if re.fullmatch(r"/\d{4}-\d{4}/\d+/\d+/\d+", path):
             url = f"{parts.scheme or 'https'}://{parts.netloc}{path}/pdf"
             source_name = "Publisher canonical article PDF route"
+    elif host in {"nature.com", "www.nature.com"}:
+        slug = parts.path.removeprefix("/articles/").rstrip("/")
+        if (
+            parts.path.startswith("/articles/")
+            and re.fullmatch(r"[A-Za-z0-9._-]+", slug)
+            and parent.doi.casefold() == f"10.1038/{slug}".casefold()
+        ):
+            url = f"https://www.nature.com/articles/{slug}.pdf"
+            source_name = "Publisher canonical article PDF route"
     elif host == "ieeexplore.ieee.org":
         match = re.fullmatch(r"/document/(\d+)/?", parts.path)
         if match is not None:

@@ -113,6 +113,31 @@ def test_browser_recovery_plan_adds_acs_canonical_pdf_route():
     assert routes[0].url_type == CandidateUrlType.PDF
 
 
+def test_browser_recovery_plan_prioritizes_nature_article_pdf():
+    candidate = FullTextCandidate(
+        doi="10.1038/35104620",
+        url="https://www.nature.com/articles/35104620",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.PUBLISHER,
+    )
+    base = MultiRouteAcquisitionResult(
+        doi=candidate.doi,
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=DiscoveryResult(
+            doi=candidate.doi,
+            candidates=(candidate,),
+            providers=(),
+        ),
+        expected_title="Materials for fuel-cell technologies",
+    )
+
+    routes = service.browser_recovery_routes(base, limit=2)
+
+    assert routes[0].url == "https://www.nature.com/articles/35104620.pdf"
+    assert routes[0].url_type == CandidateUrlType.PDF
+
+
 def test_browser_recovery_plan_adds_wiley_subdomain_pdf_route():
     candidate = FullTextCandidate(
         doi="10.1111/j.1151-2916.1993.tb03645.x",
@@ -217,6 +242,16 @@ def test_browser_recovery_derives_canonical_route_from_resolved_final_url():
             "10.3390/membranes11030183",
             "https://www.mdpi.com/2077-0375/11/3/183",
             "https://www.mdpi.com/2077-0375/11/3/183/pdf",
+        ),
+        (
+            "10.1038/35104620",
+            "https://www.nature.com/articles/35104620",
+            "https://www.nature.com/articles/35104620.pdf",
+        ),
+        (
+            "10.1038/nature02863",
+            "https://www.nature.com/articles/nature02863",
+            "https://www.nature.com/articles/nature02863.pdf",
         ),
         (
             "10.1109/ICEET.2009.450",

@@ -83,6 +83,14 @@ def _title_score(
     if expected in text_lead:
         return 1.0, "Expected title found in inspected PDF text", True
 
+    # Some older publisher PDFs extract their first-page columns out of visual
+    # order, putting the actual title hundreds of tokens after the body text.
+    # An exact title on page one is still front-matter evidence; do not extend
+    # this fallback to later pages, where a reference title could be mistaken
+    # for the article's own title.
+    if expected in _normalize_title(inspection.first_page_text):
+        return 1.0, "Expected title found on PDF first page", True
+
     # PDF text extraction often separates chemical subscripts/superscripts and
     # inserts line-break tokens inside an otherwise exact article title. Search
     # only the beginning of the document (where the title belongs), using a

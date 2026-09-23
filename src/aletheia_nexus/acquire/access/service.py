@@ -96,6 +96,21 @@ def _canonical_publisher_pdf_candidate(
                 source_name="Publisher canonical article PDF route",
             )
 
+    if host in {"nature.com", "www.nature.com"}:
+        slug = parts.path.removeprefix("/articles/").rstrip("/")
+        if (
+            parts.path.startswith("/articles/")
+            and re.fullmatch(r"[A-Za-z0-9._-]+", slug)
+            and candidate.doi.casefold() == f"10.1038/{slug}".casefold()
+        ):
+            return replace(
+                candidate,
+                url=f"https://www.nature.com/articles/{slug}.pdf",
+                url_type=CandidateUrlType.PDF,
+                host_type=HostType.PUBLISHER,
+                source_name="Publisher canonical article PDF route",
+            )
+
     if host == "ieeexplore.ieee.org":
         match = re.fullmatch(r"/document/(\d+)/?", parts.path)
         if match:

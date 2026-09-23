@@ -791,6 +791,26 @@ def test_ieee_runtime_document_url_yields_pdf_viewer_candidate():
     assert candidate.url_type == CandidateUrlType.PDF
 
 
+def test_nature_runtime_article_url_yields_matching_pdf_candidate():
+    source = FullTextCandidate(
+        doi="10.1038/nature02863",
+        url="https://doi.org/10.1038/nature02863",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+
+    candidate = browser_route._runtime_publisher_pdf_candidate(
+        source, "https://www.nature.com/articles/nature02863"
+    )
+
+    assert candidate is not None
+    assert candidate.url == "https://www.nature.com/articles/nature02863.pdf"
+    assert candidate.url_type == CandidateUrlType.PDF
+    assert browser_route._runtime_publisher_pdf_candidate(
+        source, "https://www.nature.com/articles/unrelated"
+    ) is None
+
+
 def test_select_pdf_viewer_target_matches_expected_article_title():
     targets = [
         {

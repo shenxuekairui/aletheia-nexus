@@ -17,6 +17,7 @@ class PdfInspection:
     report: PdfValidationReport
     metadata_title: str | None
     extracted_text: str
+    first_page_text: str = ""
 
 
 def _clean_text(value: object) -> str | None:
@@ -140,14 +141,17 @@ def inspect_pdf(
         warning = "PDF metadata could not be read"
 
     text_parts: list[str] = []
+    first_page_text = ""
     extraction_failed = False
-    for page in reader.pages[: min(text_pages, page_count)]:
+    for page_index, page in enumerate(reader.pages[: min(text_pages, page_count)]):
         try:
             text = page.extract_text()
         except (PdfReadError, KeyError, TypeError, ValueError):
             extraction_failed = True
             continue
         if text:
+            if page_index == 0:
+                first_page_text = text
             text_parts.append(text)
 
     if extraction_failed and warning is None:
@@ -164,4 +168,5 @@ def inspect_pdf(
         ),
         metadata_title=metadata_title,
         extracted_text="\n".join(text_parts),
+        first_page_text=first_page_text,
     )
