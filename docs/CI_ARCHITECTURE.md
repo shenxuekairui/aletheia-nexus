@@ -8,7 +8,7 @@ The authenticated live-acceptance gate remains a separate, user-operated step.
 
 | Event | Python 3.11 fast suite | Python 3.14 compatibility | Local Chromium integration |
 |---|---:|---:|---:|
-| Draft PR, including new commits | yes | no | no |
+| Draft PR, including new commits | no runner | no runner | no runner |
 | PR marked ready, including later commits | yes | yes | yes |
 | `main` push or merge queue | yes | yes | yes |
 | Manual `workflow_dispatch`, `fast` | yes | no | no |
@@ -22,25 +22,27 @@ other access-layer tests. Browser and compatibility jobs wait for the fast job,
 so a simple failure does not spend time setting up Chromium.
 
 This is a **cost policy**, not a reduced release standard. A draft PR cannot be
-merged. Marking it ready triggers the complete gate, and every subsequent PR
-commit reruns it. A full run is also triggered after merge to `main` and for a
-merge queue. The workflow keeps stable check names: `test (3.11)`, `test
+merged. GitHub still records PR events, but all jobs are skipped before runner
+allocation; a skipped check is **not** proof that tests passed. Marking the PR
+ready triggers the complete gate, and every subsequent PR commit reruns it.
+A full run is also triggered after merge to `main` and for a merge queue.
+The workflow keeps stable check names: `test (3.11)`, `test
 (3.14)`, and `browser-extra`. If branch protection/rulesets are configured,
 require these three on the protected release branch and enable the merge-group
 event when using a merge queue. Do not make a path-filtered workflow a required
 check: GitHub can leave that check pending when the workflow is skipped.
 
 The workflow grants only `contents: read`, uses Ubuntu runners, caches pip by
-`pyproject.toml`, sets bounded job timeouts, and cancels superseded PR runs.
+`pyproject.toml`, sets bounded job timeouts, and cancels superseded PR/main runs.
 It does not upload artifacts by default. There is no scheduled full matrix or
 real-network job consuming minutes while nobody is preparing a release.
 
 ## Release procedure
 
-1. Keep development PRs in draft while iterating. Run the same deterministic
-   checks locally with `scripts/verify_v06_rc.ps1`; add `-Browser` if Chromium
-   is installed. Run it under both supported Python versions for a full local
-   compatibility check.
+1. Keep development PRs in draft while iterating. Draft pushes do not consume
+   cloud runner minutes. Run deterministic checks locally with
+   `scripts/verify_v06_rc.ps1`; add `-Browser` if Chromium is installed. Run it
+   under both supported Python versions for a full local compatibility check.
 2. Complete the entitled positive-control and fixed-corpus live acceptance in
    the intended institutional environment, as defined in
    `docs/v0.6-acquisition-maximization.md`. Record results without credentials.
@@ -63,6 +65,11 @@ billing-cycle reset, configure billing deliberately, or use a dedicated,
 isolated self-hosted runner if its security and maintenance are acceptable.
 Never put a self-hosted runner that handles untrusted PR code on the personal
 machine/browser profile used for institutional access.
+
+The original allowance depletion was dominated by branch `push` plus PR
+triggering the same Tests workflow for the same commit, multiplied by two or
+three concurrent jobs. Branch pushes are now restricted to `main`; all active
+v0.6 PR branches must carry this policy. Draft PRs skip every cloud job.
 
 If the deterministic suite grows, first measure per-test time. Split slow
 deterministic tests into explicit test groups only when that is cheaper and

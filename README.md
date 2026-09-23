@@ -350,9 +350,10 @@ python scripts/manual_v06_access_acceptance.py `
 
 该本地文件已加入 `.gitignore`，不会被误当成通用公开 benchmark。
 
-CI 现按 [分层架构](docs/CI_ARCHITECTURE.md) 运行：草稿 PR 做 Python 3.11
-完整确定性检查；PR 转为 ready、合并队列或 `main` 更新时，追加 Python 3.14
-和真实 Chromium 集成测试。真实出版社网络与机构授权验收仍在本地进行。
+CI 现按 [分层架构](docs/CI_ARCHITECTURE.md) 运行：草稿 PR 不启动云端 runner，
+每次提交先在本地验证；PR 转为 ready 后及其后续更新、合并队列或 `main` 更新时，
+运行 Python 3.11/3.14 和真实 Chromium 集成测试。真实出版社网络与机构授权验收
+仍在本地进行。
 GitHub Actions 额度耗尽时，新架构也不能让云端 runner 启动；可以先在本机运行
 Release Candidate（发布候选）检查：
 

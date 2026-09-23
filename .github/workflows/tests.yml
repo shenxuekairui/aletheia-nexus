@@ -15,11 +15,11 @@ on:
         type: choice
         options: [fast, full]
 
-# A new PR commit replaces its older run. Main, merge-queue and manual runs are
-# not interrupted, so a release gate cannot be silently cancelled by a push.
+# Superseded PR and main commits do not need to finish. Merge-queue and manual
+# release checks are never cancelled by an unrelated push.
 concurrency:
   group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -30,6 +30,9 @@ env:
 jobs:
   test:
     name: test (3.11)
+    # Draft activity still creates a GitHub workflow record, but no runner is
+    # allocated. ready_for_review and later synchronize events run this gate.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
