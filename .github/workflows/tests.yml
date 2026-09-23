@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled]
   merge_group:
   workflow_dispatch:
     inputs:
@@ -30,9 +30,12 @@ env:
 jobs:
   test:
     name: test (3.11)
-    # Draft activity still creates a GitHub workflow record, but no runner is
-    # allocated. ready_for_review and later synchronize events run this gate.
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    # A ci:full label is a one-shot, opt-in cloud check on a draft PR. Ordinary
+    # draft commits and unrelated label events allocate no runner.
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      (github.event.action == 'labeled' && github.event.label.name == 'ci:full')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -51,6 +54,7 @@ jobs:
           python -m ruff format --check src tests scripts
           python -m ruff check src tests scripts
           python -m compileall -q src scripts
+          python scripts/verify_frozen_benchmark.py
       - name: Run deterministic suite
         run: python -m pytest -q
 
@@ -58,7 +62,9 @@ jobs:
     name: test (3.14)
     needs: test
     if: >-
-      (github.event_name != 'pull_request' || !github.event.pull_request.draft) &&
+      (github.event_name != 'pull_request' ||
+       !github.event.pull_request.draft ||
+       (github.event.action == 'labeled' && github.event.label.name == 'ci:full')) &&
       (github.event_name != 'workflow_dispatch' || inputs.tier == 'full')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -81,7 +87,9 @@ jobs:
     name: browser-extra
     needs: test
     if: >-
-      (github.event_name != 'pull_request' || !github.event.pull_request.draft) &&
+      (github.event_name != 'pull_request' ||
+       !github.event.pull_request.draft ||
+       (github.event.action == 'labeled' && github.event.label.name == 'ci:full')) &&
       (github.event_name != 'workflow_dispatch' || inputs.tier == 'full')
     runs-on: ubuntu-latest
     timeout-minutes: 20

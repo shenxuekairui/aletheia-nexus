@@ -33,7 +33,7 @@ python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ]
 ```
 
-可直接参考仓库里的 [`benchmarks/user_20260923_20_with_titles.json`](../benchmarks/user_20260923_20_with_titles.json)。清单中的 DOI 会标准化并去重；若要保留重复项，使用 `--keep-duplicates`。
+真实 DOI-only 输入可参考仓库里的 [`benchmarks/user_20260923_20_with_titles.json`](../benchmarks/user_20260923_20_with_titles.json)（仅 2 篇附显式标题）；如需可重复的获取层测试，请用全部 20 篇都固定 DOI、准确标题、出版社和年份的 [`benchmarks/user_20260923_20_frozen.json`](../benchmarks/user_20260923_20_frozen.json)。`publisher` 和 `year` 是基准集的记录字段，当前批量 CLI 使用 DOI 与 `title`，不会把它们当作访问凭据。两份输入的 DOI 会标准化并去重；若要保留重复项，使用 `--keep-duplicates`。详情见 [`benchmarks/README.md`](../benchmarks/README.md)。
 
 ## 3. 最常用的批量运行方式
 

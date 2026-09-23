@@ -40,6 +40,10 @@ Invoke-AnCheck "Python syntax / bytecode compilation" {
     python -m compileall -q src scripts
 }
 
+Invoke-AnCheck "Frozen 20-paper benchmark integrity" {
+    python scripts/verify_frozen_benchmark.py
+}
+
 Invoke-AnCheck "Deterministic test suite" {
     python -m pytest -q
 }

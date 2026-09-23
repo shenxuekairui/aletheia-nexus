@@ -25,21 +25,26 @@ Acquisition Maximization
 official API / authenticated / institutional / browser-session access
 ```
 
-v0.6 不修改已经冻结的 v0.5 HTTP 核心，而是在 v0.5 无法得到
-`VERIFIED` 时升级到持久浏览器会话、合法机构/账号认证和受控
-Human-in-the-loop（人在回路中）恢复。
+`v0.5.2` tag 保持不可变。v0.6 主要在 v0.5 无法得到 `VERIFIED` 时增加
+持久浏览器会话、合法机构/账号认证和受控 Human-in-the-loop（人在回路中）恢复；
+仅因 Nature/ACS 标题与正文误判、后页 DOI 假阳性等可复现正确性缺陷，
+对共享的 `fulltext/identity.py` 和 `validation.py` 验证层进行了回归修复。
 
 Release snapshot：
 
 ```text
 Tag:       v0.5.2
 Commit:    4f831eb75a38f19735cf6c98bcd64458fac344c0
-Tests:     707 passed, 6 skipped on Python 3.11
+Tests:     510 passed on Python 3.11
 CI:        Python 3.11 / 3.14 ✅
 Released:  2026-09-17
 ```
 
 `v0.5.2` tag 是 v0.5 全文获取层的冻结快照。后续 `main` 可以继续进入 v0.6，而 v0.5 只有在出现**可复现的正确性缺陷**时才应重新打开。
+
+当前 v0.6 RC 本地快照与上述历史发布记录分开：Python 3.11 / 3.14
+各 **734 passed, 7 skipped**（2026-09-23）。云端 CI 与新的正式授权验收仍是
+稳定 `v0.6.0` 标签的前置条件，不能用本地通过替代。
 
 ## Capability map
 
@@ -350,10 +355,11 @@ python scripts/manual_v06_access_acceptance.py `
 
 该本地文件已加入 `.gitignore`，不会被误当成通用公开 benchmark。
 
-CI 现按 [分层架构](docs/CI_ARCHITECTURE.md) 运行：草稿 PR 不启动云端 runner，
-每次提交先在本地验证；PR 转为 ready 后及其后续更新、合并队列或 `main` 更新时，
-运行 Python 3.11/3.14 和真实 Chromium 集成测试。真实出版社网络与机构授权验收
-仍在本地进行。
+CI 现按 [分层架构与运行策略](docs/CI_ARCHITECTURE.md) 运行：草稿 PR 的常规
+提交先在本地验证；需要云端环境提前确认时可主动触发一次完整 CI；PR 转为
+ready 后及其后续更新、合并队列或 `main` 更新时，运行 Python 3.11/3.14 和
+真实 Chromium 集成测试。节省额度是为了减少重复运行，**不是降低发布质量**。
+真实出版社网络与机构授权验收仍在本地进行。
 GitHub Actions 额度耗尽时，新架构也不能让云端 runner 启动；可以先在本机运行
 Release Candidate（发布候选）检查：
 
@@ -636,8 +642,15 @@ pytest            ✅
 最终确定性测试：
 
 ```text
-707 passed, 6 skipped on Python 3.11
-Python 3.14 also passes the complete CI workflow
+510 passed on Python 3.11
+Python 3.14 also passed the v0.5.2 freeze CI workflow
+```
+
+当前 v0.6 RC（与 v0.5.2 冻结快照分开记录）的 2026-09-23 本地确定性测试：
+
+```text
+734 passed, 7 skipped on Python 3.11
+734 passed, 7 skipped on Python 3.14
 ```
 
 真实出版社网络不进入 deterministic CI（确定性持续集成），因为访问政策和网络状态本身会变化。
@@ -717,13 +730,21 @@ false `VERIFIED`。运行报告写入本地 `downloads/`，不提交可能含短
 URL 运行产物。
 
 另一次用户指定的 20 篇实测使用
-`benchmarks/user_20260923_20_with_titles.json`，在 AN 持久 Edge 会话和用户完成
+`benchmarks/user_20260923_20_with_titles.json`（原始真实输入集：只有 2 篇
+显式提供标题），在 AN 持久 Edge 会话和用户完成
 机构登录/CAPTCHA 后，经检查点续跑及独立复测回填，最终报告为 **19/20
 `VERIFIED`**。最后一篇 `10.1055/a-2508-9744` 的官方 PDF 入口返回购买页；
 用户确认当前无订阅权限。报告中的 `EXHAUSTED` 是该轮自动尝试结果，不应解释
 为文件验证失败。ACS `10.1021/jacs.6c03536` 的正文第一页包含
 “Supporting Information”导航文字且标题词被 PDF 提取器连写；修复后已通过
 完整标题与正文首页验证为主文，而非补充材料。
+
+长期获取层回归应使用
+[`benchmarks/user_20260923_20_frozen.json`](benchmarks/user_20260923_20_frozen.json)：
+同一 20 篇 DOI 均固定了标题、登记出版社及出版年，不依赖运行时元数据解析来
+提供论文身份线索。原始真实输入集保留，用于测试 DOI-only 元数据解析与完整
+获取链路；两套语料的结果不可混写成同一实验。见
+[`benchmarks/README.md`](benchmarks/README.md)。
 
 ## Scope boundary
 
