@@ -1,886 +1,225 @@
 # Aletheia Nexus
 
-> **A local-first scientific knowledge acquisition infrastructure.**  
-> 面向科研场景的本地优先科学知识获取基础设施。
+> 从一篇论文的可信获取，走向可积累、可协作、可演化的科研知识基础设施。
 
-Aletheia Nexus（AN）不是单纯的论文下载脚本。它希望把科研中的知识获取逐步拆成**可靠、可测试、可追溯、可组合**的基础能力，并继续向 Content Parsing（内容解析）、Knowledge（知识组织）、Workflow（工作流）和 Agent（智能体）扩展。
+科学研究正在拥有越来越强的模型，却仍缺少一层稳定的“事实入口”。论文散落在出版社、仓储与机构系统中；一个 DOI 背后可能是正文、补充材料、审稿记录、登录页或已失效的链接。研究者能够在浏览器里找到东西，并不意味着程序拿到了**正确、完整、可解释来源的科研材料**。如果最初的输入就是错的，后面的解析、检索、知识图谱和 Agent 只会更快地放大错误。
 
-长期目标不是构建一个“万能 Agent”，而是形成可以持续积累的数据、工具、规则、工作流和科研知识基础。
+Aletheia Nexus（AN）要建设的是这层底座：把科研对象的标识、发现、获取、验证与来源记录，组织成可组合的本地能力。它不是“尽量多抓一些 PDF”的脚本，也不试图先造一个包揽科研全过程的万能 Agent。它从最基础、也最容易被低估的一步做起——**让一篇论文成为可信的本地工件**；然后才让解析、知识组织、工作流和智能体建立在这些工件之上。
 
-## Current status
+我们的北极星不是一个漂亮的下载成功率，而是让研究者和实验室逐步拥有自己的、能够持续积累的科研知识基础：数据、证据、工具、规则、工作流和历史决策可以被验证、复用、连接和迭代。人的科学判断始终重要；软件应把重复劳动变成基础设施，把不确定性如实交还给人。
 
-当前正式稳定版本：
+> **发起这个项目的想法。** 科研中最珍贵的并不只是最后发表的结论，还有找到证据的路径、排除错误的理由、一次次修正的方法，以及研究者对问题逐渐形成的判断。今天这些东西常常散落在浏览器标签、下载文件夹、笔记和个人经验里。我们希望 AN 能让它们逐步成为研究者自己掌握的、可追溯的长期资产：从可靠地拿到一篇论文开始，最终让知识、工具和工作流共同成长。它应当增强科学家的记忆与行动能力，而不是替科学家做无法负责的判断。
 
-```text
-Aletheia Nexus v0.5.2
-Unauthenticated Full-text Acquisition
-FINAL / HARDENED / FROZEN
-```
+这个目标很大，所以项目选择从一个可以严格检验的问题开始。若连“这是不是目标论文的正文”都无法说清，后续再宏大的 AI 叙事都缺少可信起点。反过来，若每一步都有标识、来源、证据和清晰边界，小能力就能逐层组合成真正可依赖的科研系统。
 
-当前开发主线（0.6 发布候选；稳定标签仍受下文验收门槛约束）：
+## 项目愿景：从文件到科研记忆
 
-```text
-Aletheia Nexus v0.6
-Acquisition Maximization
-official API / authenticated / institutional / browser-session access
-```
+AN 希望连接四类今天仍常被割裂的工作：
 
-`v0.5.2` tag 保持不可变。v0.6 主要在 v0.5 无法得到 `VERIFIED` 时增加
-持久浏览器会话、合法机构/账号认证和受控 Human-in-the-loop（人在回路中）恢复；
-仅因 Nature/ACS 标题与正文误判、后页 DOI 假阳性等可复现正确性缺陷，
-对共享的 `fulltext/identity.py` 和 `validation.py` 验证层进行了回归修复。
+| 阶段 | 要解决的问题 | 项目状态 |
+| --- | --- | --- |
+| **Acquire · 获取** | 能否在合法访问条件下找到并保存*正确的主论文*，同时解释来源与失败？ | 当前重点；v0.5 已稳定，v0.6 为发布候选。 |
+| **Parse · 理解** | 能否把已验证论文中的章节、图表、引用、方法与数据转为带来源的结构化对象？ | 后续规划，尚非当前交付。 |
+| **Knowledge · 积累** | 能否将论文证据、实验记录、概念与研究决策组织成可追溯、可更新的科研记忆？ | 长期规划。 |
+| **Workflow / Agent · 行动** | 能否让可重复流程与智能体调用这些可靠能力，并在不确定或需要授权时交还给研究者？ | 长期规划。 |
 
-Release snapshot：
+更远的方向是面向个人研究者与实验室的科研知识基础设施：从“找到文献”走到“理解证据、组织问题、辅助设计和记录研究过程”，最终支持更完整的 scientific world model（科学世界模型）。这是一条分层建设的路线，而不是声称这些能力已经完成。当前仓库交付的是第一层 Acquisition，以及它与未来各层之间的可信接口。
 
-```text
-Tag:       v0.5.2
-Commit:    4f831eb75a38f19735cf6c98bcd64458fac344c0
-Tests:     510 passed on Python 3.11
-CI:        Python 3.11 / 3.14 ✅
-Released:  2026-09-17
-```
+## 为什么需要 AN
 
-`v0.5.2` tag 是 v0.5 全文获取层的冻结快照。后续 `main` 可以继续进入 v0.6，而 v0.5 只有在出现**可复现的正确性缺陷**时才应重新打开。
+科研资料常分散在出版社、仓储、开放获取索引和机构会话中；研究者每天都在重复“复制 DOI → 搜索 → 选择机构 → 打开 PDF → 判断是不是正文 → 保存并改名”。自动化若只模仿鼠标点击，仍留下四个根本问题：
 
-当前 v0.6 RC 本地快照与上述历史发布记录分开：Python 3.11 / 3.14
-各 **734 passed, 7 skipped**（2026-09-23）。云端 CI 与新的正式授权验收仍是
-稳定 `v0.6.0` 标签的前置条件，不能用本地通过替代。
+1. **身份不确定。** 合法 PDF 可能是同页的 Supporting Information，也可能只是另一篇文章在参考文献中提到了目标 DOI。
+2. **路径不稳定。** 开放获取、出版社页面、官方 API 和机构浏览器会话各有边界，某条路径失败不等于论文不存在。
+3. **权限不是程序能臆造的。** IP、机构、Cookie、MFA 和验证码会改变实际可访问内容；软件必须在需要人的地方停下来，而不是伪装成有权限。
+4. **过程无法积累。** 没有来源、哈希、验证证据和明确失败原因，一次下载经验难以复现，也不能安全地交给下游科研系统。
 
-首次使用请从[中文使用说明书](docs/USER_MANUAL.md)开始；维护者在合并 `main`
-前应核对[发布门槛](docs/USER_MANUAL.md#9-合并-main-前的发布检查)。
-`0.6.0.dev0` 是发布候选，**不是**已经发布的稳定 `v0.6.0`。
+因此 AN 把“获取”定义为一条有明确输入、可观察尝试和严格输出的工程链，而不是一个布尔值。**失败应可解释；成功应可验证。**
 
-## Capability map
+AN 以一个明确的结果替代模糊的成功提示：
 
 ```text
-Identifier / DOI Core             ✅
-Metadata Resolution               ✅
-Full-text Discovery               ✅ v0.4
-Discovery Reliability             ✅ v0.4.1
-Discovery Performance             ✅ v0.4.2
-Direct PDF Acquisition            ✅ v0.5.0
-PDF + Paper Identity Validation   ✅ v0.5.0
-Route Resolution                  ✅ v0.5.1
-Multi-route Acquisition           ✅ v0.5.2
-Official Authenticated API Access 🚧 v0.6
-Authenticated Browser Access      🚧 v0.6
-Acquisition Maximization          🚧 v0.6
-
-Content Parsing                   → v0.7 next
-Knowledge / Workflow / Agent      → later
-Lab / Scientific World Model      → long term
+DOI → 候选路径 → 有界获取 → PDF 结构检查 → 论文身份检查 → 正文角色检查
+                                                             ↓
+                                             VERIFIED + 本地文件 + 来源记录
+                                      或明确的非成功状态 + 尝试证据
 ```
 
-当前 v0.5 已闭合 **unauthenticated HTTP(S) full-text acquisition（未认证 HTTP(S) 全文获取）**链路。v0.6 将官方认证 API、浏览器登录、JavaScript challenge、机构认证和 Human-in-the-loop 放在独立 Access Layer（访问层）中，而不是污染 v0.5 HTTP core。AN 不做付费墙绕过、凭据猜测或 CAPTCHA-solving service（验证码代答服务）。
+它优先保证正确性：候选链接不是文件，合法 PDF 也不一定是目标论文；只有通过完整验证的主文档才会标记为 `VERIFIED`。网络请求、路径扩展、文件大小和重试均有边界，错误不被包装成成功。
 
-## Architecture
+### 什么是“可信的本地工件”
 
-当前主链：
+对于 AN，可信工件不只是一个文件路径。它至少要能回答五个问题：目标 DOI 是什么、候选从哪里来、字节是怎样取得的、文件的 SHA-256 是什么、为什么它被判定为目标论文的正文。项目通过 PDF 旁的 `.acquisition.json`、批量报告和检查点分别保存获取与验证证据；认证 Cookie、令牌和短期签名 URL 的敏感值不进入这些记录。
+
+这使下游系统拥有一个可靠的交接点。未来的解析器无需猜测“这个 PDF 可能是那篇论文”；工作流可以复核文件哈希；研究者可以沿着来源与验证证据追问一个结果。如果证据不足，AN 返回 `EXHAUSTED`、`INTERACTION_REQUIRED`、`ENTITLEMENT_REQUIRED` 等明确的非成功状态，而不会把一张购买页或一份补充材料悄悄放进知识库。
 
 ```text
-Raw input
-↓
-Identifier / DOI Core
-↓
-Metadata Resolution
-↓
-Full-text Discovery
-↓
-FullTextCandidate[]
-↓
-Direct file or landing / repository / resolver route
-↓
-Route Resolution when needed
-↓
-Bounded retrieval
-↓
-PDF structural validation
-↓
-Paper identity validation
-↓
-Document-role validation
-↓
-VERIFIED main article
-or explicit terminal outcome + attempt history
+未经验证的候选 URL     → 只是线索
+下载到的字节           → 只是文件
+可解析的 PDF          → 还未证明论文身份
+目标论文的 PDF         → 还未证明是正文
+VERIFIED 主论文工件     → 可交给后续科研流程
 ```
 
-长期方向：
+## 今天能做什么
 
-```text
-Acquire
-↓
-Parse
-↓
-Knowledge
-↓
-Workflow
-↓
-Agent
-↓
-Lab / Scientific World Model
-```
-
-对应的工程分层原则是：
-
-```text
-稳定能力 → Skill（技能）
-确定流程 → Workflow（工作流）
-开放决策 → Agent（智能体）
-```
-
-仓库中的主要边界：
-
-| 位置 | 职责 |
+| 能力层 | 当前实现 |
 | --- | --- |
-| `src/aletheia_nexus/core/identifiers/` | DOI 等输入标准化。 |
-| `src/aletheia_nexus/acquire/metadata/`、`discovery/` | 元数据与候选全文路径。 |
-| `src/aletheia_nexus/acquire/fulltext/` | 有界 HTTP 获取、路径解析、PDF 结构与论文身份验证。 |
-| `src/aletheia_nexus/acquire/access/` | v0.6 官方 API、持久浏览器、机构交互与批量编排。 |
-| `scripts/`、`benchmarks/`、`tests/` | 命令行与验收工具、固定语料、确定性回归测试。 |
+| DOI 与元数据 | 标准化 DOI，按登记机构解析 Crossref / DataCite 元数据。 |
+| 全文发现 | 汇集元数据、OpenAlex、Unpaywall 等提供的全文线索，合并候选并保留来源。 |
+| 公开 HTTP 获取 | 直接文件优先；必要时解析静态 landing/repository 页面，按预算尝试派生路径。 |
+| 授权访问 | 在适用且已配置时使用 Elsevier 官方 API；复用独立持久浏览器与合法机构/账号会话，允许用户完成登录、MFA、验证码。 |
+| PDF 核验 | 检查 PDF 结构、目标 DOI/标题与正文/附件角色；后页引用目标 DOI 不会单独产生成功结论。 |
+| 批量与续跑 | 顺序处理 DOI，复用浏览器会话；只有仍存在且 SHA-256 匹配的 `VERIFIED` 文件可从检查点直接复用。 |
+| 审计 | 保存逐篇状态、尝试路径和验证依据；对持久化 URL 中的敏感参数脱敏，不保存浏览器凭据。 |
 
-v0.6 复用 `fulltext` 的验证门槛；访问方式增加，并不把“浏览器能打开 PDF”
-直接等同于 `VERIFIED`。
+`v0.5.2` 是最新稳定标签；当前源码为 `0.6.0.dev0` 发布候选。v0.6 增加授权 Access Layer，并对共享 PDF 验证层的可复现正确性缺陷做了回归修复；历史 `v0.5.2` tag 不变。**尚未完成最终云端 CI 与正式机构授权验收，因此现在不能称为稳定 `v0.6.0`。**版本数字、逐篇复测与测试快照见[版本与验收记录](docs/RELEASE_HISTORY.md)。
 
-## Core invariants
+### 对研究者和团队意味着什么
 
-```text
-Candidate ≠ File
-File ≠ Valid PDF
-Valid PDF ≠ Target Paper
-Target Paper ≠ Main Article
-Derived Candidate ≠ Verified File
-Many attempted routes ≠ Success
-```
+- **做系统综述或建立领域文献集：** 从 DOI 清单出发，逐篇得到已验证正文或可解释的缺口；中断后继续，而不是重新整理一堆来源不明的文件。
+- **在机构网络中工作：** 公开路径优先；当合法访问需要浏览器会话时，AN 可以复用机构登录状态，遇到不能自动处理的验证则停下来交给用户。出版社再次选错机构时，用户仍可在网站提供的入口切换。
+- **给解析与 Agent 准备材料：** 只把 `VERIFIED` 主论文交给后续组件；附带 DOI、哈希和来源记录，让模型生成的摘要、表格或论点未来能够回到原始证据。
+- **建设实验室的共享方法：** 将失败模式、验证规则、固定基准和人工决策沉淀下来，避免每个项目都从“重新找论文、重新判断附件”开始。团队级知识与 Agent 编排仍是愿景，不应误认为本仓库已经自动完成。
 
-只有通过 PDF 结构、目标论文身份和主文档角色验证的文件才能成为：
+### 一个实际的使用场景
 
-```text
-VERIFIED
-```
+假设你整理了 20 篇目标论文，其中有开放获取文章、需要机构订阅的正文，也有只在页面上暴露补充材料的论文。把 DOI 清单交给 AN 后，它先从元数据与开放来源寻找候选，尝试有界的公开获取；对没有取得可信正文的条目，再按配置进入官方 API 或你的持久浏览器会话。如果站点把你自动导向没有订阅的机构，或者要求 MFA、验证码，AN 会停在页面上让你选择正确机构或完成验证，再观察页面并继续。它不会把“浏览器打开了一个 PDF”直接算作成功。
 
-> **宁可明确失败，也不要把错误文件交给下游科研系统。**
+批次结束时，你得到的不是一堆名字相似的下载文件，而是逐篇状态、已验证 PDF、来源与验证记录，以及可用于下一次续跑的检查点。某篇确实无权访问，可以如实留下权限结论；某篇只是路径暂时用尽，则保留可诊断的尝试记录。今后解析、检索和研究助理应以这些被验证的工件为输入，而不必重新猜测文件身份。以上描述的是**当前获取层的工作流**；自动解析文献并形成知识库仍属于后续阶段。
 
-## Quick start
+### 成功、等待与失败不是一回事
 
-Requirements：
+| 结果 | 对研究者的含义 | 下一步 |
+| --- | --- | --- |
+| `VERIFIED` | 已得到并验证目标论文的主 PDF，文件与证据可供复核。 | 进入下游处理或保留为文献资产。 |
+| `INTERACTION_REQUIRED` | 站点要求用户操作，当前尚不能断言有无订阅。 | 在可见浏览器完成机构选择、登录或验证，随后续跑。 |
+| `ENTITLEMENT_REQUIRED` | 当前合法会话未获正文访问权限，或站点明确要求购买。 | 核对机构订阅，或通过其他合法来源获取。 |
+| `EXHAUSTED` | 已配置的路径和预算用尽，但未取得可验证的主论文。 | 查看尝试记录，补充线索或调整配置；不要当作“论文不存在”。 |
 
-```text
-Python >= 3.11
-```
+这些状态是科研工作流中的信息，而非需要用“成功率”抹平的异常。尤其是 `EXHAUSTED` 不等于没有权限，`INTERACTION_REQUIRED` 不等于获取失败，`VERIFIED` 也不等于文章的科学结论正确。
 
-Windows PowerShell（基础能力）：
+## 设计边界
+
+AN 是本地优先的研究工具，不提供出版社订阅权限，不猜测用户凭据，不代答验证码，也不绕过付费墙或访问控制。需要机构选择、登录或 MFA 时，用户在自己的可见浏览器中完成；AN 等待可观察的页面状态变化后继续，或报告需交互/无权限的明确状态。
+
+浏览器与 API 解决的是“在已有合法访问条件下取得文件”；科学验证决定“文件能否交给下游”。两者分离，保证未来增加获取路径时，不必降低 `VERIFIED` 的门槛。
+
+我们坚持三个工程原则：
+
+1. **本地优先，控制权归研究者。** PDF、报告与检查点保存在用户指定目录；浏览器会话在用户自己的环境中完成，AN 不要求把机构凭据交给某个远端服务。
+2. **证据优先于表面成功。** 每条获取路径都要经过同一套验证；可疑文档宁可保持未验证，也不污染下游语料。
+3. **让自动化知道何时停下。** 有界请求与重试限制资源消耗；遇到授权或人的判断时明确交接，恢复后继续。人机协作不是“自动化失败”的掩饰，而是访问控制与科研责任的真实边界。
+
+## 五分钟开始
+
+需要 Python 3.11 或更高版本。以下为 Windows PowerShell 示例，在仓库根目录执行：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-```
-
-如果需要 v0.6 Browser Access（浏览器访问）：
-
-```powershell
-python -m pip install -e ".[dev,browser]"
+python -m pip install -e ".[browser]"
 python -m playwright install chromium
 ```
 
-浏览器能力是 optional dependency（可选依赖），不会污染 v0.5 的普通 HTTP
-安装和 CI。
+只使用公开 HTTP 获取时，可改为 `python -m pip install -e .`，无需浏览器依赖。开发测试工具另见[使用说明书](docs/USER_MANUAL.md)。
 
-检查安装版本：
+准备 DOI 输入，例如 `papers.json`：
+
+```json
+[
+  {"doi": "10.1021/jacs.6c03536", "title": "Electrosynthesis of Ethylene Glycol from Methanol via Oxidative C–C Coupling"},
+  "10.1038/s41560-024-01633-4"
+]
+```
+
+运行可见浏览器批量获取：
 
 ```powershell
-python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
+python -u scripts/batch_v06_download.py papers.json `
+  --output-dir downloads/my-papers `
+  --fail-on-unverified
 ```
 
-稳定标签 `v0.5.2` 应输出 `0.5.2`。v0.6 发布候选在冻结前使用
-`0.6.0.dev0`；只有完成 [v0.6 退出标准](docs/v0.6-acquisition-maximization.md#16-exit-criteria)
-后才能改为 `0.6.0` 并创建稳定标签。
+默认使用 AN 独立的持久 Chromium 配置。若希望接管或自动启动本机专用 Edge/Chrome，可增加 `--cdp-endpoint http://127.0.0.1:9222`；不同机构应使用独立配置与浏览器端口。遇到登录、MFA 或验证码，交互模式会停在可见页面等待用户完成，然后继续。Cookie 能否复用取决于出版社，AN 不能保证机构选择永久有效。
 
-## Main APIs
+成功 PDF、`.acquisition.json`、`batch-checkpoint.json` 与 `batch-report.json` 保存在输出目录。逐篇以报告中的 `status` 为准：CLI 默认退出码 `0` 只表示批次处理完毕；上例的 `--fail-on-unverified` 才会在有效 DOI 未全部验证时返回非零码。关闭挑战页面、超时和按 `Ctrl+C` 的行为不同，操作前请看[断点续跑与状态说明](docs/USER_MANUAL.md#5-断点续跑与文件核验)。
 
-### DOI normalization（DOI 标准化）
+Python 用户也可以直接调用统一入口：
 
 ```python
-from aletheia_nexus.core.identifiers.doi import normalize_doi
-
-doi = normalize_doi("https://doi.org/10.1038/nphys1170")
-```
-
-### Metadata Resolution（元数据解析）
-
-```python
-from aletheia_nexus.acquire.metadata import get_metadata
-
-paper = get_metadata("10.1038/nphys1170")
-```
-
-### Full-text Discovery（全文发现）
-
-```python
-from aletheia_nexus.acquire.discovery import discover_full_text
-
-result = discover_full_text(
-    "10.1002/anie.201406668",
-    unpaywall_email="you@example.com",
-)
-```
-
-`FullTextCandidate` 只表示“值得尝试的全文路径”，不表示已经获得正确论文。
-
-### Complete v0.5 workflow（完整全文获取）
-
-```python
-from aletheia_nexus.acquire.fulltext import acquire_full_text
-
-result = acquire_full_text(
-    "10.1038/s41893-022-00870-3",
-    output_dir="downloads",
-    unpaywall_email="you@example.com",
-)
-
-print(result.status)
-print(result.verified_path)
-```
-
-如果已经有 Discovery 结果：
-
-```python
-from aletheia_nexus.acquire.discovery import discover_full_text
-from aletheia_nexus.acquire.fulltext import acquire_from_discovery
-
-discovery = discover_full_text(
-    "10.1002/anie.201406668",
-    unpaywall_email="you@example.com",
-)
-result = acquire_from_discovery(
-    discovery,
-    output_dir="downloads",
-    expected_title="Known article title",
-)
-```
-
-### v0.6 Acquisition Maximization（获取率最大化）
-
-```python
-from aletheia_nexus.acquire.access import (
-    BrowserAccessConfig,
-    BrowserSession,
-    acquire_full_text_maximized,
-)
-
-
-def on_interaction(challenge, _url):
-    # 回调 URL 可能携带短期认证参数，不要原样打印或持久化。
-    print(f"请在打开的浏览器中完成 {challenge.kind.value}")
-
+from aletheia_nexus.acquire.access import BrowserAccessConfig, acquire_full_text_maximized
 
 result = acquire_full_text_maximized(
-    "10.1038/s44221-024-00340-4",
-    output_dir="downloads",
-    browser_config=BrowserAccessConfig(
-        profile_name="institution",
-        headless=False,
-        interaction_callback=on_interaction,
-    ),
-    unpaywall_email="you@example.com",
+    "10.1021/jacs.6c03536",
+    output_dir="downloads/my-papers",
+    browser_config=BrowserAccessConfig(profile_name="institution", headless=False),
 )
-
-print(result.status)
-print(result.verified_path)
+print(result.status, result.verified_path)
 ```
 
-执行逻辑：
+公开 HTTP 路径的独立入口是 `aletheia_nexus.acquire.fulltext.acquire_full_text`；元数据和全文发现可单独调用。详细参数、官方 API 环境变量、已有 PDF 导入、批量状态与故障处理见[中文使用说明书](docs/USER_MANUAL.md)。
+
+## 项目结构
 
 ```text
-v0.5 public/direct routes
-↓
-未 VERIFIED
-↓
-official authenticated API when configured/applicable
-↓
-仍未 VERIFIED
-↓
-persistent browser profile
-↓
-session reuse / JavaScript / SSO / login / MFA / CAPTCHA handoff
-↓
-captured PDF response / authenticated request / browser or PDF-viewer save
-↓
-原有 PDF + paper identity + document-role validation
-↓
-VERIFIED
+src/aletheia_nexus/core/identifiers/   DOI 等输入标准化
+src/aletheia_nexus/acquire/metadata/    元数据解析
+src/aletheia_nexus/acquire/discovery/   全文候选发现
+src/aletheia_nexus/acquire/fulltext/    公开 HTTP 获取与共享 PDF 验证
+src/aletheia_nexus/acquire/access/      官方 API、持久浏览器、交互与批量编排
+scripts/                              命令行、验收与本地验证
+benchmarks/                           固定语料及来源说明
+tests/                                确定性回归与本地浏览器集成测试
 ```
 
-对于 Wiley 等把已授权文献放在 Chromium 内置 PDF 查看器中的站点，AN 会在
-标题与当前论文匹配后调用查看器自身的 Save 控件，将文件写入隔离的临时目录，
-再执行同一套 PDF 结构、论文身份和文档角色验证。该路径只保存浏览器已经取得的
-文件，不绕过登录、CAPTCHA、订阅或机构权限。
-
-核心原则仍然是：**浏览器和认证只能提高“拿到文件”的能力，不能降低
-`VERIFIED` 标准。**
-
-Elsevier ScienceDirect 官方 API 可选配置使用环境变量，避免把密钥写进代码或命令行：
+这是一条可组合的链路，而非一个大而全的爬虫：
 
 ```text
-ELSEVIER_API_KEY
-ELSEVIER_INST_TOKEN      # optional
-ELSEVIER_BEARER_TOKEN    # optional
+标识与元数据 → 候选发现 → 公开获取
+                              ↓ 未 VERIFIED
+                       授权 API / 浏览器 / 用户提供的本地 PDF
+                              ↓
+                       同一套科学验证与来源记录
 ```
 
-顶层 `acquire_full_text_maximized()` 默认会自动发现这些环境变量；也可以
-显式传入 `ElsevierAccessConfig`。如需完全禁用官方 API 自动发现，可设置
-`auto_official_api=False`。API key、institution token 和 bearer token
-只进入请求 header，不进入 `.acquisition.json`。
+例如，浏览器已显示 PDF 不等于 AN 已取得正确正文；从站点保存的文件与用户主动导入的本地 PDF 都要经过相同的验证。只有可信工件才适合作为未来 Parsing、Knowledge、Workflow 与 Agent 的输入。
 
-真实验收时，固定 20 篇困难集只负责测覆盖率；还必须加入
-**Entitled Positive Controls（已确认有权限的阳性对照）**，也就是你已经
-人工确认在**同一机构 / 账号 / 网络环境**下能下载的论文。任何一篇阳性对照
-不能 `VERIFIED`，0.6 都不能视为完成。
+这也解释了为什么 AN 要保留“候选发现”和“文档验证”两种不同的接口。发现层可以持续增加来源；访问层可以根据合法权限适配站点；但输入到科研系统之前，所有路径都必须收敛到同一个身份与正文角色判断。新增能力不应稀释旧有可信性。
 
-少量论文可以直接传 DOI：
+## 如何衡量质量
+
+确定性测试验证输入、路径、安全与状态机；真实 Chromium 集成测试验证浏览器行为；机构授权的真实网络验收验证用户可合法获取的阳性对照。这三者解决不同问题，不能互相替代。尤其不能把一次批次成功率与后来若干单篇复测累计结果混为一谈。
+
+仓库同时保留[用户原始 20 篇输入](benchmarks/user_20260923_20_with_titles.json)和[全量固定标题的 20 篇获取基准集](benchmarks/user_20260923_20_frozen.json)：前者测试真实 DOI-only 元数据解析链路，后者将获取层测试的标题/出版社/年份固定。来源和使用口径见[基准集说明](benchmarks/README.md)。这类困难语料用于定位缺陷，不代表通用下载成功率。
+
+维护者可在 Python 3.11 与 3.14 环境分别执行：
 
 ```powershell
-python scripts/manual_v06_access_acceptance.py `
-  --entitled-doi 10.xxxx/example1 `
-  --entitled-doi 10.xxxx/example2
-```
-
-正式冻结先从仓库模板复制一份本地文件：
-
-```powershell
-Copy-Item benchmarks/v06_entitled_positive_controls.example.json `
-  benchmarks/v06_entitled_positive_controls.local.json
-```
-
-然后把其中 3 条示例替换成你**人工确认在同一机构/账号/网络环境下能下载**
-的真实论文。正式冻结必须 ≥3 篇、覆盖 ≥2 个出版社/访问家族。每条记录都要填写
-`access_family`（例如 `elsevier-sciencedirect`、`springer-nature`）。
-
-正式 `--require-entitled-controls` 冻结门会同时要求：
-
-```text
-stress cases >= 20
-entitled controls >= 3
-每个 entitled control 都有 access_family
-distinct access families >= 2
-全部 entitled controls = VERIFIED
-v0.6-only recovery >= 1
-RUNNER_ERROR = 0
-```
-
-然后运行：
-
-```powershell
-python scripts/manual_v06_access_acceptance.py `
-  --entitled-benchmark benchmarks/v06_entitled_positive_controls.local.json `
-  --require-entitled-controls
-```
-
-该本地文件已加入 `.gitignore`，不会被误当成通用公开 benchmark。
-
-CI 现按 [分层架构与运行策略](docs/CI_ARCHITECTURE.md) 运行：草稿 PR 的常规
-提交先在本地验证；需要云端环境提前确认时可主动触发一次完整 CI；PR 转为
-ready 后及其后续更新、合并队列或 `main` 更新时，运行 Python 3.11/3.14 和
-真实 Chromium 集成测试。节省额度是为了减少重复运行，**不是降低发布质量**。
-真实出版社网络与机构授权验收仍在本地进行。
-GitHub Actions 额度耗尽时，新架构也不能让云端 runner 启动；可以先在本机运行
-Release Candidate（发布候选）检查：
-
-```powershell
-.\scripts\verify_v06_rc.ps1
-```
-
-如果本机已经安装 Playwright Chromium，并希望连同真实浏览器集成测试一起跑：
-
-```powershell
+python -m pip install -e ".[dev,browser]"
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
-该脚本依次检查 `pip check`、Ruff format（格式）、Ruff lint（静态检查）、
-`compileall`、固定基准集完整性和完整 `pytest`；`-Browser` 额外启动真实 Chromium 并运行
-access-layer browser integration tests（访问层浏览器集成测试）。分别在 Python
-3.11 和 3.14 环境运行，才等同覆盖 CI 的两个版本。它是 CI 的独立验证路径，
-但不能替代正式机构环境的 live acceptance（真实验收）。
+云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，最终面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11、3.14 与 Chromium job 的实际 `success`。`skipped` 不是通过；正式机构阳性对照仍须另行验收。[合并与发布清单](docs/USER_MANUAL.md#9-合并-main-前的发布检查)列出了所有门槛。
 
-批量任务建议复用一个 live BrowserSession（实时浏览器会话），而不是每篇
-论文重新启动浏览器：
+## 文档导航
 
-```python
-config = BrowserAccessConfig(
-    profile_name="institution",
-    headless=False,
-    interaction_callback=on_interaction,
-)
+| 文档 | 适用场景 |
+| --- | --- |
+| [中文使用说明书](docs/USER_MANUAL.md) | 安装、批量下载、登录续跑、报告解释、故障处理、发布检查。 |
+| [v0.6 技术规范](docs/v0.6-acquisition-maximization.md) | Access Layer 架构、安全边界、状态、验收与退出标准。 |
+| [版本与验收记录](docs/RELEASE_HISTORY.md) | 稳定标签、RC 快照、真实语料结果和历史版本。 |
+| [CI 架构](docs/CI_ARCHITECTURE.md) | 云端额度策略、按风险运行与完整发布门槛。 |
+| [基准集说明](benchmarks/README.md) | 原始输入与冻结输入的来源和可重复性。 |
+| [v0.5.2 技术规范](docs/v0.5.2-multi-route-acquisition.md) | 已冻结的公开 HTTP 多路径获取层。 |
 
-with BrowserSession(config) as session:
-    for doi in dois:
-        result = acquire_full_text_maximized(
-            doi,
-            output_dir="downloads",
-            browser_session=session,
-            unpaywall_email="you@example.com",
-        )
-```
+## 下一层
 
-这样不仅复用磁盘 cookie，也保留同一批任务中的短期 SSO / challenge state
-（挑战状态）。
+Acquisition 的目标不是把论文“下载下来就结束”，而是为长期积累的科研知识提供可信入口。后续每一层都应能回答“依据来自哪里、何时取得、经过哪些转换、哪些仍是推断”。
 
-### v0.6 批量下载、断点续跑与权限处理
+1. **从文档到结构。** 在 `VERIFIED` 工件上解析章节、图表、引用、实验条件与方法；让抽取结果始终可以回指原文位置，而不是只存一段无法核查的模型输出。
+2. **从结构到知识。** 将多篇论文的证据与研究者自己的问题、实验记录和决策连接起来，处理冲突、更新与不确定性，形成真正能长期维护的科研记忆。
+3. **从知识到行动。** 把重复步骤沉淀为可版本化的工具、规则与工作流，让 Agent 在可信资料上辅助检索、比较、规划与记录；需要人授权或科学判断的节点仍交还给人。
+4. **从单次任务到持续研究。** 当证据、方法与行动历史都能复核，个人和实验室才有机会构建随研究一起演化的 scientific world model。
 
-0.6 提供正式的顺序批量 API。它复用一个惰性启动的 `BrowserSession`，逐篇保存
-原子检查点，并且只跳过仍然存在且 SHA-256 与检查点一致的 `VERIFIED` 文件：
-
-```python
-from aletheia_nexus.acquire.access import acquire_full_text_batch_maximized
-
-batch = acquire_full_text_batch_maximized(
-    ["10.1038/nphys1170", "10.1000/example"],
-    output_dir="downloads/v06-batch",
-    checkpoint_path="downloads/v06-batch/batch-checkpoint.json",
-)
-
-print(batch.status_counts)
-```
-
-权限、登录和验证按以下方式处理：
-
-- 合法登录 cookie、机构 SSO 和短期 challenge 状态在同一批次复用；
-- 已配置的 Elsevier 官方 API 凭据仍会优先用于适用论文；
-- 登录、MFA、CAPTCHA 由可见浏览器中的 Human-in-the-loop 完成；
-- IEEE DOI 现在进入与其他出版社相同的自动发现、浏览器页面和 PDF 下载流程；
-  浏览器会尝试页面上的 PDF 控件，并对取得的文件执行同一套科学验证；
-  如 PDF 弹窗显示已记住的“Access Through …”机构入口，AN 会点击、等待约 5 秒，
-  然后在当前页面重试一次 PDF；仍需账号登录时返回交互状态；
-- 交互式 CLI 会立即打印挑战类型和安全脱敏后的页面地址，并持续等待，直到
-  登录、MFA 或 CAPTCHA 真正消失；
-- 关闭挑战页面或显式设置的交互超时耗尽后，当前 DOI 可返回
-  `INTERACTION_REQUIRED`，默认继续后续论文；只有显式传入
-  `--stop-on-interaction` 才暂停整批。按 `Ctrl+C` 则中断整个命令，
-  已完成论文的检查点仍可用于下次续跑，本次完整报告不保证更新；
-- `AUTH_REQUIRED`、`INTERACTION_REQUIRED`、`ENTITLEMENT_REQUIRED` 和
-  `ACCESS_DENIED` 分开报告，下一次运行会重新尝试；
-- 检查点不记录 cookie、token、URL 或异常消息；只有验证成功且哈希一致的文件
-  才会被断点续跑直接复用。
-
-安装 editable package 后，也可以直接运行 CLI。输入支持每行一个 DOI 的文本、
-JSON 列表，或包含 `doi` / 可选 `title` 列的 CSV：
-
-```powershell
-python scripts/batch_v06_download.py dois.csv `
-  --output-dir downloads/v06-batch `
-  --unpaywall-email you@example.com
-```
-
-IEEE DOI 默认自动尝试网页下载。需要无人值守运行时可传 `--non-interactive`；
-登录、订阅或页面挑战无法自动完成时会返回相应状态。已有 PDF 可在重跑时
-显式提供；如需下载失败后提示输入本地文件路径，可加 `--manual-ieee-fallback`：
-
-```powershell
-python scripts/batch_v06_download.py dois.csv `
-  --output-dir downloads/v06-batch `
-  --non-interactive `
-  --local-pdf "10.1109/ICEET.2009.450=C:\path\to\paper.pdf"
-```
-
-将示例 DOI 和路径替换成真实值。显式提供的本地文件只会被复制并验证，
-原件不会被修改；错误论文或非 PDF 不能成为 `VERIFIED`。
-
-CLI 默认写入 `batch-checkpoint.json` 和 `batch-report.json`，内部错误最多尝试两次。
-交互模式下不传 `--interaction-timeout` 时，AN 会在可见浏览器挑战处持续等待并在
-挑战解除后自动继续。可传 `--interaction-timeout N` 改为最多等待 N 秒；无人值守
-任务应显式使用 `--non-interactive`。AN 不会自动重试明确的无权限或无订阅状态。
-默认退出码 `0` 仅表示批次流程完成，**不表示每篇都已验证成功**；用于自动化时
-请加 `--fail-on-unverified`，并检查 `batch-report.json` 的逐篇状态。
-
-连接本机真实 Edge/Chrome 做大批量测试时，可以让 CLI 自动启动专用持久配置，
-逐篇导航，并为公共解析和浏览器候选设置独立预算：
-
-```powershell
-python -u scripts/batch_v06_download.py dois.json `
-  --output-dir downloads/v06-batch `
-  --cdp-endpoint http://127.0.0.1:9222 `
-  --cdp-navigate `
-  --base-timeout 10 --request-timeout 15 `
-  --max-route-attempts 4 --max-file-attempts 6 `
-  --max-source-routes 3 --max-pdf-candidates 6
-```
-
-AN 自动启动的浏览器始终带有进程级 `--no-proxy-server`，因此文献访问使用
-直连，不读取 Windows 系统代理。它同时使用独立的 AN `user-data-dir`，不会修改
-日常 Edge/Chrome 的代理、配置文件或启动方式。批量工具在本机 CDP 端点不可用时
-会默认自动启动 AN 专用直连浏览器；无需提前
-打开。只有显式传入 `--no-start-browser-if-needed` 才会禁止自动启动。对于用户
-自行启动的外部 CDP 浏览器，AN 会继承该进程已有的网络设置，无法在附加后安全地
-切换代理。
-
-如果用户取消等待或挑战页面被关闭，认证标签会尽量保留；再次执行相同命令时，
-AN 会优先复用标题强匹配的已放行标签，不会为同一篇反复新开标签。报告中的
-`diagnostics` 只保存挑战类型、稳定状态和错误类别，不保存凭据、正文或签名 URL。
-
-## v0.5 full-text acquisition
-
-### v0.5.0 — Direct Acquisition + Validation
-
-```text
-concrete file candidate
-→ safe bounded retrieval
-→ PDF structure inspection
-→ paper identity
-→ document role
-→ VERIFIED or explicit non-success
-```
-
-### v0.5.1 — Route Resolution
-
-支持从通用静态页面证据中解析文件路径，包括：
-
-```text
-citation_pdf_url / scholarly PDF metadata
-semantic Download / View PDF anchors
-iframe / embed / object PDF routes
-JSON-LD media routes
-relative URLs
-explicit PDF-looking URLs
-explicit quoted .pdf paths in static inline script state
-```
-
-不执行 JavaScript，也不根据出版社域名猜测 PDF URL。
-
-### v0.5.2 — Multi-route Acquisition
-
-```text
-Metadata + Discovery may bootstrap concurrently
-↓
-try direct files first
-↓
-resolve page routes when needed
-↓
-validate derived files immediately
-↓
-follow only bounded, high-confidence next-hop routes
-↓
-use DOI resolver fallback when appropriate
-↓
-first VERIFIED main article stops
-```
-
-稳定默认限制：
-
-```text
-max route attempts              16
-max file attempts               24
-max route depth                  2
-max route expansions per page    4
-HTTPS probe timeout              5 s
-```
-
-## Explicit outcomes
-
-最终工作流状态：
-
-```text
-VERIFIED
-NO_CANDIDATES
-DISCOVERY_FAILED
-AUTH_REQUIRED
-ACCESS_BLOCKED
-EXHAUSTED
-LIMIT_REACHED
-```
-
-访问语义保持保守：
-
-```text
-HTTP 401 → AUTH_REQUIRED
-HTTP 403 → ACCESS_BLOCKED
-explicit challenge / WAF page → ACCESS_BLOCKED
-```
-
-AN 不会因为一个普通的 block 自动断言“需要机构登录”，也不会把 challenge page 误当成“没有候选路径”。
-
-每次失败都会尽可能保留 route/file attempt（路径/文件尝试）、来源、派生关系、深度和失败原因，而不是只返回 `True / False`。
-
-## Safety, identity and provenance
-
-v0.5 的关键防线包括：
-
-- HTTP(S)-only acquisition；
-- URL / redirect safety checks（URL / 重定向安全检查）；
-- timeout、retry、redirect、page/file size、route depth 等有界限制；
-- 只对合适的瞬时网络/限流/服务错误重试；
-- streaming SHA-256；
-- 临时文件失败清理与原子提升；
-- provider provenance（数据源来源）与 AN-derived provenance（AN 派生来源）分离；
-- 确定性的文件命名和 `.acquisition.json` sidecar（伴随元数据文件）。
-
-论文身份状态：
-
-```text
-MATCH
-MISMATCH
-UNKNOWN
-```
-
-目标 DOI 出现在 PDF 首页，或预期标题在首页得到足够强的匹配，才构成正向身份
-证据；仅在后续页面引用目标 DOI 不足以判定 `MATCH`。冲突证据会在报告中保留，
-不能把 `doi_match` 字段单独当作 `VERIFIED` 结论。
-
-文档角色：
-
-```text
-ARTICLE
-SUPPLEMENT
-UNKNOWN
-```
-
-Supporting Information、Reporting Summary、Peer Review、Source Data、Decision Letter 等明确非主文档不会因为 DOI/标题匹配而被错误提升为主论文。
-
-## Engineering principles
-
-Aletheia Nexus 当前遵循：
-
-1. Correctness before automation（正确性优先于自动化）.
-2. Explicit failure over silent wrong（明确失败优于静默错误）.
-3. Stable primitives before orchestration（先稳定基础能力，再做编排）.
-4. Clear module boundaries（保持清晰模块边界）.
-5. Bounded work（网络与计算工作有界）.
-6. Provenance over black boxes（来源追踪优于黑箱结果）.
-7. Measure before optimize（先测量，再优化）.
-8. No speculative abstraction（不为想象中的未来过度设计）.
-9. Small, testable, reversible changes（小步、可验证、可回退）.
-10. Local-first（本地优先）.
-11. Human-in-the-loop（人在回路中）用于高风险、低置信度或无法可靠自动处理的环节.
-
-## Validation and testing
-
-正式 v0.5.2 freeze CI（冻结持续集成）：
-
-```text
-Python 3.11  ✅
-Python 3.14  ✅
-
-editable install  ✅
-pip check         ✅
-Ruff format       ✅
-Ruff static       ✅
-compileall        ✅
-pytest            ✅
-```
-
-最终确定性测试：
-
-```text
-510 passed on Python 3.11
-Python 3.14 also passed the v0.5.2 freeze CI workflow
-```
-
-当前 v0.6 RC（与 v0.5.2 冻结快照分开记录）的 2026-09-23 本地确定性测试：
-
-```text
-734 passed, 7 skipped on Python 3.11
-734 passed, 7 skipped on Python 3.14
-```
-
-真实出版社网络不进入 deterministic CI（确定性持续集成），因为访问政策和网络状态本身会变化。
-
-固定真实网络压力测试集：
-
-```text
-benchmarks/cdi_acquisition_10.json
-benchmarks/seawater_desalination_10.json
-```
-
-Runner：
-
-```text
-scripts/manual_multiroute_acceptance.py
-```
-
-2026-09-17 的同环境 20 篇压力测试：
-
-```text
-CDI                       4 / 10 VERIFIED
-Seawater desalination     2 / 10 VERIFIED
-------------------------------------------
-Combined                  6 / 20 = 30%
-```
-
-2026-09-23 使用 v0.6 真实浏览器、独立直连配置、断点检查点和收紧的单路预算
-复测：
-
-```text
-Fuel-cell classics       14 / 20 VERIFIED
-CDI                       9 / 10 VERIFIED
-Seawater desalination     8 / 10 VERIFIED
-------------------------------------------
-Combined                 31 / 40 = 77.5%
-```
-
-CDI 余下 1 篇为明确的 `ENTITLEMENT_REQUIRED`。海水淡化余下 ASCE 与 IEEE
-在原始批次均为 `INTERACTION_REQUIRED`；IEEE 此后经用户完成机构认证，由 AN
-复用持久浏览器会话自动下载 `10.1109/ICEET.2009.450` 并验证为正文。MDPI 曾出现
-Edge 已下载但 AN 未接管文件的情况；修复后使用 Browser-domain 完成事件和隔离
-临时目录保存，真实单篇及 10 篇集内回归均为 `VERIFIED`。用户放弃 ASCE 机构
-登录后，后续项目现会继续执行，不再被错误标成 `DEFERRED`。
-
-燃料电池集中的 3 篇 ScienceDirect 在完成国科大机构认证后的独立真实回归为
-3/3 `VERIFIED`；上表仍采用同一批次短预算结果（其中这 3 篇为
-`EXHAUSTED`），避免把单篇结果混入批次统计。该差异表明短预算和站点挑战状态
-仍会造成批次波动，而不是文件身份验证降级。
-
-Nature 失败项的独立真实复测进一步定位到两个不同原因：
-`10.1038/35104620` 与 `10.1038/nature02863` 的正确 PDF 可获取，但旧版
-第一页文本提取顺序把标题排在前 200 个词之后，导致 `RETRIEVED_UNVERIFIED`。
-现在 AN 优先尝试与 DOI 对应的 Nature 官方 PDF 路径，并允许第一页任意位置的
-**完整标题精确匹配**（不扫描后续参考文献页）；两篇均已重新自动保存并
-`VERIFIED`。`10.1038/nchem.367` 与 `10.1038/s44221-024-00340-4` 仍明确
-要求购买文章，归类为 `ENTITLEMENT_REQUIRED`，未绕过订阅权限。这些单篇复测
-不回填上面的原始 40 篇批次统计。
-
-按同一 40 篇论文去重，汇总上述后续真实单篇复测，**累计 37/40 已
-`VERIFIED`**（并非一次完整重跑的成功率）。未成功的 3 篇是：
-
-- `10.1038/nchem.367`：Nature 页面要求购买，`ENTITLEMENT_REQUIRED`。
-- `10.1038/s44221-024-00340-4`：Nature 页面要求购买，`ENTITLEMENT_REQUIRED`。
-- `10.1061/(ASCE)0733-9372(2007)133:11(1004)`：机构登录未完成；原始批次为
-  `INTERACTION_REQUIRED`，尚不能判定是否有订阅权限。
-
-PDF 审核仍坚持“正确 DOI/标题 + 正文而非附件”的标准。Nature 两篇的首页标题
-提取边界、ACS 正文首页导航中的 “Supporting Information” 误判都已有回归修复；
-这解决了已复现的过严误判，**不保证所有新出版社版式都不会产生 false negative**。
-
-该小型困难语料用于暴露路径解析、访问阻断和错误验证问题，**不是通用下载成功率**。测试中没有观察到 false `VERIFIED`；剩余瓶颈既有 publisher/index access layer（出版社/索引访问层），也有 PDF 文本提取与身份判定的边界情况。
-
-历史失败样本中，Wiley、Taylor & Francis、RSC、ACS 与 MDPI 已分别完成真实
-浏览器回归。ACS 修复了空标题 PDF 标签页关联和首页导航文字导致的补充材料
-误判；RSC/Wiley 的 Chromium PDF 查看器可自动保存后验证。所有真实测试均无
-false `VERIFIED`。运行报告写入本地 `downloads/`，不提交可能含短期签名地址的
-URL 运行产物。
-
-另一次用户指定的 20 篇实测使用
-`benchmarks/user_20260923_20_with_titles.json`（原始真实输入集：只有 2 篇
-显式提供标题），在 AN 持久 Edge 会话和用户完成
-机构登录/CAPTCHA 后，经检查点续跑及独立复测回填，最终报告为 **19/20
-`VERIFIED`**。最后一篇 `10.1055/a-2508-9744` 的官方 PDF 入口返回购买页；
-用户确认当前无订阅权限。报告中的 `EXHAUSTED` 是该轮自动尝试结果，不应解释
-为文件验证失败。ACS `10.1021/jacs.6c03536` 的正文第一页包含
-“Supporting Information”导航文字且标题词被 PDF 提取器连写；修复后已通过
-完整标题与正文首页验证为主文，而非补充材料。
-
-长期获取层回归应使用
-[`benchmarks/user_20260923_20_frozen.json`](benchmarks/user_20260923_20_frozen.json)：
-同一 20 篇 DOI 均固定了标题、登记出版社及出版年，不依赖运行时元数据解析来
-提供论文身份线索。原始真实输入集保留，用于测试 DOI-only 元数据解析与完整
-获取链路；两套语料的结果不可混写成同一实验。见
-[`benchmarks/README.md`](benchmarks/README.md)。
-
-## Scope boundary
-
-v0.5 明确不负责：
-
-```text
-CARSI / SSO / institutional login
-browser JavaScript execution
-persistent browser sessions
-CAPTCHA / anti-bot circumvention
-paywall bypass
-publisher-specific guessed URL catalogues
-unbounded crawling
-scientific-content parsing
-knowledge-base / autonomous Agent logic
-```
-
-这些不是 v0.5 “漏掉的功能”，而是应当保持独立边界的后续能力层。
-
-## Documentation
-
-完整中文使用说明（安装、批量下载、登录续跑、结果审查与排障）：
-
-[Aletheia Nexus 0.6 使用说明书](docs/USER_MANUAL.md)
-
-合并与发布门槛见[说明书第 9 节](docs/USER_MANUAL.md#9-合并-main-前的发布检查)；
-云端 CI 触发和额度策略见[CI 架构](docs/CI_ARCHITECTURE.md)；基准集的来源、
-冻结规则与对比口径见[基准集说明](benchmarks/README.md)。
-
-v0.6 获取率最大化规范：
-
-```text
-docs/v0.6-acquisition-maximization.md
-```
-
-完整 v0.5 最终规范：
-
-```text
-docs/v0.5.2-multi-route-acquisition.md
-```
-
-历史层记录：
-
-```text
-docs/v0.5.0-direct-acquisition.md
-docs/v0.5.1-route-resolution.md
-```
-
-Discovery 历史：
-
-```text
-docs/v0.4-discovery.md
-docs/v0.4.1-discovery-reliability.md
-docs/v0.4.2-discovery-performance.md
-docs/v0.4.2-provider-assessment.md
-```
-
-## Next: v0.7 Content Parsing
-
-v0.5 解决：
-
-> **怎样在无需认证的 HTTP(S) 世界里可靠获得正确论文。**
-
-v0.6 补上：
-
-> **怎样在用户具有合法访问条件时，把官方认证 API、机构权限、浏览器登录态和必要的人机协作纳入统一获取系统，最大化最终 VERIFIED 获取率。**
-
-v0.6 稳定后，v0.7 才进入：
-
-```text
-Verified local article
-↓
-Content Parsing
-↓
-structured scientific document
-↓
-Knowledge organization
-↓
-Workflow / Agent callable capability
-```
-
-这样 Acquisition（获取）层先真正闭合，再向上构建 Parsing（解析）和知识层。
-
-## Project direction
-
-Aletheia Nexus 的长期定位是：
-
-```text
-scientific object identification
-→ scientific information acquisition
-→ trustworthy local artifacts
-→ content parsing
-→ knowledge organization
-→ Workflow / Agent callable capabilities
-→ laboratory research infrastructure
-```
-
-长期真正有价值的资产不是某一个模型、脚本或 Agent，而是能够持续积累、迁移、复用和组合的：
-
-```text
-data
-knowledge
-tools
-workflows
-provenance
-evaluation rules
-historical decisions
-researcher / laboratory context
-```
-
-最终目标是让这些可靠的底层能力不断提高个人研究者和实验室的科研杠杆。
+这些是项目方向，不是当前版本的功能承诺。近期工作仍以 v0.6 获取层的正确性、正式机构验收和稳定发布为优先；后续层会在有明确数据模型、基准和验证边界时逐步进入仓库。若你也关心可信科研自动化，可以从复现一个误判、补充一个固定测试语料、改进一种合法获取路径，或讨论下一层的数据契约开始。**把每一项可验证的小进步接起来，就是 AN 想建设的长期基础设施。**
