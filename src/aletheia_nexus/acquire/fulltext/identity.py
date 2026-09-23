@@ -194,9 +194,7 @@ def validate_paper_identity(
                 expected_title,
                 inspection,
             )
-            title_threshold = (
-                _TITLE_TEXT_WINDOW_THRESHOLD if title_from_text else 0.92
-            )
+            title_threshold = _TITLE_TEXT_WINDOW_THRESHOLD if title_from_text else 0.92
             title_match = title_similarity >= title_threshold and not locked_encrypted
             if title_evidence:
                 evidence.append(title_evidence)

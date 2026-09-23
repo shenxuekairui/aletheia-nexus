@@ -109,10 +109,7 @@ def test_inactive_recaptcha_container_on_article_is_not_a_challenge():
         title="Target Article",
         url="https://publisher.example/article",
         visible_text="Full article text",
-        html=(
-            "<main>Full article text</main>"
-            '<div class="g-recaptcha" hidden></div>'
-        ),
+        html=('<main>Full article text</main><div class="g-recaptcha" hidden></div>'),
     )
     assert report.kind == ChallengeKind.NONE
 

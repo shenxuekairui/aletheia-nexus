@@ -8,7 +8,7 @@ import time
 from dataclasses import replace
 from difflib import SequenceMatcher
 from pathlib import Path
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from aletheia_nexus.acquire.access.artifact import finalize_browser_resource
@@ -21,6 +21,7 @@ from aletheia_nexus.acquire.access.models import (
     ChallengeKind,
     ChallengeReport,
 )
+from aletheia_nexus.acquire.access.publisher_routes import canonical_pdf_route
 from aletheia_nexus.acquire.access.security import (
     redact_url_for_record,
     validate_browser_network_url,
@@ -236,7 +237,7 @@ def _page_snapshot(page) -> tuple[str, str, str, str]:
         visible_text = ""
 
     # Access state is often exposed only through a control's accessible name or
-    # title (IEEE's disabled PDF link is one real example). Include a bounded
+    # title. Include a bounded
     # projection of those labels in challenge classification without recording
     # form values, cookies, page scripts, or credentials.
     try:
@@ -303,9 +304,7 @@ def _wait_until_challenge_changes(
                     poll_interval,
                     max(deadline - time.monotonic(), 0.01),
                 )
-            page.wait_for_timeout(
-                wait_seconds * 1000
-            )
+            page.wait_for_timeout(wait_seconds * 1000)
             report = _report_for_page(page)
         except Exception:
             # A user may close a stuck CAPTCHA/authentication tab or the browser
@@ -994,9 +993,7 @@ def _select_pdf_viewer_target(
     observed_page = _normalized_viewer_title(page_title)
     doi_token = _compact_viewer_identifier(doi.rsplit("/", 1)[-1])
     page_filename = urlsplit(page_url).path.rsplit("/", 1)[-1]
-    page_file_token = _compact_viewer_identifier(
-        page_filename.removesuffix(".pdf")
-    )
+    page_file_token = _compact_viewer_identifier(page_filename.removesuffix(".pdf"))
     ranked: list[tuple[float, dict[str, object]]] = []
     for target in targets:
         target_url = str(target.get("url") or "")
@@ -1009,11 +1006,11 @@ def _select_pdf_viewer_target(
         if not title:
             continue
         compact_title = _compact_viewer_identifier(title)
-        expected_score = SequenceMatcher(None, expected, title).ratio() if expected else 0
+        expected_score = (
+            SequenceMatcher(None, expected, title).ratio() if expected else 0
+        )
         page_score = (
-            SequenceMatcher(None, title, observed_page).ratio()
-            if observed_page
-            else 0
+            SequenceMatcher(None, title, observed_page).ratio() if observed_page else 0
         )
         score = max(expected_score, page_score)
         if expected and (title in expected or expected in title):
@@ -1036,47 +1033,10 @@ def _runtime_publisher_pdf_candidate(
 ) -> FullTextCandidate | None:
     """Derive a stable PDF route revealed only after browser navigation."""
 
-    parts = urlsplit(page_url)
-    host = (parts.hostname or "").lower()
-    doi_pdf_host = (
-        host == "pubs.acs.org"
-        or host == "onlinelibrary.wiley.com"
-        or host.endswith(".onlinelibrary.wiley.com")
-        or host in {"tandfonline.com", "www.tandfonline.com"}
-        or host == "ascelibrary.org"
-        or host.endswith(".ascelibrary.org")
-    )
-    url: str | None = None
-    source_name = "Publisher canonical DOI PDF route"
-    if doi_pdf_host:
-        url = (
-            f"{parts.scheme or 'https'}://{parts.netloc}/doi/pdf/"
-            f"{quote(parent.doi, safe='/')}"
-        )
-    elif host in {"mdpi.com", "www.mdpi.com"}:
-        path = parts.path.rstrip("/")
-        if re.fullmatch(r"/\d{4}-\d{4}/\d+/\d+/\d+", path):
-            url = f"{parts.scheme or 'https'}://{parts.netloc}{path}/pdf"
-            source_name = "Publisher canonical article PDF route"
-    elif host in {"nature.com", "www.nature.com"}:
-        slug = parts.path.removeprefix("/articles/").rstrip("/")
-        if (
-            parts.path.startswith("/articles/")
-            and re.fullmatch(r"[A-Za-z0-9._-]+", slug)
-            and parent.doi.casefold() == f"10.1038/{slug}".casefold()
-        ):
-            url = f"https://www.nature.com/articles/{slug}.pdf"
-            source_name = "Publisher canonical article PDF route"
-    elif host == "ieeexplore.ieee.org":
-        match = re.fullmatch(r"/document/(\d+)/?", parts.path)
-        if match is not None:
-            url = (
-                "https://ieeexplore.ieee.org/stamp/stamp.jsp"
-                f"?tp=&arnumber={match.group(1)}"
-            )
-            source_name = "Publisher canonical IEEE PDF viewer route"
-    if url is None:
+    route = canonical_pdf_route(parent.doi, page_url)
+    if route is None:
         return None
+    url, source_name = route
     return replace(
         _candidate_for_url(parent, url),
         source_name=source_name,
@@ -1153,9 +1113,7 @@ def _trigger_pdf_viewer_save(
         while not runtime_done.is_set() and time.monotonic() < deadline:
             page.wait_for_timeout(100)
         click_result = (
-            runtime_result.get("result", {})
-            .get("result", {})
-            .get("value", {})
+            runtime_result.get("result", {}).get("result", {}).get("value", {})
         )
         if not isinstance(click_result, dict) or not click_result.get("clicked"):
             return None
@@ -2046,9 +2004,7 @@ def attempt_browser_route(
                         status=BrowserAttemptStatus.VERIFIED,
                         file_attempts=tuple(file_attempts),
                         candidates_considered=len(file_attempts),
-                        evidence=(
-                            "Captured a completed native Chromium download",
-                        ),
+                        evidence=("Captured a completed native Chromium download",),
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
         finally:
@@ -2285,7 +2241,10 @@ def attempt_browser_route(
                     elapsed_seconds=time.perf_counter() - started_at,
                 )
         except Exception as exc:
-            if embedded_resource is not None and embedded_resource.local_path is not None:
+            if (
+                embedded_resource is not None
+                and embedded_resource.local_path is not None
+            ):
                 embedded_resource.local_path.unlink(missing_ok=True)
             file_attempts.append(
                 BrowserFileAttempt(
@@ -2502,7 +2461,9 @@ def attempt_browser_route(
                                 file_attempts=tuple(file_attempts),
                                 candidates_considered=len(file_attempts),
                                 interaction_used=interaction_used,
-                                evidence=("Authenticated concrete PDF endpoint recovered",),
+                                evidence=(
+                                    "Authenticated concrete PDF endpoint recovered",
+                                ),
                                 elapsed_seconds=time.perf_counter() - started_at,
                             )
                 except Exception:
@@ -2533,8 +2494,8 @@ def attempt_browser_route(
             pass
 
         # A PDF control may replace the current article page with an HTML
-        # viewer whose same-origin iframe owns the real PDF (IEEE's stamp
-        # viewer does this). Popup processing cannot see that navigation, so
+        # viewer whose same-origin iframe owns the real PDF. Popup processing
+        # cannot see that navigation, so
         # re-run embedded-frame capture on the current page after the click.
         clicked_embedded_pdf = _trigger_embedded_pdf_frame_fetch(
             page,
@@ -2591,9 +2552,7 @@ def attempt_browser_route(
                         file_attempts=tuple(file_attempts),
                         candidates_considered=len(file_attempts),
                         interaction_used=interaction_used,
-                        evidence=(
-                            "Verified from the post-click publisher PDF viewer",
-                        ),
+                        evidence=("Verified from the post-click publisher PDF viewer",),
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
             except Exception as exc:
@@ -2772,8 +2731,10 @@ def attempt_browser_route(
                 post_click,
                 limit=config.max_pdf_candidates,
             ):
-                if any(a.candidate.url == candidate.url for a in file_attempts):
-                    continue
+                # A Chromium PDF popup may emit a response/download event whose
+                # body is no longer readable after the viewer takes ownership.
+                # Such failed captures must not suppress the bounded
+                # cookie-sharing request fallback for the same URL.
                 attempt, challenge = _request_pdf_candidate(
                     context,
                     candidate=candidate,

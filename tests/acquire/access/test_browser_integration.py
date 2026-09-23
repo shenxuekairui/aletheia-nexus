@@ -443,7 +443,16 @@ def test_real_browser_recovers_pdf_opened_in_new_tab(
             expected_title="Popup Browser Integration Article",
         )
 
-    assert result.verified_result is not None
+    assert result.verified_result is not None, [
+        (
+            a.status,
+            [
+                (f.method, f.error, f.result.status if f.result else None)
+                for f in a.file_attempts
+            ],
+        )
+        for a in result.attempts
+    ]
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
     assert result.verified_result.file_path is not None
 
@@ -556,7 +565,16 @@ def test_real_browser_clicks_accessibility_named_pdf_control(
             expected_title="Accessible PDF Control Integration Article",
         )
 
-    assert result.verified_result is not None
+    assert result.verified_result is not None, [
+        (
+            a.status,
+            [
+                (f.method, f.error, f.result.status if f.result else None)
+                for f in a.file_attempts
+            ],
+        )
+        for a in result.attempts
+    ]
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
 
 

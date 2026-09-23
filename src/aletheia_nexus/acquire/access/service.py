@@ -1,4 +1,3 @@
-import re
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -10,6 +9,7 @@ from aletheia_nexus.acquire.access.browser import (
     acquire_with_browser,
 )
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
+from aletheia_nexus.acquire.access.manual import resolve_user_operated_access
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
     BrowserAttemptStatus,
@@ -17,6 +17,10 @@ from aletheia_nexus.acquire.access.models import (
     ElsevierAccessStatus,
     MaximizedAcquisitionResult,
     MaximizedAcquisitionStatus,
+)
+from aletheia_nexus.acquire.access.publisher_routes import (
+    canonical_pdf_route,
+    requires_user_operated_access,
 )
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
@@ -63,69 +67,17 @@ def _canonical_publisher_pdf_candidate(
 ) -> FullTextCandidate | None:
     """Derive a documented same-publisher DOI PDF route for supported hosts."""
 
-    parts = urlsplit(candidate.url)
-    host = (parts.hostname or "").lower()
-    doi_pdf_hosts = (
-        host == "pubs.acs.org"
-        or host == "onlinelibrary.wiley.com"
-        or host.endswith(".onlinelibrary.wiley.com")
-        or host in {"tandfonline.com", "www.tandfonline.com"}
-        or host == "ascelibrary.org"
-        or host.endswith(".ascelibrary.org")
+    route = canonical_pdf_route(candidate.doi, candidate.url)
+    if route is None:
+        return None
+    url, source_name = route
+    return replace(
+        candidate,
+        url=url,
+        url_type=CandidateUrlType.PDF,
+        host_type=HostType.PUBLISHER,
+        source_name=source_name,
     )
-    if doi_pdf_hosts:
-        return replace(
-            candidate,
-            url=(
-                f"{parts.scheme or 'https'}://{parts.netloc}/doi/pdf/"
-                f"{quote(candidate.doi, safe='/')}"
-            ),
-            url_type=CandidateUrlType.PDF,
-            host_type=HostType.PUBLISHER,
-            source_name="Publisher canonical DOI PDF route",
-        )
-
-    if host in {"mdpi.com", "www.mdpi.com"}:
-        path = parts.path.rstrip("/")
-        if re.fullmatch(r"/\d{4}-\d{4}/\d+/\d+/\d+", path):
-            return replace(
-                candidate,
-                url=f"{parts.scheme or 'https'}://{parts.netloc}{path}/pdf",
-                url_type=CandidateUrlType.PDF,
-                host_type=HostType.PUBLISHER,
-                source_name="Publisher canonical article PDF route",
-            )
-
-    if host in {"nature.com", "www.nature.com"}:
-        slug = parts.path.removeprefix("/articles/").rstrip("/")
-        if (
-            parts.path.startswith("/articles/")
-            and re.fullmatch(r"[A-Za-z0-9._-]+", slug)
-            and candidate.doi.casefold() == f"10.1038/{slug}".casefold()
-        ):
-            return replace(
-                candidate,
-                url=f"https://www.nature.com/articles/{slug}.pdf",
-                url_type=CandidateUrlType.PDF,
-                host_type=HostType.PUBLISHER,
-                source_name="Publisher canonical article PDF route",
-            )
-
-    if host == "ieeexplore.ieee.org":
-        match = re.fullmatch(r"/document/(\d+)/?", parts.path)
-        if match:
-            article_number = match.group(1)
-            return replace(
-                candidate,
-                url=(
-                    "https://ieeexplore.ieee.org/stamp/stamp.jsp"
-                    f"?tp=&arnumber={article_number}"
-                ),
-                url_type=CandidateUrlType.PDF,
-                host_type=HostType.PUBLISHER,
-                source_name="Publisher canonical IEEE PDF viewer route",
-            )
-    return None
 
 
 def _browser_route_score(
@@ -367,6 +319,7 @@ def acquire_full_text_maximized(
     elsevier_config: ElsevierAccessConfig | None = None,
     auto_official_api: bool = True,
     expected_title: str | None = None,
+    local_pdf_path: str | Path | None = None,
     unpaywall_email: str | None = None,
     openalex_api_key: str | None = None,
     metadata_mailto: str | None = None,
@@ -417,6 +370,22 @@ def acquire_full_text_maximized(
         if browser_session is not None
         else browser_config or BrowserAccessConfig()
     )
+
+    # Explicit user files and IEEE Xplore's user-operated access boundary are
+    # resolved before network discovery. IEEE's published bot policy forbids
+    # agent access; a local file can still pass the exact same science gate.
+    if local_pdf_path is not None or requires_user_operated_access(normalized_doi):
+        return replace(
+            resolve_user_operated_access(
+                normalized_doi,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                local_pdf_path=local_pdf_path,
+                max_bytes=config.max_bytes,
+                keep_unverified=keep_unverified,
+            ),
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
 
     base = acquire_full_text(
         normalized_doi,

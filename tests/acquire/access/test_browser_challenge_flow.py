@@ -416,12 +416,10 @@ def test_cross_origin_institution_popup_is_preserved_when_unclassified(
         ),
     )
 
-    clicked, history, interaction_used, report = (
-        browser_route._run_institution_handoff(
-            context,
-            article_page,
-            config=BrowserAccessConfig(profile_root=tmp_path),
-        )
+    clicked, history, interaction_used, report = browser_route._run_institution_handoff(
+        context,
+        article_page,
+        config=BrowserAccessConfig(profile_root=tmp_path),
     )
 
     assert clicked is True
@@ -470,9 +468,7 @@ def test_unbounded_handoff_waits_until_user_clears_challenge(tmp_path):
         ),
     )
 
-    assert events == [
-        (ChallengeKind.CAPTCHA, "https://publisher.example/challenge")
-    ]
+    assert events == [(ChallengeKind.CAPTCHA, "https://publisher.example/challenge")]
     assert report.kind == ChallengeKind.NONE
     assert history[0].kind == ChallengeKind.CAPTCHA
     assert history[-1].kind == ChallengeKind.NONE
@@ -504,24 +500,20 @@ def test_external_idp_transient_plain_page_does_not_finish_handoff(tmp_path):
         ]
     )
 
-    report, history, interaction_used = (
-        browser_route._resolve_external_auth_page(
-            page,
-            source_host="publisher.example",
-            config=BrowserAccessConfig(
-                profile_root=tmp_path,
-                wait_for_interaction=True,
-                poll_interval=0.001,
-                interaction_callback=lambda challenge, url: events.append(
-                    (challenge.kind, url)
-                ),
+    report, history, interaction_used = browser_route._resolve_external_auth_page(
+        page,
+        source_host="publisher.example",
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+            interaction_callback=lambda challenge, url: events.append(
+                (challenge.kind, url)
             ),
-        )
+        ),
     )
 
-    assert events == [
-        (ChallengeKind.SSO, "https://id.publisher.example/authorization")
-    ]
+    assert events == [(ChallengeKind.SSO, "https://id.publisher.example/authorization")]
     assert report.kind == ChallengeKind.NONE
     assert history[0].kind == ChallengeKind.SSO
     assert history[-1].kind == ChallengeKind.NONE
@@ -771,7 +763,7 @@ def test_pdfdirect_response_is_captured_with_generic_content_type():
     assert browser_route._response_is_pdf_candidate(response) is True
 
 
-def test_ieee_runtime_document_url_yields_pdf_viewer_candidate():
+def test_ieee_runtime_document_url_requires_user_operated_access():
     source = FullTextCandidate(
         doi="10.1109/ICEET.2009.450",
         url="https://doi.org/10.1109/ICEET.2009.450",
@@ -784,11 +776,7 @@ def test_ieee_runtime_document_url_yields_pdf_viewer_candidate():
         "https://ieeexplore.ieee.org/document/5366888/",
     )
 
-    assert candidate is not None
-    assert candidate.url == (
-        "https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5366888"
-    )
-    assert candidate.url_type == CandidateUrlType.PDF
+    assert candidate is None
 
 
 def test_nature_runtime_article_url_yields_matching_pdf_candidate():
@@ -806,9 +794,12 @@ def test_nature_runtime_article_url_yields_matching_pdf_candidate():
     assert candidate is not None
     assert candidate.url == "https://www.nature.com/articles/nature02863.pdf"
     assert candidate.url_type == CandidateUrlType.PDF
-    assert browser_route._runtime_publisher_pdf_candidate(
-        source, "https://www.nature.com/articles/unrelated"
-    ) is None
+    assert (
+        browser_route._runtime_publisher_pdf_candidate(
+            source, "https://www.nature.com/articles/unrelated"
+        )
+        is None
+    )
 
 
 def test_select_pdf_viewer_target_matches_expected_article_title():
@@ -876,8 +867,7 @@ def test_select_pdf_viewer_target_matches_doi_filename_on_signed_cdn():
         "type": "webview",
         "title": "d6ta02244h.pdf",
         "url": (
-            "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/"
-            "edge_pdf/index.html"
+            "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/edge_pdf/index.html"
         ),
     }
 

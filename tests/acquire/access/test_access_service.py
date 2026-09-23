@@ -162,9 +162,7 @@ def test_browser_recovery_plan_adds_wiley_subdomain_pdf_route():
 
     routes = service.browser_recovery_routes(base, limit=3)
 
-    assert routes[0].url.endswith(
-        "/doi/pdf/10.1111/j.1151-2916.1993.tb03645.x"
-    )
+    assert routes[0].url.endswith("/doi/pdf/10.1111/j.1151-2916.1993.tb03645.x")
     assert routes[0].url_type == CandidateUrlType.PDF
 
 
@@ -253,11 +251,6 @@ def test_browser_recovery_derives_canonical_route_from_resolved_final_url():
             "https://www.nature.com/articles/nature02863",
             "https://www.nature.com/articles/nature02863.pdf",
         ),
-        (
-            "10.1109/ICEET.2009.450",
-            "https://ieeexplore.ieee.org/document/5366888/",
-            "https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5366888",
-        ),
     ],
 )
 def test_supported_publishers_derive_canonical_pdf_route(
@@ -278,6 +271,53 @@ def test_supported_publishers_derive_canonical_pdf_route(
     assert derived is not None
     assert derived.url == expected_url
     assert derived.url_type == CandidateUrlType.PDF
+
+
+def test_ieee_xplore_does_not_derive_automated_pdf_route():
+    candidate = FullTextCandidate(
+        doi="10.1109/ICEET.2009.450",
+        url="https://ieeexplore.ieee.org/document/5366888/",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.PUBLISHER,
+    )
+
+    assert service._canonical_publisher_pdf_candidate(candidate) is None
+
+
+def test_publisher_route_rejects_credentialed_or_nonstandard_port_url():
+    candidate = FullTextCandidate(
+        doi="10.1038/35104620",
+        url="https://name:secret@www.nature.com/articles/35104620",
+        provenance=(),
+    )
+    assert service._canonical_publisher_pdf_candidate(candidate) is None
+    assert (
+        service._canonical_publisher_pdf_candidate(
+            replace(
+                candidate,
+                url="https://www.nature.com:8443/articles/35104620",
+            )
+        )
+        is None
+    )
+
+
+def test_ieee_maximized_requires_user_file_without_network(monkeypatch, tmp_path):
+    def forbid_network(*args, **kwargs):
+        raise AssertionError("IEEE network access must be user-operated")
+
+    monkeypatch.setattr(service, "acquire_full_text", forbid_network)
+    monkeypatch.setattr(service, "acquire_with_browser", forbid_network)
+
+    result = service.acquire_full_text_maximized(
+        "10.1109/ICEET.2009.450",
+        output_dir=tmp_path,
+        expected_title="Test IEEE article",
+    )
+
+    assert result.status == MaximizedAcquisitionStatus.INTERACTION_REQUIRED
+    assert "https://doi.org/10.1109/iceet.2009.450" in result.message
 
 
 def test_canonical_article_route_outranks_supplement_route():

@@ -7,7 +7,9 @@ from aletheia_nexus.acquire.fulltext.models import (
 from aletheia_nexus.acquire.fulltext.validation import PdfInspection
 
 
-def _inspection(*, text="", title=None, encrypted=False, page_count=3, first_page_text=""):
+def _inspection(
+    *, text="", title=None, encrypted=False, page_count=3, first_page_text=""
+):
     return PdfInspection(
         report=PdfValidationReport(
             valid_pdf=True,
@@ -54,8 +56,7 @@ def test_title_lead_matching_tolerates_split_chemical_formula_typography():
         target_doi="10.1000/chemistry",
         source_url="https://example.org/main.pdf",
         expected_title=(
-            "Appraisal of Ce1-yGdyO2-y/2 electrolytes for IT-SOFC "
-            "operation at 500°C"
+            "Appraisal of Ce1-yGdyO2-y/2 electrolytes for IT-SOFC operation at 500°C"
         ),
         inspection=_inspection(
             text=(

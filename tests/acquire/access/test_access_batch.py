@@ -118,6 +118,33 @@ def test_batch_continues_after_item_level_interaction_by_default(
     assert result.halted_for_interaction is False
 
 
+def test_ieee_manual_file_handoff_resumes_same_item(monkeypatch, tmp_path):
+    calls = []
+    chosen = tmp_path / "user.pdf"
+
+    def fake_acquire(doi, **kwargs):
+        calls.append((doi, kwargs["local_pdf_path"]))
+        status = (
+            MaximizedAcquisitionStatus.VERIFIED
+            if kwargs["local_pdf_path"] == chosen
+            else MaximizedAcquisitionStatus.INTERACTION_REQUIRED
+        )
+        return _Result(doi, status)
+
+    monkeypatch.setattr(batch_module, "acquire_full_text_maximized", fake_acquire)
+    result = acquire_full_text_batch_maximized(
+        ["10.1109/ICEET.2009.450"],
+        output_dir=tmp_path,
+        manual_file_callback=lambda doi: chosen,
+    )
+
+    assert calls == [
+        ("10.1109/iceet.2009.450", None),
+        ("10.1109/iceet.2009.450", chosen),
+    ]
+    assert result.items[0].status == BatchItemStatus.VERIFIED
+
+
 def test_batch_checkpoint_resumes_only_hash_matching_verified_file(
     monkeypatch, tmp_path
 ):

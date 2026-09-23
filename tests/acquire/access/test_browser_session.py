@@ -510,12 +510,10 @@ def test_cdp_batch_navigation_preserves_page_needing_interaction(
     monkeypatch.setattr(
         browser,
         "attempt_browser_route",
-        lambda context_value, page_value, *, source, **kwargs: (
-            BrowserAccessAttempt(
-                source_candidate=source,
-                final_url=source.url,
-                status=BrowserAttemptStatus.INTERACTION_REQUIRED,
-            )
+        lambda context_value, page_value, *, source, **kwargs: BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=source.url,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         ),
     )
 
@@ -619,10 +617,7 @@ def test_cdp_batch_navigation_resumes_exact_pdf_url_without_title_match(
             routes=[
                 _candidate(
                     1,
-                    url=(
-                        "https://publisher.example/doi/pdf/"
-                        "10.1000/session-limit"
-                    ),
+                    url=("https://publisher.example/doi/pdf/10.1000/session-limit"),
                 )
             ],
             output_dir=tmp_path / "downloads",
@@ -688,13 +683,11 @@ def test_cdp_attach_matches_acs_article_code_when_pdf_title_is_blank(
     tmp_path,
 ):
     unrelated_pdf = _AttachedPage(
-        "https://pmc.ncbi.nlm.nih.gov/articles/PMC8000292/pdf/"
-        "membranes-11-00183.pdf",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC8000292/pdf/membranes-11-00183.pdf",
         title="",
     )
     target_pdf = _AttachedPage(
-        "https://pubs.acs.org/ancac3/article-pdf/19/19/18409/42251451/"
-        "nn5c01551.pdf",
+        "https://pubs.acs.org/ancac3/article-pdf/19/19/18409/42251451/nn5c01551.pdf",
         title="",
     )
     context = _AttachedContext(target_pdf, unrelated_pdf)

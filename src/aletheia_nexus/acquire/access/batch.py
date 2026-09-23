@@ -20,6 +20,7 @@ from aletheia_nexus.acquire.access.models import (
     MaximizedAcquisitionResult,
     MaximizedAcquisitionStatus,
 )
+from aletheia_nexus.acquire.access.publisher_routes import requires_user_operated_access
 from aletheia_nexus.acquire.access.service import acquire_full_text_maximized
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
@@ -191,6 +192,8 @@ def acquire_full_text_batch_maximized(
     *,
     output_dir: str | Path,
     expected_titles: Mapping[str, str] | None = None,
+    local_pdfs: Mapping[str, str | Path] | None = None,
+    manual_file_callback: Callable[[str], str | Path | None] | None = None,
     browser_config: BrowserAccessConfig | None = None,
     browser_session: BrowserSession | None = None,
     checkpoint_path: str | Path | None = None,
@@ -246,12 +249,21 @@ def acquire_full_text_batch_maximized(
         raise ValueError("retry_backoff must be a non-negative number")
     if progress_callback is not None and not callable(progress_callback):
         raise TypeError("progress_callback must be callable or None")
+    if manual_file_callback is not None and not callable(manual_file_callback):
+        raise TypeError("manual_file_callback must be callable or None")
+    if local_pdfs is not None and not isinstance(local_pdfs, Mapping):
+        raise TypeError("local_pdfs must be a DOI-to-path mapping or None")
     if "expected_title" in acquisition_options:
         raise ValueError(
             "Use expected_titles={doi: title} for batch-specific expected titles"
         )
+    if "local_pdf_path" in acquisition_options:
+        raise ValueError("Use local_pdfs={doi: path} for batch-specific local PDFs")
 
     titles = _normalize_titles(expected_titles)
+    local_files = {
+        normalize_doi(doi): Path(path) for doi, path in (local_pdfs or {}).items()
+    }
     checkpoint = Path(checkpoint_path) if checkpoint_path is not None else None
     checkpoint_records = (
         _load_checkpoint(checkpoint) if checkpoint is not None and resume else {}
@@ -327,8 +339,25 @@ def acquire_full_text_batch_maximized(
                         output_dir=output_dir,
                         browser_session=session,
                         expected_title=titles.get(doi),
+                        local_pdf_path=local_files.get(doi),
                         **acquisition_options,
                     )
+                    if (
+                        result.status == MaximizedAcquisitionStatus.INTERACTION_REQUIRED
+                        and requires_user_operated_access(doi)
+                        and doi not in local_files
+                        and manual_file_callback is not None
+                    ):
+                        chosen = manual_file_callback(doi)
+                        if chosen:
+                            result = acquire_full_text_maximized(
+                                doi,
+                                output_dir=output_dir,
+                                browser_session=session,
+                                expected_title=titles.get(doi),
+                                local_pdf_path=Path(chosen),
+                                **acquisition_options,
+                            )
                 except Exception as exc:
                     # Persist only the exception type. Messages can contain signed URLs,
                     # headers, local profile paths, or provider response fragments.

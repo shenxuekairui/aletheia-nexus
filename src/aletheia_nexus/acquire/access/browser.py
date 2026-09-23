@@ -304,10 +304,7 @@ def _select_attached_page(
         if not url.lower().startswith(("http://", "https://")):
             continue
         score = 0
-        if (
-            preferred_is_pdf_route
-            and url.split("#", 1)[0] == preferred_document_url
-        ):
+        if preferred_is_pdf_route and url.split("#", 1)[0] == preferred_document_url:
             score += 500
         try:
             if preferred_host and urlsplit(url).hostname == preferred_host:
@@ -626,9 +623,7 @@ class BrowserSession:
                 # Automatic batch navigation may leave a challenge tab open.
                 # Resume it only when its title strongly matches this paper;
                 # never fall back to an arbitrary browser tab.
-                minimum_score=(
-                    0 if self.config.cdp_resume_existing_page else 300
-                ),
+                minimum_score=(0 if self.config.cdp_resume_existing_page else 300),
             )
 
         if self._attached_external and (

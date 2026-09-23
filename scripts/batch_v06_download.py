@@ -90,7 +90,9 @@ def _find_browser() -> Path:
 def _start_cdp_browser(endpoint: str, profile_dir: Path) -> None:
     parsed = urlsplit(endpoint)
     if parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or not parsed.port:
-        raise ValueError("Automatic browser start requires a loopback CDP endpoint port")
+        raise ValueError(
+            "Automatic browser start requires a loopback CDP endpoint port"
+        )
     profile_dir.mkdir(parents=True, exist_ok=True)
     subprocess.Popen(
         [
@@ -120,6 +122,8 @@ def _progress(item: BatchAcquisitionItem, index: int, total: int) -> None:
         f"[{index}/{total}] {item.doi or item.input_value}: {item.status}{resumed}{path}",
         flush=True,
     )
+    if item.status == BatchItemStatus.INTERACTION_REQUIRED and item.result:
+        print(f"  {item.result.message}", flush=True)
 
 
 def _interaction_notice(challenge, url: str) -> None:
@@ -131,6 +135,21 @@ def _interaction_notice(challenge, url: str) -> None:
         "Press Ctrl+C to cancel.\n",
         flush=True,
     )
+
+
+def _manual_pdf_prompt(doi: str) -> Path | None:
+    print(
+        "\n[manual IEEE download] Open "
+        f"https://doi.org/{doi} in your own browser, use your authorized "
+        "account to save this single article PDF, then enter its full local "
+        "path. Leave blank to continue with INTERACTION_REQUIRED.\n",
+        flush=True,
+    )
+    try:
+        chosen = input("PDF path: ").strip().strip('"')
+    except EOFError:
+        return None
+    return Path(chosen) if chosen else None
 
 
 def _safe_diagnostics(item: BatchAcquisitionItem) -> dict | None:
@@ -267,6 +286,13 @@ def main() -> int:
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument(
+        "--local-pdf",
+        action="append",
+        default=[],
+        metavar="DOI=PATH",
+        help="Import a user-downloaded PDF for this DOI through normal validation.",
+    )
+    parser.add_argument(
         "--interaction-timeout",
         type=float,
         default=None,
@@ -325,6 +351,14 @@ def main() -> int:
     if args.headless and not args.non_interactive:
         parser.error("--headless requires --non-interactive")
     values, titles = _load_inputs(args.input)
+    local_pdfs = {}
+    for entry in args.local_pdf:
+        if "=" not in entry:
+            parser.error("--local-pdf must use DOI=PATH")
+        doi, path = entry.split("=", 1)
+        if not doi or not path:
+            parser.error("--local-pdf must use a non-empty DOI and path")
+        local_pdfs[doi] = Path(path.strip('"'))
     args.output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = args.checkpoint or args.output_dir / "batch-checkpoint.json"
     report = args.report or args.output_dir / "batch-report.json"
@@ -360,6 +394,12 @@ def main() -> int:
         values,
         output_dir=args.output_dir,
         expected_titles=titles,
+        local_pdfs=local_pdfs,
+        manual_file_callback=(
+            _manual_pdf_prompt
+            if not args.non_interactive and sys.stdin.isatty()
+            else None
+        ),
         browser_config=config,
         checkpoint_path=checkpoint,
         resume=not args.no_resume,

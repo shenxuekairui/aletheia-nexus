@@ -412,6 +412,8 @@ print(batch.status_counts)
 - 合法登录 cookie、机构 SSO 和短期 challenge 状态在同一批次复用；
 - 已配置的 Elsevier 官方 API 凭据仍会优先用于适用论文；
 - 登录、MFA、CAPTCHA 由可见浏览器中的 Human-in-the-loop 完成；
+- IEEE Xplore 按其站点机器人使用条款走用户操作路径：AN 不自动访问或批量请求
+  Xplore；用户自行下载单篇后，AN 接管指定的本地 PDF，执行同一套科学验证；
 - 交互式 CLI 会立即打印挑战类型和安全脱敏后的页面地址，并持续等待，直到
   登录、MFA 或 CAPTCHA 真正消失；
 - 用户按 `Ctrl+C` 取消、关闭挑战页面，或显式设置的交互超时耗尽后，当前 DOI
@@ -430,6 +432,20 @@ python scripts/batch_v06_download.py dois.csv `
   --output-dir downloads/v06-batch `
   --unpaywall-email you@example.com
 ```
+
+IEEE DOI 在交互式终端会暂停并提示用户自行打开 DOI 链接、保存单篇 PDF、输入
+本地路径；无人值守运行会返回 `INTERACTION_REQUIRED` 并继续后续项目。已下载的
+文件可在重跑时显式提供，无需再次访问 Xplore：
+
+```powershell
+python scripts/batch_v06_download.py dois.csv `
+  --output-dir downloads/v06-batch `
+  --non-interactive `
+  --local-pdf "10.1109/ICEET.2009.450=C:\path\to\paper.pdf"
+```
+
+将示例 DOI 和路径替换成真实值。AN 只复制并验证用户
+指定的文件，不修改原件；错误论文或非 PDF 不能成为 `VERIFIED`。
 
 CLI 默认写入 `batch-checkpoint.json` 和 `batch-report.json`，内部错误最多尝试两次。
 交互模式下不传 `--interaction-timeout` 时，AN 会在可见浏览器挑战处持续等待并在
@@ -652,10 +668,11 @@ Combined                 31 / 40 = 77.5%
 ```
 
 CDI 余下 1 篇为明确的 `ENTITLEMENT_REQUIRED`。海水淡化余下 ASCE 与 IEEE
-均为 `INTERACTION_REQUIRED`，而不是 PDF 入口或身份验证错误。MDPI 曾出现
+在原始批次均为 `INTERACTION_REQUIRED`；IEEE 后续改为用户操作/本地文件导入，
+不再自动请求 Xplore。MDPI 曾出现
 Edge 已下载但 AN 未接管文件的情况；修复后使用 Browser-domain 完成事件和隔离
 临时目录保存，真实单篇及 10 篇集内回归均为 `VERIFIED`。用户放弃 ASCE 机构
-登录后，IEEE 现会继续执行，不再被错误标成 `DEFERRED`。
+登录后，后续项目现会继续执行，不再被错误标成 `DEFERRED`。
 
 燃料电池集中的 3 篇 ScienceDirect 在完成国科大机构认证后的独立真实回归为
 3/3 `VERIFIED`；上表仍采用同一批次短预算结果（其中这 3 篇为

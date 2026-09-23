@@ -14,6 +14,7 @@ from aletheia_nexus.acquire.access.browser import (
 )
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
+from aletheia_nexus.acquire.access.manual import import_local_pdf
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
@@ -58,4 +59,5 @@ __all__ = [
     "browser_profile_dir",
     "browser_recovery_routes",
     "classify_access_challenge",
+    "import_local_pdf",
 ]
