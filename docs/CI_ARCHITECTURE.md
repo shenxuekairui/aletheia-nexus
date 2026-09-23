@@ -2,7 +2,10 @@
 
 CI verifies deterministic code behavior. It never logs into a publisher, uses a
 personal browser profile, or treats a live publisher response as a release test.
-The authenticated live-acceptance gate remains a separate, user-operated step.
+The authenticated live-acceptance program remains a separate, user-operated
+step. For the first public v0.6.0 release, its formal qualification is deferred
+by the project owner and must be disclosed; CI success does not imply that
+institutional access has been certified.
 
 ## Execution tiers
 
@@ -65,9 +68,12 @@ real-network job consuming minutes while nobody is preparing a release.
    `ci:full` once to run the complete hosted matrix on that draft head. Record
    the run URL and commit. If Actions quota is exhausted, report the missing
    cloud evidence explicitly; local success does not waive the release gate.
-2. Complete the entitled positive-control and fixed-corpus live acceptance in
-   the intended institutional environment, as defined in
-   `docs/v0.6-acquisition-maximization.md`. Record results without credentials.
+2. For the first public v0.6.0 release, explicitly disclose that the formal
+   entitled positive-control and fixed-corpus live acceptance is deferred.
+   Historical cumulative live observations are useful evidence but do not
+   satisfy that qualification. Complete it later in the intended institutional
+   environment as defined in `docs/v0.6-acquisition-maximization.md`, recording
+   results without credentials.
 3. Make the final release commit, then mark the PR ready for review. Wait for
    all three CI jobs to conclude `success` **on that commit**. If a subsequent
    commit lands,
@@ -75,8 +81,9 @@ real-network job consuming minutes while nobody is preparing a release.
 4. If development used stacked PRs, consolidate them into one complete
    `main`-targeted release PR before the final gate. Do not merge a superseded
    base PR separately or infer that its old checks validate the combined diff.
-   Merge only after CI and live acceptance both pass; tag the merged `main`
-   commit, not an unmerged PR commit.
+   Merge only after the mandatory code/CI gates pass and the deferred live
+   qualification is prominently disclosed; tag the merged `main` commit, not
+   an unmerged PR commit.
 
 `workflow_dispatch` is available once the workflow file exists on the default
 branch. The `fast`/`full` input belongs to the v0.6 workflow and may not appear
@@ -94,6 +101,12 @@ billing-cycle reset, configure billing deliberately, or use a dedicated,
 isolated self-hosted runner if its security and maintenance are acceptable.
 Never put a self-hosted runner that handles untrusted PR code on the personal
 machine/browser profile used for institutional access.
+
+The first public release uses a new, clean-history public repository rather
+than exposing the prior private repository's commit metadata and Actions logs.
+Standard GitHub-hosted runners are free for public repositories; the full
+release matrix remains mandatory even though ordinary draft updates are
+still skipped to avoid needless work. This does not make larger runners free.
 
 The original allowance depletion was dominated by branch `push` plus PR
 triggering the same Tests workflow for the same commit, multiplied by two or

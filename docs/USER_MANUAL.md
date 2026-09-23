@@ -166,11 +166,11 @@ python -m pytest -q
 
 ## 9. 合并 main 前的发布检查
 
-`0.6.0.dev0` 只表示发布候选。维护者应逐项留存最终提交 SHA、命令输出和报告路径；任何门槛失败或缺证，都保持草稿状态，不改成 `0.6.0`，不合并 `main`，不打稳定标签。
+`0.6.0.dev0` 只表示发布候选。首个公开 `v0.6.0` 以代码正确性与可安装性为封板范围，不声称已对不同机构的授权覆盖完成正式资格验收。维护者应留存最终提交 SHA、测试输出和报告路径；代码门槛失败或缺证时保持草稿，不合并 `main`，不打稳定标签。
 
 1. 在最终代码上分别以 Python 3.11 和 3.14 运行第 8 节的本地检查，确认 Ruff、依赖、完整确定性测试与固定基准集检查通过；在支持的环境执行真实 Chromium 集成测试。`v0.5.2` tag 的历史 510 passed 与 v0.6 RC 的 734 passed、7 skipped 必须分开记录。
-2. 准备本地 `benchmarks/v06_entitled_positive_controls.local.json`：从[模板](../benchmarks/v06_entitled_positive_controls.example.json)替换为同一机构、账号和网络环境下已人工确认可获取的至少 3 篇论文，覆盖至少 2 个 `access_family`。不要提交凭据或机构专属阳性对照。
-3. 在该环境运行正式授权验收，并保存报告。默认压力集是 CDI 与海水淡化各 10 篇；另有[固定标题的 20 篇用户集](../benchmarks/user_20260923_20_frozen.json)，若改用它，必须在结果中注明输入集，不得把旧的累计 19/20 当作新一次运行结果。
+2. 首个公开版的正式机构授权资格验收已由项目发起者决定**暂缓**。这项缺证必须在 README 和 GitHub Release 中显著披露；不能将此前 37/40、19/20 的累计单篇复测解释为新的完整批次或授权对照通过。代码级封板仍须完成本节其余门槛。
+3. 后续补做授权资格验收时，准备本地 `benchmarks/v06_entitled_positive_controls.local.json`：从[模板](../benchmarks/v06_entitled_positive_controls.example.json)替换为同一机构、账号和网络环境下已人工确认可获取的至少 3 篇论文，覆盖至少 2 个 `access_family`。不要提交凭据或机构专属阳性对照。默认压力集是 CDI 与海水淡化各 10 篇；另有[固定标题的 20 篇用户集](../benchmarks/user_20260923_20_frozen.json)，若改用它，必须在结果中注明输入集。
 
    ```powershell
    python scripts/manual_v06_access_acceptance.py `
@@ -179,6 +179,6 @@ python -m pytest -q
      --report downloads/v06-release-acceptance.json
    ```
 
-   验收必须满足：压力论文不少于 20 篇、全部阳性对照 `VERIFIED`、至少一篇真正由 v0.6 路径相对 v0.5 恢复、`RUNNER_ERROR = 0`；还须人工抽查 PDF 与失败分类。公开困难集的覆盖率不是订阅权限证明。
-4. 最终发布 PR 面向 `main`，核对差异与版本号；待授权验收通过后才把 `pyproject.toml` 改为 `0.6.0` 并生成最终发布提交。将 PR 转为 ready，在**该最终提交**上等待 Python 3.11、3.14 与 Chromium 三个云端 job 的实际结论均为 `success`。草稿 PR 的 `skipped` 即使在 GitHub 显示绿色也不算通过；额度耗尽同样不算通过。详见[CI 架构](CI_ARCHITECTURE.md)。
-5. 若开发期间使用过堆叠 PR，正式发布前保留一个包含完整 v0.6 差异、直接面向 `main` 的发布 PR；不要再把已被覆盖的底层 PR 重复合入。任一改动之后都重新核对最终 SHA 和完整 CI。所有门槛通过后再合并并给合并后的 `main` 提交打 `v0.6.0` 标签。正式流程以[技术规范的退出标准](v0.6-acquisition-maximization.md#16-exit-criteria)为准。
+   后续验收必须满足：压力论文不少于 20 篇、全部阳性对照 `VERIFIED`、至少一篇真正由 v0.6 路径相对 v0.5 恢复、`RUNNER_ERROR = 0`；还须人工抽查 PDF 与失败分类。公开困难集的覆盖率不是订阅权限证明。**这不是首个公开版已经通过的项目。**
+4. 最终发布 PR 面向 `main`，核对差异、Apache-2.0 许可、版本号与公开历史；把 `pyproject.toml` 改为 `0.6.0` 并生成最终发布提交。将 PR 转为 ready，在**该最终提交**上等待 Python 3.11、3.14 与 Chromium 三个云端 job 的实际结论均为 `success`。草稿 PR 的 `skipped` 即使在 GitHub 显示绿色也不算通过；额度耗尽同样不算通过。详见[CI 架构](CI_ARCHITECTURE.md)。
+5. 若开发期间使用过堆叠 PR，正式发布前保留一个包含完整 v0.6 差异、直接面向 `main` 的发布 PR；不要再把已被覆盖的底层 PR 重复合入。任一改动之后都重新核对最终 SHA 和完整 CI。代码级门槛通过后再合并，并给合并后的 `main` 提交打 `v0.6.0` 标签；GitHub Release 同时注明机构授权资格验收尚未完成。正式流程以[技术规范的退出标准](v0.6-acquisition-maximization.md#16-exit-criteria)为准。
