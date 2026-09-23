@@ -46,6 +46,10 @@ Released:  2026-09-17
 各 **734 passed, 7 skipped**（2026-09-23）。云端 CI 与新的正式授权验收仍是
 稳定 `v0.6.0` 标签的前置条件，不能用本地通过替代。
 
+首次使用请从[中文使用说明书](docs/USER_MANUAL.md)开始；维护者在合并 `main`
+前应核对[发布门槛](docs/USER_MANUAL.md#9-合并-main-前的发布检查)。
+`0.6.0.dev0` 是发布候选，**不是**已经发布的稳定 `v0.6.0`。
+
 ## Capability map
 
 ```text
@@ -123,6 +127,19 @@ Lab / Scientific World Model
 确定流程 → Workflow（工作流）
 开放决策 → Agent（智能体）
 ```
+
+仓库中的主要边界：
+
+| 位置 | 职责 |
+| --- | --- |
+| `src/aletheia_nexus/core/identifiers/` | DOI 等输入标准化。 |
+| `src/aletheia_nexus/acquire/metadata/`、`discovery/` | 元数据与候选全文路径。 |
+| `src/aletheia_nexus/acquire/fulltext/` | 有界 HTTP 获取、路径解析、PDF 结构与论文身份验证。 |
+| `src/aletheia_nexus/acquire/access/` | v0.6 官方 API、持久浏览器、机构交互与批量编排。 |
+| `scripts/`、`benchmarks/`、`tests/` | 命令行与验收工具、固定语料、确定性回归测试。 |
+
+v0.6 复用 `fulltext` 的验证门槛；访问方式增加，并不把“浏览器能打开 PDF”
+直接等同于 `VERIFIED`。
 
 ## Core invariants
 
@@ -228,8 +245,13 @@ print(result.verified_path)
 如果已经有 Discovery 结果：
 
 ```python
+from aletheia_nexus.acquire.discovery import discover_full_text
 from aletheia_nexus.acquire.fulltext import acquire_from_discovery
 
+discovery = discover_full_text(
+    "10.1002/anie.201406668",
+    unpaywall_email="you@example.com",
+)
 result = acquire_from_discovery(
     discovery,
     output_dir="downloads",
@@ -247,8 +269,9 @@ from aletheia_nexus.acquire.access import (
 )
 
 
-def on_interaction(challenge, url):
-    print(f"请在打开的浏览器中完成 {challenge.kind}: {url}")
+def on_interaction(challenge, _url):
+    # 回调 URL 可能携带短期认证参数，不要原样打印或持久化。
+    print(f"请在打开的浏览器中完成 {challenge.kind.value}")
 
 
 result = acquire_full_text_maximized(
@@ -374,7 +397,7 @@ Release Candidate（发布候选）检查：
 ```
 
 该脚本依次检查 `pip check`、Ruff format（格式）、Ruff lint（静态检查）、
-`compileall` 和完整 `pytest`；`-Browser` 额外启动真实 Chromium 并运行
+`compileall`、固定基准集完整性和完整 `pytest`；`-Browser` 额外启动真实 Chromium 并运行
 access-layer browser integration tests（访问层浏览器集成测试）。分别在 Python
 3.11 和 3.14 环境运行，才等同覆盖 CI 的两个版本。它是 CI 的独立验证路径，
 但不能替代正式机构环境的 live acceptance（真实验收）。
@@ -430,9 +453,10 @@ print(batch.status_counts)
   然后在当前页面重试一次 PDF；仍需账号登录时返回交互状态；
 - 交互式 CLI 会立即打印挑战类型和安全脱敏后的页面地址，并持续等待，直到
   登录、MFA 或 CAPTCHA 真正消失；
-- 用户按 `Ctrl+C` 取消、关闭挑战页面，或显式设置的交互超时耗尽后，当前 DOI
-  返回 `INTERACTION_REQUIRED`，默认继续后续论文；只有显式传入
-  `--stop-on-interaction` 才暂停整批；
+- 关闭挑战页面或显式设置的交互超时耗尽后，当前 DOI 可返回
+  `INTERACTION_REQUIRED`，默认继续后续论文；只有显式传入
+  `--stop-on-interaction` 才暂停整批。按 `Ctrl+C` 则中断整个命令，
+  已完成论文的检查点仍可用于下次续跑，本次完整报告不保证更新；
 - `AUTH_REQUIRED`、`INTERACTION_REQUIRED`、`ENTITLEMENT_REQUIRED` 和
   `ACCESS_DENIED` 分开报告，下一次运行会重新尝试；
 - 检查点不记录 cookie、token、URL 或异常消息；只有验证成功且哈希一致的文件
@@ -465,6 +489,8 @@ CLI 默认写入 `batch-checkpoint.json` 和 `batch-report.json`，内部错误�
 交互模式下不传 `--interaction-timeout` 时，AN 会在可见浏览器挑战处持续等待并在
 挑战解除后自动继续。可传 `--interaction-timeout N` 改为最多等待 N 秒；无人值守
 任务应显式使用 `--non-interactive`。AN 不会自动重试明确的无权限或无订阅状态。
+默认退出码 `0` 仅表示批次流程完成，**不表示每篇都已验证成功**；用于自动化时
+请加 `--fail-on-unverified`，并检查 `batch-report.json` 的逐篇状态。
 
 连接本机真实 Edge/Chrome 做大批量测试时，可以让 CLI 自动启动专用持久配置，
 逐篇导航，并为公共解析和浏览器候选设置独立预算：
@@ -595,7 +621,9 @@ MISMATCH
 UNKNOWN
 ```
 
-明确 DOI 证据优先于标题相似度；已知属于其他论文的 DOI 不能被“看起来很像”的标题覆盖。
+目标 DOI 出现在 PDF 首页，或预期标题在首页得到足够强的匹配，才构成正向身份
+证据；仅在后续页面引用目标 DOI 不足以判定 `MATCH`。冲突证据会在报告中保留，
+不能把 `doi_match` 字段单独当作 `VERIFIED` 结论。
 
 文档角色：
 
@@ -769,6 +797,10 @@ knowledge-base / autonomous Agent logic
 完整中文使用说明（安装、批量下载、登录续跑、结果审查与排障）：
 
 [Aletheia Nexus 0.6 使用说明书](docs/USER_MANUAL.md)
+
+合并与发布门槛见[说明书第 9 节](docs/USER_MANUAL.md#9-合并-main-前的发布检查)；
+云端 CI 触发和额度策略见[CI 架构](docs/CI_ARCHITECTURE.md)；基准集的来源、
+冻结规则与对比口径见[基准集说明](benchmarks/README.md)。
 
 v0.6 获取率最大化规范：
 

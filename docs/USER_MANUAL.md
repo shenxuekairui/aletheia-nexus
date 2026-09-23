@@ -9,12 +9,12 @@
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev,browser]"
+python -m pip install -e ".[browser]"
 python -m playwright install chromium
 python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 ```
 
-只使用公开 HTTP 路径时，可安装 `.[dev]`，不必安装浏览器依赖。正式使用时可将输出目录放在仓库外，以便代码与下载文件分开管理。需要联网访问 DOI、元数据服务和出版社；机构授权仍由出版社和当前账号决定。
+只使用公开 HTTP 路径时，可执行 `python -m pip install -e .`，不必安装浏览器依赖；开发者运行测试时才需要 `python -m pip install -e ".[dev,browser]"`。正式使用时可将输出目录放在仓库外，以便代码与下载文件分开管理。需要联网访问 DOI、元数据服务和出版社；机构授权仍由出版社和当前账号决定。浏览器使用独立的持久配置目录，可能包含登录状态，应像账号资料一样保护，不要提交或分享。
 
 ## 2. 准备 DOI 清单
 
@@ -48,7 +48,9 @@ python -u scripts/batch_v06_download.py dois.json `
 
 当指定的本机调试端点尚未运行时，CLI 默认自动启动 AN 专用 Edge/Chrome，使用持久配置目录，逐篇打开页面。同一个浏览器会话会复用有效的 cookie 与机构认证状态；AN 不会读取、打印或写入 cookie 值。`--cdp-navigate` 表示批量任务逐篇导航；不加时会优先尝试接管当前已打开的匹配论文标签。
 
-如只需公开路径和不等待人工操作：
+未指定 `--cdp-endpoint` 时，AN 使用安装的 Playwright Chromium 与专用持久配置；指定端点时才可能自动启动本机 Edge/Chrome。默认配置名为 `human-handoff`，目录在用户主目录的 `.aletheia-nexus/browser-profiles/` 下。若需隔离不同机构或账号，分别使用 `--profile NAME`；需要自定保存位置时用 `--profile-root DIR`。若 CDP 端点已经有浏览器在运行，AN 会附加到那个现有会话，**单改 `--profile` 不会切换它的实际配置**；机构隔离还应使用各自的浏览器进程与端口。不要把专用配置目录当作普通报告共享或上传。已自行启动并附加的 CDP 浏览器保持其原有网络设置；AN 不会修改该浏览器的代理。
+
+如需无人值守运行（不等待人工登录或验证码）：
 
 ```powershell
 python -u scripts/batch_v06_download.py dois.txt `
@@ -56,7 +58,7 @@ python -u scripts/batch_v06_download.py dois.txt `
   --non-interactive
 ```
 
-无人值守不等于绕过登录。遇到需要账号、订阅或验证的站点，AN 会记录相应状态；若站点未给出可识别的访问提示，也可能是 `EXHAUSTED`，需要查看报告诊断。
+`--non-interactive` **不会禁用浏览器或官方 API**：已经有效的授权会话仍可能被复用，也可能自动打开浏览器；它只禁止等待人工操作。无人值守不等于绕过登录。遇到需要账号、订阅或验证的站点，AN 会记录相应状态；若站点未给出可识别的访问提示，也可能是 `EXHAUSTED`，需要查看报告诊断。若上层脚本要求每个有效 DOI 都成功，请再加 `--fail-on-unverified`。
 
 ### 常用开关
 
@@ -65,12 +67,14 @@ python -u scripts/batch_v06_download.py dois.txt `
 | `--output-dir DIR` | 保存 PDF、逐篇记录、检查点和批次报告。 |
 | `--cdp-endpoint URL` | 连接本机 AN 浏览器调试端点。 |
 | `--cdp-navigate` | 为批次逐篇导航，不强行复用当前标签。 |
+| `--profile NAME` / `--profile-root DIR` | 隔离并保存特定机构或账号的浏览器状态。 |
+| `--no-start-browser-if-needed` | 本机 CDP 端点不可用时不自动启动 Edge/Chrome。 |
 | `--interaction-timeout N` | 最多等待人工登录/验证 N 秒；省略则持续等待。 |
 | `--stop-on-interaction` | 当前 DOI 仍需交互时停止整批；默认继续后续 DOI。 |
 | `--non-interactive` | 无人值守，不等待人工登录或验证码。 |
 | `--no-resume` | 不复用检查点，重新尝试所有输入。 |
 | `--local-pdf DOI=PATH` | 导入已有 PDF，并重新执行完整验证。可重复传入。 |
-| `--manual-ieee-fallback` | IEEE 自动获取失败时，才提示输入用户自行保存的本地 PDF 路径。 |
+| `--manual-ieee-fallback` | 交互式终端中 IEEE 自动获取失败时，才提示输入用户自行保存的本地 PDF 路径。 |
 | `--keep-unverified` | 保留未通过正文身份验证的 PDF，便于诊断。 |
 | `--fail-on-unverified` | 任意有效 DOI 未 `VERIFIED` 时以非零状态退出。 |
 | `--unpaywall-email EMAIL` | 为适用的开放获取发现服务提供联系邮箱。 |
@@ -85,7 +89,7 @@ python -u scripts/batch_v06_download.py dois.txt `
 
 Elsevier 等站点可能按网络 IP 自动推荐机构。即使 AN 复用同一浏览器配置，出版社仍可能重新选择机构。若自动选中的机构没有该期刊权限，请在网站提供的入口切换至有权限的机构；AN 不修改系统代理或伪造机构身份。切换成功后的 cookie 可能被复用，但不保证永久有效。
 
-如果确认没有订阅权限，可关闭该登录页或按 `Ctrl+C` 结束等待，随后报告会显示 `INTERACTION_REQUIRED`；这与“已确认无权限”的人工判断应分别记录，不要把没有完成的登录自动解释成 `ENTITLEMENT_REQUIRED`。若出版社明确显示购买或无权限页面，AN 才可能自动归类 `ENTITLEMENT_REQUIRED`。
+如果确认没有订阅权限，可以关闭当前挑战页面，或设置有限的 `--interaction-timeout N`；当前 DOI 可结束为 `INTERACTION_REQUIRED`，默认继续后续 DOI。这与“已确认无权限”的人工判断应分别记录，不要把没有完成的登录自动解释成 `ENTITLEMENT_REQUIRED`。`Ctrl+C` 会中断整个命令：之前已写入检查点的论文仍可在下次复用，但本次完整 `batch-report.json` 不保证更新。若出版社明确显示购买或无权限页面，AN 才可能自动归类 `ENTITLEMENT_REQUIRED`。
 
 IEEE DOI 也进入同一浏览器流程。出现已记住的 “Access Through …” 机构按钮时，AN 会尝试点击、等待约 5 秒并重试 PDF；账号密码、MFA 和其他人工验证仍由用户完成。所有文件都受同样的正文验证规则约束。
 
@@ -104,6 +108,8 @@ downloads/my-batch/
 再次执行相同命令时，AN 只直接复用仍存在且 SHA-256 与检查点一致的 `VERIFIED` 文件。其他状态都会重新尝试。不要手工把未核验 PDF 改名冒充成功文件；检查点不会因此信任它。成功 PDF 的 `.acquisition.json` 保存来源、PDF 结构、DOI/标题匹配与正文/附件判断，但会对短期签名 URL 脱敏。检查点不保存 cookie、token、URL 或异常消息。
 
 `batch-report.json` 的 `items` 给出每篇 `status`、`verified_path`、是否 `resumed` 和安全诊断；`status_counts` 是当前这一次运行的统计。若要把多个独立复测合并成一个语料结果，应按 DOI 去重并保留每次运行的报告，不要将单篇复测冒充为一次完整批次。
+
+默认退出码 `0` 只表示批次正常处理结束，**不表示全部论文都已 `VERIFIED`**。退出码 `2` 表示至少一篇出现 `RUNNER_ERROR`，`3` 表示配置为遇到交互就暂停而批次已暂停，`4` 表示使用了 `--fail-on-unverified` 且有有效 DOI 未验证成功。无效 DOI 仍需在报告中逐项检查。不要仅凭进程退出码或 PDF 文件名判定科学验证成功。
 
 ### 如何理解状态
 
@@ -146,12 +152,33 @@ ELSEVIER_BEARER_TOKEN    # 可选
 ## 8. 开发验证与项目边界
 
 ```powershell
+python -m pip install -e ".[dev,browser]"
 python -m pip check
 python -m ruff format --check src tests scripts
 python -m ruff check src tests scripts
 python -m compileall -q src scripts
+python scripts/verify_frozen_benchmark.py
 python -m pytest -q
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
 该脚本与单元测试不替代实际机构环境中的授权验证。建议用固定 DOI 集、已确认有权限的阳性对照、每篇报告及人工抽查共同评估结果。AN 0.6 负责获取与核验；深层内容解析和科研知识组织属于后续版本。
+
+## 9. 合并 main 前的发布检查
+
+`0.6.0.dev0` 只表示发布候选。维护者应逐项留存最终提交 SHA、命令输出和报告路径；任何门槛失败或缺证，都保持草稿状态，不改成 `0.6.0`，不合并 `main`，不打稳定标签。
+
+1. 在最终代码上分别以 Python 3.11 和 3.14 运行第 8 节的本地检查，确认 Ruff、依赖、完整确定性测试与固定基准集检查通过；在支持的环境执行真实 Chromium 集成测试。`v0.5.2` tag 的历史 510 passed 与 v0.6 RC 的 734 passed、7 skipped 必须分开记录。
+2. 准备本地 `benchmarks/v06_entitled_positive_controls.local.json`：从[模板](../benchmarks/v06_entitled_positive_controls.example.json)替换为同一机构、账号和网络环境下已人工确认可获取的至少 3 篇论文，覆盖至少 2 个 `access_family`。不要提交凭据或机构专属阳性对照。
+3. 在该环境运行正式授权验收，并保存报告。默认压力集是 CDI 与海水淡化各 10 篇；另有[固定标题的 20 篇用户集](../benchmarks/user_20260923_20_frozen.json)，若改用它，必须在结果中注明输入集，不得把旧的累计 19/20 当作新一次运行结果。
+
+   ```powershell
+   python scripts/manual_v06_access_acceptance.py `
+     --entitled-benchmark benchmarks/v06_entitled_positive_controls.local.json `
+     --require-entitled-controls `
+     --report downloads/v06-release-acceptance.json
+   ```
+
+   验收必须满足：压力论文不少于 20 篇、全部阳性对照 `VERIFIED`、至少一篇真正由 v0.6 路径相对 v0.5 恢复、`RUNNER_ERROR = 0`；还须人工抽查 PDF 与失败分类。公开困难集的覆盖率不是订阅权限证明。
+4. 最终发布 PR 面向 `main`，核对差异与版本号；待授权验收通过后才把 `pyproject.toml` 改为 `0.6.0` 并生成最终发布提交。将 PR 转为 ready，在**该最终提交**上等待 Python 3.11、3.14 与 Chromium 三个云端 job 的实际结论均为 `success`。草稿 PR 的 `skipped` 即使在 GitHub 显示绿色也不算通过；额度耗尽同样不算通过。详见[CI 架构](CI_ARCHITECTURE.md)。
+5. 若开发期间使用过堆叠 PR，正式发布前保留一个包含完整 v0.6 差异、直接面向 `main` 的发布 PR；不要再把已被覆盖的底层 PR 重复合入。任一改动之后都重新核对最终 SHA 和完整 CI。所有门槛通过后再合并并给合并后的 `main` 提交打 `v0.6.0` 标签。正式流程以[技术规范的退出标准](v0.6-acquisition-maximization.md#16-exit-criteria)为准。

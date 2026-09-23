@@ -72,7 +72,10 @@ real-network job consuming minutes while nobody is preparing a release.
    all three CI jobs to conclude `success` **on that commit**. If a subsequent
    commit lands,
    repeat the full gate. Never treat a skipped draft job as a green release gate.
-4. Merge only after CI and live acceptance both pass; tag the merged `main`
+4. If development used stacked PRs, consolidate them into one complete
+   `main`-targeted release PR before the final gate. Do not merge a superseded
+   base PR separately or infer that its old checks validate the combined diff.
+   Merge only after CI and live acceptance both pass; tag the merged `main`
    commit, not an unmerged PR commit.
 
 `workflow_dispatch` is available once the workflow file exists on the default
