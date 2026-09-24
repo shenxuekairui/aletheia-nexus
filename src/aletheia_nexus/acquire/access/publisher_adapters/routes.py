@@ -89,3 +89,17 @@ class MdpiAdapter(PublisherAdapter):
                 "Publisher canonical article PDF route",
             )
         return None
+
+
+class BrowserFirstPdfAdapter(PublisherAdapter):
+    """Use the visible tab first where extra PDF GETs often repeat challenges."""
+
+    def __init__(self, name: str, hosts: frozenset[str]) -> None:
+        self.name = name
+        self.hosts = hosts
+
+    def matches(self, doi: str | None, parts: SplitResult) -> bool:
+        return (parts.hostname or "").casefold() in self.hosts
+
+    def prefer_browser_pdf_navigation(self) -> bool:
+        return True

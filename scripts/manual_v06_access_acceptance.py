@@ -1,6 +1,7 @@
 import argparse
 import json
 import platform
+import subprocess
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -13,8 +14,10 @@ from aletheia_nexus.acquire.access import (
     ElsevierAccessConfig,
     MaximizedAcquisitionStatus,
     acquire_full_text_maximized,
+    browser_profile_dir,
 )
 from aletheia_nexus.acquire.access.security import redact_url_for_record
+from aletheia_nexus.cli import _cdp_ready, _start_cdp_browser
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 DEFAULT_BENCHMARKS = (
@@ -32,6 +35,32 @@ def _package_version() -> str:
         return version("aletheia-nexus")
     except PackageNotFoundError:
         return "dev"
+
+
+def _source_revision() -> dict[str, object]:
+    """Record the exact local source state without disclosing file paths."""
+
+    root = Path(__file__).resolve().parents[1]
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return {"commit": None, "dirty": None}
+    return {"commit": commit, "dirty": bool(status)}
 
 
 def _report_path(path: Path) -> str:
@@ -364,11 +393,16 @@ def _report_payload(
     runner_errors: int,
     final_statuses: Counter[str],
     challenge_kinds: Counter[str],
+    browser_launch_mode: str = "an_playwright",
+    source_revision: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "schema": "aletheia-nexus/v0.6-access-acceptance/v2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "aletheia_nexus_version": _package_version(),
+        "source_revision": source_revision
+        if source_revision is not None
+        else _source_revision(),
         "environment": {
             "python": sys.version.split()[0],
             "platform": platform.system(),
@@ -391,6 +425,7 @@ def _report_payload(
             "profile_name": config.profile_name,
             "channel": config.channel,
             "external_cdp_attach": config.cdp_endpoint is not None,
+            "launch_mode": browser_launch_mode,
             "headless": config.headless,
             "interactive": config.interactive,
             "max_source_routes": config.max_source_routes,
@@ -465,6 +500,8 @@ def _write_report(
     runner_errors: int,
     final_statuses: Counter[str],
     challenge_kinds: Counter[str],
+    browser_launch_mode: str = "an_playwright",
+    source_revision: dict[str, object] | None = None,
 ) -> None:
     payload = _report_payload(
         records=records,
@@ -488,6 +525,8 @@ def _write_report(
         runner_errors=runner_errors,
         final_statuses=final_statuses,
         challenge_kinds=challenge_kinds,
+        browser_launch_mode=browser_launch_mode,
+        source_revision=source_revision,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -635,14 +674,30 @@ def main() -> int:
         "--cdp-endpoint",
         default=None,
         help=(
-            "Attach to an already-running user-controlled Chromium browser over "
-            "a loopback CDP endpoint, for example http://127.0.0.1:9222. "
-            "The current HTTP(S) tab is reused instead of being re-navigated."
+            "Attach to a dedicated browser over a loopback CDP endpoint, for "
+            "example http://127.0.0.1:9222. The current HTTP(S) tab is reused "
+            "unless --cdp-navigate is set."
         ),
+    )
+    parser.add_argument(
+        "--cdp-navigate",
+        action="store_true",
+        help="Open and navigate a temporary browser tab for each route.",
+    )
+    parser.add_argument(
+        "--start-browser-if-needed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Start a dedicated Edge/Chrome if the CDP endpoint is not running.",
     )
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--interaction-timeout", type=float, default=180.0)
+    parser.add_argument(
+        "--browser-use-system-proxy",
+        action="store_true",
+        help="Use the OS proxy settings for AN's newly launched browser.",
+    )
     parser.add_argument("--unpaywall-email", default=None)
     parser.add_argument("--openalex-api-key", default=None)
     parser.add_argument("--metadata-mailto", default=None)
@@ -671,12 +726,25 @@ def main() -> int:
         profile_name=args.profile,
         profile_root=args.profile_root,
         channel=args.channel,
+        use_system_proxy=args.browser_use_system_proxy,
         cdp_endpoint=args.cdp_endpoint,
+        cdp_resume_existing_page=not args.cdp_navigate,
         headless=args.headless,
         interactive=not args.non_interactive,
         interaction_timeout=args.interaction_timeout,
         interaction_callback=(None if args.non_interactive else _interaction_notice),
     )
+    browser_launch_mode = "an_playwright"
+    if args.cdp_endpoint:
+        browser_launch_mode = "attached_existing_cdp"
+        if args.start_browser_if_needed and not _cdp_ready(args.cdp_endpoint):
+            _start_cdp_browser(
+                args.cdp_endpoint,
+                browser_profile_dir(config),
+                use_system_proxy=config.use_system_proxy,
+            )
+            browser_launch_mode = "an_dedicated_cdp"
+    source_revision = _source_revision()
     elsevier_config = None if args.no_elsevier_api else ElsevierAccessConfig.from_env()
 
     records: list[dict[str, object]] = []
@@ -758,6 +826,8 @@ def main() -> int:
                     runner_errors=runner_errors,
                     final_statuses=final_statuses,
                     challenge_kinds=challenge_kinds,
+                    browser_launch_mode=browser_launch_mode,
+                    source_revision=source_revision,
                 )
                 continue
 
@@ -828,6 +898,8 @@ def main() -> int:
                 runner_errors=runner_errors,
                 final_statuses=final_statuses,
                 challenge_kinds=challenge_kinds,
+                browser_launch_mode=browser_launch_mode,
+                source_revision=source_revision,
             )
 
     print()

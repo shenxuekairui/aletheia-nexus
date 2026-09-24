@@ -1,5 +1,6 @@
 """Installed CLI contract and first-run public-only path."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -67,3 +68,25 @@ def test_public_only_rejects_multiple_dois(tmp_path):
     with pytest.raises(SystemExit) as exc:
         cli.main([str(path), "--public-only"])
     assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("use_system_proxy", [False, True])
+def test_dedicated_cdp_browser_proxy_mode(monkeypatch, tmp_path, use_system_proxy):
+    launched = []
+    monkeypatch.setattr(cli, "_find_browser", lambda: Path("C:/Edge/msedge.exe"))
+    monkeypatch.setattr(
+        cli.subprocess,
+        "Popen",
+        lambda args, **kwargs: launched.append(args),
+    )
+    monkeypatch.setattr(cli, "_cdp_ready", lambda endpoint: True)
+
+    cli._start_cdp_browser(
+        "http://127.0.0.1:9222",
+        tmp_path / "profile",
+        use_system_proxy=use_system_proxy,
+    )
+
+    assert len(launched) == 1
+    assert "--remote-debugging-address=127.0.0.1" in launched[0]
+    assert ("--no-proxy-server" in launched[0]) is not use_system_proxy

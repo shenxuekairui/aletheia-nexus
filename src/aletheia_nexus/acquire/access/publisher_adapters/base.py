@@ -34,6 +34,11 @@ class PublisherAdapter:
     def remembered_institution(self, page, control_semantics) -> bool:
         return False
 
+    def prefer_browser_pdf_navigation(self) -> bool:
+        """Avoid a duplicate pre-navigation HTTP request for sensitive PDF routes."""
+
+        return False
+
     def refine_non_pdf_challenge(
         self, parts: SplitResult, visible_text: str, report: ChallengeReport
     ) -> ChallengeReport:

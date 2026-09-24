@@ -156,14 +156,17 @@ aletheia-nexus acquire papers.json `
   --fail-on-unverified
 ```
 
-默认使用 AN 独立的持久 Chromium 配置。若希望接管或自动启动本机专用 Edge/Chrome，可增加 `--cdp-endpoint http://127.0.0.1:9222`；不同机构应使用独立配置与浏览器端口。遇到登录、MFA 或验证码，交互模式会停在可见页面等待用户完成，然后继续。Cookie 能否复用取决于出版社，AN 不能保证机构选择永久有效。
+默认使用 AN 独立的持久 Chromium 配置。在 Windows 上，若普通 Edge 能打开论文而 AN 浏览器持续停在验证页，可用 `--cdp-endpoint http://127.0.0.1:9222 --cdp-navigate` 自动启动独立 Edge；仅当你信任当前系统代理并希望 AN 使用它时再加 `--browser-use-system-proxy`。不同机构应使用独立配置与浏览器端口，不能因浏览器打开某篇论文就推断其他机构也有权限。遇到登录、MFA 或验证码，交互模式会停在可见页面等待用户完成，然后继续；Cookie 能否复用取决于出版社。[Windows 浏览器对照与风险说明](docs/USER_MANUAL.md#3-最常用的批量运行方式)给出单篇验证命令。
 
 成功 PDF、`.acquisition.json`、`batch-checkpoint.json` 与 `batch-report.json` 保存在输出目录。逐篇以报告中的 `status` 为准：CLI 默认退出码 `0` 只表示批次处理完毕；上例的 `--fail-on-unverified` 才会在有效 DOI 未全部验证时返回非零码。旧 `scripts/batch_v06_download.py` 保留兼容入口。关闭挑战页面、超时和按 `Ctrl+C` 的行为不同，操作前请看[断点续跑与状态说明](docs/USER_MANUAL.md#5-断点续跑与文件核验)。
 
 Python 用户也可以直接调用统一入口：
 
 ```python
-from aletheia_nexus.acquire.access import BrowserAccessConfig, acquire_full_text_maximized
+from aletheia_nexus.acquire.access import (
+    BrowserAccessConfig,
+    acquire_full_text_maximized,
+)
 
 result = acquire_full_text_maximized(
     "10.1021/jacs.6c03536",

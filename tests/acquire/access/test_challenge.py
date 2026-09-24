@@ -4,6 +4,36 @@ from aletheia_nexus.acquire.access import (
 )
 
 
+def test_cloudflare_challenge_url_stays_blocked_during_blank_transition():
+    report = classify_access_challenge(
+        url="https://pubs.rsc.org/en/content/articlepdf/test?__cf_chl_rt_tk=redacted",
+        title="",
+        visible_text="",
+        html="<html></html>",
+    )
+
+    assert report.kind == ChallengeKind.BOT_CHALLENGE
+
+
+def test_cloudflare_query_alone_does_not_block_loaded_article_or_pdf():
+    url = "https://pubs.rsc.org/article/test?__cf_chl_rt_tk=redacted"
+    assert (
+        classify_access_challenge(
+            url=url,
+            title="The target article",
+            visible_text="The target article abstract and main text have loaded normally.",
+        ).kind
+        == ChallengeKind.NONE
+    )
+    assert (
+        classify_access_challenge(
+            url=url,
+            title="target-article.pdf",
+        ).kind
+        == ChallengeKind.NONE
+    )
+
+
 def test_harmless_global_sign_in_is_not_an_auth_challenge():
     report = classify_access_challenge(
         title="Target Article",

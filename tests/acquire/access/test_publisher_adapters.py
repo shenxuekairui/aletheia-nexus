@@ -39,6 +39,21 @@ def test_doi_resolver_adapter_requires_matching_publisher_prefix():
     assert canonical_pdf_route("10.1021/example", "https://[invalid") is None
 
 
+def test_rsc_and_sciencedirect_open_pdf_in_tab_before_extra_request():
+    assert adapter_for_url(
+        "https://pubs.rsc.org/en/content/articlepdf/2026/ta/example"
+    ).prefer_browser_pdf_navigation()
+    assert adapter_for_url(
+        "https://www.sciencedirect.com/science/article/pii/example/pdfft"
+    ).prefer_browser_pdf_navigation()
+    assert not adapter_for_url(
+        "https://pubs.rsc.org.evil.test/articlepdf/example"
+    ).prefer_browser_pdf_navigation()
+    assert not adapter_for_url(
+        "https://pubs.acs.org/doi/pdf/10.1021/example"
+    ).prefer_browser_pdf_navigation()
+
+
 def test_thieme_entitlement_hook_only_applies_to_its_abstract_page():
     adapter = adapter_for_url(
         "https://www.thieme-connect.com/products/ejournals/abstract/10.1055/a-test"

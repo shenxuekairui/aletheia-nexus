@@ -46,7 +46,21 @@ aletheia-nexus acquire dois.json `
   --cdp-navigate
 ```
 
-当指定的本机调试端点尚未运行时，CLI 默认自动启动 AN 专用 Edge/Chrome，使用持久配置目录，逐篇打开页面。同一个浏览器会话会复用有效的 cookie 与机构认证状态；AN 不会读取、打印或写入 cookie 值。`--cdp-navigate` 表示批量任务逐篇导航；不加时会优先尝试接管当前已打开的匹配论文标签。
+当指定的本机调试端点尚未运行时，CLI 默认自动启动 AN 专用 Edge/Chrome，使用持久配置目录，逐篇打开页面。同一个浏览器会话会复用有效的 cookie 与机构认证状态；AN 不会读取、打印或写入 cookie 值。`--cdp-navigate` 表示批量任务逐篇导航；不加时会优先尝试接管当前已打开的匹配论文标签。专用浏览器默认强制直连；若普通浏览器依靠 Windows 系统代理而 AN 持续落入验证页，可在知晓认证流量也会经过所配置代理后，显式加 `--browser-use-system-proxy`。该选项只影响新启动的 AN 浏览器；附加到已运行的 CDP 浏览器时，网络设置仍由该浏览器决定。
+
+Windows 上若 AN 自带的 Playwright 浏览器反复遇到验证、但普通 Edge 能打开同一篇论文，可先用**单篇 DOI**试下面的独立 Edge 路径（仅在信任当前系统代理时保留最后一个参数）：
+
+```powershell
+aletheia-nexus acquire 10.1039/D6TA02244H `
+  --output-dir downloads/edge-check `
+  --profile my-institution `
+  --cdp-endpoint http://127.0.0.1:9222 `
+  --cdp-navigate `
+  --browser-use-system-proxy `
+  --interaction-timeout 180
+```
+
+AN 会在该本机端口未被占用时启动独立 Edge，不修改日常 Edge；若端口已有浏览器，则会附加到现有会话，运行前务必确认那是你期望的 AN 浏览器。调试端口只应绑定本机，使用完毕关闭该专用浏览器。这个方式不会绕过验证码或保证出版社放行。
 
 未指定 `--cdp-endpoint` 时，AN 使用安装的 Playwright Chromium 与专用持久配置；指定端点时才可能自动启动本机 Edge/Chrome。默认配置名为 `human-handoff`，目录在用户主目录的 `.aletheia-nexus/browser-profiles/` 下。若需隔离不同机构或账号，分别使用 `--profile NAME`；需要自定保存位置时用 `--profile-root DIR`。若 CDP 端点已经有浏览器在运行，AN 会附加到那个现有会话，**单改 `--profile` 不会切换它的实际配置**；机构隔离还应使用各自的浏览器进程与端口。不要把专用配置目录当作普通报告共享或上传。已自行启动并附加的 CDP 浏览器保持其原有网络设置；AN 不会修改该浏览器的代理。
 
@@ -69,6 +83,7 @@ aletheia-nexus acquire dois.txt `
 | `--cdp-navigate` | 为批次逐篇导航，不强行复用当前标签。 |
 | `--profile NAME` / `--profile-root DIR` | 隔离并保存特定机构或账号的浏览器状态。 |
 | `--no-start-browser-if-needed` | 本机 CDP 端点不可用时不自动启动 Edge/Chrome。 |
+| `--browser-use-system-proxy` | 新启动的 AN 浏览器采用操作系统代理设置；默认仍强制直连。代理可能接触站点请求和认证会话，请只在信任当前代理时启用。 |
 | `--interaction-timeout N` | 最多等待人工登录/验证 N 秒；省略则持续等待。 |
 | `--stop-on-interaction` | 当前 DOI 仍需交互时停止整批；默认继续后续 DOI。 |
 | `--non-interactive` | 无人值守，不等待人工登录或验证码。 |
@@ -85,7 +100,7 @@ aletheia-nexus acquire dois.txt `
 
 1. AN 打开论文或 PDF 的可见浏览器页面。
 2. 若出现机构选择、登录、MFA 或验证码，用户在该浏览器内完成。
-3. AN 观察页面是否离开验证状态；恢复后重试目标 DOI 并继续后续论文。
+3. AN 只观察页面，不在等待循环中主动刷新。验证提示消失后须连续数次保持可用状态；AN 优先读取浏览器已收到的 PDF/下载，必要时才对同一目标作一次受限重试，然后继续后续论文。
 
 Elsevier 等站点可能按网络 IP 自动推荐机构。即使 AN 复用同一浏览器配置，出版社仍可能重新选择机构。若自动选中的机构没有该期刊权限，请在网站提供的入口切换至有权限的机构；AN 不修改系统代理或伪造机构身份。切换成功后的 cookie 可能被复用，但不保证永久有效。
 
@@ -145,6 +160,8 @@ ELSEVIER_BEARER_TOKEN    # 可选
 
 - **浏览器连接超时：** 先确认 `http://127.0.0.1:9222/json/version` 可访问。即使端点响应，浏览器内部调试连接也可能卡住；关闭仅用于 AN 的浏览器后重跑，持久配置目录中的登录状态通常仍在。不要关闭日常浏览器或删除整个用户配置目录。
 - **登录完成却未继续：** 确认返回到同一 AN 浏览器会话；若站点在新标签完成认证，AN 会检查新旧出版社标签和仍留空白的身份验证标签。若仍卡住，可安全中断并从检查点重跑，保留现场与报告用于复现。
+- **ScienceDirect / RSC 验证页反复出现：** 等待期间 AN 不主动刷新网页；站点自身可能重定向或重建验证组件。检查页面是否仍显示验证码、是否已返回目标论文，以及当前机构是否有授权。AN 不会把短暂空白当作验证成功；重复验证或超时应记为需人工处理，避免连续对同一 PDF 地址发请求。不要通过增大重试次数来应对站点风控。
+- **普通 Edge 能打开、AN Edge 却循环验证：** 核对两者是否走相同的代理/网络出口。AN 默认强制直连，即使 Windows 系统代理已启用；关闭 TUN 不会自动取消系统代理，也不会改变 AN 的启动参数。信任该代理时，可显式选择 `--browser-use-system-proxy`，并用单篇 DOI 验证；这不保证站点一定接受受控浏览器。
 - **打开了 PDF 却显示 `SUPPLEMENT`：** 查看报告中的 `identity.evidence`、实际 PDF 首页及来源 URL。ACS 正文首页可能含“Supporting Information”导航文字，不能单凭该词判断为附件；当前规则结合首页标题与 Abstract 识别正文。
 - **`EXHAUSTED`：** 先分清 403/挑战、没有 PDF 候选、标题不匹配和实际购买页。单纯增大重试次数通常不能解决订阅缺失。
 - **机构自动选错：** 在出版社提供的机构选择界面切换；AN 不强制改写机构 cookie，也不保证按 IP 跳转的网站永久记住选择。

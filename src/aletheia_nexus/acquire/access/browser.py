@@ -60,6 +60,7 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         "wait_for_interaction",
         "keep_unverified",
         "cdp_resume_existing_page",
+        "use_system_proxy",
     ):
         if not isinstance(getattr(config, name), bool):
             raise TypeError(f"{name} must be a bool")
@@ -528,9 +529,10 @@ class BrowserSession:
             "headless": self.config.headless,
             "accept_downloads": True,
             "service_workers": "allow",
-            # Process-scoped direct connection. This does not modify the OS proxy
-            # or the user's everyday browser profile/settings.
-            "args": ["--no-proxy-server"],
+            # Keep the historical direct-connection default. Opting in to the
+            # system proxy only affects this dedicated browser process; it does
+            # not change OS settings or the user's everyday browser profile.
+            "args": [] if self.config.use_system_proxy else ["--no-proxy-server"],
         }
         if self.config.channel:
             launch_kwargs["channel"] = self.config.channel

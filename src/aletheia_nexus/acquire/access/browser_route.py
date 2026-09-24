@@ -159,6 +159,8 @@ def _wait_until_challenge_changes(
     history: list[ChallengeReport],
 ) -> ChallengeReport:
     report = initial
+    last_challenge = initial
+    clear_observations = 0
     if seconds is not None and seconds <= 0:
         return report
     deadline = None if seconds is None else time.monotonic() + seconds
@@ -179,7 +181,18 @@ def _wait_until_challenge_changes(
             # may invalidate the target while Playwright is polling. Preserve the
             # last confirmed challenge instead of replacing useful access state
             # with a generic TargetClosedError at the DOI level.
-            return report
+            return last_challenge if clear_observations else report
+
+        if report.kind == ChallengeKind.NONE:
+            # A challenge page can briefly become blank while its JavaScript
+            # redirects or rebuilds the widget. Do not resume requests on one
+            # transient NONE observation and restart the publisher challenge.
+            clear_observations += 1
+            if clear_observations < 4:
+                continue
+        else:
+            clear_observations = 0
+            last_challenge = report
 
         _append_report(history, report)
         if report.kind in {
@@ -188,7 +201,7 @@ def _wait_until_challenge_changes(
             ChallengeKind.ACCESS_DENIED,
         }:
             return report
-    return report
+    return last_challenge if clear_observations else report
 
 
 def _resolve_page_challenge(
@@ -1603,7 +1616,11 @@ def attempt_browser_route(
     # succeed without opening a page at all. External browser handoff deliberately
     # avoids BrowserContext.request because strict WAFs may reject it even when the
     # real tab is already authorized.
-    if source.url_type == CandidateUrlType.PDF and not _browser_native_only:
+    if (
+        source.url_type == CandidateUrlType.PDF
+        and not _browser_native_only
+        and not adapter_for_url(source.url).prefer_browser_pdf_navigation()
+    ):
         direct, direct_challenge = _request_pdf_candidate(
             context,
             candidate=source,
@@ -2139,6 +2156,63 @@ def attempt_browser_route(
                     for report in observed:
                         _append_report(challenge_history, report)
                     interaction_used = interaction_used or used
+                    # A solved challenge may already have delivered the PDF in
+                    # the visible tab. Consume that result before issuing a new
+                    # HTTP request to the same endpoint.
+                    verified_download = process_pending_downloads()
+                    if verified_download is not None:
+                        return BrowserAccessAttempt(
+                            source_candidate=source,
+                            final_url=getattr(page, "url", None) or candidate.url,
+                            status=BrowserAttemptStatus.VERIFIED,
+                            challenge_history=tuple(challenge_history),
+                            file_attempts=tuple(file_attempts),
+                            candidates_considered=len(file_attempts),
+                            interaction_used=interaction_used,
+                            evidence=("Challenge-cleared browser download verified",),
+                            elapsed_seconds=time.perf_counter() - started_at,
+                        )
+                    sync_session_events()
+                    for response in pending_browser_responses():
+                        browser_attempt = _browser_response_to_file_attempt(
+                            response,
+                            parent=source,
+                            source_page_url=page.url,
+                            output_dir=output_dir,
+                            expected_title=expected_title,
+                            config=config,
+                        )
+                        file_attempts.append(browser_attempt)
+                        if (
+                            browser_attempt.result is not None
+                            and browser_attempt.result.status
+                            == AcquisitionStatus.VERIFIED
+                        ):
+                            return BrowserAccessAttempt(
+                                source_candidate=source,
+                                final_url=page.url,
+                                status=BrowserAttemptStatus.VERIFIED,
+                                challenge_history=tuple(challenge_history),
+                                file_attempts=tuple(file_attempts),
+                                candidates_considered=len(file_attempts),
+                                interaction_used=interaction_used,
+                                evidence=(
+                                    "Challenge-cleared browser PDF response verified",
+                                ),
+                                elapsed_seconds=time.perf_counter() - started_at,
+                            )
+                    if final.kind != ChallengeKind.NONE:
+                        return BrowserAccessAttempt(
+                            source_candidate=source,
+                            final_url=getattr(page, "url", None) or candidate.url,
+                            status=_status_from_challenge(final),
+                            challenge_history=tuple(challenge_history),
+                            file_attempts=tuple(file_attempts),
+                            candidates_considered=len(file_attempts),
+                            interaction_used=interaction_used,
+                            evidence=final.evidence,
+                            elapsed_seconds=time.perf_counter() - started_at,
+                        )
                     if final.kind == ChallengeKind.NONE:
                         retry, retry_challenge = _request_pdf_candidate(
                             context,
@@ -2166,6 +2240,18 @@ def attempt_browser_route(
                                 evidence=(
                                     "Authenticated concrete PDF endpoint recovered",
                                 ),
+                                elapsed_seconds=time.perf_counter() - started_at,
+                            )
+                        if retry_challenge is not None:
+                            return BrowserAccessAttempt(
+                                source_candidate=source,
+                                final_url=getattr(page, "url", None) or candidate.url,
+                                status=_status_from_challenge(retry_challenge),
+                                challenge_history=tuple(challenge_history),
+                                file_attempts=tuple(file_attempts),
+                                candidates_considered=len(file_attempts),
+                                interaction_used=interaction_used,
+                                evidence=retry_challenge.evidence,
                                 elapsed_seconds=time.perf_counter() - started_at,
                             )
                 except Exception:

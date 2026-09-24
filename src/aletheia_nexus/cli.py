@@ -92,23 +92,28 @@ def _find_browser() -> Path:
     raise FileNotFoundError("Could not find Edge or Chrome in standard Windows paths")
 
 
-def _start_cdp_browser(endpoint: str, profile_dir: Path) -> None:
+def _start_cdp_browser(
+    endpoint: str, profile_dir: Path, *, use_system_proxy: bool = False
+) -> None:
     parsed = urlsplit(endpoint)
     if parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or not parsed.port:
         raise ValueError(
             "Automatic browser start requires a loopback CDP endpoint port"
         )
     profile_dir.mkdir(parents=True, exist_ok=True)
+    browser_args = [
+        str(_find_browser()),
+        f"--remote-debugging-address={'::1' if parsed.hostname == '::1' else '127.0.0.1'}",
+        f"--remote-debugging-port={parsed.port}",
+        f"--user-data-dir={profile_dir}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "about:blank",
+    ]
+    if not use_system_proxy:
+        browser_args.insert(4, "--no-proxy-server")
     subprocess.Popen(
-        [
-            str(_find_browser()),
-            f"--remote-debugging-port={parsed.port}",
-            f"--user-data-dir={profile_dir}",
-            "--no-proxy-server",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "about:blank",
-        ],
+        browser_args,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -275,6 +280,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile", default="human-handoff")
     parser.add_argument("--profile-root", type=Path, default=None)
     parser.add_argument("--channel", default=None)
+    parser.add_argument(
+        "--browser-use-system-proxy",
+        action="store_true",
+        help=(
+            "Let a newly launched dedicated browser use the OS proxy settings "
+            "instead of AN's direct-connection default. Authentication traffic "
+            "may pass through the configured proxy; an already attached CDP "
+            "browser keeps its own network settings."
+        ),
+    )
     parser.add_argument("--cdp-endpoint", default=None)
     parser.add_argument(
         "--cdp-navigate",
@@ -426,6 +441,7 @@ def main(argv: list[str] | None = None) -> int:
         profile_name=args.profile,
         profile_root=args.profile_root,
         channel=args.channel,
+        use_system_proxy=args.browser_use_system_proxy,
         cdp_endpoint=args.cdp_endpoint,
         cdp_resume_existing_page=not args.cdp_navigate,
         headless=args.headless,
@@ -448,7 +464,11 @@ def main(argv: list[str] | None = None) -> int:
         and args.cdp_endpoint
         and not _cdp_ready(args.cdp_endpoint)
     ):
-        _start_cdp_browser(args.cdp_endpoint, browser_profile_dir(config))
+        _start_cdp_browser(
+            args.cdp_endpoint,
+            browser_profile_dir(config),
+            use_system_proxy=config.use_system_proxy,
+        )
 
     result = acquire_full_text_batch_maximized(
         values,
