@@ -16,7 +16,7 @@
 
 本轮目标是将出版社页面差异迁入 `publisher_adapters/`、通用下载捕获迁入 `browser_engine/`，提供安装后的 `aletheia-nexus` CLI、Windows CI、PyPI Trusted Publishing 准备以及英文/社区文档。历史 v0.6.0 的 **734 passed、7 skipped** 是旧提交的记录，不能自动当作 v0.6.1 的最终测试结果。v0.6.1 需在最终提交重新运行本地与云端测试，并在真正上传 PyPI 后从全新环境验证 `pip install aletheia-nexus`；未发布前不得宣称已可从 PyPI 安装。具体发布门槛与人工设置见[v0.6.1 开发与发布计划](v0.6.1-development.md)。
 
-2026-09-24 开发快照（**不是**发布验收）：本地 Windows / Python 3.14 确定性测试 **741 passed、7 skipped**，真实 Chromium 集成 **7 passed**，Ruff、固定 20 篇输入完整性、sdist/wheel 构建和 `twine check` 通过；从独立临时环境安装开发版 wheel 后，CLI 版本与 `doctor` 检查通过。单篇公开 DOI `10.1371/journal.pone.0310216` 经新 CLI `--public-only` 得到 `VERIFIED`；这只是一个公开路径烟测，不是跨出版社成功率或机构授权阳性对照。云端 Windows job 和 PyPI 实际上传仍待验证。
+2026-09-24 开发快照（**不是**发布验收）：本地 Windows / Python 3.14 确定性测试 **742 passed、7 skipped**，真实 Chromium 集成 **7 passed**，Ruff、固定 20 篇输入完整性、sdist/wheel 构建和 `twine check` 通过；从独立临时环境安装开发版 wheel 后，CLI 版本与 `doctor` 检查通过。单篇公开 DOI `10.1371/journal.pone.0310216` 经新 CLI `--public-only` 得到 `VERIFIED`；这只是一个公开路径烟测，不是跨出版社成功率或机构授权阳性对照。首次云端完整检查在草稿 PR 的上一提交上四个 job 均实际通过；最终提交仍须重新核对，PyPI 实际上传也尚未进行。
 
 ## v0.6 — Acquisition Maximization（首个公开代码版）
 

@@ -529,17 +529,31 @@ def entrypoint(argv: list[str] | None = None) -> int:
         print(f"aletheia-nexus {version}")
         return 0
     if args[0] == "doctor":
+        if args[1:] in (["-h"], ["--help"]):
+            print("Usage: aletheia-nexus doctor\nCheck the local Python/browser setup.")
+            return 0
         if len(args) != 1:
             print("doctor takes no arguments", file=sys.stderr)
             return 2
         print(f"Python: {sys.version.split()[0]}")
         has_playwright = util.find_spec("playwright") is not None
         print(f"Browser extra: {'installed' if has_playwright else 'not installed'}")
-        if not has_playwright:
+        has_chromium = False
+        if has_playwright:
+            try:
+                from playwright.sync_api import sync_playwright
+
+                with sync_playwright() as driver:
+                    has_chromium = Path(driver.chromium.executable_path).is_file()
+            except Exception:
+                pass
+            print(f"Chromium runtime: {'ready' if has_chromium else 'missing'}")
+        if not has_playwright or not has_chromium:
             print(
                 "Public HTTP acquisition is available. For interactive browser "
-                "access: pip install 'aletheia-nexus[browser]' && "
-                "python -m playwright install chromium"
+                "access, run:\n"
+                '  python -m pip install "aletheia-nexus[browser]"\n'
+                "  python -m playwright install chromium"
             )
         return 0
     if args[0] == "acquire":

@@ -1,6 +1,6 @@
 # Aletheia Nexus
 
-[English README](README.en.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
+[English README](README.en.md) · [贡献指南](CONTRIBUTING.md) · [首次试用反馈](https://github.com/shenxuekairui/aletheia-nexus/issues/3) · [安全报告](SECURITY.md)
 
 > 从一篇论文的可信获取，走向可积累、可协作、可演化的科研知识基础设施。
 

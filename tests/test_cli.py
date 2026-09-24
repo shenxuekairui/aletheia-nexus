@@ -13,6 +13,15 @@ def test_entrypoint_help_and_doctor(capsys):
     assert "aletheia-nexus acquire" in capsys.readouterr().out
     assert cli.entrypoint(["doctor"]) == 0
     assert "Python:" in capsys.readouterr().out
+    assert cli.entrypoint(["doctor", "--help"]) == 0
+
+
+def test_doctor_explains_optional_browser_setup(monkeypatch, capsys):
+    monkeypatch.setattr(cli.util, "find_spec", lambda name: None)
+    assert cli.entrypoint(["doctor"]) == 0
+    output = capsys.readouterr().out
+    assert "Browser extra: not installed" in output
+    assert "python -m playwright install chromium" in output
 
 
 def test_entrypoint_dispatches_acquire(monkeypatch):
