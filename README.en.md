@@ -25,7 +25,7 @@ Aletheia Nexus (AN) begins with a deliberately testable question: *Is this local
 | **Experimental** | Sequential batch runs with browser-session reuse | Site changes and access state can still require intervention. |
 | **Planned** | Structured parsing, scientific memory, knowledge graphs, and agent workflows | Not delivered by the current release. |
 
-The first public code release is **v0.6.0**. Work toward **v0.6.1** adds publisher adapters, an installed CLI, Windows CI, and packaging for PyPI; these development changes are not claims about the frozen v0.6.0 tag. See the [release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) for exact test and real-DOI evidence.
+The first public code release was **v0.6.0**. **v0.6.1** adds publisher adapters, an installed CLI, Windows CI, and PyPI packaging without changing the frozen v0.6.0 tag. See the [release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) for exact test and real-DOI evidence. First-time testing by independent users remains open; the three-minute onboarding target has not yet been independently established.
 
 ## How it works
 
@@ -39,14 +39,12 @@ Every access route converges on the same document validation. The browser engine
 
 ## Get started
 
-Python 3.11 or newer is required. Until the v0.6.1 PyPI release is published, install from the source checkout:
+Python 3.11 or newer is required. With the v0.6.1 PyPI release:
 
 ```bash
-git clone https://github.com/shenxuekairui/aletheia-nexus.git
-cd aletheia-nexus
-python -m pip install -e .
+python -m pip install aletheia-nexus
 aletheia-nexus doctor
-aletheia-nexus acquire 10.1038/s41560-024-01633-4 --public-only --output-dir downloads
+aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir downloads
 ```
 
 The `--public-only` example does not require a browser and may legitimately report `EXHAUSTED` if no verified main article is publicly reachable. A quick local CLI smoke test is `aletheia-nexus --help`; a live DOI attempt depends on network services and access rights.
@@ -54,14 +52,14 @@ The `--public-only` example does not require a browser and may legitimately repo
 For the experimental authenticated browser path:
 
 ```bash
-python -m pip install -e ".[browser]"
+python -m pip install "aletheia-nexus[browser]"
 python -m playwright install chromium
 aletheia-nexus acquire papers.json --output-dir downloads/papers --fail-on-unverified
 ```
 
 `papers.json` may contain DOI strings or objects with `doi` and optional `title`. TXT and CSV input are also supported. The installed `aletheia-nexus acquire` command replaces the old `scripts/batch_v06_download.py` invocation; that script remains as a compatibility wrapper. For all options, run `aletheia-nexus acquire --help` and consult the [detailed manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md).
 
-Once v0.6.1 is actually uploaded to PyPI, source installation can be replaced with `pip install aletheia-nexus` (or `pip install "aletheia-nexus[browser]"` for browser support). The availability of a source distribution in this repository alone does **not** mean the package is on PyPI yet.
+Check the [PyPI project](https://pypi.org/project/aletheia-nexus/) for published versions; a GitHub source checkout or release alone does not prove that a PyPI upload succeeded. To try an unmerged development branch instead, clone the repository and run `python -m pip install -e .` from its root.
 
 ## Result semantics
 

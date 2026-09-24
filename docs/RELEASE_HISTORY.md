@@ -6,17 +6,19 @@
 
 ## 当前状态
 
-- 最新公开稳定版本：`v0.6.0`。当前开发分支使用 `0.6.1.dev0`；它不是新稳定发布，也尚未上传 PyPI。原私有仓库的 `v0.5.2` 冻结标签未改；针对共享验证层的正确性修复属于 v0.6，不回写历史快照。
+- 本次封板版本：`v0.6.1`。PyPI 是否已上传，以[项目页](https://pypi.org/project/aletheia-nexus/)和全新环境安装验证为准；原私有仓库的 `v0.5.2` 冻结标签未改，针对共享验证层的正确性修复属于 v0.6，不回写历史快照。
 - v0.6.0 源码版本：`0.6.0`。首个公开版按代码正确性与可安装性封板，正式机构授权资格验收不在本次完成范围内。
 - 代码级封板要求最终发布提交的 Python 3.11、3.14 与真实 Chromium 云端 job 均实际 `success`；草稿 PR 的 `skipped` 或零步骤失败不计入通过。具体运行记录随 GitHub Release 提供。
 - 项目发起者于 2026-09-24 决定将正式机构授权阳性对照验收延后至公开版之后。它不是已通过，也不能用历史 37/40、19/20 累计结果替代；发布说明须明确披露实际访问依赖用户的合法订阅、机构和站点状态。
 - 合并与打标签顺序以[使用说明书的发布检查](USER_MANUAL.md#9-合并-main-前的发布检查)及[v0.6 技术规范](v0.6-acquisition-maximization.md#16-exit-criteria)为准。
 
-## v0.6.1 — 开发中，尚未发布
+## v0.6.1 — 正式发布候选
 
-本轮目标是将出版社页面差异迁入 `publisher_adapters/`、通用下载捕获迁入 `browser_engine/`，提供安装后的 `aletheia-nexus` CLI、Windows CI、PyPI Trusted Publishing 准备以及英文/社区文档。历史 v0.6.0 的 **734 passed、7 skipped** 是旧提交的记录，不能自动当作 v0.6.1 的最终测试结果。v0.6.1 需在最终提交重新运行本地与云端测试，并在真正上传 PyPI 后从全新环境验证 `pip install aletheia-nexus`；未发布前不得宣称已可从 PyPI 安装。具体发布门槛与人工设置见[v0.6.1 开发与发布计划](v0.6.1-development.md)。
+本轮将出版社页面差异迁入 `publisher_adapters/`、通用下载捕获迁入 `browser_engine/`，提供安装后的 `aletheia-nexus` CLI、Windows CI、PyPI Trusted Publishing 以及英文/社区文档。历史 v0.6.0 的 **734 passed、7 skipped** 是旧提交的记录，不能自动当作 v0.6.1 的最终测试结果。v0.6.1 须在最终提交重新运行本地与云端测试，并在真正上传 PyPI 后从全新环境验证 `pip install aletheia-nexus`。具体发布门槛见[v0.6.1 开发与发布计划](v0.6.1-development.md)。
 
-2026-09-24 开发快照（**不是**发布验收）：本地 Windows / Python 3.14 确定性测试 **742 passed、7 skipped**，真实 Chromium 集成 **7 passed**，Ruff、固定 20 篇输入完整性、sdist/wheel 构建和 `twine check` 通过；从独立临时环境安装开发版 wheel 后，CLI 版本与 `doctor` 检查通过。单篇公开 DOI `10.1371/journal.pone.0310216` 经新 CLI `--public-only` 得到 `VERIFIED`；这只是一个公开路径烟测，不是跨出版社成功率或机构授权阳性对照。首次云端完整检查在草稿 PR 的上一提交上四个 job 均实际通过；最终提交仍须重新核对，PyPI 实际上传也尚未进行。
+2026-09-24 开发快照（**不是**发布验收）：本地 Windows / Python 3.14 确定性测试 **742 passed、7 skipped**，真实 Chromium 集成 **7 passed**，Ruff、固定 20 篇输入完整性、sdist/wheel 构建和 `twine check` 通过；从独立临时环境安装开发版 wheel 后，CLI 版本与 `doctor` 检查通过。单篇公开 DOI `10.1371/journal.pone.0310216` 经新 CLI `--public-only` 得到 `VERIFIED`；这只是一个公开路径烟测，不是跨出版社成功率或机构授权阳性对照。开发提交 `a5e1023` 的四个云端 job 均实际通过；正式发布提交仍须重新核对。
+
+项目发起者于 2026-09-24 决定先发布 v0.6.1，并在[发布说明](RELEASE_NOTES_v0.6.1.md)中明确披露：陌生用户的首次安装/三分钟体验尚无独立反馈，正式跨机构授权阳性对照仍未完成。两项都是发布后的开放验证工作，不能写成已通过。
 
 ## v0.6 — Acquisition Maximization（首个公开代码版）
 

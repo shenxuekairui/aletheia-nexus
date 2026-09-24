@@ -120,26 +120,24 @@ AN 是本地优先的研究工具，不提供出版社订阅权限，不猜测�
 
 ## 三分钟开始
 
-需要 Python 3.11 或更高版本。以下为 Windows PowerShell 示例。**当前公开正式版仍为 v0.6.0；下面的正式 CLI 属于 v0.6.1 开发分支，PyPI 版尚未发布。**先从源码安装，即可用一个 DOI 体验无需浏览器的公开获取路径：
+需要 Python 3.11 或更高版本。以下为 Windows PowerShell 示例。**v0.6.1 的正式 CLI 支持从 PyPI 安装；以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)实际可见版本为准。**单个 DOI 可体验无需浏览器的公开获取路径：
 
 ```powershell
-git clone https://github.com/shenxuekairui/aletheia-nexus.git
-cd aletheia-nexus
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e .
+python -m pip install aletheia-nexus
 aletheia-nexus doctor
-aletheia-nexus acquire 10.1038/s41560-024-01633-4 --public-only --output-dir downloads/first-paper
+aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir downloads/first-paper
 ```
 
 `--public-only` 不需要 Chromium；真实 DOI 的最终状态取决于外部网络与全文来源，即使命令正常执行，也可能如实返回 `EXHAUSTED`。需要持久浏览器与机构登录时，再安装可选依赖：
 
 ```powershell
-python -m pip install -e ".[browser]"
+python -m pip install "aletheia-nexus[browser]"
 python -m playwright install chromium
 ```
 
-正式版上传 PyPI **之后**，源码安装步骤才可替换为 `pip install aletheia-nexus`，浏览器模式则使用 `pip install "aletheia-nexus[browser]"`。发布前不要将源码包可构建误写成 PyPI 已可安装。开发测试工具另见[使用说明书](docs/USER_MANUAL.md)。
+也可从 GitHub 源码检出并执行 `python -m pip install -e .` 体验未发布的开发分支。三分钟首次使用仍是目标，尚未由独立新用户确认；欢迎在[试用反馈 issue](https://github.com/shenxuekairui/aletheia-nexus/issues/3)记录实际用时和障碍。开发测试工具另见[使用说明书](docs/USER_MANUAL.md)。
 
 准备 DOI 输入，例如 `papers.json`：
 
@@ -220,7 +218,7 @@ python -m pip install -e ".[dev,browser]"
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
-云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，正式面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11、3.14 与 Chromium job 的实际 `success`。`skipped` 不是通过；正式机构阳性对照验收已明确延后，初版发布说明披露这一限制。[合并与发布清单](docs/USER_MANUAL.md#9-合并-main-前的发布检查)列出了代码门槛与延期项目。
+云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，正式面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11、3.14、Linux Chromium 与 Windows Chromium 四个 job 的实际 `success`。`skipped` 不是通过；正式机构阳性对照验收仍已明确延后，v0.6.1 的首次陌生用户试用也尚无反馈，两项都在发布说明中披露。[合并与发布清单](docs/USER_MANUAL.md#9-合并-main-前的发布检查)列出了代码门槛与延期项目。
 
 ## 文档导航
 
@@ -230,6 +228,7 @@ python -m pip install -e ".[dev,browser]"
 | [v0.6 技术规范](docs/v0.6-acquisition-maximization.md) | Access Layer 架构、安全边界、状态、验收与退出标准。 |
 | [版本与验收记录](docs/RELEASE_HISTORY.md) | 稳定标签、RC 快照、真实语料结果和历史版本。 |
 | [v0.6.0 发布说明](docs/RELEASE_NOTES_v0.6.0.md) | 首次公开版本交付内容、验证证据与未完成的授权资格验收。 |
+| [v0.6.1 发布说明](docs/RELEASE_NOTES_v0.6.1.md) | CLI、PyPI、架构拆分、Windows CI 与仍待完成的外部试用。 |
 | [CI 架构](docs/CI_ARCHITECTURE.md) | 云端额度策略、按风险运行与完整发布门槛。 |
 | [基准集说明](benchmarks/README.md) | 原始输入与冻结输入的来源和可重复性。 |
 | [v0.5.2 技术规范](docs/v0.5.2-multi-route-acquisition.md) | 已冻结的公开 HTTP 多路径获取层。 |
