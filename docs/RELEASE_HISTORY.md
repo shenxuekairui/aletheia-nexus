@@ -12,7 +12,7 @@
 - 项目发起者于 2026-09-24 决定将正式机构授权阳性对照验收延后至公开版之后。它不是已通过，也不能用历史 37/40、19/20 累计结果替代；发布说明须明确披露实际访问依赖用户的合法订阅、机构和站点状态。
 - 合并与打标签顺序以[使用说明书的发布检查](USER_MANUAL.md#9-合并-main-前的发布检查)及[v0.6 技术规范](v0.6-acquisition-maximization.md#16-exit-criteria)为准。
 
-## v0.6.1 — 正式发布候选
+## v0.6.1 — CLI、适配器与 Windows CI
 
 本轮将出版社页面差异迁入 `publisher_adapters/`、通用下载捕获迁入 `browser_engine/`，提供安装后的 `aletheia-nexus` CLI、Windows CI、PyPI Trusted Publishing 以及英文/社区文档。历史 v0.6.0 的 **734 passed、7 skipped** 是旧提交的记录，不能自动当作 v0.6.1 的最终测试结果。v0.6.1 须在最终提交重新运行本地与云端测试，并在真正上传 PyPI 后从全新环境验证 `pip install aletheia-nexus`。具体发布门槛见[v0.6.1 开发与发布计划](v0.6.1-development.md)。
 
