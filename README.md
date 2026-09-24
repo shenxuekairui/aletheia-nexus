@@ -231,6 +231,7 @@ python -m pip install -e ".[dev,browser]"
 | [v0.6 技术规范](docs/v0.6-acquisition-maximization.md) | Access Layer 架构、安全边界、状态、验收与退出标准。 |
 | [版本与验收记录](docs/RELEASE_HISTORY.md) | 稳定标签、RC 快照、真实语料结果和历史版本。 |
 | [v0.7 前准备与单机构验收](docs/PRE_V07_READINESS.md) | 后续源码的授权验收、证据边界、隐私处理和下一阶段入口。 |
+| [v0.7 内容解析入口契约](docs/V07_PARSING_CONTRACT.md) | 拟议的可信输入、版本化输出、合法测试夹具与评测门槛；尚非已实现功能。 |
 | [v0.6.0 发布说明](docs/RELEASE_NOTES_v0.6.0.md) | 首次公开版本交付内容、验证证据与未完成的授权资格验收。 |
 | [v0.6.1 发布说明](docs/RELEASE_NOTES_v0.6.1.md) | CLI、PyPI、架构拆分、Windows CI 与仍待完成的外部试用。 |
 | [CI 架构](docs/CI_ARCHITECTURE.md) | 云端额度策略、按风险运行与完整发布门槛。 |

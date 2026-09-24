@@ -48,7 +48,7 @@ The legacy acceptance runner tests *one* institution per run. A second instituti
 
 ## v0.7 design entry
 
-v0.7 may begin a **scientific content parsing layer** after the acquisition contract is written down and measured. Its input must be a locally existing `VERIFIED` main-article PDF with a matching SHA-256 and provenance sidecar. Parsing must not silently upgrade an `EXHAUSTED`, `INTERACTION_REQUIRED`, or unverified file into trusted input.
+v0.7 may begin a **scientific content parsing layer** under the [versioned parsing entry contract](V07_PARSING_CONTRACT.md). Its input must be a locally existing `VERIFIED` main-article PDF with a matching SHA-256 and provenance sidecar. Parsing must not silently upgrade an `EXHAUSTED`, `INTERACTION_REQUIRED`, or unverified file into trusted input. The contract is written; the rights-cleared fixture set and parser implementation are not yet complete.
 
 Define a small versioned output schema before implementation: document identity, section hierarchy, text blocks, page/span anchors, bibliography links, tables/figures as referenced objects, extraction method, uncertainty, and errors. Source anchors must let a researcher navigate back to the PDF passage. “Parsed” is not “scientifically true”; inference and claim verification are later, separate layers.
 
