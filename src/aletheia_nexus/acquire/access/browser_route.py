@@ -181,12 +181,20 @@ def _wait_until_challenge_changes(
             # may invalidate the target while Playwright is polling. Preserve the
             # last confirmed challenge instead of replacing useful access state
             # with a generic TargetClosedError at the DOI level.
-            return last_challenge if clear_observations else report
+            return last_challenge if report.kind == ChallengeKind.NONE else report
 
         if report.kind == ChallengeKind.NONE:
             # A challenge page can briefly become blank while its JavaScript
-            # redirects or rebuilds the widget. Do not resume requests on one
-            # transient NONE observation and restart the publisher challenge.
+            # redirects or rebuilds the widget. Repeated observations of that
+            # same empty document are not evidence of clearance either: fast
+            # Windows polls could otherwise count four blanks before timeout.
+            title, url, visible_text, _ = _page_snapshot(page)
+            has_content = bool(title.strip() or visible_text.strip())
+            is_pdf_route = urlsplit(url).path.lower().endswith(".pdf")
+            if not (has_content or is_pdf_route):
+                clear_observations = 0
+                continue
+            # Do not resume requests on one transient NONE observation.
             clear_observations += 1
             if clear_observations < 4:
                 continue
@@ -201,7 +209,7 @@ def _wait_until_challenge_changes(
             ChallengeKind.ACCESS_DENIED,
         }:
             return report
-    return last_challenge if clear_observations else report
+    return last_challenge if report.kind == ChallengeKind.NONE else report
 
 
 def _resolve_page_challenge(

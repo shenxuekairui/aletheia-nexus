@@ -212,6 +212,33 @@ def test_incomplete_clearance_remains_challenge_after_timeout():
     assert [item.kind for item in history] == [ChallengeKind.CAPTCHA]
 
 
+def test_repeated_blank_challenge_document_never_counts_as_clearance():
+    page = _Page(
+        [
+            (
+                "Verify you are human",
+                "https://pubs.rsc.org/challenge",
+                "Verify you are human",
+                "",
+            ),
+            ("", "https://pubs.rsc.org/challenge", "", "<html></html>"),
+        ]
+    )
+    initial = browser_route._report_for_page(page)
+    history = [initial]
+
+    report = _wait_until_challenge_changes(
+        page,
+        initial=initial,
+        seconds=0.01,
+        poll_interval=0.001,
+        history=history,
+    )
+
+    assert report.kind == ChallengeKind.CAPTCHA
+    assert [item.kind for item in history] == [ChallengeKind.CAPTCHA]
+
+
 def test_sso_handoff_calls_user_callback_and_resumes(tmp_path):
     events = []
     page = _Page(
