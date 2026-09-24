@@ -1,20 +1,20 @@
-# Aletheia Nexus 0.6 使用说明书
+# Aletheia Nexus 使用说明书
 
-本手册面向需要按 DOI 获取、核验并批量保存论文正文 PDF 的研究人员。当前代码为 `0.6.0.dev0` 发布候选；稳定标签须通过项目规定的正式验收。AN 的目标是尽可能使用公开路径、已授权的官方 API 和用户自己的浏览器会话获取文件；只有 PDF 结构、论文身份和正文角色都通过检查，才标记为 `VERIFIED`。AN 不提供订阅权限，也不会代替用户输入密码、MFA 或验证码。
+本手册面向需要按 DOI 获取、核验并批量保存论文正文 PDF 的研究人员。`v0.6.1` 新增正式 CLI 与 PyPI 安装入口；实际可安装版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。AN 的目标是尽可能使用公开路径、已授权的官方 API 和用户自己的浏览器会话获取文件；只有 PDF 结构、论文身份和正文角色都通过检查，才标记为 `VERIFIED`。AN 不提供订阅权限，也不会代替用户输入密码、MFA 或验证码。
 
 ## 1. 环境与安装
 
-要求 Python 3.11 或更高版本；本次发布候选已在 3.11 和 3.14 本地验证。Windows PowerShell 示例（命令在仓库根目录执行）：
+要求 Python 3.11 或更高版本。Windows PowerShell 示例：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[browser]"
-python -m playwright install chromium
-python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
+python -m pip install aletheia-nexus
+aletheia-nexus doctor
+aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir downloads/first-paper
 ```
 
-只使用公开 HTTP 路径时，可执行 `python -m pip install -e .`，不必安装浏览器依赖；开发者运行测试时才需要 `python -m pip install -e ".[dev,browser]"`。正式使用时可将输出目录放在仓库外，以便代码与下载文件分开管理。需要联网访问 DOI、元数据服务和出版社；机构授权仍由出版社和当前账号决定。浏览器使用独立的持久配置目录，可能包含登录状态，应像账号资料一样保护，不要提交或分享。
+公开 HTTP 路径无需浏览器依赖，单 DOI 的 `--public-only` 可以用于首次体验；外部来源不能提供可信正文时会如实返回非成功状态。需要交互式浏览器时，再执行 `python -m pip install "aletheia-nexus[browser]"` 和 `python -m playwright install chromium`。开发者从仓库根目录执行 `python -m pip install -e ".[dev,browser]"`。如果 PyPI 项目页尚未显示目标版本，不要误以为仅有 GitHub Release 就代表上传成功。正式使用时可将输出目录放在仓库外，以便代码与下载文件分开管理。需要联网访问 DOI、元数据服务和出版社；机构授权仍由出版社和当前账号决定。浏览器使用独立的持久配置目录，可能包含登录状态，应像账号资料一样保护，不要提交或分享。
 
 ## 2. 准备 DOI 清单
 
@@ -40,7 +40,7 @@ python -c "import importlib.metadata as m; print(m.version('aletheia-nexus'))"
 以下命令在可见浏览器中顺序处理论文。若登录、MFA 或 CAPTCHA 被识别，AN 会暂停在页面上；用户完成后自动续跑。不传 `--interaction-timeout` 时没有预设等待上限。
 
 ```powershell
-python -u scripts/batch_v06_download.py dois.json `
+aletheia-nexus acquire dois.json `
   --output-dir downloads/my-batch `
   --cdp-endpoint http://127.0.0.1:9222 `
   --cdp-navigate
@@ -53,7 +53,7 @@ python -u scripts/batch_v06_download.py dois.json `
 如需无人值守运行（不等待人工登录或验证码）：
 
 ```powershell
-python -u scripts/batch_v06_download.py dois.txt `
+aletheia-nexus acquire dois.txt `
   --output-dir downloads/unattended `
   --non-interactive
 ```
@@ -79,7 +79,7 @@ python -u scripts/batch_v06_download.py dois.txt `
 | `--fail-on-unverified` | 任意有效 DOI 未 `VERIFIED` 时以非零状态退出。 |
 | `--unpaywall-email EMAIL` | 为适用的开放获取发现服务提供联系邮箱。 |
 
-所有参数可运行 `python scripts/batch_v06_download.py --help` 查看。遇到慢站点可以适度增大 `--base-timeout`、`--request-timeout`、`--max-source-routes` 和 `--max-pdf-candidates`；预算增加会延长批次运行时间，不能创造未获得的订阅权限。
+所有参数可运行 `aletheia-nexus acquire --help` 查看；旧 `scripts/batch_v06_download.py` 保留兼容入口。遇到慢站点可以适度增大 `--base-timeout`、`--request-timeout`、`--max-source-routes` 和 `--max-pdf-candidates`；预算增加会延长批次运行时间，不能创造未获得的订阅权限。
 
 ## 4. 登录与机构选择
 
@@ -166,7 +166,7 @@ python -m pytest -q
 
 ## 9. 合并 main 前的发布检查
 
-`0.6.0.dev0` 只表示发布候选。首个公开 `v0.6.0` 以代码正确性与可安装性为封板范围，不声称已对不同机构的授权覆盖完成正式资格验收。维护者应留存最终提交 SHA、测试输出和报告路径；代码门槛失败或缺证时保持草稿，不合并 `main`，不打稳定标签。
+以下 1–5 项是**已完成的 v0.6.0 历史发布口径**，不是 v0.6.1 的待办清单。v0.6.1 须另外通过 Windows CI、wheel 安装烟测与 PyPI Trusted Publishing，详见[开发与发布计划](v0.6.1-development.md)。首个公开 `v0.6.0` 以代码正确性与可安装性为封板范围，不声称已对不同机构的授权覆盖完成正式资格验收。维护者应留存最终提交 SHA、测试输出和报告路径；代码门槛失败或缺证时保持草稿，不合并 `main`，不打稳定标签。
 
 1. 在最终代码上分别以 Python 3.11 和 3.14 运行第 8 节的本地检查，确认 Ruff、依赖、完整确定性测试与固定基准集检查通过；在支持的环境执行真实 Chromium 集成测试。原私有开发仓库 `v0.5.2` 标签对应的历史 510 passed 与 v0.6 RC 的 734 passed、7 skipped 必须分开记录；公开仓库不携带旧标签。
 2. 首个公开版的正式机构授权资格验收已由项目发起者决定**暂缓**。这项缺证必须在 README 和 GitHub Release 中显著披露；不能将此前 37/40、19/20 的累计单篇复测解释为新的完整批次或授权对照通过。代码级封板仍须完成本节其余门槛。

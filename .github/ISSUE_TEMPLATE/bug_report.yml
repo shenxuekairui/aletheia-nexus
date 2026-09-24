@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible problem without sharing credentials or PDFs.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Remove cookies, tokens, signed URLs, usernames, institution login details,
+        screenshots of authenticated pages, and copyrighted PDF bytes. Security
+        vulnerabilities belong in the private reporting flow described in SECURITY.md.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, AN version or commit, browser (if used).
+      placeholder: Windows 11, Python 3.11, AN 0.6.1.dev0, Chromium
+    validations:
+      required: true
+  - type: dropdown
+    id: route
+    attributes:
+      label: Acquisition route
+      options:
+        - Public HTTP
+        - Official API
+        - Browser / institutional access
+        - Local PDF import
+        - Metadata or discovery only
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed result
+      description: Include the final status and a redacted minimal reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: safe-evidence
+    attributes:
+      label: Safe supporting evidence
+      description: Redacted status/log excerpts only; no secrets, login pages, or PDF files.

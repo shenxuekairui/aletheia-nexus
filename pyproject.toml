@@ -4,12 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aletheia-nexus"
-version = "0.6.0"
+version = "0.6.1"
 description = "A local-first scientific knowledge acquisition infrastructure."
-readme = "README.md"
+readme = "README.en.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+keywords = ["doi", "scientific literature", "full text", "pdf validation", "provenance"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     "fonttools>=4.60,<5",
     "httpx>=0.27,<1",
@@ -20,6 +31,11 @@ dependencies = [
 Homepage = "https://github.com/shenxuekairui/aletheia-nexus"
 Documentation = "https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md"
 Issues = "https://github.com/shenxuekairui/aletheia-nexus/issues"
+Changelog = "https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md"
+Source = "https://github.com/shenxuekairui/aletheia-nexus"
+
+[project.scripts]
+aletheia-nexus = "aletheia_nexus.cli:entrypoint"
 
 [project.optional-dependencies]
 browser = [
