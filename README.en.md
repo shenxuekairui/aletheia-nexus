@@ -21,11 +21,11 @@ Aletheia Nexus (AN) begins with a deliberately testable question: *Is this local
 | **Implemented** | Bounded public HTTP acquisition and static article/landing-page expansion | No subscription or access-control bypass. |
 | **Implemented** | PDF structure, DOI/title identity, and main-article-versus-supplement checks | `VERIFIED` means the file identity/role is supported, not that its scientific claims are true. |
 | **Implemented** | Provenance, SHA-256, explicit outcomes, and resumable verified-file checkpoints | Sensitive browser credentials are not stored in these records. |
-| **Experimental** | Official Elsevier API where configured; persistent browser sessions and human handoff for legitimate institutional access | Requires the user's actual entitlement and may need login, MFA, or CAPTCHA. Multi-institution positive-control acceptance is not complete. |
+| **Experimental** | Official Elsevier API where configured; persistent browser sessions and human handoff for legitimate institutional access | Requires the user's actual entitlement and may need login, MFA, or CAPTCHA. One post-release source commit passed single-institution controls across ACS and Wiley; multi-institution generalization is not established. |
 | **Experimental** | Sequential batch runs with browser-session reuse | Site changes and access state can still require intervention. |
 | **Planned** | Structured parsing, scientific memory, knowledge graphs, and agent workflows | Not delivered by the current release. |
 
-The first public code release was **v0.6.0**. **v0.6.1** adds publisher adapters, an installed CLI, Windows CI, and PyPI packaging without changing the frozen v0.6.0 tag. See the [release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) for exact test and real-DOI evidence. First-time testing by independent users remains open; the three-minute onboarding target has not yet been independently established.
+The first public code release was **v0.6.0**. **v0.6.1** adds publisher adapters, an installed CLI, Windows CI, and PyPI packaging without changing the frozen v0.6.0 tag. A later source commit completed a single-institution qualification; that evidence must not be retroactively attributed to the frozen PyPI release. See the [release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) and [pre-v0.7 readiness record](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/PRE_V07_READINESS.md) for exact scope. First-time testing by independent users remains open; the three-minute onboarding target has not yet been independently established.
 
 ## How it works
 
