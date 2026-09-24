@@ -106,6 +106,19 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert manager.playwright.chromium.kwargs["args"] == ["--no-proxy-server"]
 
 
+def test_browser_session_can_opt_into_system_proxy(monkeypatch, tmp_path):
+    context = _Context()
+    manager = _Manager(context)
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+
+    with browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path, use_system_proxy=True)
+    ) as session:
+        session._ensure_started()
+
+    assert manager.playwright.chromium.kwargs["args"] == []
+
+
 def test_browser_session_stops_after_interaction_required(monkeypatch, tmp_path):
     context = _Context()
     manager = _Manager(context)

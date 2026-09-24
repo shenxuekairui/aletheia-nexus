@@ -67,7 +67,7 @@ VERIFIED 主论文工件     → 可交给后续科研流程
 
 ## 今天能做什么
 
-以下状态描述的是**当前仓库的能力成熟度**，不是出版社访问权限的保证。`Implemented` 表示已有明确接口与自动化回归；`Experimental` 表示已能使用、但仍依赖站点和机构环境，尚未完成正式多机构阳性对照资格验收；`Planned` 表示方向，当前版本不交付。
+以下状态描述的是**当前仓库的能力成熟度**，不是出版社访问权限的保证。`Implemented` 表示已有明确接口与自动化回归；`Experimental` 表示已能使用、但仍依赖站点和机构环境：后续源码已完成一次单机构阳性对照验收，跨机构泛化与陌生用户试用仍未验证；`Planned` 表示方向，当前版本不交付。
 
 | 状态 | 能力层 | 当前实现与边界 |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ VERIFIED 主论文工件     → 可交给后续科研流程
 | `Implemented` | 审计 | 保存逐篇状态、尝试路径和验证依据；对持久化 URL 中的敏感参数脱敏，不保存浏览器凭据。 |
 | `Planned` | 内容解析、知识组织、工作流与 Agent | 将可信工件转为有来源的结构化知识与可审计科研行动；目前不作为已交付功能宣传。 |
 
-`v0.6.0` 是 AN 的首个公开代码级版本，包含授权 Access Layer，以及针对共享 PDF 验证层可复现正确性缺陷的回归修复。为保护旧开发历史中的个人信息，公开仓库从审计后的源码快照建立；`v0.5.2` 冻结标签保留在原私有开发仓库，**不在这个公开仓库中**。本版封板依据是确定性测试、真实 Chromium 集成测试、最终提交的云端 CI 与有限的真实 DOI 烟测。**正式机构授权阳性对照资格验收尚未完成**：各出版社的实际访问仍取决于用户的合法订阅、机构、网络与站点状态，不能将历史累计获取结果当作资格证明。版本数字、逐篇复测与测试快照见[版本与验收记录](docs/RELEASE_HISTORY.md)。
+`v0.6.0` 是 AN 的首个公开代码级版本，包含授权 Access Layer，以及针对共享 PDF 验证层可复现正确性缺陷的回归修复。为保护旧开发历史中的个人信息，公开仓库从审计后的源码快照建立；`v0.5.2` 冻结标签保留在原私有开发仓库，**不在这个公开仓库中**。本版封板依据是确定性测试、真实 Chromium 集成测试、最终提交的云端 CI 与有限的真实 DOI 烟测。**发布当时**尚未完成机构授权阳性对照资格验收；后续源码提交已通过一次单机构、双访问体系的资格验收，但它不是对冻结的 v0.6.0/v0.6.1 标签追认，也不证明跨机构通用。各出版社的实际访问仍取决于用户的合法订阅、机构、网络与站点状态。[发布前的后续准备与单机构验收](docs/PRE_V07_READINESS.md)和[版本与验收记录](docs/RELEASE_HISTORY.md)分别记录当前进展与历史快照。
 
 ### 对研究者和团队意味着什么
 
@@ -156,14 +156,17 @@ aletheia-nexus acquire papers.json `
   --fail-on-unverified
 ```
 
-默认使用 AN 独立的持久 Chromium 配置。若希望接管或自动启动本机专用 Edge/Chrome，可增加 `--cdp-endpoint http://127.0.0.1:9222`；不同机构应使用独立配置与浏览器端口。遇到登录、MFA 或验证码，交互模式会停在可见页面等待用户完成，然后继续。Cookie 能否复用取决于出版社，AN 不能保证机构选择永久有效。
+默认使用 AN 独立的持久 Chromium 配置。在 Windows 上，若普通 Edge 能打开论文而 AN 浏览器持续停在验证页，可用 `--cdp-endpoint http://127.0.0.1:9222 --cdp-navigate` 自动启动独立 Edge；仅当你信任当前系统代理并希望 AN 使用它时再加 `--browser-use-system-proxy`。不同机构应使用独立配置与浏览器端口，不能因浏览器打开某篇论文就推断其他机构也有权限。遇到登录、MFA 或验证码，交互模式会停在可见页面等待用户完成，然后继续；Cookie 能否复用取决于出版社。[Windows 浏览器对照与风险说明](docs/USER_MANUAL.md#3-最常用的批量运行方式)给出单篇验证命令。
 
 成功 PDF、`.acquisition.json`、`batch-checkpoint.json` 与 `batch-report.json` 保存在输出目录。逐篇以报告中的 `status` 为准：CLI 默认退出码 `0` 只表示批次处理完毕；上例的 `--fail-on-unverified` 才会在有效 DOI 未全部验证时返回非零码。旧 `scripts/batch_v06_download.py` 保留兼容入口。关闭挑战页面、超时和按 `Ctrl+C` 的行为不同，操作前请看[断点续跑与状态说明](docs/USER_MANUAL.md#5-断点续跑与文件核验)。
 
 Python 用户也可以直接调用统一入口：
 
 ```python
-from aletheia_nexus.acquire.access import BrowserAccessConfig, acquire_full_text_maximized
+from aletheia_nexus.acquire.access import (
+    BrowserAccessConfig,
+    acquire_full_text_maximized,
+)
 
 result = acquire_full_text_maximized(
     "10.1021/jacs.6c03536",
@@ -218,7 +221,7 @@ python -m pip install -e ".[dev,browser]"
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
-云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，正式面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11、3.14、Linux Chromium 与 Windows Chromium 四个 job 的实际 `success`。`skipped` 不是通过；正式机构阳性对照验收仍已明确延后，v0.6.1 的首次陌生用户试用也尚无反馈，两项都在发布说明中披露。[合并与发布清单](docs/USER_MANUAL.md#9-合并-main-前的发布检查)列出了代码门槛与延期项目。
+云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，正式面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11、3.14、Linux Chromium 与 Windows Chromium 四个 job 的实际 `success`。`skipped` 不是通过。v0.6.1 发布时机构阳性对照验收与首次陌生用户试用均尚未完成，这一历史事实保留在发布说明中；后续源码现已完成一次单机构验收，陌生用户试用仍待反馈。[合并与发布清单](docs/USER_MANUAL.md#9-合并-main-前的发布检查)列出了代码门槛与延期项目。
 
 ## 文档导航
 
@@ -227,6 +230,8 @@ python -m pip install -e ".[dev,browser]"
 | [中文使用说明书](docs/USER_MANUAL.md) | 安装、批量下载、登录续跑、报告解释、故障处理、发布检查。 |
 | [v0.6 技术规范](docs/v0.6-acquisition-maximization.md) | Access Layer 架构、安全边界、状态、验收与退出标准。 |
 | [版本与验收记录](docs/RELEASE_HISTORY.md) | 稳定标签、RC 快照、真实语料结果和历史版本。 |
+| [v0.7 前准备与单机构验收](docs/PRE_V07_READINESS.md) | 后续源码的授权验收、证据边界、隐私处理和下一阶段入口。 |
+| [v0.7 内容解析入口契约](docs/V07_PARSING_CONTRACT.md) | 拟议的可信输入、版本化输出、合法测试夹具与评测门槛；尚非已实现功能。 |
 | [v0.6.0 发布说明](docs/RELEASE_NOTES_v0.6.0.md) | 首次公开版本交付内容、验证证据与未完成的授权资格验收。 |
 | [v0.6.1 发布说明](docs/RELEASE_NOTES_v0.6.1.md) | CLI、PyPI、架构拆分、Windows CI 与仍待完成的外部试用。 |
 | [CI 架构](docs/CI_ARCHITECTURE.md) | 云端额度策略、按风险运行与完整发布门槛。 |
@@ -244,4 +249,4 @@ Acquisition 的目标不是把论文“下载下来就结束”，而是为长�
 3. **从知识到行动。** 把重复步骤沉淀为可版本化的工具、规则与工作流，让 Agent 在可信资料上辅助检索、比较、规划与记录；需要人授权或科学判断的节点仍交还给人。
 4. **从单次任务到持续研究。** 当证据、方法与行动历史都能复核，个人和实验室才有机会构建随研究一起演化的 scientific world model。
 
-这些是项目方向，不是当前版本的功能承诺。近期工作仍以 v0.6 获取层的正确性、公开使用反馈和后续跨机构授权阳性对照验收为优先。后续层会在有明确数据模型、基准和验证边界时逐步进入仓库。若你也关心可信科研自动化，可以从复现一个误判、补充一个固定测试语料、改进一种合法获取路径，或讨论下一层的数据契约开始。**把每一项可验证的小进步接起来，就是 AN 想建设的长期基础设施。**
+这些是项目方向，不是当前版本的功能承诺。近期工作仍以 v0.6 获取层的正确性、公开使用反馈和 v0.7 内容解析契约为优先；跨机构授权验收如未来确有需求，须以独立会话和完整新报告另做，不能由单机构结果推断。后续层会在有明确数据模型、基准和验证边界时逐步进入仓库。若你也关心可信科研自动化，可以从复现一个误判、补充一个固定测试语料、改进一种合法获取路径，或讨论下一层的数据契约开始。**把每一项可验证的小进步接起来，就是 AN 想建设的长期基础设施。**

@@ -48,6 +48,14 @@ _NON_MAIN_TEXT_LEAD_CHARS = 400
 _TITLE_TEXT_LEAD_TOKENS = 200
 _TITLE_TEXT_WINDOW_THRESHOLD = 0.85
 _TITLE_TEXT_MIN_TOKENS = 8
+_CORRECTION_HEADING = re.compile(
+    r"^\s*(?:corrigendum|erratum|correction)\s+to\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+_ORIGINAL_ARTICLE_DOI_LABEL = re.compile(
+    r"\bdoi\s+of\s+(?:the\s+)?original\s+article\s*:",
+    re.IGNORECASE,
+)
 
 
 def _normalize_title(value: str) -> str:
@@ -184,6 +192,26 @@ def _non_main_evidence(
     return None
 
 
+def _correction_to_target_evidence(
+    target_doi: str, inspection: PdfInspection
+) -> str | None:
+    """Reject a corrigendum that cites the requested original article DOI."""
+
+    heading = inspection.metadata_title or ""
+    if not _CORRECTION_HEADING.search(heading):
+        heading = inspection.first_page_text[:400]
+        if not _CORRECTION_HEADING.search(heading):
+            return None
+
+    for match in _ORIGINAL_ARTICLE_DOI_LABEL.finditer(inspection.first_page_text):
+        labeled_dois = extract_dois(
+            inspection.first_page_text[match.end() : match.end() + 200]
+        )
+        if labeled_dois and target_doi == labeled_dois[0]:
+            return "PDF is a correction to the requested original article"
+    return None
+
+
 def validate_paper_identity(
     *,
     target_doi: str,
@@ -227,6 +255,9 @@ def validate_paper_identity(
     )
     if non_main_evidence:
         evidence.append(non_main_evidence)
+    correction_evidence = _correction_to_target_evidence(normalized_doi, inspection)
+    if correction_evidence:
+        evidence.append(correction_evidence)
 
     if locked_encrypted:
         identity_status = IdentityStatus.UNKNOWN
@@ -253,6 +284,9 @@ def validate_paper_identity(
             evidence.append(
                 "Different DOI evidence plus strongly conflicting PDF metadata title"
             )
+
+    if correction_evidence:
+        identity_status = IdentityStatus.MISMATCH
 
     if non_main_evidence:
         # DocumentRole.SUPPLEMENT is the existing v0.5 umbrella for a valid

@@ -43,6 +43,13 @@ def test_browser_interaction_callback_must_be_callable(tmp_path):
         browser_profile_dir(config)
 
 
+def test_browser_proxy_choice_must_be_boolean(tmp_path):
+    with pytest.raises(TypeError, match="use_system_proxy"):
+        browser_profile_dir(
+            BrowserAccessConfig(profile_root=tmp_path, use_system_proxy="yes")
+        )
+
+
 def test_headless_browser_rejects_interactive_handoff(tmp_path):
     config = BrowserAccessConfig(
         profile_name="headless",

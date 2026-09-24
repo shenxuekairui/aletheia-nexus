@@ -1,11 +1,18 @@
 import base64
+import time
 from types import SimpleNamespace
 
+import pytest
+
 from aletheia_nexus.acquire.access import browser_route
-from aletheia_nexus.acquire.access.browser_route import _resolve_page_challenge
+from aletheia_nexus.acquire.access.browser_route import (
+    _resolve_page_challenge,
+    _wait_until_challenge_changes,
+)
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
     BrowserAttemptStatus,
+    BrowserFileAttempt,
     ChallengeKind,
     ChallengeReport,
 )
@@ -140,6 +147,98 @@ def test_browser_native_challenge_can_clear_without_human_interaction(tmp_path):
     assert interaction_used is False
 
 
+def test_transient_blank_challenge_page_does_not_count_as_cleared():
+    challenge = (
+        "Verify you are human",
+        "https://pubs.rsc.org/en/content/articlepdf/2026/ta/test",
+        "Verify you are human",
+        '<div class="cf-turnstile"></div>',
+    )
+    page = _Page(
+        [
+            challenge,
+            ("", challenge[1], "", "<html></html>"),
+            challenge,
+            ("Article", "https://pubs.rsc.org/article", "Article text", "<main />"),
+        ]
+    )
+    initial = browser_route._report_for_page(page)
+    history = [initial]
+
+    report = _wait_until_challenge_changes(
+        page,
+        initial=initial,
+        seconds=0.05,
+        poll_interval=0.001,
+        history=history,
+    )
+
+    assert report.kind == ChallengeKind.NONE
+    assert [item.kind for item in history] == [
+        ChallengeKind.CAPTCHA,
+        ChallengeKind.NONE,
+    ]
+
+
+def test_incomplete_clearance_remains_challenge_after_timeout():
+    class _TimedPage(_Page):
+        def wait_for_timeout(self, milliseconds):
+            time.sleep(milliseconds / 1000)
+            super().wait_for_timeout(milliseconds)
+
+    page = _TimedPage(
+        [
+            (
+                "Verify you are human",
+                "https://pubs.rsc.org/challenge",
+                "Verify you are human",
+                "",
+            ),
+            ("", "https://pubs.rsc.org/challenge", "", "<html></html>"),
+        ]
+    )
+    initial = browser_route._report_for_page(page)
+    history = [initial]
+
+    report = _wait_until_challenge_changes(
+        page,
+        initial=initial,
+        seconds=0.006,
+        poll_interval=0.003,
+        history=history,
+    )
+
+    assert report.kind == ChallengeKind.CAPTCHA
+    assert [item.kind for item in history] == [ChallengeKind.CAPTCHA]
+
+
+def test_repeated_blank_challenge_document_never_counts_as_clearance():
+    page = _Page(
+        [
+            (
+                "Verify you are human",
+                "https://pubs.rsc.org/challenge",
+                "Verify you are human",
+                "",
+            ),
+            ("", "https://pubs.rsc.org/challenge", "", "<html></html>"),
+        ]
+    )
+    initial = browser_route._report_for_page(page)
+    history = [initial]
+
+    report = _wait_until_challenge_changes(
+        page,
+        initial=initial,
+        seconds=0.01,
+        poll_interval=0.001,
+        history=history,
+    )
+
+    assert report.kind == ChallengeKind.CAPTCHA
+    assert [item.kind for item in history] == [ChallengeKind.CAPTCHA]
+
+
 def test_sso_handoff_calls_user_callback_and_resumes(tmp_path):
     events = []
     page = _Page(
@@ -203,10 +302,147 @@ class _RoutePage:
     def is_closed(self):
         return False
 
+    def wait_for_timeout(self, milliseconds):
+        return None
+
 
 class _RouteContext:
     def __init__(self, page):
         self.pages = [page]
+
+
+def test_rsc_direct_pdf_navigates_before_any_extra_request(monkeypatch, tmp_path):
+    pdf_url = "https://pubs.rsc.org/en/content/articlepdf/2026/ta/example"
+    page = _RoutePage("about:blank")
+    source = FullTextCandidate(
+        doi="10.1039/example",
+        url=pdf_url,
+        provenance=(),
+        url_type=CandidateUrlType.PDF,
+    )
+    request_calls = []
+
+    def request_pdf(*args, **kwargs):
+        request_calls.append(kwargs["candidate"].url)
+        raise RuntimeError("stop after first fallback request")
+
+    monkeypatch.setattr(browser_route, "_request_pdf_candidate", request_pdf)
+    monkeypatch.setattr(
+        browser_route,
+        "_report_for_page",
+        lambda value: ChallengeReport(kind=ChallengeKind.NONE),
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "_resolve_page_challenge",
+        lambda value, *, config: (ChallengeReport(kind=ChallengeKind.NONE), (), False),
+    )
+    monkeypatch.setattr(browser_route, "parse_html", lambda html: object())
+    monkeypatch.setattr(
+        browser_route,
+        "validate_page_identity",
+        lambda **kwargs: SimpleNamespace(
+            status=SimpleNamespace(value="MATCH"), evidence=()
+        ),
+    )
+    monkeypatch.setattr(
+        browser_route, "_runtime_publisher_pdf_candidate", lambda *a: None
+    )
+    monkeypatch.setattr(browser_route, "derive_pdf_candidates", lambda **kwargs: ())
+    monkeypatch.setattr(
+        browser_route, "_trigger_embedded_pdf_frame_fetch", lambda *a, **k: None
+    )
+    monkeypatch.setattr(browser_route, "_trigger_pdf_viewer_save", lambda *a, **k: None)
+
+    with pytest.raises(RuntimeError, match="first fallback"):
+        browser_route.attempt_browser_route(
+            _RouteContext(page),
+            page,
+            source=source,
+            output_dir=tmp_path,
+            expected_title="Article",
+            config=BrowserAccessConfig(profile_root=tmp_path),
+            session_blocked_urls=[],
+            session_pdf_responses=[],
+            session_downloads=[],
+        )
+
+    assert page.goto_calls == [pdf_url]
+    assert request_calls == [pdf_url]
+
+
+def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_path):
+    article_url = "https://publisher.example/article"
+    pdf_url = "https://publisher.example/article.pdf"
+    page = _RoutePage(article_url)
+    context = _RouteContext(page)
+    source = FullTextCandidate(
+        doi="10.1000/challenge-retry",
+        url=article_url,
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    pdf = FullTextCandidate(
+        doi=source.doi,
+        url=pdf_url,
+        provenance=(),
+        url_type=CandidateUrlType.PDF,
+    )
+    challenge = ChallengeReport(kind=ChallengeKind.CAPTCHA)
+    request_urls = []
+
+    def request_pdf(context_value, *, candidate, **kwargs):
+        request_urls.append(candidate.url)
+        return BrowserFileAttempt(candidate=candidate, error="Challenge"), challenge
+
+    monkeypatch.setattr(browser_route, "_request_pdf_candidate", request_pdf)
+    monkeypatch.setattr(
+        browser_route,
+        "_report_for_page",
+        lambda value: ChallengeReport(kind=ChallengeKind.NONE),
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "_resolve_page_challenge",
+        lambda value, *, config: (ChallengeReport(kind=ChallengeKind.NONE), (), True),
+    )
+    monkeypatch.setattr(browser_route, "parse_html", lambda html: object())
+    monkeypatch.setattr(
+        browser_route,
+        "validate_page_identity",
+        lambda **kwargs: SimpleNamespace(
+            status=SimpleNamespace(value="MATCH"), evidence=()
+        ),
+    )
+    monkeypatch.setattr(
+        browser_route, "_runtime_publisher_pdf_candidate", lambda *a: None
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "derive_pdf_candidates",
+        lambda **kwargs: (SimpleNamespace(candidate=pdf),),
+    )
+    monkeypatch.setattr(
+        browser_route, "_trigger_embedded_pdf_frame_fetch", lambda *a, **k: None
+    )
+    monkeypatch.setattr(browser_route, "_trigger_pdf_viewer_save", lambda *a, **k: None)
+
+    result = browser_route.attempt_browser_route(
+        context,
+        page,
+        source=source,
+        output_dir=tmp_path,
+        expected_title="Article",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+        session_blocked_urls=[],
+        session_pdf_responses=[],
+        session_downloads=[],
+    )
+
+    assert request_urls == [pdf_url, pdf_url]
+    assert page.goto_calls == [article_url, pdf_url]
+    assert result.status == BrowserAttemptStatus.INTERACTION_REQUIRED
+    assert result.challenge_history[-1].kind == ChallengeKind.CAPTCHA
 
 
 def test_article_route_automatically_enters_institutional_sso(

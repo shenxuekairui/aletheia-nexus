@@ -6,10 +6,14 @@ from urllib.parse import urlsplit
 
 from .base import PublisherAdapter
 from .ieee import IeeeAdapter
-from .routes import DoiPdfAdapter, MdpiAdapter, NatureAdapter
+from .routes import BrowserFirstPdfAdapter, DoiPdfAdapter, MdpiAdapter, NatureAdapter
 from .thieme import ThiemeAdapter
 
 _ADAPTERS: tuple[PublisherAdapter, ...] = (
+    BrowserFirstPdfAdapter("rsc", frozenset({"pubs.rsc.org"})),
+    BrowserFirstPdfAdapter(
+        "sciencedirect", frozenset({"sciencedirect.com", "www.sciencedirect.com"})
+    ),
     IeeeAdapter(),
     ThiemeAdapter(),
     DoiPdfAdapter(

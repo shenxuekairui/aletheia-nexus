@@ -121,6 +121,7 @@ class BrowserAccessConfig:
     profile_root: Path | None = None
     headless: bool = False
     channel: str | None = None
+    use_system_proxy: bool = False
     cdp_endpoint: str | None = None
     cdp_resume_existing_page: bool = True
     interactive: bool = True

@@ -96,6 +96,10 @@ _BOT_TERMS = (
     "请稍候，我们正在验证",
     "正在验证您的浏览器",
 )
+_BOT_URL_MARKERS = (
+    "__cf_chl_",
+    "/cdn-cgi/challenge-platform/",
+)
 _SSO_TERMS = (
     "single sign-on",
     "single sign on",
@@ -233,8 +237,20 @@ def classify_access_challenge(
         )
 
     hits = _contains_any(semantic, _BOT_TERMS)
-    if hits or title_text in {"just a moment", "just a moment..."}:
+    url_hits = _contains_any(url_text, _BOT_URL_MARKERS)
+    url_is_challenge_surface = bool(url_hits) and not (
+        title_text.endswith(".pdf") or (title_text and len(visible) > 50 and not hits)
+    )
+    if (
+        hits
+        or url_is_challenge_surface
+        or title_text in {"just a moment", "just a moment..."}
+    ):
         evidence = [f"Bot challenge signal: {term}" for term in hits[:3]]
+        if url_is_challenge_surface:
+            evidence.extend(
+                f"Bot challenge URL marker: {term}" for term in url_hits[:2]
+            )
         if title_text in {"just a moment", "just a moment..."}:
             evidence.append("Bot challenge title: just a moment")
         return ChallengeReport(

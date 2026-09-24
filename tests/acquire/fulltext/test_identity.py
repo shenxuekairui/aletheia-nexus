@@ -57,6 +57,46 @@ def test_doi_only_in_later_pages_does_not_verify_cited_article():
     assert result.document_role == DocumentRole.UNKNOWN
 
 
+def test_correction_citing_original_doi_is_not_original_article():
+    text = (
+        "Desalination 582 (2024) 117660\n"
+        "Corrigendum to Ion-selectivity advancements in capacitive deionization\n"
+        "DOI of original article: https://doi.org/10.1016/j.desal.2023.117146.\n"
+        "https://doi.org/10.1016/j.desal.2024.117660"
+    )
+    result = validate_paper_identity(
+        target_doi="10.1016/j.desal.2023.117146",
+        source_url="https://example.org/corrigendum.pdf",
+        expected_title="Ion-selectivity advancements in capacitive deionization",
+        inspection=_inspection(
+            text=text,
+            title="Corrigendum to Ion-selectivity advancements in capacitive deionization",
+            page_count=1,
+        ),
+    )
+
+    assert result.doi_match is True
+    assert result.status == IdentityStatus.MISMATCH
+    assert result.document_role == DocumentRole.UNKNOWN
+    assert any("correction to" in item for item in result.evidence)
+
+
+def test_correction_article_can_match_its_own_doi():
+    text = (
+        "Corrigendum to another article\n"
+        "DOI of original article: https://doi.org/10.1016/j.desal.2023.117146.\n"
+        "https://doi.org/10.1016/j.desal.2024.117660"
+    )
+    result = validate_paper_identity(
+        target_doi="10.1016/j.desal.2024.117660",
+        source_url="https://example.org/corrigendum.pdf",
+        inspection=_inspection(text=text, page_count=1),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
+
+
 def test_later_page_doi_with_exact_first_page_title_still_verifies():
     title = "Electrochemical Transformation of Carbon Dioxide at Copper Interfaces"
     result = validate_paper_identity(
