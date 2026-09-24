@@ -1,5 +1,7 @@
 # Aletheia Nexus
 
+[English README](README.en.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
+
 > 从一篇论文的可信获取，走向可积累、可协作、可演化的科研知识基础设施。
 
 **名字的由来。** *Aletheia* 源自希腊语 ἀλήθεια，意为“真理”；*Nexus* 意为“连接”。我们用这个名字寄托一份愿景：让散落在论文、数据、工具与研究过程中的证据建立可信连接，让结论能够追溯来源，让每一次探索都沉淀为研究者和实验室可以持续生长的知识。
@@ -116,20 +118,28 @@ AN 是本地优先的研究工具，不提供出版社订阅权限，不猜测�
 2. **证据优先于表面成功。** 每条获取路径都要经过同一套验证；可疑文档宁可保持未验证，也不污染下游语料。
 3. **让自动化知道何时停下。** 有界请求与重试限制资源消耗；遇到授权或人的判断时明确交接，恢复后继续。人机协作不是“自动化失败”的掩饰，而是访问控制与科研责任的真实边界。
 
-## 五分钟开始
+## 三分钟开始
 
-需要 Python 3.11 或更高版本。以下为 Windows PowerShell 示例；先克隆仓库，再在仓库根目录执行：
+需要 Python 3.11 或更高版本。以下为 Windows PowerShell 示例。**当前公开正式版仍为 v0.6.0；下面的正式 CLI 属于 v0.6.1 开发分支，PyPI 版尚未发布。**先从源码安装，即可用一个 DOI 体验无需浏览器的公开获取路径：
 
 ```powershell
 git clone https://github.com/shenxuekairui/aletheia-nexus.git
 cd aletheia-nexus
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+aletheia-nexus doctor
+aletheia-nexus acquire 10.1038/s41560-024-01633-4 --public-only --output-dir downloads/first-paper
+```
+
+`--public-only` 不需要 Chromium；真实 DOI 的最终状态取决于外部网络与全文来源，即使命令正常执行，也可能如实返回 `EXHAUSTED`。需要持久浏览器与机构登录时，再安装可选依赖：
+
+```powershell
 python -m pip install -e ".[browser]"
 python -m playwright install chromium
 ```
 
-只使用公开 HTTP 获取时，可改为 `python -m pip install -e .`，无需浏览器依赖。开发测试工具另见[使用说明书](docs/USER_MANUAL.md)。
+正式版上传 PyPI **之后**，源码安装步骤才可替换为 `pip install aletheia-nexus`，浏览器模式则使用 `pip install "aletheia-nexus[browser]"`。发布前不要将源码包可构建误写成 PyPI 已可安装。开发测试工具另见[使用说明书](docs/USER_MANUAL.md)。
 
 准备 DOI 输入，例如 `papers.json`：
 
@@ -143,14 +153,14 @@ python -m playwright install chromium
 运行可见浏览器批量获取：
 
 ```powershell
-python -u scripts/batch_v06_download.py papers.json `
+aletheia-nexus acquire papers.json `
   --output-dir downloads/my-papers `
   --fail-on-unverified
 ```
 
 默认使用 AN 独立的持久 Chromium 配置。若希望接管或自动启动本机专用 Edge/Chrome，可增加 `--cdp-endpoint http://127.0.0.1:9222`；不同机构应使用独立配置与浏览器端口。遇到登录、MFA 或验证码，交互模式会停在可见页面等待用户完成，然后继续。Cookie 能否复用取决于出版社，AN 不能保证机构选择永久有效。
 
-成功 PDF、`.acquisition.json`、`batch-checkpoint.json` 与 `batch-report.json` 保存在输出目录。逐篇以报告中的 `status` 为准：CLI 默认退出码 `0` 只表示批次处理完毕；上例的 `--fail-on-unverified` 才会在有效 DOI 未全部验证时返回非零码。关闭挑战页面、超时和按 `Ctrl+C` 的行为不同，操作前请看[断点续跑与状态说明](docs/USER_MANUAL.md#5-断点续跑与文件核验)。
+成功 PDF、`.acquisition.json`、`batch-checkpoint.json` 与 `batch-report.json` 保存在输出目录。逐篇以报告中的 `status` 为准：CLI 默认退出码 `0` 只表示批次处理完毕；上例的 `--fail-on-unverified` 才会在有效 DOI 未全部验证时返回非零码。旧 `scripts/batch_v06_download.py` 保留兼容入口。关闭挑战页面、超时和按 `Ctrl+C` 的行为不同，操作前请看[断点续跑与状态说明](docs/USER_MANUAL.md#5-断点续跑与文件核验)。
 
 Python 用户也可以直接调用统一入口：
 
@@ -175,7 +185,10 @@ src/aletheia_nexus/acquire/metadata/    元数据解析
 src/aletheia_nexus/acquire/discovery/   全文候选发现
 src/aletheia_nexus/acquire/fulltext/    公开 HTTP 获取与共享 PDF 验证
 src/aletheia_nexus/acquire/access/      官方 API、持久浏览器、交互与批量编排
-scripts/                              命令行、验收与本地验证
+  browser_engine/                     出版社无关的下载与 PDF 查看器基础能力
+  publisher_adapters/                 出版社路径和可见页面差异
+src/aletheia_nexus/cli.py             正式安装后的命令行入口
+scripts/                              兼容入口、验收与本地验证
 benchmarks/                           固定语料及来源说明
 tests/                                确定性回归与本地浏览器集成测试
 ```

@@ -111,3 +111,37 @@ jobs:
         env:
           AN_RUN_BROWSER_SMOKE: "1"
         run: python -m pytest -q tests/acquire/access/test_browser_integration.py
+
+  windows:
+    name: windows (3.11 + Chromium)
+    needs: test
+    if: >-
+      (github.event_name != 'pull_request' ||
+       !github.event.pull_request.draft ||
+       (github.event.action == 'labeled' && github.event.label.name == 'ci:full')) &&
+      (github.event_name != 'workflow_dispatch' || inputs.tier == 'full')
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install project and browser extra
+        run: python -m pip install -e ".[dev,browser]"
+      - name: Check dependencies and installed CLI
+        run: |
+          python -m pip check
+          aletheia-nexus --version
+          aletheia-nexus doctor
+      - name: Run deterministic suite on Windows
+        run: python -m pytest -q
+      - name: Install Chromium runtime
+        run: python -m playwright install chromium
+      - name: Run real-Chromium integration tests on Windows
+        env:
+          AN_RUN_BROWSER_SMOKE: "1"
+        run: python -m pytest -q tests/acquire/access/test_browser_integration.py

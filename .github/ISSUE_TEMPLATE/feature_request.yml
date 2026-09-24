@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a bounded, testable improvement.
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Researcher problem
+      description: What task is difficult today, and for whom?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe inputs, outputs, and how failure should be reported.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Access and trust boundaries
+      description: Does this affect entitlement, browser handoff, PDF validation, or provenance?

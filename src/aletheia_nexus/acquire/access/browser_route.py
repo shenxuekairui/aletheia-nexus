@@ -1,17 +1,27 @@
-import base64
 import hashlib
-import json
 import re
 import shutil
-import threading
 import time
 from dataclasses import replace
-from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from aletheia_nexus.acquire.access.artifact import finalize_browser_resource
+from aletheia_nexus.acquire.access.browser_engine.downloads import (
+    CdpDownloadCapture as _CdpDownloadCapture,
+)
+from aletheia_nexus.acquire.access.browser_engine.downloads import (
+    LocalBrowserDownload as _LocalBrowserDownload,
+)
+from aletheia_nexus.acquire.access.browser_engine.viewer import (
+    select_pdf_viewer_target,
+    trigger_embedded_pdf_frame_fetch,
+    trigger_pdf_viewer_same_origin_fetch,
+)
+from aletheia_nexus.acquire.access.browser_engine.viewer import (
+    trigger_pdf_viewer_save as _trigger_pdf_viewer_save,
+)
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
@@ -21,6 +31,7 @@ from aletheia_nexus.acquire.access.models import (
     ChallengeKind,
     ChallengeReport,
 )
+from aletheia_nexus.acquire.access.publisher_adapters import adapter_for_url
 from aletheia_nexus.acquire.access.publisher_routes import canonical_pdf_route
 from aletheia_nexus.acquire.access.security import (
     redact_url_for_record,
@@ -70,158 +81,6 @@ _MODAL_DISMISS_LABELS = frozenset(
         "not now",
     }
 )
-_PDF_VIEWER_EXTENSION_ID = "mhjfbmdgcfjbbpaeojofohoefgiehjai"
-_PDF_VIEWER_SAVE_EXPRESSION = r"""
-(() => {
-  const seen = new Set();
-  function find(root, depth) {
-    if (!root || depth > 10 || seen.has(root)) return null;
-    seen.add(root);
-    const direct = root.querySelector?.(
-      '#save, button[title*="Save"], button[title*="保存"]'
-    );
-    if (direct) return direct;
-    for (const el of root.querySelectorAll?.('*') || []) {
-      if (el.shadowRoot) {
-        const found = find(el.shadowRoot, depth + 1);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-  const button = find(document, 0);
-  if (!button) return {clicked: false};
-  button.click();
-  return {clicked: true};
-})()
-"""
-
-
-class _LocalBrowserDownload:
-    def __init__(self, path: Path, url: str) -> None:
-        self._path = path
-        self.url = url
-
-    def path(self) -> str:
-        return str(self._path)
-
-
-class _CdpDownloadCapture:
-    """Route one native Chromium download into an AN-owned staging directory.
-
-    Playwright download objects are not reliable for every browser attached over
-    CDP. In particular, an attachment response can be saved by Edge while
-    ``Download.save_as`` exposes an incomplete temporary file. Browser-domain
-    events provide the completion boundary and the final on-disk path instead.
-    """
-
-    def __init__(self, context, output_dir: str | Path) -> None:
-        self._session = None
-        self._staging_dir: Path | None = None
-        self._guid: str | None = None
-        self._url: str | None = None
-        self._file_path: Path | None = None
-        self._completed = threading.Event()
-        self._canceled = False
-
-        browser = getattr(context, "browser", None)
-        if browser is None or not hasattr(browser, "new_browser_cdp_session"):
-            return
-
-        staging_dir = Path(output_dir) / "_browser-downloads" / uuid4().hex
-        session = browser.new_browser_cdp_session()
-        try:
-            staging_dir.mkdir(parents=True, exist_ok=False)
-            session.on("Browser.downloadWillBegin", self._on_begin)
-            session.on("Browser.downloadProgress", self._on_progress)
-            session.send(
-                "Browser.setDownloadBehavior",
-                {
-                    "behavior": "allowAndName",
-                    "downloadPath": str(staging_dir.resolve()),
-                    "eventsEnabled": True,
-                },
-            )
-        except Exception:
-            try:
-                session.detach()
-            except Exception:
-                pass
-            shutil.rmtree(staging_dir, ignore_errors=True)
-            return
-
-        self._session = session
-        self._staging_dir = staging_dir
-
-    @property
-    def active(self) -> bool:
-        return self._session is not None
-
-    @property
-    def session(self):
-        return self._session
-
-    @property
-    def staging_dir(self) -> Path | None:
-        return self._staging_dir
-
-    @property
-    def started(self) -> bool:
-        return self._guid is not None
-
-    def _on_begin(self, event) -> None:
-        if self._guid is not None:
-            return
-        self._guid = str(event.get("guid") or "") or None
-        self._url = str(event.get("url") or "") or None
-
-    def _on_progress(self, event) -> None:
-        guid = str(event.get("guid") or "")
-        if self._guid is None or guid != self._guid:
-            return
-        state = event.get("state")
-        if state == "completed":
-            file_path = event.get("filePath")
-            if file_path:
-                self._file_path = Path(str(file_path))
-            self._completed.set()
-        elif state == "canceled":
-            self._canceled = True
-            self._completed.set()
-
-    def wait(self, page, timeout: float) -> tuple[Path, str] | None:
-        if not self.active or not self.started:
-            return None
-        deadline = time.monotonic() + max(0.0, timeout)
-        while not self._completed.is_set() and time.monotonic() < deadline:
-            page.wait_for_timeout(100)
-        if not self._completed.is_set() or self._canceled or self._staging_dir is None:
-            return None
-
-        path = self._file_path
-        if path is None and self._guid is not None:
-            path = self._staging_dir / self._guid
-        if path is None or not path.is_file():
-            files = [item for item in self._staging_dir.iterdir() if item.is_file()]
-            if len(files) != 1:
-                return None
-            path = files[0]
-        return path, self._url or str(getattr(page, "url", "") or "")
-
-    def close(self, *, remove_files: bool = True) -> None:
-        session = self._session
-        self._session = None
-        if session is not None:
-            try:
-                session.send("Browser.setDownloadBehavior", {"behavior": "default"})
-            except Exception:
-                pass
-            try:
-                session.detach()
-            except Exception:
-                pass
-        if remove_files and self._staging_dir is not None:
-            shutil.rmtree(self._staging_dir, ignore_errors=True)
 
 
 def _page_snapshot(page) -> tuple[str, str, str, str]:
@@ -274,63 +133,13 @@ def _report_for_page(page) -> ChallengeReport:
         visible_text=visible_text,
         html=html,
     )
-    # Xplore's article chrome advertises institutional sign-in and purchase
-    # before the PDF is clicked. Treat that chrome as an access boundary only
-    # once the actual access dialog appears; otherwise it masks the PDF control.
-    try:
-        parts = urlsplit(url)
-        if (
-            parts.hostname == "ieeexplore.ieee.org"
-            and re.fullmatch(r"/document/\d+/?", parts.path)
-            and report.kind
-            in {
-                ChallengeKind.SSO,
-                ChallengeKind.AUTHENTICATION,
-                ChallengeKind.ENTITLEMENT,
-            }
-        ):
-            pdf_controls = page.locator("a, button").filter(
-                has_text=re.compile(r"\bPDF\b", re.IGNORECASE)
-            )
-            has_pdf_control = any(
-                pdf_controls.nth(index).is_visible()
-                for index in range(min(pdf_controls.count(), 20))
-            )
-            dialogs = page.locator("dialog, [role='dialog'], .js-react-modal").filter(
-                has_text="Full text access may be available"
-            )
-            access_dialog_open = any(
-                dialogs.nth(index).is_visible()
-                for index in range(min(dialogs.count(), 8))
-            )
-            if has_pdf_control and not access_dialog_open:
-                return ChallengeReport(kind=ChallengeKind.NONE)
-    except Exception:
-        pass
-    return report
+    return adapter_for_url(url).refine_page_challenge(page, report)
 
 
 def _wait_for_ieee_article_controls(page) -> None:
-    """Let Xplore hydrate its article controls after DOMContentLoaded."""
+    """Compatibility wrapper; article hydration belongs to the adapter."""
 
-    try:
-        parts = urlsplit(str(page.url))
-        if parts.hostname != "ieeexplore.ieee.org" or not re.fullmatch(
-            r"/document/\d+/?", parts.path
-        ):
-            return
-        page.wait_for_function(
-            """() => Array.from(document.querySelectorAll(
-              'a, button, [role="button"], [role="link"]'
-            )).some(element => /\\bpdf\\b/i.test([
-              element.innerText || '',
-              element.getAttribute('aria-label') || ''
-            ].join(' ')))""",
-            timeout=8000,
-        )
-    except Exception:
-        # A slow or blocked page should still reach normal challenge detection.
-        pass
+    adapter_for_url(str(page.url)).prepare_article_controls(page)
 
 
 def _append_report(
@@ -551,26 +360,9 @@ def _challenge_from_non_pdf_response(response, body: bytes) -> ChallengeReport:
         visible_text=parsed.visible_text,
         html=text,
     )
-    if report.kind == ChallengeKind.NONE:
-        # Thieme's DOI PDF endpoint redirects unsubscribed visitors to its
-        # abstract page. Its paywall button says "Buy Article" (without "this").
-        parts = urlsplit(response.url)
-        if (
-            (parts.hostname or "").lower()
-            in {
-                "thieme-connect.com",
-                "www.thieme-connect.com",
-                "thieme-connect.de",
-                "www.thieme-connect.de",
-            }
-            and "/products/ejournals/abstract/" in parts.path.lower()
-            and "buy article" in parsed.visible_text.lower()
-        ):
-            return ChallengeReport(
-                kind=ChallengeKind.ENTITLEMENT,
-                evidence=("Publisher PDF route returned a Buy Article page",),
-            )
-    return report
+    return adapter_for_url(response.url).refine_non_pdf_challenge(
+        urlsplit(response.url), parsed.visible_text, report
+    )
 
 
 def _safe_referer(source_page_url: str, target_url: str) -> str | None:
@@ -927,135 +719,17 @@ def _download_to_file_attempt(
 
 
 def _trigger_pdf_viewer_same_origin_fetch(page, *, max_bytes: int) -> bool:
-    """Expose Chromium's plugin-held PDF stream as one capturable response."""
-
-    try:
-        deadline = time.monotonic() + 5.0
-        while True:
-            page_url = validate_browser_network_url(str(page.url or ""))
-            if urlsplit(page_url).path.lower().endswith(".pdf"):
-                break
-            if time.monotonic() >= deadline:
-                return False
-            page.wait_for_timeout(250)
-        result = page.evaluate(
-            """async (maxBytes) => {
-                const response = await fetch(location.href, {
-                    cache: 'no-store',
-                    credentials: 'include'
-                });
-                const declared = Number(response.headers.get('content-length') || 0);
-                if (!response.ok || (declared > 0 && declared > maxBytes)) {
-                    if (response.body) await response.body.cancel();
-                    return false;
-                }
-                const buffer = await response.arrayBuffer();
-                if (buffer.byteLength > maxBytes) return false;
-                const head = new Uint8Array(buffer.slice(0, 5));
-                return head.length === 5
-                    && head[0] === 0x25
-                    && head[1] === 0x50
-                    && head[2] === 0x44
-                    && head[3] === 0x46
-                    && head[4] === 0x2d;
-            }""",
-            max_bytes,
-        )
-        return bool(result)
-    except Exception:
-        return False
+    return trigger_pdf_viewer_same_origin_fetch(
+        page, max_bytes=max_bytes, validate_url=validate_browser_network_url
+    )
 
 
 def _trigger_embedded_pdf_frame_fetch(
     page, *, max_bytes: int
 ) -> tuple[str, bytes] | None:
-    """Expose a same-origin PDF loaded inside a publisher viewer iframe.
-
-    Chromium's built-in PDF viewer can replace the iframe's JavaScript world with
-    an extension document. Run the cache-only fetch from the publisher's top-level
-    page instead, where cookies and the same-origin relationship remain intact.
-    """
-
-    script = """async ({url, maxBytes}) => {
-        const response = await fetch(url, {
-            cache: 'force-cache',
-            credentials: 'include'
-        });
-        const declared = Number(response.headers.get('content-length') || 0);
-        if (!response.ok || (declared > 0 && declared > maxBytes)) {
-            if (response.body) await response.body.cancel();
-            return false;
-        }
-        const buffer = await response.arrayBuffer();
-        if (buffer.byteLength > maxBytes) return false;
-        const bytes = new Uint8Array(buffer);
-        if (!(bytes.length >= 5
-            && bytes[0] === 0x25
-            && bytes[1] === 0x50
-            && bytes[2] === 0x44
-            && bytes[3] === 0x46
-            && bytes[4] === 0x2d)) return false;
-        let binary = '';
-        const chunkSize = 0x8000;
-        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-            binary += String.fromCharCode(
-                ...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length))
-            );
-        }
-        return {url: response.url || url, bodyBase64: btoa(binary)};
-    }"""
-    try:
-        page_url = validate_browser_network_url(str(page.url or ""))
-        page_parts = urlsplit(page_url)
-    except Exception:
-        return False
-    for frame in list(getattr(page, "frames", ()) or ())[:12]:
-        if frame is page:
-            continue
-        try:
-            frame_url = validate_browser_network_url(str(frame.url or ""))
-            path = urlsplit(frame_url).path.lower()
-            has_pdf_embed = bool(
-                frame.locator(
-                    "embed[type='application/pdf'], object[type='application/pdf']"
-                ).count()
-            )
-            if not (
-                path.endswith(".pdf")
-                or "/pdfdirect/" in path
-                or "/doi/pdf/" in path
-                or has_pdf_embed
-            ):
-                continue
-            frame_parts = urlsplit(frame_url)
-            if (
-                frame_parts.scheme,
-                frame_parts.hostname,
-                frame_parts.port,
-            ) != (page_parts.scheme, page_parts.hostname, page_parts.port):
-                continue
-            result = page.evaluate(
-                script,
-                {"url": frame_url, "maxBytes": max_bytes},
-            )
-            if not isinstance(result, dict):
-                continue
-            result_url = validate_browser_network_url(str(result.get("url") or ""))
-            body = base64.b64decode(str(result.get("bodyBase64") or ""), validate=True)
-            if len(body) > max_bytes or not body.startswith(b"%PDF-"):
-                continue
-            return result_url, body
-        except Exception:
-            continue
-    return None
-
-
-def _normalized_viewer_title(value: str | None) -> str:
-    return " ".join(str(value or "").casefold().split())
-
-
-def _compact_viewer_identifier(value: str | None) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
+    return trigger_embedded_pdf_frame_fetch(
+        page, max_bytes=max_bytes, validate_url=validate_browser_network_url
+    )
 
 
 def _select_pdf_viewer_target(
@@ -1066,44 +740,15 @@ def _select_pdf_viewer_target(
     page_title: str | None,
     page_url: str,
 ) -> dict[str, object] | None:
-    """Select the Chromium PDF webview belonging to the current article."""
+    """Compatibility wrapper for the browser engine's viewer selector."""
 
-    expected = _normalized_viewer_title(expected_title)
-    observed_page = _normalized_viewer_title(page_title)
-    doi_token = _compact_viewer_identifier(doi.rsplit("/", 1)[-1])
-    page_filename = urlsplit(page_url).path.rsplit("/", 1)[-1]
-    page_file_token = _compact_viewer_identifier(page_filename.removesuffix(".pdf"))
-    ranked: list[tuple[float, dict[str, object]]] = []
-    for target in targets:
-        target_url = str(target.get("url") or "")
-        if (
-            target.get("type") != "webview"
-            or _PDF_VIEWER_EXTENSION_ID not in target_url
-        ):
-            continue
-        title = _normalized_viewer_title(str(target.get("title") or ""))
-        if not title:
-            continue
-        compact_title = _compact_viewer_identifier(title)
-        expected_score = (
-            SequenceMatcher(None, expected, title).ratio() if expected else 0
-        )
-        page_score = (
-            SequenceMatcher(None, title, observed_page).ratio() if observed_page else 0
-        )
-        score = max(expected_score, page_score)
-        if expected and (title in expected or expected in title):
-            score += 1
-        if any(
-            len(token) >= 6 and token in compact_title
-            for token in (doi_token, page_file_token)
-        ):
-            score += 2
-        ranked.append((score, target))
-    if not ranked:
-        return None
-    score, winner = max(ranked, key=lambda item: item[0])
-    return winner if score >= 0.72 else None
+    return select_pdf_viewer_target(
+        targets,
+        doi=doi,
+        expected_title=expected_title,
+        page_title=page_title,
+        page_url=page_url,
+    )
 
 
 def _runtime_publisher_pdf_candidate(
@@ -1120,105 +765,6 @@ def _runtime_publisher_pdf_candidate(
         _candidate_for_url(parent, url),
         source_name=source_name,
     )
-
-
-def _trigger_pdf_viewer_save(
-    context,
-    page,
-    *,
-    doi: str,
-    output_dir: str | Path,
-    expected_title: str | None,
-    timeout: float,
-    max_bytes: int,
-) -> tuple[Path, Path] | None:
-    """Save the current Chromium PDF webview through its native save control."""
-
-    capture = _CdpDownloadCapture(context, output_dir)
-    session = capture.session
-    staging_dir = capture.staging_dir
-    if session is None or staging_dir is None:
-        return None
-
-    target_session: str | None = None
-    keep_staging = False
-    try:
-        page_title = page.title()
-        target = _select_pdf_viewer_target(
-            session.send("Target.getTargets").get("targetInfos", []),
-            doi=doi,
-            expected_title=expected_title,
-            page_title=page_title,
-            page_url=str(page.url or ""),
-        )
-        if target is None:
-            return None
-
-        target_session = session.send(
-            "Target.attachToTarget",
-            {"targetId": target["targetId"], "flatten": False},
-        )["sessionId"]
-
-        runtime_done = threading.Event()
-        runtime_result: dict[str, object] = {}
-
-        def receive_target(event) -> None:
-            if event.get("sessionId") != target_session:
-                return
-            message = json.loads(event["message"])
-            if message.get("id") == 1:
-                runtime_result.update(message)
-                runtime_done.set()
-
-        session.on("Target.receivedMessageFromTarget", receive_target)
-        session.send(
-            "Target.sendMessageToTarget",
-            {
-                "sessionId": target_session,
-                "message": json.dumps(
-                    {
-                        "id": 1,
-                        "method": "Runtime.evaluate",
-                        "params": {
-                            "expression": _PDF_VIEWER_SAVE_EXPRESSION,
-                            "returnByValue": True,
-                        },
-                    }
-                ),
-            },
-        )
-
-        deadline = time.monotonic() + timeout
-        while not runtime_done.is_set() and time.monotonic() < deadline:
-            page.wait_for_timeout(100)
-        click_result = (
-            runtime_result.get("result", {}).get("result", {}).get("value", {})
-        )
-        if not isinstance(click_result, dict) or not click_result.get("clicked"):
-            return None
-        captured = capture.wait(page, max(0.0, deadline - time.monotonic()))
-        if captured is None:
-            return None
-        saved, _ = captured
-        if saved.stat().st_size > max_bytes:
-            return None
-        with saved.open("rb") as handle:
-            if handle.read(5) != b"%PDF-":
-                return None
-        keep_staging = True
-        return saved, staging_dir
-    except Exception:
-        return None
-    finally:
-        if target_session is not None:
-            try:
-                session.send(
-                    "Target.detachFromTarget",
-                    {"sessionId": target_session},
-                )
-            except Exception:
-                pass
-        capture.close(remove_files=not keep_staging)
 
 
 def _control_semantics(item) -> str:
@@ -1372,31 +918,11 @@ def _click_semantic_pdf_control(page) -> bool:
 def _click_semantic_institution_control(page) -> bool:
     """Click one explicit institutional-access control as a late fallback."""
 
-    # The Xplore PDF dialog can show a previously selected institution. Its
-    # blue "Access Through ..." action is more specific than the page header's
-    # generic "Institutional Sign In" link.
     try:
-        if (urlsplit(str(page.url)).hostname or "").lower() == "ieeexplore.ieee.org":
-            dialogs = page.locator("dialog, [role='dialog'], .js-react-modal").filter(
-                has_text="Full text access may be available"
-            )
-            for dialog_index in range(min(dialogs.count(), 8)):
-                dialog = dialogs.nth(dialog_index)
-                if not dialog.is_visible():
-                    continue
-                controls = dialog.locator(_INTERACTIVE_CONTROL_SELECTOR)
-                for control_index in range(min(controls.count(), 40)):
-                    control = controls.nth(control_index)
-                    if not control.is_visible():
-                        continue
-                    if not re.match(
-                        r"^access\s+through\b",
-                        _control_semantics(control),
-                        re.IGNORECASE,
-                    ):
-                        continue
-                    control.click(timeout=5000)
-                    return True
+        if adapter_for_url(str(page.url)).click_institution_control(
+            page, _control_semantics
+        ):
+            return True
     except Exception:
         pass
 
@@ -1451,28 +977,12 @@ def _click_semantic_institution_control(page) -> bool:
 
 
 def _ieee_selected_institution_available(page) -> bool:
-    """Distinguish a remembered institution from the institution chooser."""
+    """Compatibility wrapper for the adapter's remembered-institution hook."""
 
     try:
-        if (urlsplit(str(page.url)).hostname or "").lower() != "ieeexplore.ieee.org":
-            return False
-        dialogs = page.locator("dialog, [role='dialog'], .js-react-modal").filter(
-            has_text="Full text access may be available"
+        return adapter_for_url(str(page.url)).remembered_institution(
+            page, _control_semantics
         )
-        for dialog_index in range(min(dialogs.count(), 8)):
-            dialog = dialogs.nth(dialog_index)
-            if not dialog.is_visible():
-                continue
-            controls = dialog.locator(_INTERACTIVE_CONTROL_SELECTOR)
-            for control_index in range(min(controls.count(), 40)):
-                control = controls.nth(control_index)
-                if not control.is_visible():
-                    continue
-                label = _control_semantics(control).casefold()
-                if label.startswith("access through ") and not label.startswith(
-                    "access through your institution"
-                ):
-                    return True
     except Exception:
         pass
     return False

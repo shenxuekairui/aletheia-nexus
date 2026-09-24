@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/shenxuekairui/aletheia-nexus/security
+    about: Do not include security-sensitive details in a public issue.
