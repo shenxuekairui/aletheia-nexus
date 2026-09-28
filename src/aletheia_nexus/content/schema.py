@@ -141,6 +141,23 @@ def validate_parsed_document(document: object) -> None:
             raise ValueError(f"blocks[{index}].uncertain must be a boolean")
         if not isinstance(block.get("extraction_method"), str):
             raise ValueError(f"blocks[{index}] needs an extraction method")
+        confidence = block.get("extraction_confidence")
+        if confidence is not None and (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0 <= confidence <= 1
+        ):
+            raise ValueError(f"blocks[{index}] has invalid extraction confidence")
+        engines = block.get("source_engines")
+        if engines is not None and (
+            not isinstance(engines, list)
+            or any(not isinstance(item, str) or not item for item in engines)
+            or len(engines) != len(set(engines))
+        ):
+            raise ValueError(f"blocks[{index}] has invalid source engines")
+        region = block.get("content_region")
+        if region is not None and (not isinstance(region, str) or not region):
+            raise ValueError(f"blocks[{index}] has invalid content region")
         order = block.get("order")
         if (
             isinstance(order, bool)
@@ -342,6 +359,40 @@ def validate_parsed_document(document: object) -> None:
         value = quality.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value != expected:
             raise ValueError(f"quality.{key} does not match document content")
+    ocr_blocks = [
+        block
+        for block in blocks
+        if "ocr" in str(block.get("extraction_method", "")).casefold()
+        or any(
+            "ocr" in str(engine).casefold() or "tesseract" in str(engine).casefold()
+            for engine in block.get("source_engines", [])
+        )
+    ]
+    if "ocr_supplemented_blocks" in quality and quality[
+        "ocr_supplemented_blocks"
+    ] != len(ocr_blocks):
+        raise ValueError("quality.ocr_supplemented_blocks does not match blocks")
+    consensus_blocks = sum(
+        block.get("extraction_method") == "ocr-consensus"
+        or len(block.get("source_engines", [])) > 1
+        for block in ocr_blocks
+    )
+    if (
+        "ocr_consensus_blocks" in quality
+        and quality["ocr_consensus_blocks"] != consensus_blocks
+    ):
+        raise ValueError("quality.ocr_consensus_blocks does not match blocks")
+    mean_confidence = quality.get("mean_extraction_confidence")
+    if mean_confidence is not None and (
+        isinstance(mean_confidence, bool)
+        or not isinstance(mean_confidence, (int, float))
+        or not 0 <= mean_confidence <= 1
+    ):
+        raise ValueError("quality.mean_extraction_confidence must be between 0 and 1")
+    if "manual_review_required" in quality and not isinstance(
+        quality["manual_review_required"], bool
+    ):
+        raise ValueError("quality.manual_review_required must be a boolean")
     for key in ("suppressed_page_furniture", "unassociated_image_resources"):
         if key not in quality:
             continue
@@ -350,8 +401,19 @@ def validate_parsed_document(document: object) -> None:
             raise ValueError(f"quality.{key} must be a non-negative integer")
     if not isinstance(quality.get("stopped_early"), bool):
         raise ValueError("quality.stopped_early must be a boolean")
+    informational_warning_codes = {
+        "OCR_TRIGGERED",
+        "OCR_TEXT_SUPPLEMENTED",
+        "OCR_ORIENTATION_CORRECTED",
+        "OCR_DESKEW_APPLIED",
+    }
+    blocking_warnings = [
+        item
+        for item in document["warnings"]
+        if item["code"] not in informational_warning_codes
+    ]
     if document["status"] == "PARSED" and (
-        document["warnings"] or document["errors"] or quality["stopped_early"]
+        blocking_warnings or document["errors"] or quality["stopped_early"]
     ):
         raise ValueError("PARSED status conflicts with warnings, errors, or truncation")
 

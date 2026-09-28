@@ -21,7 +21,7 @@ from aletheia_nexus.content.schema import PARSED_DOCUMENT_SCHEMA
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "2.2.0"
+PARSER_VERSION = "2.3.0"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -30,13 +30,18 @@ _HEADING_NUMBER = re.compile(
     re.UNICODE,
 )
 _HEADING_ROMAN = re.compile(r"^(?P<number>[IVXLCDM]+|[A-Z])[.)]\s+(?=\S)")
-_REFERENCE = re.compile(r"^(?:\[(?P<bracket>\d+)\]|(?P<plain>\d+)[.)]?)\s+")
+_REFERENCE = re.compile(
+    r"^(?:\[(?P<bracket>\d{1,3})\]\s+|\((?P<paren>\d{1,3})\)\s*|"
+    r"(?P<plain>\d{1,3})[.)]?\s+)"
+)
 _BRACKET_REFERENCE_ENTRY = re.compile(r"\[(?P<label>\d{1,3})\]\s+")
 _PLAIN_REFERENCE_ENTRY = re.compile(
     r"(?<!\S)(?P<label>\d{1,3})[.)]?\s+"
     r"(?=(?:[A-Z][\w'’\-]+(?:,\s*|\s+)[A-Z]{1,4}\.?"
     r"|(?:[A-Z]\.\s*){1,4}[A-Z][\w'’\-]+))"
 )
+_PAREN_REFERENCE_ENTRY = re.compile(r"\((?P<label>\d{1,3})\)\s*")
+_REFERENCE_YEAR = re.compile(r"\b(?:19|20)\d{2}[a-z]?\b", re.IGNORECASE)
 _AUTHOR_REFERENCE = re.compile(
     r"^\d+[.)]?\s+(?:"
     r"(?:[^,\s]+\s+)*[^,\s]+,\s+[A-Z](?:[.\s]|$)"
@@ -45,8 +50,9 @@ _AUTHOR_REFERENCE = re.compile(
     r")"
 )
 _YEAR_AUTHOR_REFERENCE = re.compile(
-    r"^\d+[.)]?\s+[A-Z][\w'’\-]+\s+[A-Z]{1,4}\.?\s+\d{4}\b"
+    r"^(?:\d+[.)]?|\(\d+\))\s*[A-Z][\w'’\-]+\s+[A-Z]{1,4}\.?\s+\d{4}\b"
 )
+_UNNUMBERED_AUTHOR_START = re.compile(r"^[A-Z][\w'’\-]+(?:\s+[A-Z][\w'’\-]*){1,4}\s*,")
 _AFFILIATION_HINT = re.compile(
     r"\b(?:centre|center|cnrs|collaboration|department|faculty|institute|"
     r"laboratory|laboratoire|school|universit(?:y|é)|university)\b",
@@ -58,6 +64,10 @@ _CAPTION = re.compile(
     r"^(?P<kind>fig(?:ure)?|table)\.?\s*"
     r"(?P<label>(?:[A-Z]?\d+(?:[A-Za-z](?=$|\s|[,;:.|\-]))?"
     r"|[IVXLCDM]+(?=$|\s|[,;:.|\-])))",
+    re.IGNORECASE,
+)
+_GLUED_TABLE_CAPTION = re.compile(
+    r"(?<=[a-z])(?P<kind>table)\s*(?P<label>\d+(?:[A-Za-z])?)(?=\s|$)",
     re.IGNORECASE,
 )
 _CAPTION_MENTION = re.compile(
@@ -73,6 +83,17 @@ _CAPTION_PANEL_CITATION = re.compile(r"^\([A-Za-z0-9]+\)\s*\[\d")
 _CAPTION_PANEL = re.compile(r"^\([A-Za-z0-9]+\)\s*")
 _CAPTION_SUFFIX_MENTION = re.compile(r"^on\b", re.IGNORECASE)
 _CAPTION_JOINED_SUFFIX_MENTION = re.compile(r"^[A-Za-z]on\b", re.IGNORECASE)
+_CAPTION_CROSS_REFERENCE = re.compile(
+    r"^(?:\)|and\b|(?:figure\s+)?supplements?\s+\d+(?:[a-z]|\s*[–—-]\s*\d+)?"
+    r"(?:\s*[),]|\s*(?:and|for|in|into|provide|see)\b|\s*$)|"
+    r"(?:we|this|these|our)\b)",
+    re.IGNORECASE,
+)
+_CAPTION_PROSE_REFERENCE = re.compile(
+    r"\b(?:is shown as|shown in|see\s+(?:the\s+)?figure|required\s+\d|"
+    r"provide(?:s|d)?\s+(?:a\s+)?rigorous\s+validation)\b",
+    re.IGNORECASE,
+)
 _CAPTION_SENTENCE = re.compile(
     r"^(?:the\b.*?\b(?:is|are|was|were|has|have)\b|"
     r"(?:\S+\s+){0,3}(?:is|are|was|were)\b)",
@@ -109,12 +130,15 @@ _SEMANTIC_SECTIONS = {
 _POST_REFERENCE_HEADINGS = (
     "additional information",
     "affiliation",
+    "appendix",
     "author contribution",
     "author information",
+    "author response",
     "authors' contribution",
     "competing interest",
     "conflict of interest",
     "data availability",
+    "decision letter",
     "ethics statement",
     "publisher's note",
     "supplementary information",
@@ -240,12 +264,13 @@ def _heading_level(text: str) -> int:
 
 
 def _strip_heading_number(text: str) -> str:
+    stripped = re.sub(r"^[■◆●▪*]+\s*", "", text.strip())
     return (
         re.sub(
             r"^(?:[1-9]\d*(?:\.\d+){1,4}[.)]?|[1-9]\d*[.)]|[1-9]"
             r"|(?:[IVXLCDM]+|[A-Z])[.)])\s+",
             "",
-            text,
+            stripped,
         )
         .strip()
         .casefold()
@@ -281,10 +306,18 @@ def _kind(line: LayoutLine, median_font: float, heading_font_ratio: float) -> st
     font_heading = line.font_size >= median_font * heading_font_ratio or (
         line.bold and line.font_size >= median_font * 1.02
     )
+    heading_letters = [character for character in text if character.isalpha()]
+    uppercase_heading = bool(heading_letters) and (
+        sum(character.isupper() for character in heading_letters) / len(heading_letters)
+        >= 0.8
+    )
+    numbered_heading_evidence = (
+        numbered_heading or roman_heading
+    ) and uppercase_heading
     if (
         short
         and _looks_like_heading_text(text)
-        and (font_heading or known_heading or numbered_heading or roman_heading)
+        and (font_heading or known_heading or numbered_heading_evidence)
     ):
         return "heading"
     if len(text) <= 160 and equation_like:
@@ -304,17 +337,53 @@ def _is_author_reference(text: str) -> bool:
     )
 
 
+def _is_unnumbered_reference_start(text: str) -> bool:
+    return _UNNUMBERED_AUTHOR_START.match(text.strip()) is not None
+
+
+def _looks_like_unnumbered_reference(text: str) -> bool:
+    normalized = text.casefold()
+    return _is_unnumbered_reference_start(text) or (
+        _REFERENCE_YEAR.search(text) is not None
+        and ("doi" in normalized or "pmid" in normalized)
+    )
+
+
 def _caption_match(text: str) -> re.Match[str] | None:
     """Return a caption prefix only when the remainder reads like a caption."""
 
     stripped = text.strip()
     match = _CAPTION.match(stripped)
     if match is None:
+        match = _GLUED_TABLE_CAPTION.search(stripped)
+    if match is None:
         return None
+    if (
+        match.start() == 0
+        and match.end() < len(stripped)
+        and stripped[match.end()].islower()
+    ):
+        return None
+    if match.start() > 0:
+        before = stripped[: match.start()]
+        after = stripped[match.end() :].lstrip()
+        if (
+            not after
+            or not (after[0].isupper() or after[0].isdigit())
+            or re.search(r"[.!?]\s", before)
+        ):
+            return None
     remainder = stripped[match.end() :].lstrip()
     if remainder.startswith((",", ";")):
         return None
-    description = remainder.lstrip(".:|- ")
+    description = _caption_description(stripped, match)
+    if (
+        not description
+        and "continued" not in stripped.casefold()
+        and not stripped.isupper()
+        and not stripped.endswith((".", ":"))
+    ):
+        return None
     if _CAPTION_MENTION.match(description):
         return None
     if _CAPTION_PANEL_CITATION.match(description):
@@ -328,11 +397,18 @@ def _caption_match(text: str) -> re.Match[str] | None:
         return None
     if _CAPTION_JOINED_SUFFIX_MENTION.match(description):
         return None
+    if _CAPTION_CROSS_REFERENCE.match(description):
+        return None
+    if _CAPTION_PROSE_REFERENCE.search(description):
+        return None
     return match
 
 
 def _caption_description(text: str, match: re.Match[str]) -> str:
-    return text.strip()[match.end() :].lstrip(".:|- ")
+    stripped = text.strip()
+    before = stripped[: match.start()].strip(".:|-–— ")
+    after = stripped[match.end() :].lstrip(".:|-–— ")
+    return " ".join(part for part in (before, after) if part)
 
 
 def _caption_comparison_text(text: str, match: re.Match[str]) -> str:
@@ -355,6 +431,30 @@ def _caption_quality(text: str, match: re.Match[str]) -> tuple[int, int, int, in
 
 def _deduplicate_caption_blocks(blocks: list[dict[str, object]]) -> None:
     """Keep one semantic caption for duplicated PDF text-layer evidence."""
+
+    descriptive_keys: set[tuple[str, str]] = set()
+    for block in blocks:
+        if block["kind"] != "caption":
+            continue
+        text = str(block["text"])
+        match = _caption_match(text)
+        if match is None:
+            continue
+        description = _caption_description(text, match).casefold()
+        if description and "continued" not in description:
+            descriptive_keys.add(
+                (match.group("kind").casefold(), match.group("label").casefold())
+            )
+    for block in blocks:
+        if block["kind"] != "caption":
+            continue
+        text = str(block["text"])
+        match = _caption_match(text)
+        if match is None:
+            continue
+        key = (match.group("kind").casefold(), match.group("label").casefold())
+        if key in descriptive_keys and not _caption_description(text, match):
+            block["kind"] = "paragraph"
 
     kept: dict[tuple[str, str], list[dict[str, object]]] = {}
     for block in blocks:
@@ -535,7 +635,7 @@ def _union_bbox(first: list[float], second: list[float]) -> list[float]:
 
 
 class _NativeExtractionStage:
-    name = "native-layout-and-block-assembly"
+    name = "layout-extraction-and-block-assembly"
 
     def run(self, context: PipelineContext) -> None:
         config = context.config
@@ -580,6 +680,9 @@ class _NativeExtractionStage:
             previous_line: LayoutLine | None = None
             previous_kind: str | None = None
             for line in _order_lines(layout.lines, layout.width, config):
+                line_engines = line.source_engines or (
+                    f"{backend.name}@{backend.version}",
+                )
                 if _is_page_furniture(line, layout, repeated_furniture):
                     context.suppressed_page_furniture += 1
                     previous_line = None
@@ -629,6 +732,17 @@ class _NativeExtractionStage:
                     block["text"] = f"{block['text']} {line.text}"
                     block["line_count"] = int(block["line_count"]) + 1
                     block["uncertain"] = bool(block["uncertain"] or line.uncertain)
+                    block["extraction_confidence"] = min(
+                        float(block["extraction_confidence"]),
+                        line.extraction_confidence,
+                    )
+                    block["source_engines"] = list(
+                        dict.fromkeys([*block["source_engines"], *line_engines])
+                    )
+                    if block["extraction_method"] != line.extraction_method:
+                        block["extraction_method"] = "mixed-positioned-text"
+                    if block["content_region"] != line.content_region:
+                        block["content_region"] = "mixed"
                     anchor["text_evidence"] = block["text"]
                     anchor["span"] = {"start": 0, "end": len(block["text"])}
                     next_bbox = _bbox(line, layout.width, layout.height)
@@ -668,6 +782,9 @@ class _NativeExtractionStage:
                         "page": page_index,
                         "anchor_id": anchor_id,
                         "extraction_method": line.extraction_method,
+                        "extraction_confidence": line.extraction_confidence,
+                        "source_engines": list(line_engines),
+                        "content_region": line.content_region,
                         "uncertain": line.uncertain or kind == "equation",
                         "line_count": 1,
                     }
@@ -757,6 +874,7 @@ def _mark_bibliography_blocks(blocks: list[dict[str, object]]) -> None:
         else None
     )
     in_bibliography = False
+    unnumbered_bibliography = False
     for index, block in enumerate(blocks):
         page = int(block["page"])
         semantic_type = (
@@ -786,22 +904,28 @@ def _mark_bibliography_blocks(blocks: list[dict[str, object]]) -> None:
             continue
         text = str(block["text"])
         match = _REFERENCE.match(text)
-        contextual_reference = _BRACKET_REFERENCE_ENTRY.search(text) is not None or (
-            match is not None and _is_author_reference(text)
+        contextual_reference = (
+            _BRACKET_REFERENCE_ENTRY.search(text) is not None
+            or _PAREN_REFERENCE_ENTRY.search(text) is not None
+            or (match is not None and _is_author_reference(text))
+            or _looks_like_unnumbered_reference(text)
         )
         if contextual_reference:
             block["kind"] = "reference"
+            if _looks_like_unnumbered_reference(text) and match is None:
+                unnumbered_bibliography = True
             continue
         normalized = _strip_heading_number(text)
         if semantic_type is not None or (
-            block["kind"] == "heading"
-            and normalized.startswith(_POST_REFERENCE_HEADINGS)
+            len(normalized) <= 80 and normalized.startswith(_POST_REFERENCE_HEADINGS)
         ):
             in_bibliography = False
             continue
         if block["kind"] == "heading":
             block["kind"] = "paragraph"
-        if block["kind"] == "reference":
+        if in_bibliography and unnumbered_bibliography:
+            block["kind"] = "reference"
+        elif block["kind"] == "reference":
             block["kind"] = "paragraph"
 
 
@@ -850,18 +974,33 @@ def _mark_inferred_bracketed_bibliography(
 def _reference_segments(text: str) -> list[tuple[str, str]]:
     first = _REFERENCE.match(text)
     if first is None:
-        pattern = _BRACKET_REFERENCE_ENTRY
+        candidates = [
+            (match.start(), pattern)
+            for pattern in (
+                _BRACKET_REFERENCE_ENTRY,
+                _PAREN_REFERENCE_ENTRY,
+                _PLAIN_REFERENCE_ENTRY,
+            )
+            if (match := pattern.search(text)) is not None
+        ]
+        if not candidates:
+            return []
+        pattern = min(candidates, key=lambda item: item[0])[1]
     else:
         pattern = (
             _BRACKET_REFERENCE_ENTRY
             if first.group("bracket")
-            else _PLAIN_REFERENCE_ENTRY
+            else (
+                _PAREN_REFERENCE_ENTRY
+                if first.group("paren")
+                else _PLAIN_REFERENCE_ENTRY
+            )
         )
     matches = list(pattern.finditer(text))
     if not matches:
         if first is None:
             return []
-        label = first.group("bracket") or first.group("plain")
+        label = first.group("bracket") or first.group("paren") or first.group("plain")
         return [(label, text)]
     return [
         (
@@ -877,11 +1016,66 @@ def _reference_segments(text: str) -> list[tuple[str, str]]:
 def _references(blocks: list[dict[str, object]]) -> list[dict[str, object]]:
     references: list[dict[str, object]] = []
     by_label: dict[str, dict[str, object]] = {}
+    by_doi: dict[str, dict[str, object]] = {}
     resolved_block_ids: set[str] = set()
+    current_unnumbered: dict[str, object] | None = None
+    unnumbered_count = 0
+
+    def add_unnumbered(
+        block: dict[str, object], raw_text: str, doi: str | None
+    ) -> dict[str, object]:
+        nonlocal unnumbered_count
+        if doi is not None and doi in by_doi:
+            return by_doi[doi]
+        unnumbered_count += 1
+        label = f"author-year-{unnumbered_count:04d}"
+        item = {
+            "id": f"r{len(references) + 1:05d}",
+            "label": label,
+            "block_id": block["id"],
+            "anchor_id": block["anchor_id"],
+            "raw_text": raw_text,
+            "doi": doi,
+            "doi_candidates": [doi] if doi is not None else [],
+            "cited_by_block_ids": [],
+            "resolved": True,
+            "ambiguous": False,
+        }
+        references.append(item)
+        by_label[label] = item
+        if doi is not None:
+            by_doi[doi] = item
+        return item
+
     for block in blocks:
         if block["kind"] != "reference":
             continue
-        for label, raw_text in _reference_segments(str(block["text"])):
+        segments = _reference_segments(str(block["text"]))
+        if not segments:
+            text = str(block["text"])
+            dois = extract_dois(text)
+            if current_unnumbered is not None and dois:
+                combined = f"{current_unnumbered['raw_text']} {text}"
+                current_unnumbered["raw_text"] = combined
+                current_unnumbered["doi"] = dois[0]
+                current_unnumbered["doi_candidates"] = [dois[0]]
+                by_doi.setdefault(dois[0], current_unnumbered)
+                for doi in dois[1:]:
+                    add_unnumbered(block, text, doi)
+                current_unnumbered = None
+            elif dois:
+                for doi in dois:
+                    add_unnumbered(block, text, doi)
+                current_unnumbered = None
+            elif _is_unnumbered_reference_start(text):
+                current_unnumbered = add_unnumbered(block, text, None)
+            elif current_unnumbered is not None:
+                combined = f"{current_unnumbered['raw_text']} {block['text']}"
+                current_unnumbered["raw_text"] = combined
+            resolved_block_ids.add(str(block["id"]))
+            continue
+        current_unnumbered = None
+        for label, raw_text in segments:
             existing = by_label.get(label)
             if existing is not None:
                 if existing["raw_text"] != raw_text:
@@ -1167,6 +1361,19 @@ class _QualityStage:
             not bool(item["resolved"]) for item in context.references
         )
         unresolved_figures = sum(not bool(item["resolved"]) for item in context.figures)
+        confidences = [
+            float(item.get("extraction_confidence", 1.0)) for item in context.blocks
+        ]
+        ocr_blocks = [
+            item
+            for item in context.blocks
+            if "ocr" in str(item.get("extraction_method", "")).casefold()
+            or any(
+                "ocr" in str(engine).casefold() or "tesseract" in str(engine).casefold()
+                for engine in item.get("source_engines", [])
+            )
+        ]
+        review_codes = {"OCR_ENGINE_DISAGREEMENT", "OCR_ORIENTATION_UNCERTAIN"}
         context.quality = {
             "page_coverage": {
                 "parsed": len(context.layouts),
@@ -1192,13 +1399,36 @@ class _QualityStage:
             ),
             "suppressed_page_furniture": context.suppressed_page_furniture,
             "unassociated_image_resources": (context.unassociated_image_resources),
+            "ocr_supplemented_blocks": len(ocr_blocks),
+            "ocr_consensus_blocks": sum(
+                item.get("extraction_method") == "ocr-consensus"
+                or len(item.get("source_engines", [])) > 1
+                for item in ocr_blocks
+            ),
+            "mean_extraction_confidence": (
+                round(sum(confidences) / len(confidences), 6) if confidences else 0.0
+            ),
+            "manual_review_required": any(
+                item["code"] in review_codes for item in context.warnings
+            ),
             "stopped_early": context.stopped_early,
         }
+        informational_warnings = {
+            "OCR_TRIGGERED",
+            "OCR_TEXT_SUPPLEMENTED",
+            "OCR_ORIENTATION_CORRECTED",
+            "OCR_DESKEW_APPLIED",
+        }
+        blocking_warnings = [
+            item
+            for item in context.warnings
+            if item["code"] not in informational_warnings
+        ]
         if context.errors and not context.blocks:
             context.status = "FAILED"
         elif (
             context.errors
-            or context.warnings
+            or blocking_warnings
             or context.stopped_early
             or not context.blocks
         ):
@@ -1211,8 +1441,11 @@ def _document(context: PipelineContext, pipeline: ParserPipeline) -> dict[str, o
     source = context.source
     config = context.config
     backend = context.backend
+    backend_identity = {"name": backend.name, "version": backend.version}
+    if hasattr(backend, "execution_identity"):
+        backend_identity["components"] = backend.execution_identity
     execution_payload = {
-        "backend": {"name": backend.name, "version": backend.version},
+        "backend": backend_identity,
         "configuration": config.as_dict(),
         "parser": {"name": PARSER_NAME, "version": PARSER_VERSION},
         "stages": list(pipeline.stage_names),
@@ -1228,7 +1461,7 @@ def _document(context: PipelineContext, pipeline: ParserPipeline) -> dict[str, o
         "parser": {
             "name": PARSER_NAME,
             "version": PARSER_VERSION,
-            "backend": {"name": backend.name, "version": backend.version},
+            "backend": backend_identity,
             "pipeline_stages": list(pipeline.stage_names),
             "configuration": config.as_dict(),
             "configuration_fingerprint": config.fingerprint,

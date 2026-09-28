@@ -10,7 +10,7 @@ from aletheia_nexus.content import (
     parse_document,
     validate_parsed_document,
 )
-from aletheia_nexus.content.evaluation import evaluate_manifest
+from aletheia_nexus.content.evaluation import _text_edit_counts, evaluate_manifest
 from aletheia_nexus.content.models import LayoutLine, PageLayout, PipelineContext
 from aletheia_nexus.content.parser import (
     _caption_match,
@@ -18,6 +18,7 @@ from aletheia_nexus.content.parser import (
     _kind,
     _mark_bibliography_blocks,
     _reference_segments,
+    _references,
 )
 from aletheia_nexus.content.pipeline import ParserPipeline
 from aletheia_nexus.content.schema import serialize_parsed_document
@@ -59,7 +60,7 @@ def test_native_parser_emits_valid_source_linked_objects(tmp_path):
     assert any(not item["resolved"] for item in document["references"])
     assert document["quality"]["anchor_coverage"]["ratio"] == 1.0
     assert document["parser"]["pipeline_stages"] == [
-        "native-layout-and-block-assembly",
+        "layout-extraction-and-block-assembly",
         "sections-references-and-objects",
         "quality-classification",
     ]
@@ -125,6 +126,18 @@ def test_parser_config_rejects_nonsensical_layout_thresholds():
         ParserConfig(merge_paragraph_lines=1)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="must be finite"):
         ParserConfig(heading_font_ratio=float("nan"))
+
+
+def test_character_error_metrics_separate_loss_insertion_and_substitution():
+    metrics = _text_edit_counts("alpha beta", "alpha zeta plus")
+
+    assert metrics == {
+        "expected_characters": 10,
+        "actual_characters": 15,
+        "deletions": 0,
+        "insertions": 5,
+        "substitutions": 1,
+    }
 
 
 def test_relative_output_cannot_overwrite_source_artifacts(tmp_path, monkeypatch):
@@ -263,6 +276,9 @@ def test_layout_noise_and_scientific_labels_are_disambiguated(tmp_path):
         ("FIGURE 2 | Experimental setup", "2"),
         ("Figure 2 continued", "2"),
         ("Table IV. Ablation results", "IV"),
+        ("Knowledge graph edge typesTable 1 Metaedge Abbreviation", "1"),
+        ("FIGURE 3", "3"),
+        ("Table 2.", "2"),
     ],
 )
 def test_caption_classifier_keeps_real_caption_styles(text, label):
@@ -278,6 +294,15 @@ def test_caption_classifier_keeps_real_caption_styles(text, label):
         "Fig. 5 (d) [12]. There are two regimes.",
         "Fig. 8 (b) illustrates the measured response.",
         "Figure 2d on the TEM image marks the region.",
+        "Figure 1C ). Further, all variants bind.",
+        "Figure 3—figure supplement 2 ). We log-transform the values.",
+        "Figure 4—The result is shown as the red line.",
+        "Figure 3—figure supplements 1–4 ).",
+        "Figure 4—figure supplement 1B",
+        "Figure 3. We perform the same computation.",
+        "Figure 4—",
+        "Table 2outlining the next analysis",
+        "(). Next, we used this model to inferTable 1",
         "Figure 2, for both experimental settings.",
         "Table 4 lists all hyperparameters.",
         "Table I. Regarding both time effects, the response changes.",
@@ -287,6 +312,30 @@ def test_caption_classifier_keeps_real_caption_styles(text, label):
 )
 def test_caption_classifier_rejects_body_mentions_and_partial_roman_words(text):
     assert _caption_match(text) is None
+
+
+def test_numbered_list_items_need_style_or_uppercase_heading_evidence():
+    list_item = LayoutLine(
+        "1) To download and upload data in the required format",
+        54,
+        600,
+        320,
+        612,
+        9,
+    )
+    uppercase_heading = LayoutLine(
+        "1) PUBLIC ORGANIZATIONS",
+        54,
+        560,
+        220,
+        572,
+        9,
+    )
+
+    assert _kind(list_item, median_font=9, heading_font_ratio=1.35) == "paragraph"
+    assert _kind(uppercase_heading, median_font=9, heading_font_ratio=1.35) == (
+        "heading"
+    )
 
 
 def test_duplicate_caption_layers_keep_one_semantic_object_without_dropping_text():
@@ -339,6 +388,22 @@ def test_duplicate_table_mention_prefers_caption_phrase():
             "kind": "caption",
             "text": "Table 2 statistically significant differences were observed.",
         },
+    ]
+
+    _deduplicate_caption_blocks(blocks)
+
+    assert [block["kind"] for block in blocks] == ["caption", "paragraph"]
+
+
+def test_bare_repeated_caption_label_is_retained_as_text_not_an_object():
+    blocks = [
+        {
+            "id": "b1",
+            "page": 2,
+            "kind": "caption",
+            "text": "Table 2. Cohort characteristics.",
+        },
+        {"id": "b2", "page": 8, "kind": "caption", "text": "Table 2."},
     ]
 
     _deduplicate_caption_blocks(blocks)
@@ -459,6 +524,60 @@ def test_merged_reference_blocks_are_split_without_volume_false_positives():
     assert _reference_segments("continued journal title. [3] Third source.") == [
         ("3", "[3] Third source.")
     ]
+    assert _reference_segments(
+        "(1)Smith,A.First source. (2)Jones,B.Second source."
+    ) == [
+        ("1", "(1)Smith,A.First source."),
+        ("2", "(2)Jones,B.Second source."),
+    ]
+
+
+def test_decorated_heading_and_author_year_bibliography_are_structured():
+    blocks = [
+        {
+            "id": "b1",
+            "anchor_id": "a1",
+            "page": 1,
+            "kind": "heading",
+            "text": "■ REFERENCES",
+        },
+        {
+            "id": "b2",
+            "anchor_id": "a2",
+            "page": 1,
+            "kind": "paragraph",
+            "text": "Moulana A , Dupic T, Phillips AM.",
+        },
+        {
+            "id": "b3",
+            "anchor_id": "a3",
+            "page": 1,
+            "kind": "paragraph",
+            "text": "2022. Compensatory epistasis. DOI: https://doi.org/10.1000/example",
+        },
+        {
+            "id": "b4",
+            "anchor_id": "a4",
+            "page": 1,
+            "kind": "paragraph",
+            "text": "Neher RA , Bedford T. 2015. Nextflu.",
+        },
+    ]
+
+    _mark_bibliography_blocks(blocks)
+    references = _references(blocks)
+
+    assert [block["kind"] for block in blocks] == [
+        "heading",
+        "reference",
+        "reference",
+        "reference",
+    ]
+    assert [item["label"] for item in references] == [
+        "author-year-0001",
+        "author-year-0002",
+    ]
+    assert references[0]["doi"] == "10.1000/example"
 
 
 def test_end_of_document_bracketed_bibliography_is_inferred_without_heading():
@@ -538,7 +657,11 @@ def test_sidecar_change_during_parse_fails_without_output(tmp_path):
 def test_frozen_public_evaluation_gate_is_green():
     report = evaluate_manifest(FIXTURES / "manifest.json")
     for key, metric in report["metrics"].items():
-        if key == "anchored_block_coverage" or not isinstance(metric, dict):
+        if (
+            key == "anchored_block_coverage"
+            or not isinstance(metric, dict)
+            or "correct" not in metric
+        ):
             continue
         assert metric["correct"] == metric["total"], key
     coverage = report["metrics"]["anchored_block_coverage"]

@@ -7,6 +7,8 @@ import json
 import platform
 import time
 import tracemalloc
+from collections import Counter
+from difflib import SequenceMatcher
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -29,6 +31,44 @@ def _contains_in_order(values: list[str], needles: list[str]) -> bool:
     return True
 
 
+def _normalized_text(value: str) -> str:
+    return " ".join(value.split())
+
+
+def _text_edit_counts(expected: str, actual: str) -> dict[str, int]:
+    """Return auditable character deletion/insertion/substitution counts."""
+
+    expected = _normalized_text(expected)
+    actual = _normalized_text(actual)
+    deletions = insertions = substitutions = 0
+    for tag, expected_start, expected_end, actual_start, actual_end in SequenceMatcher(
+        None, expected, actual, autojunk=False
+    ).get_opcodes():
+        expected_length = expected_end - expected_start
+        actual_length = actual_end - actual_start
+        if tag == "delete":
+            deletions += expected_length
+        elif tag == "insert":
+            insertions += actual_length
+        elif tag == "replace":
+            substitutions += min(expected_length, actual_length)
+            deletions += max(0, expected_length - actual_length)
+            insertions += max(0, actual_length - expected_length)
+    return {
+        "expected_characters": len(expected),
+        "actual_characters": len(actual),
+        "deletions": deletions,
+        "insertions": insertions,
+        "substitutions": substitutions,
+    }
+
+
+def _duplicate_block_characters(blocks: list[dict[str, object]]) -> int:
+    normalized = [_normalized_text(str(item["text"])).casefold() for item in blocks]
+    counts = Counter(value for value in normalized if value)
+    return sum(len(value) * (count - 1) for value, count in counts.items() if count > 1)
+
+
 def evaluate_manifest(manifest_path: str | Path) -> dict[str, object]:
     manifest_file = Path(manifest_path)
     root = manifest_file.parent
@@ -47,6 +87,9 @@ def evaluate_manifest(manifest_path: str | Path) -> dict[str, object]:
     references_total = references_correct = 0
     gate_total = gate_correct = 0
     order_total = order_correct = 0
+    expected_characters = actual_characters = 0
+    deletions = insertions = substitutions = 0
+    duplicate_characters = parsed_characters = 0
     started = time.perf_counter()
     tracemalloc.start()
     try:
@@ -100,6 +143,36 @@ def evaluate_manifest(manifest_path: str | Path) -> dict[str, object]:
                     continue
                 gold = json.loads((root / entry["gold"]).read_text(encoding="utf-8"))
                 document = result.document
+                parsed_characters += sum(
+                    len(_normalized_text(str(item["text"])))
+                    for item in document["blocks"]
+                )
+                duplicate_characters += _duplicate_block_characters(document["blocks"])
+                text_metrics = {
+                    "expected_characters": 0,
+                    "actual_characters": 0,
+                    "deletions": 0,
+                    "insertions": 0,
+                    "substitutions": 0,
+                }
+                blocks_by_page: dict[int, list[str]] = {}
+                for block in document["blocks"]:
+                    blocks_by_page.setdefault(int(block["page"]), []).append(
+                        str(block["text"])
+                    )
+                for expected_page in gold.get("text_pages", []):
+                    page_number = int(expected_page["page"])
+                    page_metrics = _text_edit_counts(
+                        str(expected_page["text"]),
+                        " ".join(blocks_by_page.get(page_number, [])),
+                    )
+                    for key in text_metrics:
+                        text_metrics[key] += page_metrics[key]
+                expected_characters += text_metrics["expected_characters"]
+                actual_characters += text_metrics["actual_characters"]
+                deletions += text_metrics["deletions"]
+                insertions += text_metrics["insertions"]
+                substitutions += text_metrics["substitutions"]
                 anchors = document["anchors"]
                 for expected in gold.get("selected_anchors", []):
                     anchor_total += 1
@@ -206,6 +279,7 @@ def evaluate_manifest(manifest_path: str | Path) -> dict[str, object]:
                             bool(item["anchored"]) for item in anchors
                         ),
                         "blocks": len(document["blocks"]),
+                        "text_error_counts": text_metrics,
                         "runtime_seconds": time.perf_counter() - item_started,
                     }
                 )
@@ -215,6 +289,24 @@ def evaluate_manifest(manifest_path: str | Path) -> dict[str, object]:
 
     anchored_blocks = sum(int(item.get("anchored_blocks", 0)) for item in records)
     total_blocks = sum(int(item.get("blocks", 0)) for item in records)
+    structural_total = (
+        section_total
+        + links_expected
+        + table_structures_total
+        + figure_objects_total
+        + references_total
+        + order_total
+    )
+    structural_correct = (
+        section_found
+        + links_correct
+        + table_structures_correct
+        + figure_objects_correct
+        + references_correct
+        + order_correct
+    )
+    information_loss = deletions + substitutions
+    total_text_errors = information_loss + insertions
     return {
         "schema": "aletheia-nexus/parser-evaluation/v1",
         "manifest_sha256": _sha256(manifest_file),
@@ -249,6 +341,39 @@ def evaluate_manifest(manifest_path: str | Path) -> dict[str, object]:
                 "total": references_total,
             },
             "reading_order": {"correct": order_correct, "total": order_total},
+            "character_accuracy": {
+                "expected_characters": expected_characters,
+                "actual_characters": actual_characters,
+                "deletions": deletions,
+                "insertions": insertions,
+                "substitutions": substitutions,
+                "information_loss_rate": (
+                    information_loss / expected_characters
+                    if expected_characters
+                    else None
+                ),
+                "character_error_rate": (
+                    total_text_errors / expected_characters
+                    if expected_characters
+                    else None
+                ),
+            },
+            "duplicate_text_rate": {
+                "duplicate_characters": duplicate_characters,
+                "parsed_characters": parsed_characters,
+                "ratio": (
+                    duplicate_characters / parsed_characters
+                    if parsed_characters
+                    else 0.0
+                ),
+            },
+            "structural_recall": {
+                "correct": structural_correct,
+                "total": structural_total,
+                "ratio": (
+                    structural_correct / structural_total if structural_total else None
+                ),
+            },
         },
         "runtime_seconds": time.perf_counter() - started,
         "peak_memory_bytes": peak,

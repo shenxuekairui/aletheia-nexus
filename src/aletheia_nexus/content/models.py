@@ -16,6 +16,9 @@ class LayoutLine:
     y1: float
     font_size: float
     extraction_method: str = "pypdf-content-stream"
+    extraction_confidence: float = 1.0
+    source_engines: tuple[str, ...] = ()
+    content_region: str = "body"
     uncertain: bool = False
     bold: bool = False
 
@@ -29,6 +32,15 @@ class PageObject:
     width: int | None = None
     height: int | None = None
     bbox: tuple[float, float, float, float] | None = None
+
+
+@dataclass(frozen=True)
+class PageRegion:
+    """A normalized page region routed to a specialized extractor."""
+
+    region_type: str
+    bbox: tuple[float, float, float, float]
+    reason: str
 
 
 @dataclass(frozen=True)

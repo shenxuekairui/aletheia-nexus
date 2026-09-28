@@ -94,15 +94,26 @@ def _text_lines(page: Any) -> tuple[LayoutLine, ...]:
         rows.append(current_row)
 
     segmented_rows: list[list[_Fragment]] = []
+    page_left = float(page.mediabox.left)
+    page_width = float(page.mediabox.width)
+    column_boundary = page_left + page_width * 0.5
     for row in rows:
         row.sort(key=lambda item: item.x)
         segment: list[_Fragment] = []
         right_edge = None
         for fragment in row:
+            crossed_column_boundary = (
+                segment
+                and segment[0].x < page_left + page_width * 0.4
+                and fragment.x >= column_boundary
+            )
             if (
                 segment
                 and right_edge is not None
-                and fragment.x - right_edge > max(24.0, fragment.font_size * 3)
+                and (
+                    crossed_column_boundary
+                    or fragment.x - right_edge > max(24.0, fragment.font_size * 3)
+                )
             ):
                 segmented_rows.append(segment)
                 segment = []
@@ -136,6 +147,8 @@ def _text_lines(page: Any) -> tuple[LayoutLine, ...]:
                 x1=x1,
                 y1=y0 + font_size,
                 font_size=font_size,
+                extraction_confidence=1.0,
+                source_engines=("pypdf-native-layout@2.1.0",),
                 bold=(
                     sum(len(item.text) for item in row if item.bold)
                     >= sum(len(item.text) for item in row) / 2

@@ -9,7 +9,15 @@ from aletheia_nexus.content.artifact import (
     SearchHit,
     load_parsed_document,
 )
-from aletheia_nexus.content.backends import ExtractionBackend, NativePdfBackend
+from aletheia_nexus.content.backends import (
+    AdaptiveOcrBackend,
+    AdaptiveOcrConfig,
+    ExtractionBackend,
+    NativePdfBackend,
+    RegionExtractionBackend,
+    TesseractOcrBackend,
+    TesseractOcrConfig,
+)
 from aletheia_nexus.content.errors import ParserInputError, ParserInputErrorCode
 from aletheia_nexus.content.gate import ParserInput, validate_parser_input
 from aletheia_nexus.content.parser import ParserConfig
@@ -22,8 +30,13 @@ from aletheia_nexus.content.service import ParseResult, parse_document
 
 __all__ = [
     "ParseResult",
+    "AdaptiveOcrBackend",
+    "AdaptiveOcrConfig",
     "ExtractionBackend",
     "NativePdfBackend",
+    "RegionExtractionBackend",
+    "TesseractOcrBackend",
+    "TesseractOcrConfig",
     "ParsedArtifact",
     "ParserConfig",
     "ParserInput",
