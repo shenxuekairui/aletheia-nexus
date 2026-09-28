@@ -1,256 +1,507 @@
 # Aletheia Nexus
 
-[English README](README.en.md) · [贡献指南](CONTRIBUTING.md) · [首次试用反馈](https://github.com/shenxuekairui/aletheia-nexus/issues/3) · [安全报告](SECURITY.md)
+[English README](README.en.md) · [使用说明](docs/USER_MANUAL.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md) · [版本记录](docs/RELEASE_HISTORY.md)
 
-> 从一篇论文的可信获取，走向可积累、可协作、可演化的科研知识基础设施。
+> **把科学文献转换成经过验证、可追溯来源、可直接供 AI 使用的数据。**
 
-**名字的由来。** *Aletheia* 源自希腊语 ἀλήθεια，意为“真理”；*Nexus* 意为“连接”。我们用这个名字寄托一份愿景：让散落在论文、数据、工具与研究过程中的证据建立可信连接，让结论能够追溯来源，让每一次探索都沉淀为研究者和实验室可以持续生长的知识。
-
-科学研究正在拥有越来越强的模型，却仍缺少一层稳定的“事实入口”。论文散落在出版社、仓储与机构系统中；一个 DOI 背后可能是正文、补充材料、审稿记录、登录页或已失效的链接。研究者能够在浏览器里找到东西，并不意味着程序拿到了**正确、完整、可解释来源的科研材料**。如果最初的输入就是错的，后面的解析、检索、知识图谱和 Agent 只会更快地放大错误。
-
-Aletheia Nexus（AN）要建设的是这层底座：把科研对象的标识、发现、获取、验证与来源记录，组织成可组合的本地能力。它不是“尽量多抓一些 PDF”的脚本，也不试图先造一个包揽科研全过程的万能 Agent。它从最基础、也最容易被低估的一步做起——**让一篇论文成为可信的本地工件**；然后才让解析、知识组织、工作流和智能体建立在这些工件之上。
-
-我们的北极星不是一个漂亮的下载成功率，而是让研究者和实验室逐步拥有自己的、能够持续积累的科研知识基础：数据、证据、工具、规则、工作流和历史决策可以被验证、复用、连接和迭代。人的科学判断始终重要；软件应把重复劳动变成基础设施，把不确定性如实交还给人。
-
-> **发起这个项目的想法。** 科研中最珍贵的并不只是最后发表的结论，还有找到证据的路径、排除错误的理由、一次次修正的方法，以及研究者对问题逐渐形成的判断。今天这些东西常常散落在浏览器标签、下载文件夹、笔记和个人经验里。我们希望 AN 能让它们逐步成为研究者自己掌握的、可追溯的长期资产：从可靠地拿到一篇论文开始，最终让知识、工具和工作流共同成长。它应当增强科学家的记忆与行动能力，而不是替科学家做无法负责的判断。
-
-这个目标很大，所以项目选择从一个可以严格检验的问题开始。若连“这是不是目标论文的正文”都无法说清，后续再宏大的 AI 叙事都缺少可信起点。反过来，若每一步都有标识、来源、证据和清晰边界，小能力就能逐层组合成真正可依赖的科研系统。
-
-## 项目愿景：从文件到科研记忆
-
-AN 希望连接四类今天仍常被割裂的工作：
-
-| 阶段 | 要解决的问题 | 项目状态 |
-| --- | --- | --- |
-| **Acquire · 获取** | 能否在合法访问条件下找到并保存*正确的主论文*，同时解释来源与失败？ | 当前重点；v0.6.0 为首个公开代码级版本。 |
-| **Parse · 理解** | 能否把已验证论文中的章节、图表、引用、方法与数据转为带来源的结构化对象？ | v0.7 已交付带来源锚点的结构化解析、选择性 OCR 接口与显式质量边界。 |
-| **Knowledge · 积累** | 能否将论文证据、实验记录、概念与研究决策组织成可追溯、可更新的科研记忆？ | 长期规划。 |
-| **Workflow / Agent · 行动** | 能否让可重复流程与智能体调用这些可靠能力，并在不确定或需要授权时交还给研究者？ | 长期规划。 |
-
-更远的方向是面向个人研究者与实验室的科研知识基础设施：从“找到文献”走到“理解证据、组织问题、辅助设计和记录研究过程”，最终支持更完整的 scientific world model（科学世界模型）。这是一条分层建设的路线，而不是声称这些能力已经完成。当前仓库交付 Acquisition 层与 v0.7 Parse 层，以及通向未来各层的可信接口。
-
-## 为什么需要 AN
-
-科研资料常分散在出版社、仓储、开放获取索引和机构会话中；研究者每天都在重复“复制 DOI → 搜索 → 选择机构 → 打开 PDF → 判断是不是正文 → 保存并改名”。自动化若只模仿鼠标点击，仍留下四个根本问题：
-
-1. **身份不确定。** 合法 PDF 可能是同页的 Supporting Information，也可能只是另一篇文章在参考文献中提到了目标 DOI。
-2. **路径不稳定。** 开放获取、出版社页面、官方 API 和机构浏览器会话各有边界，某条路径失败不等于论文不存在。
-3. **权限不是程序能臆造的。** IP、机构、Cookie、MFA 和验证码会改变实际可访问内容；软件必须在需要人的地方停下来，而不是伪装成有权限。
-4. **过程无法积累。** 没有来源、哈希、验证证据和明确失败原因，一次下载经验难以复现，也不能安全地交给下游科研系统。
-
-因此 AN 把“获取”定义为一条有明确输入、可观察尝试和严格输出的工程链，而不是一个布尔值。**失败应可解释；成功应可验证。**
-
-AN 以一个明确的结果替代模糊的成功提示：
+Aletheia Nexus（AN）是一个 **local-first（本地优先）** 的科研知识基础设施项目。它从科学文献这一最基础的科研对象出发，把“找到一篇论文”拆成可以验证和积累的工程链：
 
 ```text
-DOI → 候选路径 → 有界获取 → PDF 结构检查 → 论文身份检查 → 正文角色检查
-                                                             ↓
-                                             VERIFIED + 本地文件 + 来源记录
-                                      或明确的非成功状态 + 尝试证据
+DOI / 科研对象
+      ↓
+发现与合法获取
+      ↓
+VERIFIED 主论文 + provenance（来源记录）
+      ↓
+source-linked canonical document（可追溯规范文档）
+      ↓
+Markdown / JSONL / structure-aware chunks
+      ↓
+LLM / RAG / Workflow / Agent / Knowledge
 ```
 
-它优先保证正确性：候选链接不是文件，合法 PDF 也不一定是目标论文；只有通过完整验证的主文档才会标记为 `VERIFIED`。网络请求、路径扩展、文件大小和重试均有边界，错误不被包装成成功。
+AN 不把“浏览器里打开了一个 PDF”当作成功，也不把“PDF 能提取出文字”当作可信数据。它关心的是：
 
-### 什么是“可信的本地工件”
+- **这是不是目标论文的主文档？**
+- **这些字节从哪里来，是否发生过变化？**
+- **解析后的文本、章节、引用、图表证据能否回到原始页码和位置？**
+- **失败和不确定性是否被明确记录？**
+- **这些结果能否脱离某个特定模型、云 API 或向量数据库长期保存和复用？**
 
-对于 AN，可信工件不只是一个文件路径。它至少要能回答五个问题：目标 DOI 是什么、候选从哪里来、字节是怎样取得的、文件的 SHA-256 是什么、为什么它被判定为目标论文的正文。项目通过 PDF 旁的 `.acquisition.json`、批量报告和检查点分别保存获取与验证证据；认证 Cookie、令牌和短期签名 URL 的敏感值不进入这些记录。
+这也是 AN 的核心路线：先把底层证据和数据契约做可靠，再向 Knowledge、Workflow、Agent 和更高层科研智能继续构建。
 
-这使下游系统拥有一个可靠的交接点。未来的解析器无需猜测“这个 PDF 可能是那篇论文”；工作流可以复核文件哈希；研究者可以沿着来源与验证证据追问一个结果。如果证据不足，AN 返回 `EXHAUSTED`、`INTERACTION_REQUIRED`、`ENTITLEMENT_REQUIRED` 等明确的非成功状态，而不会把一张购买页或一份补充材料悄悄放进知识库。
+---
+
+## v0.7：从可信论文到 AI-ready 科学数据
+
+v0.6 解决的是：
+
+> **“我拿到的究竟是不是我要的那篇论文？”**
+
+v0.7 进一步解决：
+
+> **“机器产生的结构化信息，能不能稳定回到原始科学证据？”**
+
+当前 v0.7 链路已经形成：
 
 ```text
-未经验证的候选 URL     → 只是线索
-下载到的字节           → 只是文件
-可解析的 PDF          → 还未证明论文身份
-目标论文的 PDF         → 还未证明是正文
-VERIFIED 主论文工件     → 可交给后续科研流程
+VERIFIED PDF
+    ↓
+严格输入门：DOI / role / schema / SHA-256 / page count
+    ↓
+native-first extraction + optional OCR
+    ↓
+canonical PageGeometry
+    ↓
+sections / blocks / references / figures / tables
+    ↓
+page / bbox / source anchors
+    ↓
+parsed-document/v2
+    ↓
+Markdown / JSONL / structure-aware chunks
 ```
 
-## 今天能做什么
+这里的 **AI-ready data（AI 可用数据）** 不是“已经让模型理解了论文”。
 
-以下状态描述的是**当前仓库的能力成熟度**，不是出版社访问权限的保证。`Implemented` 表示已有明确接口与自动化回归；`Experimental` 表示已能使用、但仍依赖站点和机构环境：后续源码已完成一次单机构阳性对照验收，跨机构泛化与陌生用户试用仍未验证；`Planned` 表示方向，当前版本不交付。
+它指一种长期稳定、模型无关的科学文档工件：具有明确身份、来源、结构、位置、质量状态和不确定性，可以直接交给 LLM、RAG、Agent 或后续知识抽取系统，而不必再次从 PDF 开始猜。
 
-| 状态 | 能力层 | 当前实现与边界 |
+---
+
+## 当前能力
+
+| 层 | 当前能力 | 状态 |
 | --- | --- | --- |
-| `Implemented` | DOI 与元数据 | 标准化 DOI，按登记机构解析 Crossref / DataCite 元数据。 |
-| `Implemented` | 全文发现 | 汇集元数据、OpenAlex、Unpaywall 等提供的全文线索；发现 PMC 记录时可通过官方 Article Datasets 云桶补充经过 DOI 核对的 PDF 候选。 |
-| `Implemented` | 公开 HTTP 获取 | 直接文件优先；必要时解析静态 landing/repository 页面，按预算尝试派生路径。 |
-| `Implemented` | PDF 核验 | 检查 PDF 结构、目标 DOI/标题与正文/附件角色；后页引用目标 DOI 不会单独产生成功结论。 |
-| `Experimental` | 授权访问 | 在适用且已配置时使用 Elsevier 官方 API；复用独立持久浏览器与合法机构/账号会话，允许用户完成登录、MFA、验证码。实际访问取决于订阅和站点。 |
-| `Experimental` | 批量与续跑 | 顺序处理 DOI，复用浏览器会话；只有仍存在且 SHA-256 匹配的 `VERIFIED` 文件可从检查点直接复用。跨站点交互仍可能需要人工。 |
-| `Implemented` | 审计 | 保存逐篇状态、尝试路径和验证依据；对持久化 URL 中的敏感参数脱敏，不保存浏览器凭据。 |
-| `Implemented` | 内容解析与 AI-ready 导出 | 只接受哈希与来源记录仍一致的 `VERIFIED` 正文；统一 CropBox/旋转/OCR 坐标，输出可移植稳定身份、章节、引用、图表证据、表格单元、质量状态和页码/bbox。可选 OCR 仅补充无原生文本区域；Markdown、JSONL 和结构感知 chunks 均可回溯到原文。解析成功不代表科学结论正确。 |
-| `Planned` | 知识组织、工作流与 Agent | 将有来源的结构对象连接为可维护知识与可审计科研行动；目前不作为已交付功能宣传。 |
+| **Identity / Metadata** | DOI 标准化；Crossref / DataCite 元数据解析 | Implemented |
+| **Discovery** | 汇集元数据、OpenAlex、Unpaywall、PMC 等全文线索 | Implemented |
+| **Acquisition** | 有界公开 HTTP 获取、官方接口、持久浏览器会话、批量与续跑 | Implemented / Experimental |
+| **Verification** | PDF 结构、DOI/标题身份、主文档/补充材料角色验证；SHA-256 与来源记录 | Implemented |
+| **Parse** | 原生文本优先；章节、文本块、引用、图表证据、表格单元、页码/bbox 来源锚点 | Implemented |
+| **OCR** | 可选 Poppler + Tesseract 真实链路；方向校正、deskew、资源预算、显式降级 | Implemented |
+| **Search** | 在 parsed artifact 上检索并可重新验证本地来源 | Implemented |
+| **AI Export** | 确定性 Markdown、JSONL、结构感知 chunks；每个 chunk 独立可追溯 | Implemented |
+| **Scientific semantics** | 催化剂、实验条件、measurement、claim、relation 等科学语义抽取 | Planned |
+| **Knowledge / Workflow / Agent** | 科研记忆、知识组织、工作流、Agent 调用 | Planned |
 
-`v0.6.0` 是 AN 的首个公开代码级版本，包含授权 Access Layer，以及针对共享 PDF 验证层可复现正确性缺陷的回归修复。为保护旧开发历史中的个人信息，公开仓库从审计后的源码快照建立；`v0.5.2` 冻结标签保留在原私有开发仓库，**不在这个公开仓库中**。本版封板依据是确定性测试、真实 Chromium 集成测试、最终提交的云端 CI 与有限的真实 DOI 烟测。**发布当时**尚未完成机构授权阳性对照资格验收；后续源码提交已通过一次单机构、双访问体系的资格验收，但它不是对冻结的 v0.6.0/v0.6.1 标签追认，也不证明跨机构通用。各出版社的实际访问仍取决于用户的合法订阅、机构、网络与站点状态。[发布前的后续准备与单机构验收](docs/PRE_V07_READINESS.md)和[版本与验收记录](docs/RELEASE_HISTORY.md)分别记录当前进展与历史快照。
+### Acquire 的可信边界
 
-### 对研究者和团队意味着什么
+只有通过完整验证的目标主文档才会成为：
 
-- **做系统综述或建立领域文献集：** 从 DOI 清单出发，逐篇得到已验证正文或可解释的缺口；中断后继续，而不是重新整理一堆来源不明的文件。
-- **在机构网络中工作：** 公开路径优先；当合法访问需要浏览器会话时，AN 可以复用机构登录状态，遇到不能自动处理的验证则停下来交给用户。出版社再次选错机构时，用户仍可在网站提供的入口切换。
-- **给解析与 Agent 准备材料：** 只把 `VERIFIED` 主论文交给后续组件；附带 DOI、哈希和来源记录，让模型生成的摘要、表格或论点未来能够回到原始证据。
-- **建设实验室的共享方法：** 将失败模式、验证规则、固定基准和人工决策沉淀下来，避免每个项目都从“重新找论文、重新判断附件”开始。团队级知识与 Agent 编排仍是愿景，不应误认为本仓库已经自动完成。
+```text
+VERIFIED
+```
 
-### 一个实际的使用场景
+AN 不提供订阅、不绕过付费墙、不代答 CAPTCHA。需要机构登录、MFA 或验证码时，由用户在自己的可见浏览器中完成；程序只在合法访问条件下继续。
 
-假设你整理了 20 篇目标论文，其中有开放获取文章、需要机构订阅的正文，也有只在页面上暴露补充材料的论文。把 DOI 清单交给 AN 后，它先从元数据与开放来源寻找候选，尝试有界的公开获取；对没有取得可信正文的条目，再按配置进入官方 API 或你的持久浏览器会话。如果站点把你自动导向没有订阅的机构，或者要求 MFA、验证码，AN 会停在页面上让你选择正确机构或完成验证，再观察页面并继续。它不会把“浏览器打开了一个 PDF”直接算作成功。
+常见非成功状态包括：
 
-批次结束时，你得到的不是一堆名字相似的下载文件，而是逐篇状态、已验证 PDF、来源与验证记录，以及可用于下一次续跑的检查点。某篇确实无权访问，可以如实留下权限结论；某篇只是路径暂时用尽，则保留可诊断的尝试记录。v0.7 解析器只从这些工件进入，并重新检查 DOI、哈希、正文角色与页数；知识库和科学结论解释仍属于后续阶段。
+- `INTERACTION_REQUIRED`：需要用户完成页面交互；
+- `ENTITLEMENT_REQUIRED`：当前合法会话没有正文权限或页面要求购买；
+- `EXHAUSTED`：当前路径与预算已用尽，但没有得到可验证主文档。
 
-### 成功、等待与失败不是一回事
+这些状态都是科研工作流中的有效信息，而不是需要被静默隐藏的“失败”。
 
-| 结果 | 对研究者的含义 | 下一步 |
-| --- | --- | --- |
-| `VERIFIED` | 已得到并验证目标论文的主 PDF，文件与证据可供复核。 | 进入下游处理或保留为文献资产。 |
-| `INTERACTION_REQUIRED` | 站点要求用户操作，当前尚不能断言有无订阅。 | 在可见浏览器完成机构选择、登录或验证，随后续跑。 |
-| `ENTITLEMENT_REQUIRED` | 当前合法会话未获正文访问权限，或站点明确要求购买。 | 核对机构订阅，或通过其他合法来源获取。 |
-| `EXHAUSTED` | 已配置的路径和预算用尽，但未取得可验证的主论文。 | 查看尝试记录，补充线索或调整配置；不要当作“论文不存在”。 |
+### Parse 的可信边界
 
-这些状态是科研工作流中的信息，而非需要用“成功率”抹平的异常。尤其是 `EXHAUSTED` 不等于没有权限，`INTERACTION_REQUIRED` 不等于获取失败，`VERIFIED` 也不等于文章的科学结论正确。
+v0.7 parser 只接受仍然满足以下条件的输入：
 
-## 设计边界
+```text
+VERIFIED
++
+DOI match
++
+main-document role
++
+PDF SHA-256 match
++
+acquisition sidecar SHA-256 match
++
+readable PDF
++
+page-count consistency
+```
 
-AN 是本地优先的研究工具，不提供出版社订阅权限，不猜测用户凭据，不代答验证码，也不绕过付费墙或访问控制。需要机构选择、登录或 MFA 时，用户在自己的可见浏览器中完成；AN 等待可观察的页面状态变化后继续，或报告需交互/无权限的明确状态。
+解析得到的 `aletheia-nexus/parsed-document/v2` 是新的独立工件，不覆盖原始 PDF 和 acquisition record。
 
-浏览器与 API 解决的是“在已有合法访问条件下取得文件”；科学验证决定“文件能否交给下游”。两者分离，保证未来增加获取路径时，不必降低 `VERIFIED` 的门槛。
+它记录：
 
-我们坚持三个工程原则：
+- stable source / parsed artifact identity；
+- sections、blocks、references；
+- figure / table 的**观测证据**；
+- page + normalized bbox；
+- extraction method、confidence、engine agreement；
+- warnings、errors、PARTIAL / PARSED 等质量状态；
+- parser/backend configuration 与关键 runtime provenance。
 
-1. **本地优先，控制权归研究者。** PDF、报告与检查点保存在用户指定目录；浏览器会话在用户自己的环境中完成，AN 不要求把机构凭据交给某个远端服务。
-2. **证据优先于表面成功。** 每条获取路径都要经过同一套验证；可疑文档宁可保持未验证，也不污染下游语料。
-3. **让自动化知道何时停下。** 有界请求与重试限制资源消耗；遇到授权或人的判断时明确交接，恢复后继续。人机协作不是“自动化失败”的掩饰，而是访问控制与科研责任的真实边界。
+**`PARSED` 不等于“论文内容 scientifically true（科学上正确）”。**
 
-## 三分钟开始
+图表被识别到 caption、region 或 positioned cells，也不等于系统已经理解其科学含义。v0.7 明确把“文档证据表示”和“科学语义解释”分开。
 
-需要 Python 3.11 或更高版本。以下为 Windows PowerShell 示例。**v0.6.1 的正式 CLI 支持从 PyPI 安装；以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)实际可见版本为准。**单个 DOI 可体验无需浏览器的公开获取路径：
+---
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install aletheia-nexus
+## AI-ready 导出
+
+Canonical parsed artifact 是 Source of Truth（真源）；AI 导出只是确定性的派生视图。
+
+### Markdown
+
+```bash
+aletheia-nexus export PAPER.parsed.json \
+  --format markdown \
+  --output PAPER.ai.md
+```
+
+适合：
+
+- LLM context；
+- 人工审阅；
+- prompt attachment；
+- 轻量文档处理。
+
+### JSONL
+
+```bash
+aletheia-nexus export PAPER.parsed.json \
+  --format jsonl \
+  --output PAPER.ai.jsonl
+```
+
+适合：
+
+- 数据管道；
+- 流式读取；
+- 后续知识抽取；
+- 模型训练/推理前处理。
+
+### Structure-aware chunks（结构感知分块）
+
+```bash
+aletheia-nexus export PAPER.parsed.json \
+  --format chunks \
+  --output PAPER.chunks.json
+```
+
+chunk 优先保留 section、heading、caption、reference、equation 和 table object 等结构边界，而不是简单每 N 个 token 切一刀。
+
+每个 chunk 独立保留：
+
+```text
+source_artifact_id
+parsed_artifact_id
+block_ids
+anchor_ids
+pages
+page/bbox evidence
+```
+
+因此可以形成：
+
+```text
+chunk
+  ↓
+block
+  ↓
+anchor
+  ↓
+page / bbox
+  ↓
+source artifact
+  ↓
+原始 PDF
+```
+
+AN 核心不绑定 OpenAI、Claude、Gemini、embedding 模型或 vector database。它只提供稳定的数据边界，下游消费者可以自由选择模型和基础设施。
+
+---
+
+## 快速开始
+
+需要 Python 3.11 或更高版本。
+
+### 安装最新已发布版本
+
+```bash
+python -m pip install -U aletheia-nexus
+aletheia-nexus --version
 aletheia-nexus doctor
-aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir downloads/first-paper
 ```
 
-`--public-only` 不需要 Chromium；真实 DOI 的最终状态取决于外部网络与全文来源，即使命令正常执行，也可能如实返回 `EXHAUSTED`。需要持久浏览器与机构登录时，再安装可选依赖：
+以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)实际可见版本为准。
 
-```powershell
+### 获取一篇公开可访问论文
+
+```bash
+aletheia-nexus acquire 10.1371/journal.pone.0310216 \
+  --public-only \
+  --output-dir downloads/first-paper
+```
+
+公开路径正常工作并不保证每篇论文都能获取；没有可验证正文时，返回 `EXHAUSTED` 是合法结果。
+
+### 浏览器与机构访问
+
+```bash
 python -m pip install "aletheia-nexus[browser]"
 python -m playwright install chromium
-```
 
-也可从 GitHub 源码检出并执行 `python -m pip install -e .` 体验未发布的开发分支。三分钟首次使用仍是目标，尚未由独立新用户确认；欢迎在[试用反馈 issue](https://github.com/shenxuekairui/aletheia-nexus/issues/3)记录实际用时和障碍。开发测试工具另见[使用说明书](docs/USER_MANUAL.md)。
-
-准备 DOI 输入，例如 `papers.json`：
-
-```json
-[
-  {"doi": "10.1021/jacs.6c03536", "title": "Electrosynthesis of Ethylene Glycol from Methanol via Oxidative C–C Coupling"},
-  "10.1038/s41560-024-01633-4"
-]
-```
-
-运行可见浏览器批量获取：
-
-```powershell
-aletheia-nexus acquire papers.json `
-  --output-dir downloads/my-papers `
+aletheia-nexus acquire papers.json \
+  --output-dir downloads/papers \
   --fail-on-unverified
 ```
 
-默认使用 AN 独立的持久 Chromium 配置。在 Windows 上，若普通 Edge 能打开论文而 AN 浏览器持续停在验证页，可用 `--cdp-endpoint http://127.0.0.1:9222 --cdp-navigate` 自动启动独立 Edge；仅当你信任当前系统代理并希望 AN 使用它时再加 `--browser-use-system-proxy`。不同机构应使用独立配置与浏览器端口，不能因浏览器打开某篇论文就推断其他机构也有权限。遇到登录、MFA 或验证码，交互模式会停在可见页面等待用户完成，然后继续；Cookie 能否复用取决于出版社。[Windows 浏览器对照与风险说明](docs/USER_MANUAL.md#3-最常用的批量运行方式)给出单篇验证命令。
+浏览器能力用于复用用户**已有的合法访问条件**，不是绕过访问控制。
 
-成功 PDF、`.acquisition.json`、`batch-checkpoint.json` 与 `batch-report.json` 保存在输出目录。逐篇以报告中的 `status` 为准：CLI 默认退出码 `0` 只表示批次处理完毕；上例的 `--fail-on-unverified` 才会在有效 DOI 未全部验证时返回非零码。旧 `scripts/batch_v06_download.py` 保留兼容入口。关闭挑战页面、超时和按 `Ctrl+C` 的行为不同，操作前请看[断点续跑与状态说明](docs/USER_MANUAL.md#5-断点续跑与文件核验)。
+### 解析 VERIFIED 论文
 
-Python 用户也可以直接调用统一入口：
-
-```python
-from aletheia_nexus.acquire.access import (
-    BrowserAccessConfig,
-    acquire_full_text_maximized,
-)
-
-result = acquire_full_text_maximized(
-    "10.1021/jacs.6c03536",
-    output_dir="downloads/my-papers",
-    browser_config=BrowserAccessConfig(profile_name="institution", headless=False),
-)
-print(result.status, result.verified_path)
+```bash
+aletheia-nexus parse downloads/paper.pdf \
+  --doi 10.1234/example
 ```
 
-公开 HTTP 路径的独立入口是 `aletheia_nexus.acquire.fulltext.acquire_full_text`；元数据和全文发现可单独调用。详细参数、官方 API 环境变量、已有 PDF 导入、批量状态与故障处理见[中文使用说明书](docs/USER_MANUAL.md)。
+默认写出：
+
+```text
+paper.parsed.json
+```
+
+搜索并验证来源：
+
+```bash
+aletheia-nexus search PAPER.parsed.json QUERY --verify-sources
+```
+
+### 启用真实 OCR
+
+OCR 需要安装 Poppler 与 Tesseract：
+
+```bash
+aletheia-nexus parse downloads/paper.pdf \
+  --doi 10.1234/example \
+  --ocr
+```
+
+Native text（原生文本）仍是权威来源；OCR 只作为补充。OCR 超时、资源不足、依赖缺失或 backend 失败会显式降级，不会把已经可靠取得的 native evidence 一起丢掉。
+
+详细参数见 [中文使用说明书](docs/USER_MANUAL.md)。
+
+---
+
+## 为什么不是“PDF 转 Markdown”就够了？
+
+科研场景里，真正昂贵的错误通常不是“少一个换行符”，而是：
+
+- 下载到了 Supporting Information，却被当成正文；
+- PDF 身份错了，但下游 Agent 不知道；
+- OCR 坐标和原生文本坐标不是一个体系；
+- 文档移动到 NAS 或另一台电脑后，身份依赖绝对路径而失效；
+- 一个 figure 只有 caption，却被上层系统误解成“图已完整解析”；
+- 一次 parser 更新静默覆盖了旧结果，无法复核历史分析；
+- RAG 找到一个 chunk，却无法回到它对应的原始证据。
+
+AN 把这些问题视为**科研数据基础设施问题**，而不是 prompt engineering 问题。
+
+因此 v0.7 的重点不是增加更多“聪明”的模型，而是建立：
+
+```text
+Identity
+→ Integrity
+→ Transformation
+→ Location
+→ Uncertainty
+→ Consumption
+```
+
+这条可信链。
+
+---
+
+## 验证与证据
+
+AN 不把一个单一“准确率”作为全部质量证明，而是使用不同层次的验证证据。
+
+### 自动化与 CI
+
+v0.7 发布候选 PR 的最终验证包括：
+
+- Python 3.11 deterministic suite：**886 passed / 8 skipped**；
+- Windows/Python 3.11：**886 passed / 8 skipped**；
+- Python 3.12 / 3.13 / 3.14 compatibility jobs：全部通过；
+- Linux real Chromium：**7 passed**；
+- Windows real Chromium：**7 passed**；
+- real Poppler + Tesseract raster-only OCR smoke：**1 passed**；
+- wheel / sdist build、`twine check`、clean-wheel install、`pip check`、CLI `doctor`：全部通过；
+- frozen parser evaluator 会生成机器可读 `parser-evaluation.json` 并由 CI 保存。
+
+### Frozen synthetic gold
+
+自编、可再分发的固定夹具用于精确回归：
+
+- 4/4 gate decisions；
+- 32/32 anchored blocks；
+- 6/6 selected anchors；
+- 10/10 sections；
+- 18/18 structural assertions；
+- 886/886 gold characters；
+- 0 deletion / insertion / substitution。
+
+Synthetic fixtures 不是为了证明“真实世界 100% 正确”，而是为了把重要边界条件锁成确定性回归测试。
+
+### Real-layout evidence
+
+公开证据还包括 3 篇 hash-frozen Open Access（开放获取）真实论文的版式 qualification；PDF 按需从官方来源获取，不提交到仓库。
+
+另有私有真实版式压力集累计 **38 篇 / 655 页**，用于 broader layout/runtime stress testing（更广泛版式与运行压力验证）。这些结果证明的是解析完成、来源锚点与聚合诊断，**不是人工标注的科学语义准确率，也不是“所有视觉信息零损失”声明。**
+
+### 真实使用反馈
+
+项目已经收到独立用户的首次本地部署与实际批量使用反馈，包括 1/1、3/3、6/6 的 `VERIFIED` 批次结果。该反馈证明了实际本地工作流可以运行，但由于对方没有完整记录 clean PyPI 安装、OS/Python 和三分钟首次使用时间，**严格的 three-minute onboarding（3 分钟首次上手）目标仍未被独立验证**。
+
+完整证据口径见 [版本与验收记录](docs/RELEASE_HISTORY.md)。
+
+---
 
 ## 项目结构
 
 ```text
-src/aletheia_nexus/core/identifiers/   DOI 等输入标准化
-src/aletheia_nexus/acquire/metadata/    元数据解析
-src/aletheia_nexus/acquire/discovery/   全文候选发现
-src/aletheia_nexus/acquire/fulltext/    公开 HTTP 获取与共享 PDF 验证
-src/aletheia_nexus/acquire/access/      官方 API、持久浏览器、交互与批量编排
-  browser_engine/                     出版社无关的下载与 PDF 查看器基础能力
-  publisher_adapters/                 出版社路径和可见页面差异
-src/aletheia_nexus/cli.py             正式安装后的命令行入口
-scripts/                              兼容入口、验收与本地验证
-benchmarks/                           固定语料及来源说明
-tests/                                确定性回归与本地浏览器集成测试
+src/aletheia_nexus/
+├── core/identifiers/          # DOI 等科研对象标识
+├── acquire/
+│   ├── metadata/              # 元数据
+│   ├── discovery/             # 全文候选发现
+│   ├── fulltext/              # 获取、身份与主文档验证
+│   └── access/                # API / browser / human handoff
+└── content/
+    ├── gate.py                # VERIFIED 输入门
+    ├── geometry.py            # canonical PageGeometry
+    ├── backends/              # native / OCR / specialist backends
+    ├── parser.py              # 结构解析
+    ├── schema.py              # parsed-document/v2 contract
+    ├── artifact.py            # 可移植工件访问与来源复核
+    ├── export.py              # Markdown / JSONL / chunks
+    └── evaluation.py          # parser qualification
+
+benchmarks/                    # 冻结基准与来源说明
+scripts/                       # RC / qualification / compatibility tools
+tests/                         # deterministic + browser/OCR integration tests
 ```
 
-这是一条可组合的链路，而非一个大而全的爬虫：
+---
+
+## 工程原则
+
+AN 的长期开发遵循几个简单原则：
+
+1. **正确性优先于自动化。**
+2. **明确失败优于静默产生错误结果。**
+3. **稳定能力做成工具和 Skill，确定流程做成 Workflow，开放决策再交给 Agent。**
+4. **原始证据和 canonical artifact 不应被派生结果反向覆盖。**
+5. **路径只是位置，hash 和 provenance 才决定科研工件身份。**
+6. **自动化必须保留来源、状态、处理过程和不确定性。**
+7. **Local-first：核心科研资产应可保存、迁移、导出和恢复。**
+8. **只抽象已经真实出现的重复，不为想象中的未来提前增加复杂度。**
+9. **Human-in-the-loop（人在回路中）是访问控制和科学判断的正常边界。**
+10. **一个版本达到足够稳定后，应停止无收益重构，进入下一层。**
+
+---
+
+## 路线图
 
 ```text
-标识与元数据 → 候选发现 → 公开获取
-                              ↓ 未 VERIFIED
-                       授权 API / 浏览器 / 用户提供的本地 PDF
-                              ↓
-                       同一套科学验证与来源记录
+Identity / Metadata
+        ↓
+Discovery
+        ↓
+Acquisition
+        ↓
+Verification
+        ↓
+Canonical Document          ← v0.7
+        ↓
+AI Consumption Views        ← v0.7
+        ↓
+Scientific Semantic Layer   ← next
+        ↓
+Knowledge
+        ↓
+Workflow / Skill
+        ↓
+Agent
+        ↓
+Lab Scientific Intelligence
 ```
 
-例如，浏览器已显示 PDF 不等于 AN 已取得正确正文；从站点保存的文件与用户主动导入的本地 PDF 都要经过相同的验证。只有可信工件才适合作为 v0.7 Parsing 以及未来 Knowledge、Workflow 与 Agent 的输入。
+下一层重点不是继续堆 PDF parser，而是开始建立 Scientific Semantic Layer（科学语义层）：
 
-这也解释了为什么 AN 要保留“候选发现”和“文档验证”两种不同的接口。发现层可以持续增加来源；访问层可以根据合法权限适配站点；但输入到科研系统之前，所有路径都必须收敛到同一个身份与正文角色判断。新增能力不应稀释旧有可信性。
-
-## 如何衡量质量
-
-确定性测试验证输入、路径、安全与状态机；真实 Chromium 集成测试验证浏览器行为；机构授权的真实网络验收验证用户可合法获取的阳性对照。这三者解决不同问题，不能互相替代。尤其不能把一次批次成功率与后来若干单篇复测累计结果混为一谈。
-
-仓库同时保留[用户原始 20 篇输入](benchmarks/user_20260923_20_with_titles.json)和[全量固定标题的 20 篇获取基准集](benchmarks/user_20260923_20_frozen.json)：前者测试真实 DOI-only 元数据解析链路，后者将获取层测试的标题/出版社/年份固定。来源和使用口径见[基准集说明](benchmarks/README.md)。这类困难语料用于定位缺陷，不代表通用下载成功率。
-
-维护者可在 Python 3.11 与 3.14 环境分别执行：
-
-```powershell
-python -m pip install -e ".[dev,browser]"
-.\scripts\verify_v06_rc.ps1 -Browser
+```text
+entity
+method
+condition
+measurement
+claim
+relation
 ```
 
-云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，正式面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11–3.14、clean-wheel、真实 OCR、Linux Chromium 与 Windows Chromium jobs 的实际 `success`。`skipped` 不是通过。v0.6.1 发布时机构阳性对照验收与首次陌生用户试用均尚未完成，这一历史事实保留在发布说明中；后续源码现已完成一次单机构验收，陌生用户试用仍待反馈。[合并与发布清单](docs/USER_MANUAL.md#10-合并-main-前的发布检查)列出了代码门槛与延期项目。
+例如在电催化论文中，未来可以进一步结构化：
 
-## 文档导航
+```text
+Catalyst
+Reaction
+Substrate
+Electrolyte
+Potential
+Current density
+FE
+Yield
+Selectivity
+Temperature
+pH
+Mechanism
+Evidence
+```
 
-| 文档 | 适用场景 |
+这些仍属于后续版本，不是 v0.7 已交付能力。
+
+---
+
+## 文档
+
+| 文档 | 内容 |
 | --- | --- |
-| [中文使用说明书](docs/USER_MANUAL.md) | 安装、批量下载、登录续跑、报告解释、故障处理、发布检查。 |
-| [v0.6 技术规范](docs/v0.6-acquisition-maximization.md) | Access Layer 架构、安全边界、状态、验收与退出标准。 |
-| [版本与验收记录](docs/RELEASE_HISTORY.md) | 稳定标签、RC 快照、真实语料结果和历史版本。 |
-| [v0.7 前准备与单机构验收](docs/PRE_V07_READINESS.md) | 后续源码的授权验收、证据边界、隐私处理和下一阶段入口。 |
-| [v0.7 内容解析契约](docs/V07_PARSING_CONTRACT.md) | 已实现的可信输入门、版本化输出、合法测试夹具、基线解析器与评测边界。 |
-| [v0.7 解析架构](docs/V07_ARCHITECTURE.md) | 后端、流水线、schema、质量门、资源预算与带来源检索的模块边界。 |
-| [v0.7 OCR](docs/V07_OCR.md) | 原生文本优先的选择性 OCR、统一坐标、真实可执行链路、资源预算和专用区域接口。 |
-| [v0.7.0 发布说明](docs/RELEASE_NOTES_v0.7.0.md) | 获取层收口、解析能力、真实语料验证和仍需人工真值的边界。 |
-| [v0.6.0 发布说明](docs/RELEASE_NOTES_v0.6.0.md) | 首次公开版本交付内容、验证证据与未完成的授权资格验收。 |
-| [v0.6.1 发布说明](docs/RELEASE_NOTES_v0.6.1.md) | CLI、PyPI、架构拆分、Windows CI 与仍待完成的外部试用。 |
-| [CI 架构](docs/CI_ARCHITECTURE.md) | 云端额度策略、按风险运行与完整发布门槛。 |
-| [基准集说明](benchmarks/README.md) | 原始输入与冻结输入的来源和可重复性。 |
-| [v0.5.2 技术规范](docs/v0.5.2-multi-route-acquisition.md) | 已冻结的公开 HTTP 多路径获取层。 |
+| [使用说明书](docs/USER_MANUAL.md) | 安装、获取、浏览器、解析、OCR、导出、故障处理 |
+| [v0.7 Parsing Contract](docs/V07_PARSING_CONTRACT.md) | 输入门、schema、artifact、质量边界 |
+| [v0.7 Architecture](docs/V07_ARCHITECTURE.md) | backend、geometry、parser、证据链 |
+| [v0.7 OCR](docs/V07_OCR.md) | native-first OCR、坐标、资源预算、运行时依赖 |
+| [v0.7.0 发布说明](docs/RELEASE_NOTES_v0.7.0.md) | 本版本功能、验证证据与明确边界 |
+| [版本与验收记录](docs/RELEASE_HISTORY.md) | 历史测试、真实网络与资格证据口径 |
+| [CI 架构](docs/CI_ARCHITECTURE.md) | 自动化测试与发布门 |
+| [Benchmark 说明](benchmarks/README.md) | 固定语料、公开/私有证据边界 |
 
-项目代码以 [Apache License 2.0](LICENSE) 发布。使用 AN 获取的第三方论文仍受各自的版权、许可与访问条件约束；AN 的开源许可不会赋予你再分发那些论文的权利。
+---
 
-## 下一层
+## 参与项目
 
-Acquisition 的目标不是把论文“下载下来就结束”，而是为长期积累的科研知识提供可信入口。后续每一层都应能回答“依据来自哪里、何时取得、经过哪些转换、哪些仍是推断”。
+如果你愿意试用 AN，欢迎：
 
-1. **从文档到结构。** v0.7 已在 `VERIFIED` 工件上建立原生文本优先、可选择性补充 OCR 的章节、引用、图表和表格解析；后续继续扩大带人工真值的合法版式覆盖及方法/实验条件抽取，同时保持结果可以回指原文位置。
-2. **从结构到知识。** 将多篇论文的证据与研究者自己的问题、实验记录和决策连接起来，处理冲突、更新与不确定性，形成真正能长期维护的科研记忆。
-3. **从知识到行动。** 把重复步骤沉淀为可版本化的工具、规则与工作流，让 Agent 在可信资料上辅助检索、比较、规划与记录；需要人授权或科学判断的节点仍交还给人。
-4. **从单次任务到持续研究。** 当证据、方法与行动历史都能复核，个人和实验室才有机会构建随研究一起演化的 scientific world model。
+- 报告一个可复现的错误；
+- 提供合法可公开的测试夹具；
+- 补充新的论文版式；
+- 测试新的机构/出版社合法访问路径；
+- 讨论科学语义层、Knowledge、Workflow 或 Agent 的数据契约。
 
-知识组织、科学真值判断和 Agent 工作流仍是项目方向，不是当前版本的功能承诺。近期工作将继续补充公开使用反馈和带人工真值的解析评测；跨机构授权验收如未来确有需求，须以独立会话和完整新报告另做，不能由单机构结果推断。后续层会在有明确数据模型、基准和验证边界时逐步进入仓库。若你也关心可信科研自动化，可以从复现一个误判、补充一个合法固定语料、改进一种合法获取路径，或讨论下一层的数据契约开始。**把每一项可验证的小进步接起来，就是 AN 想建设的长期基础设施。**
+已经有独立用户提交了真实本地部署反馈；如果你是第一次使用，也欢迎在 [Issue #3](https://github.com/shenxuekairui/aletheia-nexus/issues/3) 继续记录安装体验和问题。
+
+请不要在公开 issue 中提交论文 PDF、Cookie、token、机构登录截图、signed URL 或未脱敏的本地路径。安全问题请使用仓库的 private vulnerability reporting（私密漏洞报告）。
+
+---
+
+## License
+
+项目代码采用 [Apache License 2.0](LICENSE)。
+
+第三方论文、补充材料和其他科研内容仍受各自版权、许可证和访问条件约束。AN 的开源许可不会自动赋予这些内容的再分发权利。
+
+---
+
+*Aletheia* 意为“真理”，*Nexus* 意为“连接”。
+
+AN 想做的不是一个更聪明的下载脚本，而是一层可以被长期信任的科研数据与知识基础设施：**让每一个结论，都有机会回到它真正来自的证据。**
