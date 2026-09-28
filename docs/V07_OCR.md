@@ -14,9 +14,10 @@ aletheia-nexus parse paper.pdf --doi 10.1234/example --ocr
 ```
 
 `--ocr-languages` selects Tesseract languages and
-`--ocr-max-raster-pixels` bounds each page allocation. The default render is 300
-DPI with orientation detection, small-angle deskew, Otsu binarization, and TSV
-word coordinates.
+`--ocr-max-raster-pixels` bounds each page allocation. The pre-render estimate
+accounts for PDF `/UserUnit`, and the actual rendered bitmap dimensions are checked
+again before OCR preprocessing. The default render is 300 DPI with orientation
+detection, small-angle deskew, Otsu binarization, and TSV word coordinates.
 
 ## Trigger and fusion contract
 
@@ -30,7 +31,8 @@ image-dominant pages, or meaningful painted-image regions without native anchors
 - `engine_agreement` separately records native/OCR or multi-engine agreement.
 - Disagreement emits `OCR_ENGINE_DISAGREEMENT` and requires review.
 - Timeout, missing executable, invalid geometry, specialist failure, and resource
-  exhaustion are explicit; validated native evidence remains available.
+  exhaustion are explicit; validated native evidence remains available and the
+  degradation includes a stable machine-readable reason category.
 
 All raster boxes are inverted through applied deskew/orientation transforms and
 mapped into `pdf-cropbox-display-bottom-left-normalized/v1`. MediaBox, CropBox,
