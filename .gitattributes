@@ -4,8 +4,8 @@
 # Frozen benchmark PDFs must remain byte-identical across platforms.
 *.pdf binary
 
-# The v0.7 manifest hashes its JSON fixtures byte-for-byte as well.
-benchmarks/v07_fixtures/*.json binary
+# Frozen JSON fixtures remain byte-identical while staying reviewable in diffs.
+benchmarks/v07_fixtures/*.json text eol=lf
 
 # Deterministic line-oriented AI exports use LF on every platform.
 *.jsonl text eol=lf
