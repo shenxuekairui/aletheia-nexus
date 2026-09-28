@@ -378,9 +378,7 @@ def test_tesseract_execution_identity_records_configuration_and_runtime():
 def test_tesseract_raster_budget_accounts_for_pdf_user_unit():
     page = PdfReader(FIXTURES / "sparse_scan.pdf").pages[0]
     page[NameObject("/UserUnit")] = FloatObject(10)
-    backend = TesseractOcrBackend(
-        TesseractOcrConfig(max_raster_pixels=50_000_000)
-    )
+    backend = TesseractOcrBackend(TesseractOcrConfig(max_raster_pixels=50_000_000))
 
     with pytest.raises(RuntimeError, match="raster budget exceeded"):
         backend.extract_page(page, 1)
@@ -398,6 +396,5 @@ def test_adaptive_execution_identity_includes_nested_backend_configuration():
     assert "runtime_dependencies" in identity["native"]["components"]
     assert identity["ocr"][0]["name"] == "tesseract-ocr"
     assert (
-        identity["ocr"][0]["components"]["configuration"]["page_segmentation_mode"]
-        == 6
+        identity["ocr"][0]["components"]["configuration"]["page_segmentation_mode"] == 6
     )
