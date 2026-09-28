@@ -219,8 +219,8 @@ Identity
 
 The final v0.7 release-candidate PR verification includes:
 
-- Python 3.11 deterministic suite: **886 passed / 8 skipped**;
-- Windows/Python 3.11: **886 passed / 8 skipped**;
+- Python 3.11 deterministic suite: **889 passed / 8 skipped**;
+- Windows/Python 3.11: **889 passed / 8 skipped**;
 - Python 3.12 / 3.13 / 3.14 compatibility jobs: all green;
 - Linux real Chromium: **7 passed**;
 - Windows real Chromium: **7 passed**;
