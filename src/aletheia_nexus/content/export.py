@@ -286,10 +286,10 @@ def _existing_target_is_source_of_truth(target: Path) -> bool:
 
     try:
         with target.open("rb") as stream:
-            prefix = stream.read(8)
+            prefix = stream.read(1024)
     except OSError:
         return False
-    if prefix.startswith(b"%PDF-"):
+    if b"%PDF-" in prefix:
         return True
     try:
         value = json.loads(target.read_text(encoding="utf-8"))
