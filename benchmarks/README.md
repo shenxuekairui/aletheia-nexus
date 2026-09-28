@@ -1,10 +1,5 @@
 # Benchmark corpus provenance
 
-The `v07_fixtures/` directory is a separate, fully self-authored parser
-regression set with frozen PDF/sidecar hashes and gold annotations. See its
-README for rights, scope, regeneration, and evaluation instructions. It does
-not contain publisher full text.
-
 `user_20260923_20_with_titles.json` is the **raw realistic input** from the
 2026-09-23 user run. Despite its historical filename, only two of its 20 rows
 have an explicit title. Keep the file unchanged: it exercises DOI-only metadata

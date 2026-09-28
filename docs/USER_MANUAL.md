@@ -156,32 +156,7 @@ ELSEVIER_BEARER_TOKEN    # 可选
 
 没有密钥时仍可运行公开路径与已授权的浏览器路径。`--no-elsevier-api` 可关闭 API 自动发现。AN 不尝试绕过订阅、CAPTCHA 或访问控制。
 
-## 7. v0.7 实验性内容解析
-
-解析器只接受已有 `.acquisition.json` 的 `VERIFIED` 正文 PDF。它在运行前重新检查来源记录版本、正文状态、DOI、PDF SHA-256、可读性和页数，不会从检查点猜测证据，也不会在解析阶段重新下载文件：
-
-```powershell
-aletheia-nexus parse downloads\paper.pdf --doi 10.1234/example
-```
-
-默认输出与 PDF 同目录、同文件名的 `.parsed.json`，原 PDF 与 `.acquisition.json` 保持不变。需要显式路径时使用 `--sidecar` 和 `--output`。批处理或 CI 若不允许降级结果，可加 `--fail-on-partial`；输入门失败退出码为 `5`，`PARTIAL`/`FAILED` 在该选项下退出码为 `6`。
-
-输出 schema 为 `aletheia-nexus/parsed-document/v2`；未发布的 v1 草案不作为兼容承诺。v2 包含来源 DOI 与哈希、流水线/后端版本、配置与执行指纹、质量覆盖率、章节、合并段落、结构化引用、图表对象及表格单元，以及每个文本块的一基页码、PDF 左下角坐标系归一化 bounding box 与文本 span。基线框由 PDF 文本矩阵和字体大小估算，明确标为 `bbox_precision: estimated`，不冒充逐字形精确框。状态始终显式为 `PARSED`、`PARTIAL` 或 `FAILED`。
-
-默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。解析流水线会合并同栏连续文本行、恢复章节语义与显式未解析引用；当标题、PDF 图像资源或位置化表格行有充分证据时建立关联和单元格，否则保留 `caption-only`/`unresolved` 与不确定标记。解析成功也不等于论文结论为真。
-
-可用 `--max-pages`、`--max-blocks`、`--max-text-characters` 控制资源上限，或用 `--no-merge-paragraph-lines` 保留逐行块。达到上限时输出 `PARTIAL`，不会静默截断。解析结果可直接做带来源检索：
-
-```powershell
-aletheia-nexus search downloads\paper.parsed.json "experimental condition" `
-  --section-type methods --verify-sources
-```
-
-每个命中包含章节、PDF 页、归一化 bbox 和原文；`--verify-sources` 会重新核对 PDF 与 acquisition sidecar 的 SHA-256。Python 调用方可使用 `ParsedArtifact.search()`、`section_text()`、`locate()` 和 `verify_local_sources()`。模块边界与自定义后端约束见[v0.7 架构](V07_ARCHITECTURE.md)。
-
-公开回归只使用 `benchmarks/v07_fixtures/` 中项目自编、Apache-2.0 可再分发的小型 PDF；运行 `python scripts/evaluate_v07_parser.py` 可复核输入门、锚点、章节、双栏顺序和图表标题关联。它是确定性回归集，不代表对所有出版社版式的泛化质量。
-
-## 8. 故障排查
+## 7. 故障排查
 
 - **浏览器连接超时：** 先确认 `http://127.0.0.1:9222/json/version` 可访问。即使端点响应，浏览器内部调试连接也可能卡住；关闭仅用于 AN 的浏览器后重跑，持久配置目录中的登录状态通常仍在。不要关闭日常浏览器或删除整个用户配置目录。
 - **登录完成却未继续：** 确认返回到同一 AN 浏览器会话；若站点在新标签完成认证，AN 会检查新旧出版社标签和仍留空白的身份验证标签。若仍卡住，可安全中断并从检查点重跑，保留现场与报告用于复现。
@@ -191,7 +166,7 @@ aletheia-nexus search downloads\paper.parsed.json "experimental condition" `
 - **`EXHAUSTED`：** 先分清 403/挑战、没有 PDF 候选、标题不匹配和实际购买页。单纯增大重试次数通常不能解决订阅缺失。
 - **机构自动选错：** 在出版社提供的机构选择界面切换；AN 不强制改写机构 cookie，也不保证按 IP 跳转的网站永久记住选择。
 
-## 9. 开发验证与项目边界
+## 8. 开发验证与项目边界
 
 ```powershell
 python -m pip install -e ".[dev,browser]"
@@ -200,18 +175,17 @@ python -m ruff format --check src tests scripts
 python -m ruff check src tests scripts
 python -m compileall -q src scripts
 python scripts/verify_frozen_benchmark.py
-python scripts/evaluate_v07_parser.py
 python -m pytest -q
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
-这些脚本与单元测试不替代实际机构环境中的授权验证，也不证明解析器适配所有真实论文版式。AN 0.6 负责获取与核验；AN 0.7 开发版增加带来源锚点的原生文本解析基线。OCR、科学主张解释和科研知识组织仍属于后续能力。
+该脚本与单元测试不替代实际机构环境中的授权验证。建议用固定 DOI 集、已确认有权限的阳性对照、每篇报告及人工抽查共同评估结果。AN 0.6 负责获取与核验；深层内容解析和科研知识组织属于后续版本。
 
-## 10. 合并 main 前的发布检查
+## 9. 合并 main 前的发布检查
 
 以下 1–5 项是**已完成的 v0.6.0 历史发布口径**，不是 v0.6.1 的待办清单。v0.6.1 须另外通过 Windows CI、wheel 安装烟测与 PyPI Trusted Publishing，详见[开发与发布计划](v0.6.1-development.md)。首个公开 `v0.6.0` 以代码正确性与可安装性为封板范围，不声称已对不同机构的授权覆盖完成正式资格验收。维护者应留存最终提交 SHA、测试输出和报告路径；代码门槛失败或缺证时保持草稿，不合并 `main`，不打稳定标签。
 
-1. 在最终代码上分别以 Python 3.11 和 3.14 运行第 9 节的本地检查，确认 Ruff、依赖、完整确定性测试与固定基准集检查通过；在支持的环境执行真实 Chromium 集成测试。原私有开发仓库 `v0.5.2` 标签对应的历史 510 passed 与 v0.6 RC 的 734 passed、7 skipped 必须分开记录；公开仓库不携带旧标签。
+1. 在最终代码上分别以 Python 3.11 和 3.14 运行第 8 节的本地检查，确认 Ruff、依赖、完整确定性测试与固定基准集检查通过；在支持的环境执行真实 Chromium 集成测试。原私有开发仓库 `v0.5.2` 标签对应的历史 510 passed 与 v0.6 RC 的 734 passed、7 skipped 必须分开记录；公开仓库不携带旧标签。
 2. 首个公开版的正式机构授权资格验收已由项目发起者决定**暂缓**。这项缺证必须在 README 和 GitHub Release 中显著披露；不能将此前 37/40、19/20 的累计单篇复测解释为新的完整批次或授权对照通过。代码级封板仍须完成本节其余门槛。
 3. 后续补做授权资格验收时，准备本地 `benchmarks/v06_entitled_positive_controls.local.json`：从[模板](../benchmarks/v06_entitled_positive_controls.example.json)替换为同一机构、账号和网络环境下已人工确认可获取的至少 3 篇论文，覆盖至少 2 个 `access_family`。不要提交凭据或机构专属阳性对照。默认压力集是 CDI 与海水淡化各 10 篇；另有[固定标题的 20 篇用户集](../benchmarks/user_20260923_20_frozen.json)，若改用它，必须在结果中注明输入集。
 
