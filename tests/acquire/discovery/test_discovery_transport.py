@@ -10,7 +10,11 @@ from aletheia_nexus.acquire.discovery.exceptions import (
     DiscoveryRequestError,
     DiscoveryServiceError,
 )
-from aletheia_nexus.acquire.discovery.transport import build_user_agent, get_json
+from aletheia_nexus.acquire.discovery.transport import (
+    build_user_agent,
+    get_json,
+    get_text,
+)
 
 
 def test_build_user_agent_uses_installed_package_identity():
@@ -108,3 +112,13 @@ def test_get_json_rejects_non_object_json(monkeypatch):
 
     with pytest.raises(DiscoveryParseError):
         get_json("https://example.com/api", context="test request")
+
+
+def test_get_text_success(monkeypatch):
+    monkeypatch.setattr(
+        transport_module.httpx,
+        "get",
+        lambda *args, **kwargs: httpx.Response(200, text="<root />"),
+    )
+
+    assert get_text("https://example.com/list", context="test list") == "<root />"

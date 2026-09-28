@@ -1,3 +1,5 @@
+import pytest
+
 from aletheia_nexus.acquire.access import browser
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
@@ -359,6 +361,39 @@ def test_browser_startup_error_does_not_persist_raw_exception_text(
     assert message == "Playwright could not start: RuntimeError"
     assert "super-secret" not in message
     assert "Users/private" not in message
+
+
+@pytest.mark.parametrize("lock_marker", ["lockfile", "SingletonLock"])
+def test_browser_launch_reports_profile_lock_hint(monkeypatch, tmp_path, lock_marker):
+    context = _Context()
+    manager = _Manager(context)
+
+    def fail_launch(**kwargs):
+        raise RuntimeError("TargetClosedError with private command line")
+
+    manager.playwright.chromium.launch_persistent_context = fail_launch
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    profile_root = tmp_path / "profiles"
+    profile_dir = profile_root / "default"
+    profile_dir.mkdir(parents=True)
+    (profile_dir / lock_marker).touch()
+
+    session = browser.BrowserSession(BrowserAccessConfig(profile_root=profile_root))
+
+    try:
+        session.acquire(
+            doi="10.1000/session-limit",
+            routes=[_candidate(1)],
+            output_dir=tmp_path / "downloads",
+        )
+    except browser.BrowserCapabilityUnavailable as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("browser startup failure must be explicit")
+
+    assert "profile appears to be in use" in message
+    assert "--cdp-endpoint" in message
+    assert "private command line" not in message
 
 
 class _AttachedPage(_Page):

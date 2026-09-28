@@ -24,16 +24,26 @@ def main(argv: list[str] | None = None) -> int:
         args.output.write_text(serialized, encoding="utf-8")
     print(serialized, end="")
     metrics = report["metrics"]
+    character_accuracy = metrics.get("character_accuracy", {})
     failed = (
         any(
             value["correct"] != value["total"]
             for key, value in metrics.items()
-            if key != "anchored_block_coverage" and isinstance(value, dict)
+            if key != "anchored_block_coverage"
+            and isinstance(value, dict)
+            and {"correct", "total"} <= value.keys()
         )
         or any(
             value != 0
             for key, value in metrics.items()
             if key in {"table_figure_link_omissions", "table_figure_false_associations"}
+        )
+        or (
+            bool(character_accuracy.get("expected_characters"))
+            and any(
+                character_accuracy.get(key, 0) != 0
+                for key in ("deletions", "insertions", "substitutions")
+            )
         )
         or any(
             not item.get("status_correct", True)

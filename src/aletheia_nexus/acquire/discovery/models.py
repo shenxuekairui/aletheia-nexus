@@ -7,6 +7,7 @@ class DiscoveryProvider(StrEnum):
 
     OPENALEX = "openalex"
     UNPAYWALL = "unpaywall"
+    PMC_CLOUD = "pmc_cloud"
 
 
 class CandidateUrlType(StrEnum):

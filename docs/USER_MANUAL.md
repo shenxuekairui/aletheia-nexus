@@ -74,6 +74,8 @@ aletheia-nexus acquire dois.txt `
 
 `--non-interactive` **不会禁用浏览器或官方 API**：已经有效的授权会话仍可能被复用，也可能自动打开浏览器；它只禁止等待人工操作。无人值守不等于绕过登录。遇到需要账号、订阅或验证的站点，AN 会记录相应状态；若站点未给出可识别的访问提示，也可能是 `EXHAUSTED`，需要查看报告诊断。若上层脚本要求每个有效 DOI 都成功，请再加 `--fail-on-unverified`。
 
+当 OpenAlex 候选包含 PMC 记录时，AN 会先查询 PMC Article Datasets 的官方 AWS 公共数据桶，并优先验证其中的 PDF。该路径适配了 PMC 于 2026 年 8 月完成的数据分发迁移，不抓取 PMC 文章网页，也不依赖已下线的旧 OA Web Service。若文章不属于可自动获取的数据集、没有 PDF、已撤回，或元数据 DOI 不一致，AN 不会把该对象当作候选。
+
 ### 常用开关
 
 | 参数 | 用途 |
@@ -156,7 +158,7 @@ ELSEVIER_BEARER_TOKEN    # 可选
 
 没有密钥时仍可运行公开路径与已授权的浏览器路径。`--no-elsevier-api` 可关闭 API 自动发现。AN 不尝试绕过订阅、CAPTCHA 或访问控制。
 
-## 7. v0.7 实验性内容解析
+## 7. v0.7 带来源内容解析
 
 解析器只接受已有 `.acquisition.json` 的 `VERIFIED` 正文 PDF。它在运行前重新检查来源记录版本、正文状态、DOI、PDF SHA-256、可读性和页数，不会从检查点猜测证据，也不会在解析阶段重新下载文件：
 
@@ -168,7 +170,9 @@ aletheia-nexus parse downloads\paper.pdf --doi 10.1234/example
 
 输出 schema 为 `aletheia-nexus/parsed-document/v2`；未发布的 v1 草案不作为兼容承诺。v2 包含来源 DOI 与哈希、流水线/后端版本、配置与执行指纹、质量覆盖率、章节、合并段落、结构化引用、图表对象及表格单元，以及每个文本块的一基页码、PDF 左下角坐标系归一化 bounding box 与文本 span。基线框由 PDF 文本矩阵和字体大小估算，明确标为 `bbox_precision: estimated`，不冒充逐字形精确框。状态始终显式为 `PARSED`、`PARTIAL` 或 `FAILED`。
 
-默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。解析流水线会合并同栏连续文本行、恢复章节语义与显式未解析引用；当标题、PDF 图像资源或位置化表格行有充分证据时建立关联和单元格，否则保留 `caption-only`/`unresolved` 与不确定标记。解析成功也不等于论文结论为真。
+默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。需要扫描页支持时安装 `aletheia-nexus[ocr]`，并在 Python API 中组合 `AdaptiveOcrBackend` 与 `TesseractOcrBackend`。OCR 只在原生字符过少、乱码、图像主导或图像区域缺少文本锚点时触发；原生文本与 OCR 重叠时保留原生文本，OCR 仅补空白区域，并记录引擎、置信度、坐标和人工复核状态。完整配置见[v0.7 OCR](V07_OCR.md)。
+
+解析流水线会合并同栏连续文本行、恢复章节语义与显式未解析引用；当标题、PDF 图像资源或位置化表格行有充分证据时建立关联和单元格，否则保留 `caption-only`/`unresolved` 与不确定标记。通用 OCR 不等于表格、公式或图表解析，专用解析器须通过区域接口接入。解析成功也不等于论文结论为真。
 
 可用 `--max-pages`、`--max-blocks`、`--max-text-characters` 控制资源上限，或用 `--no-merge-paragraph-lines` 保留逐行块。达到上限时输出 `PARTIAL`，不会静默截断。解析结果可直接做带来源检索：
 
@@ -184,6 +188,7 @@ aletheia-nexus search downloads\paper.parsed.json "experimental condition" `
 ## 8. 故障排查
 
 - **浏览器连接超时：** 先确认 `http://127.0.0.1:9222/json/version` 可访问。即使端点响应，浏览器内部调试连接也可能卡住；关闭仅用于 AN 的浏览器后重跑，持久配置目录中的登录状态通常仍在。不要关闭日常浏览器或删除整个用户配置目录。
+- **`TargetClosedError` 且配置目录有锁：** 通常表示同一 AN 浏览器配置已被另一个 Edge/Chrome 进程占用。连接现有进程时传入它的 `--cdp-endpoint`；否则只关闭专用 AN 浏览器，或为新运行指定不同的 `--profile`。不要让两个浏览器进程同时写同一配置目录。
 - **登录完成却未继续：** 确认返回到同一 AN 浏览器会话；若站点在新标签完成认证，AN 会检查新旧出版社标签和仍留空白的身份验证标签。若仍卡住，可安全中断并从检查点重跑，保留现场与报告用于复现。
 - **ScienceDirect / RSC 验证页反复出现：** 等待期间 AN 不主动刷新网页；站点自身可能重定向或重建验证组件。检查页面是否仍显示验证码、是否已返回目标论文，以及当前机构是否有授权。AN 不会把短暂空白当作验证成功；重复验证或超时应记为需人工处理，避免连续对同一 PDF 地址发请求。不要通过增大重试次数来应对站点风控。
 - **普通 Edge 能打开、AN Edge 却循环验证：** 核对两者是否走相同的代理/网络出口。AN 默认强制直连，即使 Windows 系统代理已启用；关闭 TUN 不会自动取消系统代理，也不会改变 AN 的启动参数。信任该代理时，可显式选择 `--browser-use-system-proxy`，并用单篇 DOI 验证；这不保证站点一定接受受控浏览器。
@@ -205,23 +210,33 @@ python -m pytest -q
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
-这些脚本与单元测试不替代实际机构环境中的授权验证，也不证明解析器适配所有真实论文版式。AN 0.6 负责获取与核验；AN 0.7 开发版增加带来源锚点的原生文本解析基线。OCR、科学主张解释和科研知识组织仍属于后续能力。
+这些脚本与单元测试不替代实际机构环境中的授权验证，也不证明解析器适配所有真实论文版式。AN 0.7 将获取与核验衔接到带来源锚点的原生文本优先解析，并提供可选选择性 OCR；科学主张解释和科研知识组织仍属于后续能力。
 
 ## 10. 合并 main 前的发布检查
 
-以下 1–5 项是**已完成的 v0.6.0 历史发布口径**，不是 v0.6.1 的待办清单。v0.6.1 须另外通过 Windows CI、wheel 安装烟测与 PyPI Trusted Publishing，详见[开发与发布计划](v0.6.1-development.md)。首个公开 `v0.6.0` 以代码正确性与可安装性为封板范围，不声称已对不同机构的授权覆盖完成正式资格验收。维护者应留存最终提交 SHA、测试输出和报告路径；代码门槛失败或缺证时保持草稿，不合并 `main`，不打稳定标签。
+v0.7.0 的最终 PR 必须直接面向 `main`；不要把功能分支直接推送到
+`main`，也不要把受版权保护的真实论文、机构配置、Cookie、令牌或带
+签名参数的报告加入提交。维护者应留存最终提交 SHA、测试输出和私有
+报告路径；代码门槛失败或缺证时不合并、不打稳定标签。
 
-1. 在最终代码上分别以 Python 3.11 和 3.14 运行第 9 节的本地检查，确认 Ruff、依赖、完整确定性测试与固定基准集检查通过；在支持的环境执行真实 Chromium 集成测试。原私有开发仓库 `v0.5.2` 标签对应的历史 510 passed 与 v0.6 RC 的 734 passed、7 skipped 必须分开记录；公开仓库不携带旧标签。
-2. 首个公开版的正式机构授权资格验收已由项目发起者决定**暂缓**。这项缺证必须在 README 和 GitHub Release 中显著披露；不能将此前 37/40、19/20 的累计单篇复测解释为新的完整批次或授权对照通过。代码级封板仍须完成本节其余门槛。
-3. 后续补做授权资格验收时，准备本地 `benchmarks/v06_entitled_positive_controls.local.json`：从[模板](../benchmarks/v06_entitled_positive_controls.example.json)替换为同一机构、账号和网络环境下已人工确认可获取的至少 3 篇论文，覆盖至少 2 个 `access_family`。不要提交凭据或机构专属阳性对照。默认压力集是 CDI 与海水淡化各 10 篇；另有[固定标题的 20 篇用户集](../benchmarks/user_20260923_20_frozen.json)，若改用它，必须在结果中注明输入集。
+1. 在最终代码上运行第 9 节的 Ruff、编译、冻结基准、解析评测和完整
+   测试。Python 3.11 与 3.14 都须通过；支持浏览器的环境还须运行真实
+   Chromium 集成测试。
+2. 对固定的 24 篇回归集和 14 篇获取验证集核对输入哈希、逐篇状态、
+   每页原生文本守恒、重复语义对象和未解析对象。私有 PDF 与输出留在
+   Git 忽略目录；“原生文本层零遗漏”不得写成“视觉内容或语义 100% 正确”。
+3. 对 PMC 云路径至少完成一个公开 DOI 烟测，确认候选来自官方桶、元数据
+   DOI 一致、最终 PDF 为 `VERIFIED` 正文且 sidecar 哈希匹配。外部服务烟测
+   不能替代确定性测试，也不能解释为通用获取成功率。
+4. 将 `pyproject.toml` 版本固定为 `0.7.0`，更新发布说明和历史；从干净
+   提交构建 sdist/wheel，执行依赖检查，并从 wheel 的全新临时环境验证
+   `aletheia-nexus --version`、`doctor` 和核心导入。GitHub Release 本身不
+   证明 PyPI 已上传，仍须检查项目页和全新安装。
+5. 推送功能分支并更新现有 PR。在**最终提交**上等待 Python 3.11、3.14、
+   Linux Chromium 和 Windows Chromium 四个 job 均为实际 `success`；
+   `skipped`、取消或旧提交的绿色结果均不能替代。通过评审后由维护者合并
+   PR，再对合并后的 `main` 提交打不可变的 `v0.7.0` 标签并发布。
 
-   ```powershell
-   python scripts/manual_v06_access_acceptance.py `
-     --entitled-benchmark benchmarks/v06_entitled_positive_controls.local.json `
-     --require-entitled-controls `
-     --report downloads/v06-release-acceptance.json
-   ```
-
-   后续验收必须满足：压力论文不少于 20 篇、全部阳性对照 `VERIFIED`、至少一篇真正由 v0.6 路径相对 v0.5 恢复、`RUNNER_ERROR = 0`；还须人工抽查 PDF 与失败分类。公开困难集的覆盖率不是订阅权限证明。**这不是首个公开版发布当时已经通过的项目。**后续源码已完成一次单机构资格验收，证据范围与未解决事项见[v0.7 前准备记录](PRE_V07_READINESS.md)；不要倒填旧标签的发布证据。
-4. 最终发布 PR 面向 `main`，核对差异、Apache-2.0 许可、版本号与公开历史；把 `pyproject.toml` 改为 `0.6.0` 并生成最终发布提交。将 PR 转为 ready，在**该最终提交**上等待 Python 3.11、3.14 与 Chromium 三个云端 job 的实际结论均为 `success`。草稿 PR 的 `skipped` 即使在 GitHub 显示绿色也不算通过；额度耗尽同样不算通过。详见[CI 架构](CI_ARCHITECTURE.md)。
-5. 若开发期间使用过堆叠 PR，正式发布前保留一个包含完整 v0.6 差异、直接面向 `main` 的发布 PR；不要再把已被覆盖的底层 PR 重复合入。任一改动之后都重新核对最终 SHA 和完整 CI。代码级门槛通过后再合并，并给合并后的 `main` 提交打 `v0.6.0` 标签；GitHub Release 同时注明机构授权资格验收尚未完成。正式流程以[技术规范的退出标准](v0.6-acquisition-maximization.md#16-exit-criteria)为准。
+旧版本的机构授权与发布证据继续按[版本与验收记录](RELEASE_HISTORY.md)
+和[v0.7 前准备记录](PRE_V07_READINESS.md)解释；不能把历史累计单篇复测、
+单机构结果或本轮公开 PMC 烟测倒填成跨机构资格证明。

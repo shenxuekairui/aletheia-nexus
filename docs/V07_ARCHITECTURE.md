@@ -67,9 +67,16 @@ Backends may improve coordinates or add page objects, but cannot:
 - convert unavailable coordinates into invented boxes;
 - silently truncate at resource limits.
 
-The bundled native backend is complete for the v0.7 deterministic contract.
-Scanned pages remain explicit `PARTIAL` unless a caller supplies an alternate
-backend; v0.7 does not make an unverified OCR engine a mandatory dependency.
+The bundled native backend is the authoritative default for the v0.7
+deterministic contract. `AdaptiveOcrBackend` can add one or more optional OCR
+engines only on sparse, suspicious, image-dominant, or unanchored regions;
+coordinate and text-similarity fusion keeps overlapping native text and
+deduplicates OCR. The bundled Tesseract adapter records TSV coordinates and
+confidence after 300-DPI rendering, orientation correction, deskew, and
+binarization. OCR disagreements remain explicit and request manual review.
+Tables, formulas, and figures can be routed through `RegionExtractionBackend`
+specialists without weakening the same fusion and provenance rules. See
+[the OCR contract](V07_OCR.md).
 
 ## Quality and budgets
 

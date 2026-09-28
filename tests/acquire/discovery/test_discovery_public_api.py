@@ -31,6 +31,7 @@ def test_public_discovery_models_are_exposed():
     assert ProviderContribution is not None
     assert ProviderDiscoveryResult is not None
     assert DiscoveryProvider.OPENALEX == "openalex"
+    assert DiscoveryProvider.PMC_CLOUD == "pmc_cloud"
     assert DiscoveryStatus.PARTIAL_SUCCESS == "PARTIAL_SUCCESS"
     assert ProviderDiscoveryStatus.NETWORK_ERROR == "NETWORK_ERROR"
     assert issubclass(DiscoveryError, RuntimeError)

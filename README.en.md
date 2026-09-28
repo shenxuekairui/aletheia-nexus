@@ -10,23 +10,23 @@
 
 Research has increasingly capable models, but still lacks a dependable entry point for facts. A DOI can lead to the main article, supporting information, a login screen, a paywall, a citation, or a dead link. Finding a plausible PDF is not the same as acquiring the **correct main article with an explainable provenance**. Errors at this boundary propagate into parsers, search indexes, knowledge systems, and agents.
 
-Aletheia Nexus (AN) begins with a deliberately testable question: *Is this locally saved file the intended paper's main text, and how did it get here?* It treats a failed acquisition as an informative result rather than quietly importing the wrong document. The larger ambition is a researcher-controlled, auditable scientific knowledge foundation that can eventually connect evidence, methods, workflows, and decisions. The current repository implements the acquisition layer and an experimental, source-linked parsing baseline, not that entire future system.
+Aletheia Nexus (AN) begins with a deliberately testable question: *Is this locally saved file the intended paper's main text, and how did it get here?* It treats a failed acquisition as an informative result rather than quietly importing the wrong document. The larger ambition is a researcher-controlled, auditable scientific knowledge foundation that can eventually connect evidence, methods, workflows, and decisions. The current repository implements acquisition and the v0.7 source-linked parsing layer, not that entire future system.
 
 ## What works today
 
 | Maturity | Capability | Boundary |
 | --- | --- | --- |
 | **Implemented** | DOI normalization and Crossref/DataCite metadata resolution | External services can be unavailable or incomplete. |
-| **Implemented** | Full-text candidate discovery from metadata, OpenAlex, Unpaywall, and other configured sources | A candidate URL is only a lead, not proof of access or identity. |
+| **Implemented** | Full-text candidate discovery from metadata, OpenAlex, Unpaywall, and official PMC Article Datasets where a PMC record is present | A candidate URL is only a lead, not proof of access or identity. |
 | **Implemented** | Bounded public HTTP acquisition and static article/landing-page expansion | No subscription or access-control bypass. |
 | **Implemented** | PDF structure, DOI/title identity, and main-article-versus-supplement checks | `VERIFIED` means the file identity/role is supported, not that its scientific claims are true. |
 | **Implemented** | Provenance, SHA-256, explicit outcomes, and resumable verified-file checkpoints | Sensitive browser credentials are not stored in these records. |
 | **Experimental** | Official Elsevier API where configured; persistent browser sessions and human handoff for legitimate institutional access | Requires the user's actual entitlement and may need login, MFA, or CAPTCHA. One post-release source commit passed single-institution controls across ACS and Wiley; multi-institution generalization is not established. |
 | **Experimental** | Sequential batch runs with browser-session reuse | Site changes and access state can still require intervention. |
-| **Experimental** | Strictly gated, source-linked PDF parsing and search | Pipeline/backends, merged blocks, semantic sections, references, PDF image associations, positioned table cells, quality/budget reporting, and page/bbox search are implemented. Scanned pages require an alternate backend and stay `PARTIAL` by default; extraction is not truth assessment. |
+| **Implemented** | Strictly gated, source-linked PDF parsing and search | Native-first parsing covers merged blocks, semantic sections, references, figures/tables, quality budgets, and page/bbox search. Optional selective OCR supplements only unanchored regions and records engine, coordinates, confidence, and review state; extraction is not truth assessment. |
 | **Planned** | Scientific memory, knowledge graphs, and agent workflows | Not delivered by the current release. |
 
-The first public code release was **v0.6.0**. **v0.6.1** adds publisher adapters, an installed CLI, Windows CI, and PyPI packaging without changing the frozen v0.6.0 tag. A later source commit completed a single-institution qualification; that evidence must not be retroactively attributed to the frozen PyPI release. See the [release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) and [pre-v0.7 readiness record](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/PRE_V07_READINESS.md) for exact scope. First-time testing by independent users remains open; the three-minute onboarding target has not yet been independently established.
+The first public code release was **v0.6.0**. **v0.6.1** added publisher adapters, an installed CLI, Windows CI, and PyPI packaging without changing the frozen v0.6.0 tag. **v0.7.0** adds source-linked parsing, selective OCR interfaces, and the final acquisition corrections described in its [release notes](docs/RELEASE_NOTES_v0.7.0.md). Historical evidence is not retroactively attributed to older tags. See the [release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) for exact scope. First-time testing by independent users remains open; the three-minute onboarding target has not yet been independently established.
 
 ## How it works
 
@@ -71,7 +71,7 @@ Check the [PyPI project](https://pypi.org/project/aletheia-nexus/) for published
 
 The output includes per-paper status, a batch report and checkpoint, and a `.acquisition.json` sidecar for verified PDFs. Only a file that still exists and matches its SHA-256 can be reused as verified on a later run. The tool does not provide publisher subscriptions, answer CAPTCHAs, or bypass paywalls.
 
-From a source checkout of the v0.7 development line, parse a verified artifact without modifying it:
+With v0.7, parse a verified artifact without modifying it:
 
 ```bash
 aletheia-nexus parse downloads/paper.pdf --doi 10.1234/example
@@ -81,7 +81,7 @@ The command requires the sibling `.acquisition.json`, rechecks its schema, `VERI
 
 ## Roadmap and participation
 
-The v0.7 development line implements the [parsing contract](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_PARSING_CONTRACT.md) with a deterministic native-text baseline and a small, self-authored benchmark. Broad publisher-layout quality, OCR, scientific claim interpretation, knowledge organization, and agent workflows remain future work. The parser stays experimental until the final release commit passes Linux and Windows gates and broader rights-cleared fixtures justify its quality claims.
+v0.7 implements the [parsing contract](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_PARSING_CONTRACT.md) with deterministic native parsing, optional selective OCR, specialist-region interfaces, explicit uncertainty, and source-linked quality metrics. Private fixed-corpus tests cover 38 papers and 655 pages, while the public suite remains redistribution-safe. Human-transcribed truth sets, scientific claim interpretation, knowledge organization, and agent workflows remain future work.
 
 If you are trying AN for the first time, please join the [v0.6.1 first-time setup trial](https://github.com/shenxuekairui/aletheia-nexus/issues/3). A small report is especially valuable: which DOI, which legal access route, what status AN returned, and what you observed instead. **Remove cookies, tokens, account details, institutional login screenshots, signed URLs, and copyrighted PDF bytes** before opening an issue. See [CONTRIBUTING.md](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) and the [issue templates](https://github.com/shenxuekairui/aletheia-nexus/tree/main/.github/ISSUE_TEMPLATE).
 

@@ -1,7 +1,8 @@
 # v0.7 scientific content parsing contract
 
-Status: implemented as an experimental native-text baseline in `0.7.0.dev0`.
-The contract remains stricter than the parser's current layout coverage.
+Status: implemented in `0.7.0` with an authoritative native-text path,
+optional selective OCR, specialist-region interfaces, and explicit uncertainty.
+The contract remains stricter than the parser's current labelled-layout coverage.
 
 The acquisition layer answers **which file was obtained and why AN considers it
 the requested main article**. The proposed parsing layer answers **which
@@ -93,7 +94,7 @@ or publisher response is not part of this benchmark.
 2. **Complete:** the self-authored fixture manifest, SHA-256 values, gold
    annotations, schema validator, stable IDs, and deterministic serialization
    are checked in.
-3. **Complete:** `structured-pdf-pipeline/2.2.0` separates a public extraction
+3. **Complete:** `structured-pdf-pipeline/2.3.0` separates a public extraction
    backend contract from block assembly, structure/object linking, and quality
    stages. The bundled native backend merges paragraph lines, suppresses
    repeated page furniture, uses font weight plus conservative text-shape rules
@@ -107,10 +108,13 @@ or publisher response is not part of this benchmark.
    and enforces page/block/text budgets. A validated consumer API provides
    section text, fresh source-hash checks, and searches that return PDF
    page/bbox anchors.
-4. **Still a release gate:** outputs remain experimental until the final
-   release commit passes hosted Linux and Windows jobs and real-layout evidence
-   is broad enough for any stronger quality claim. The acquisition API and
-   `VERIFIED` meaning remain unchanged.
+4. **Complete with explicit limits:** native-first selective OCR can be enabled
+   through the public backend API. It triggers only for sparse, corrupt,
+   image-dominant, or unanchored regions; native overlap wins, OCR engines are
+   deduplicated by coordinates and text similarity, consensus raises confidence,
+   and disagreement requests manual review. Table, formula, and figure specialists
+   use the same region contract. The acquisition API and `VERIFIED` meaning remain
+   unchanged.
 
 Run the offline benchmark with `python scripts/evaluate_v07_parser.py`. It
 reports exact correct/total denominators, per-fixture status, runtime, peak
@@ -145,6 +149,16 @@ High-confidence duplicate caption layers are represented once;
 real `continued` and figure-supplement evidence remains separate. This is a
 source-fidelity and targeted semantic audit, not a claim that every scientific
 structure has complete gold-label recall.
+
+A second private acquisition-validation set added 14 papers and 219 pages. On
+the final 2.3.0 pipeline all 14 were `PARSED`; normalized native-layer retention
+again had zero omitted and zero added tokens. Together, the two fixed private
+sets cover 38 papers and 655 pages. They contain no textless native pages, so
+they validate that OCR is not spuriously activated on born-digital papers;
+synthetic scan fixtures cover OCR trigger, consensus, disagreement, coordinate
+fusion, and specialist routing. A sub-1% total visual information-loss claim
+still requires human-reviewed page transcription, especially for raster text,
+tables, charts, and formulas.
 
 Out of scope: interpreting scientific claims, factual truth assessment,
 knowledge-graph correctness, and automatic entitlement decisions.

@@ -23,10 +23,22 @@ from aletheia_nexus.acquire.fulltext.models import AcquisitionResult, Acquisitio
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_PROFILE_LOCK_MARKERS = (
+    "lockfile",
+    "SingletonLock",
+    "SingletonCookie",
+    "SingletonSocket",
+)
 
 
 class BrowserCapabilityUnavailable(RuntimeError):
     """Raised when the optional browser capability cannot be started."""
+
+
+def _profile_appears_locked(profile_dir: Path) -> bool:
+    """Return whether Chromium left a known single-process profile marker."""
+
+    return any((profile_dir / marker).exists() for marker in _PROFILE_LOCK_MARKERS)
 
 
 @dataclass(slots=True)
@@ -544,11 +556,21 @@ class BrowserSession:
             )
         except Exception as exc:
             manager.__exit__(type(exc), exc, exc.__traceback__)
-            raise BrowserCapabilityUnavailable(
-                "Playwright browser could not start. Install a browser with "
-                "'python -m playwright install chromium' or configure an "
-                f"available channel. Error type: {type(exc).__name__}"
-            ) from exc
+            if _profile_appears_locked(self.profile_dir):
+                message = (
+                    "Playwright browser could not start because the browser profile "
+                    "appears to be in use by another browser. "
+                    "Attach to that browser with --cdp-endpoint, close only the "
+                    "dedicated AN browser, or choose a different --profile. "
+                    f"Error type: {type(exc).__name__}."
+                )
+            else:
+                message = (
+                    "Playwright browser could not start. Install a browser with "
+                    "'python -m playwright install chromium' or configure an "
+                    f"available channel. Error type: {type(exc).__name__}."
+                )
+            raise BrowserCapabilityUnavailable(message) from exc
 
         context.set_default_timeout(self.config.navigation_timeout * 1000)
         self._blocked_unsafe_urls = _install_context_request_guard(context)
