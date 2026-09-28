@@ -752,3 +752,21 @@ def test_serialization_rejects_nonstandard_json_numbers(tmp_path):
 
     with pytest.raises(ValueError):
         serialize_parsed_document(payload)
+
+
+def test_schema_rejects_block_anchor_page_mismatch_with_valid_artifact_id(tmp_path):
+    result = _parse("native_article.pdf", "10.5555/an.v07.native", tmp_path)
+    payload = json.loads(json.dumps(result.document))
+    block = payload["blocks"][0]
+    anchor = next(
+        item for item in payload["anchors"] if item["id"] == block["anchor_id"]
+    )
+    assert payload["source"]["page_count"] >= 2
+    block["page"] = 2 if anchor["page"] == 1 else 1
+    payload["artifact_id"] = compute_parsed_artifact_id(payload)
+
+    with pytest.raises(
+        ValueError,
+        match=r"blocks\[0\]\.page conflicts with its referenced anchor page",
+    ):
+        validate_parsed_document(payload)
