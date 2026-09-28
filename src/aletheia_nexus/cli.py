@@ -26,6 +26,12 @@ from aletheia_nexus.acquire.fulltext import (
     FullTextAcquisitionStatus,
     acquire_full_text,
 )
+from aletheia_nexus.content import (
+    ParserConfig,
+    ParserInputError,
+    load_parsed_document,
+    parse_document,
+)
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 
@@ -526,19 +532,123 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def parse_main(argv: list[str] | None = None) -> int:
+    """Run the experimental parser only after its acquisition-evidence gate."""
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus parse",
+        description="Parse a VERIFIED PDF into source-linked structured JSON.",
+    )
+    parser.add_argument("pdf", type=Path)
+    parser.add_argument("--doi", required=True)
+    parser.add_argument("--sidecar", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--max-pages", type=int, default=2000)
+    parser.add_argument("--max-blocks", type=int, default=200_000)
+    parser.add_argument("--max-text-characters", type=int, default=20_000_000)
+    parser.add_argument(
+        "--no-merge-paragraph-lines",
+        action="store_true",
+        help="Keep each positioned PDF text line as a separate block.",
+    )
+    parser.add_argument(
+        "--fail-on-partial",
+        action="store_true",
+        help="Return status 6 when parsing is PARTIAL or FAILED.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        config = ParserConfig(
+            max_pages=args.max_pages,
+            max_blocks=args.max_blocks,
+            max_text_characters=args.max_text_characters,
+            merge_paragraph_lines=not args.no_merge_paragraph_lines,
+        )
+        result = parse_document(
+            args.pdf,
+            args.doi,
+            sidecar_path=args.sidecar,
+            output_path=args.output,
+            config=config,
+        )
+    except ParserInputError as exc:
+        print(str(exc), file=sys.stderr)
+        return 5
+    except (OSError, ValueError) as exc:
+        print(f"Could not write parsed artifact: {exc}", file=sys.stderr)
+        return 2
+    print(f"{result.source.doi}: {result.status}")
+    print(f"Parsed artifact: {result.output_path}")
+    quality = result.document["quality"]
+    print(
+        "Objects: "
+        f"{len(result.document['sections'])} sections, "
+        f"{len(result.document['references'])} references, "
+        f"{len(result.document['figures'])} figures, "
+        f"{len(result.document['tables'])} tables; "
+        f"anchor coverage {quality['anchor_coverage']['ratio']:.1%}"
+    )
+    if args.fail_on_partial and result.status != "PARSED":
+        return 6
+    return 0
+
+
+def search_main(argv: list[str] | None = None) -> int:
+    """Search parsed blocks and print their source locations."""
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus search",
+        description="Search a validated parsed artifact with PDF source anchors.",
+    )
+    parser.add_argument("artifact", type=Path)
+    parser.add_argument("query")
+    parser.add_argument("--section-type")
+    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument(
+        "--verify-sources",
+        action="store_true",
+        help="Require the local PDF and acquisition sidecar hashes to still match.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        artifact = load_parsed_document(args.artifact)
+        if args.verify_sources:
+            checks = artifact.verify_local_sources()
+            if not all(checks.values()):
+                failed = ", ".join(
+                    name for name, passed in checks.items() if not passed
+                )
+                print(f"Source integrity failed: {failed}", file=sys.stderr)
+                return 7
+        hits = artifact.search(
+            args.query, section_type=args.section_type, limit=args.limit
+        )
+    except (OSError, ValueError) as exc:
+        print(f"Could not search parsed artifact: {exc}", file=sys.stderr)
+        return 2
+    for hit in hits:
+        section = f" [{hit.section_heading}]" if hit.section_heading else ""
+        bbox = f" bbox={list(hit.bbox)}" if hit.bbox else ""
+        print(f"page {hit.page}{section} score={hit.score:.3f}{bbox}\n  {hit.text}")
+    print(f"Hits: {len(hits)}")
+    return 0
+
+
 def entrypoint(argv: list[str] | None = None) -> int:
     """Dispatch the stable installed CLI without importing optional Playwright."""
 
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(
-            "Aletheia Nexus — verifiable research-paper acquisition\n\n"
+            "Aletheia Nexus — verifiable paper acquisition and parsing\n\n"
             "Usage:\n"
             "  aletheia-nexus acquire DOI [options]\n"
             "  aletheia-nexus acquire INPUT.txt [options]\n"
+            "  aletheia-nexus parse PAPER.pdf --doi DOI [options]\n"
+            "  aletheia-nexus search PAPER.parsed.json QUERY [options]\n"
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus --version\n\n"
-            "Use 'aletheia-nexus acquire --help' for acquisition options."
+            "Use 'aletheia-nexus COMMAND --help' for command options."
         )
         return 0
     if args[0] in {"-V", "--version"}:
@@ -578,6 +688,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
         return 0
     if args[0] == "acquire":
         return main(args[1:])
+    if args[0] == "parse":
+        return parse_main(args[1:])
+    if args[0] == "search":
+        return search_main(args[1:])
     print(f"Unknown command: {args[0]!r}. Use --help.", file=sys.stderr)
     return 2
 

@@ -1,0 +1,10 @@
+{
+  "schema": "aletheia-nexus/parser-gold/v1",
+  "expected_status": "PARTIAL",
+  "selected_anchors": [],
+  "sections": [],
+  "figures": [],
+  "tables": [],
+  "reading_order": [],
+  "warning_codes": ["PAGE_WITHOUT_TEXT", "SPARSE_TEXT"]
+}
