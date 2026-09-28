@@ -17,7 +17,8 @@ ExtractionBackend ────── PageLayout(lines, page objects, warnings)
         │
         ▼
 native-layout-and-block-assembly
-        │                 reading order, paragraph merge, anchors, budgets
+        │                 reading order, page-furniture suppression,
+        │                 paragraph/heading merge, anchors, budgets
         ▼
 sections-references-and-objects
         │                 hierarchy, semantic sections, citations,
@@ -38,7 +39,7 @@ parsed-document/v2 ───── immutable new artifact
 | Module | Ownership |
 | --- | --- |
 | `content.gate` | Trust transition from acquisition; recognizes explicit acquisition schemas and raises typed input errors. |
-| `content.backends` | Pluggable byte/layout interpretation. The bundled backend reads native PDF text matrices and image resource metadata without decoding or publishing image bytes. |
+| `content.backends` | Pluggable byte/layout interpretation. The bundled backend reads native PDF text matrices, font-weight evidence, and placements of image resources actually painted by the page content stream without decoding or publishing image bytes. |
 | `content.pipeline` | Ordered, request-local stages. Stage identities are persisted in parser provenance. |
 | `content.parser` | Block assembly, structure, reference/object links, resource budgets, quality classification, and v2 document construction. |
 | `content.schema` | Cross-reference, hash, coverage, anchor, object, and table-cell validation plus deterministic serialization. |
@@ -73,7 +74,8 @@ backend; v0.7 does not make an unverified OCR engine a mandatory dependency.
 ## Quality and budgets
 
 `quality` reports page and anchor coverage, text volume, object counts,
-unresolved references/figures, table-cell recovery, and early termination.
+unresolved references/figures, table-cell recovery, repeated page furniture
+suppressed from semantic output, painted images left unassociated, and early termination.
 `ParserConfig` bounds pages, blocks, and extracted characters. Hitting a bound
 adds a machine-readable warning, records `stopped_early`, and produces
 `PARTIAL`; it never returns a silently incomplete `PARSED` result.

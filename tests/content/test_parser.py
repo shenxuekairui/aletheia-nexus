@@ -44,6 +44,7 @@ def test_native_parser_emits_valid_source_linked_objects(tmp_path):
     assert [item["label"] for item in document["tables"]] == ["1"]
     assert document["figures"][0]["association"] == "caption+single-page-image"
     assert document["figures"][0]["source_objects"][0]["name"] == "Im1"
+    assert document["figures"][0]["source_objects"][0]["bbox"] is not None
     assert document["tables"][0]["row_count"] == 2
     assert document["tables"][0]["column_count"] == 3
     assert len(document["tables"][0]["cells"]) == 6
@@ -181,6 +182,84 @@ def test_custom_backend_is_recorded_and_consumed(tmp_path):
         "version": "9",
     }
     assert result.document["sections"][0]["semantic_type"] == "methods"
+
+
+def test_layout_noise_and_scientific_labels_are_disambiguated(tmp_path):
+    class Backend:
+        name = "classification-test"
+        version = "1"
+
+        def extract_page(self, page, page_number):
+            del page
+            body = (
+                LayoutLine("Journal running header", 36, 770, 220, 780, 8),
+                LayoutLine("Abstract", 54, 720, 125, 734, 12, bold=True),
+                LayoutLine(
+                    "Ordinary abstract sentence has enough prose.",
+                    54,
+                    680,
+                    340,
+                    692,
+                    10,
+                ),
+                LayoutLine("FIG. 1. Example result.", 54, 640, 220, 652, 9),
+                LayoutLine("I. INTRODUCTION", 54, 600, 190, 613, 11, bold=True),
+                LayoutLine("E = mc2", 54, 560, 110, 572, 11),
+                LayoutLine("12. Liu, Y. et al. Useful study.", 54, 520, 260, 532, 9),
+                LayoutLine("2 μϵ MD c", 54, 480, 130, 492, 11),
+            )
+            if page_number == 2:
+                body = (
+                    LayoutLine("Journal running header", 36, 770, 220, 780, 8),
+                    LayoutLine("References", 54, 720, 140, 734, 12, bold=True),
+                    LayoutLine("1 Smith A. First source.", 54, 680, 250, 692, 9),
+                    LayoutLine("2 Jones B. Second source.", 54, 640, 260, 652, 9),
+                )
+            return PageLayout(
+                page=page_number,
+                width=612,
+                height=792,
+                lines=body
+                + (LayoutLine(str(page_number), 300, 10, 306, 20, 8),),
+            )
+
+    result = parse_document(
+        FIXTURES / "native_article.pdf",
+        "10.5555/an.v07.native",
+        output_path=tmp_path / "classified.parsed.json",
+        backend=Backend(),
+    )
+    document = result.document
+    block_by_text = {item["text"]: item for item in document["blocks"]}
+    assert "Journal running header" not in block_by_text
+    assert "1" not in block_by_text and "2" not in block_by_text
+    assert block_by_text["Ordinary abstract sentence has enough prose."]["kind"] == (
+        "paragraph"
+    )
+    assert block_by_text["FIG. 1. Example result."]["kind"] == "caption"
+    assert block_by_text["E = mc2"]["kind"] == "equation"
+    assert block_by_text["2 μϵ MD c"]["kind"] == "equation"
+    assert [item["semantic_type"] for item in document["sections"]] == [
+        "abstract",
+        "introduction",
+        "references",
+    ]
+    assert block_by_text["12. Liu, Y. et al. Useful study."]["kind"] == "reference"
+    assert len(document["references"]) == 3
+    assert document["quality"]["suppressed_page_furniture"] == 4
+
+
+def test_schema_rejects_invalid_diagnostic_quality_count(tmp_path):
+    result = _parse("native_article.pdf", "10.5555/an.v07.native", tmp_path)
+    payload = json.loads(json.dumps(result.document))
+    payload["quality"]["suppressed_page_furniture"] = -1
+    with pytest.raises(ValueError, match="non-negative integer"):
+        validate_parsed_document(payload)
+
+    payload = json.loads(json.dumps(result.document))
+    del payload["quality"]["suppressed_page_furniture"]
+    del payload["quality"]["unassociated_image_resources"]
+    validate_parsed_document(payload)
 
 
 def test_pipeline_rejects_duplicate_stage_names():

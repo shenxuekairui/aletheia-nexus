@@ -48,7 +48,7 @@ The required fields are:
 | `schema`, `created_at`, `parser` | Versioned schema, UTC timestamp, pipeline/backend identity, ordered stages, configuration and execution fingerprints. |
 | `source` | Normalized DOI, PDF SHA-256, acquisition-sidecar SHA-256, page count, and the acquisition schema identifier. Paths are local references, not evidence to publish. |
 | `status`, `warnings`, `errors` | Explicit `PARSED`, `PARTIAL`, or `FAILED`; machine-readable codes and human-readable detail. `PARTIAL` is never silently treated as complete. |
-| `quality` | Page/anchor coverage, text volume, object/unresolved counts, table-cell coverage and resource-limit termination. |
+| `quality` | Page/anchor coverage, text volume, object/unresolved counts, table-cell coverage, suppressed repeated page furniture, unassociated painted-image resources, and resource-limit termination. |
 | `sections` | Stable IDs, parent IDs, heading text, order and referenced block IDs; do not infer missing hierarchy as fact. |
 | `blocks` | Stable IDs, text or object reference, reading order, kind (paragraph, heading, caption, equation, etc.), extraction method and uncertainty flag. |
 | `anchors` | For every text block: one-based PDF page, page-relative bounding box when available, and text/span evidence. If location is unavailable, mark the block unanchored rather than fabricating coordinates. |
@@ -93,13 +93,17 @@ or publisher response is not part of this benchmark.
 2. **Complete:** the self-authored fixture manifest, SHA-256 values, gold
    annotations, schema validator, stable IDs, and deterministic serialization
    are checked in.
-3. **Complete:** `structured-pdf-pipeline/2.0.0` separates a public extraction
+3. **Complete:** `structured-pdf-pipeline/2.1.0` separates a public extraction
    backend contract from block assembly, structure/object linking, and quality
-   stages. The bundled native backend merges paragraph lines, classifies
-   semantic sections, resolves citations explicitly, links PDF image resources
-   to captions, recovers positioned table cells, and enforces page/block/text
-   budgets. A validated consumer API provides section text, fresh source-hash
-   checks, and searches that return PDF page/bbox anchors.
+   stages. The bundled native backend merges paragraph lines, suppresses
+   repeated page furniture, uses font weight plus conservative text-shape rules
+   for headings, distinguishes equations and author-style references, and
+   resolves citations explicitly. It records only image XObjects actually
+   painted by the page content stream, links nearby positioned images to
+   captions, recovers positioned table cells (including mathematical cells),
+   and enforces page/block/text budgets. A validated consumer API provides
+   section text, fresh source-hash checks, and searches that return PDF
+   page/bbox anchors.
 4. **Still a release gate:** outputs remain experimental until the final
    release commit passes hosted Linux and Windows jobs and real-layout evidence
    is broad enough for any stronger quality claim. The acquisition API and
@@ -114,6 +118,18 @@ table structure, 2/2 reference resolution cases, and 2/2 reading-order checks.
 These small synthetic denominators prevent regressions; they are not a claim
 of general publisher-layout accuracy. See [the architecture](V07_ARCHITECTURE.md)
 for module and extension boundaries.
+
+A private, user-supplied real-layout check on 2026-09-28 fixed 24 unique DOI,
+PDF and sidecar hashes before comparing parser 2.0.0 with 2.1.0. All 24
+documents (436 pages) completed as `PARSED` in both runs. The structural section
+candidate count fell from 2168 to 570, references increased from 967 to 1176
+while unresolved references fell from 68 to 62, unresolved semantic figures
+fell from 1151 to 0 after unused page resources stopped becoming figures, and
+tables with recovered cells increased from 3 to 11. Runtime increased from
+34.69 s to 50.61 s because painted-image placement is inspected conservatively.
+These aggregate diagnostics are not gold annotations or a publisher-wide
+accuracy claim; the protected PDFs and per-paper artifacts remain outside the
+repository.
 
 Out of scope: interpreting scientific claims, factual truth assessment,
 knowledge-graph correctness, and automatic entitlement decisions.

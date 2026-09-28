@@ -342,6 +342,12 @@ def validate_parsed_document(document: object) -> None:
         value = quality.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value != expected:
             raise ValueError(f"quality.{key} does not match document content")
+    for key in ("suppressed_page_furniture", "unassociated_image_resources"):
+        if key not in quality:
+            continue
+        value = quality.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"quality.{key} must be a non-negative integer")
     if not isinstance(quality.get("stopped_early"), bool):
         raise ValueError("quality.stopped_early must be a boolean")
     if document["status"] == "PARSED" and (

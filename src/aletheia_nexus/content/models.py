@@ -17,6 +17,7 @@ class LayoutLine:
     font_size: float
     extraction_method: str = "pypdf-content-stream"
     uncertain: bool = False
+    bold: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,3 +64,5 @@ class PipelineContext:
     warnings: list[dict[str, str]] = field(default_factory=list)
     errors: list[dict[str, str]] = field(default_factory=list)
     stopped_early: bool = False
+    suppressed_page_furniture: int = 0
+    unassociated_image_resources: int = 0
