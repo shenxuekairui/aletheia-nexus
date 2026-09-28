@@ -1371,7 +1371,8 @@ def _objects(
             if cells:
                 item["association"] = "caption+positioned-cells"
                 item["evidence_status"] = "caption-and-cell-evidence-observed"
-                item["uncertain"] = False
+                # Cell structure is heuristic evidence, not a semantic guarantee.
+                item["uncertain"] = True
             else:
                 item["association"] = "caption-only"
         collection.append(item)
