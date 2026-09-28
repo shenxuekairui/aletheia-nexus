@@ -18,14 +18,14 @@ not add embeddings, model calls, scientific claim interpretation, or Agents.
 
 - `structured-pdf-pipeline/2.4.0` writes validated
   `aletheia-nexus/parsed-document/v2` artifacts with stable source and parsed IDs.
-- Source identity is separate from local location. Only safe relative locators may
-  be persisted; moving unchanged artifacts preserves identity.
+- Source identity is separate from local location. Only cross-platform-safe
+  relative locators may be persisted; moving unchanged artifacts preserves identity.
 - MediaBox, CropBox, non-zero origins, page rotation, rendered pixels, OCR
   orientation, and deskew share one canonical displayed-page coordinate system.
 - Backend output is validated at runtime for page identity, dimensions, finite
   geometry, confidence/agreement, provenance, objects, and warnings.
 - Optional OCR/specialist failure is isolated and explicit; reliable native
-  evidence is retained.
+  evidence is retained and failures carry machine-readable reason categories.
 - Existing parsed outputs are not silently replaced. `--overwrite` is required.
 - Figures and tables describe caption/region/cell evidence and explicitly state
   `not-interpreted`; captions are not presented as scientific understanding.
@@ -33,12 +33,15 @@ not add embeddings, model calls, scientific claim interpretation, or Agents.
 ## OCR and AI-ready exports
 
 - `aletheia-nexus parse --ocr` provides the real Poppler + Tesseract executable
-  path with a per-page raster-pixel budget.
+  path with a per-page raster-pixel budget that accounts for PDF `/UserUnit`
+  before rendering and verifies actual rendered dimensions afterward.
 - Native text remains authoritative. Engine confidence and engine agreement are
   separate fields, and disagreement remains reviewable.
 - `aletheia-nexus export` creates deterministic Markdown, JSONL, or
-  structure-aware chunk JSON. Every chunk links through block/anchor/page/bbox to
-  the source artifact and records exporter/configuration identity.
+  structure-aware chunk JSON. Every chunk carries source/parsed artifact IDs,
+  explicit block/anchor/page identifiers, and page/bbox evidence. Table cell
+  evidence is kept separate from ordinary body chunks, and derived exports cannot
+  overwrite canonical parsed/source artifacts even with explicit overwrite.
 
 ## Qualification
 
@@ -53,13 +56,16 @@ not add embeddings, model calls, scientific claim interpretation, or Agents.
 - Private stress sets: 24/24 papers (436 pages) and 14/14 papers (219 pages)
   completed as `PARSED`. These figures demonstrate completion and diagnostics,
   not human-labelled semantic accuracy.
-- Final local deterministic suite on Windows/Python 3.14: **874 passed, 8
-  skipped**. The skipped group contains opt-in real browser/OCR integrations,
+- Final deterministic suite on the release-candidate head: **886 passed, 8
+  skipped** on Python 3.11 and Windows/Python 3.11, with Python 3.12–3.14
+  compatibility jobs also green. The skipped group contains opt-in real browser/OCR integrations,
   which are run separately and in dedicated CI jobs.
 
 The release workflow now tests Python 3.11, 3.12, 3.13, and 3.14; real Chromium;
 real Poppler + Tesseract; distribution build/twine validation; and installation of
-the wheel in a clean environment. The final PR commit must be green before merge.
+the wheel in a clean environment. The frozen parser evaluator runs explicitly in
+CI and uploads its machine-readable report as a workflow artifact. The final PR
+commit must be green before merge.
 
 ## Security, privacy, copyright, and boundaries
 
