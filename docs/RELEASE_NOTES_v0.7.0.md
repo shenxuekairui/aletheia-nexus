@@ -16,7 +16,7 @@ not add embeddings, model calls, scientific claim interpretation, or Agents.
 
 ## Canonical parsing contract
 
-- `structured-pdf-pipeline/2.4.0` writes validated
+- `structured-pdf-pipeline/2.5.0` writes validated
   `aletheia-nexus/parsed-document/v2` artifacts with stable source and parsed IDs.
 - Source identity is separate from local location. Only cross-platform-safe
   relative locators may be persisted; moving unchanged artifacts preserves identity.
