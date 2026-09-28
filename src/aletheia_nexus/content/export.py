@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from aletheia_nexus.content.artifact import ParsedArtifact
+from aletheia_nexus.content.schema import PARSED_DOCUMENT_SCHEMA
 
 AI_EXPORT_SCHEMA = "aletheia-nexus/ai-export/v1"
 EXPORTER_NAME = "canonical-document-exporter"
@@ -32,7 +33,12 @@ class ChunkConfig:
 
 def _fingerprint(value: object) -> str:
     return hashlib.sha256(
-        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
     ).hexdigest()
 
 
@@ -71,29 +77,38 @@ def structure_aware_chunks(
     for section in document["sections"]:
         for block_id in section["block_ids"]:
             section_by_block[str(block_id)] = section
+    table_by_block: dict[str, dict[str, object]] = {}
+    for table in document["tables"]:
+        for block_id in table["object_block_ids"]:
+            table_by_block[str(block_id)] = table
 
     groups: list[list[dict[str, object]]] = []
     current: list[dict[str, object]] = []
     current_section: str | None = None
+    current_table: str | None = None
     current_chars = 0
 
     def flush() -> None:
-        nonlocal current, current_chars, current_section
+        nonlocal current, current_chars, current_section, current_table
         if current:
             groups.append(current)
         current = []
         current_chars = 0
         current_section = None
+        current_table = None
 
     for block in sorted(document["blocks"], key=lambda item: int(item["order"])):
         block_id = str(block["id"])
         section = section_by_block.get(block_id)
         section_id = str(section["id"]) if section else None
+        table = table_by_block.get(block_id)
+        table_id = str(table["id"]) if table else None
         kind = str(block["kind"])
         text = str(block["text"])
         isolated = kind in {"heading", "caption", "equation", "reference"}
         if current and (
             section_id != current_section
+            or table_id != current_table
             or isolated
             or current_chars + 2 + len(text) > selected.max_characters
         ):
@@ -103,6 +118,7 @@ def structure_aware_chunks(
             continue
         if not current:
             current_section = section_id
+            current_table = table_id
         current.append(block)
         current_chars += len(text) + (2 if current_chars else 0)
     flush()
@@ -126,6 +142,7 @@ def structure_aware_chunks(
                     }
                 )
             section = section_by_block.get(str(group[0]["id"]))
+            table = table_by_block.get(str(group[0]["id"]))
             chunk_payload = {
                 "source_artifact_id": document["source"]["artifact_id"],
                 "parsed_artifact_id": document["artifact_id"],
@@ -136,8 +153,16 @@ def structure_aware_chunks(
             chunks.append(
                 {
                     "id": f"chunk:{_fingerprint(chunk_payload)[:24]}",
+                    "source_artifact_id": document["source"]["artifact_id"],
+                    "parsed_artifact_id": document["artifact_id"],
                     "kind": (
-                        str(group[0]["kind"]) if len(group) == 1 else "section-content"
+                        "table-content"
+                        if table is not None
+                        else (
+                            str(group[0]["kind"])
+                            if len(group) == 1
+                            else "section-content"
+                        )
                     ),
                     "section": (
                         {
@@ -146,6 +171,14 @@ def structure_aware_chunks(
                             "semantic_type": section["semantic_type"],
                         }
                         if section
+                        else None
+                    ),
+                    "table": (
+                        {
+                            "id": table["id"],
+                            "label": table["label"],
+                        }
+                        if table
                         else None
                     ),
                     "text": text,
@@ -219,7 +252,13 @@ def export_jsonl(
     records = [{"record_type": "manifest", **manifest}]
     records.extend({"record_type": "chunk", **chunk} for chunk in export["chunks"])
     return "".join(
-        json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        json.dumps(
+            record,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
         + "\n"
         for record in records
     )
@@ -236,15 +275,46 @@ def serialize_chunks(
             ensure_ascii=False,
             indent=2,
             sort_keys=True,
+            allow_nan=False,
         )
         + "\n"
     )
 
 
+def _existing_target_is_source_of_truth(target: Path) -> bool:
+    """Refuse to destroy canonical/source evidence even with explicit overwrite."""
+
+    try:
+        with target.open("rb") as stream:
+            prefix = stream.read(8)
+    except OSError:
+        return False
+    if prefix.startswith(b"%PDF-"):
+        return True
+    try:
+        value = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(value, dict):
+        return False
+    schema = value.get("schema")
+    return schema in {
+        PARSED_DOCUMENT_SCHEMA,
+        "aletheia-nexus/acquisition-record/v1",
+        "aletheia-nexus/access-acquisition-record/v1",
+    }
+
+
 def write_ai_export(path: str | Path, payload: str, *, overwrite: bool = False) -> Path:
     target = Path(path)
-    if target.exists() and not overwrite:
-        raise FileExistsError(f"AI export already exists: {target}")
+    if target.exists():
+        if not overwrite:
+            raise FileExistsError(f"AI export already exists: {target}")
+        if _existing_target_is_source_of_truth(target):
+            raise ValueError(
+                "AI export must not overwrite a canonical parsed artifact, "
+                "source PDF, or acquisition sidecar"
+            )
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(target.suffix + ".part")
     try:
