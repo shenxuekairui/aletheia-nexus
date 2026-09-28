@@ -725,3 +725,32 @@ def test_public_fixtures_contain_no_authenticated_or_publisher_material():
         if path.is_file():
             lowered = path.read_bytes().lower()
             assert not any(marker in lowered for marker in forbidden), path.name
+
+
+@pytest.mark.parametrize(
+    "locator",
+    [
+        r"C:\\Users\\private\\paper.pdf",
+        r"\\\\server\\share\\paper.pdf",
+        "../paper.pdf",
+        r"..\\paper.pdf",
+    ],
+)
+def test_schema_rejects_nonportable_locator_on_every_platform(
+    tmp_path, locator
+):
+    result = _parse("native_article.pdf", "10.5555/an.v07.native", tmp_path)
+    payload = json.loads(json.dumps(result.document))
+    payload["source"]["locators"]["pdf"] = locator
+
+    with pytest.raises(ValueError, match="relative local path"):
+        validate_parsed_document(payload)
+
+
+def test_serialization_rejects_nonstandard_json_numbers(tmp_path):
+    result = _parse("native_article.pdf", "10.5555/an.v07.native", tmp_path)
+    payload = json.loads(json.dumps(result.document))
+    payload["future_extension"] = {"value": float("nan")}
+
+    with pytest.raises(ValueError):
+        serialize_parsed_document(payload)
