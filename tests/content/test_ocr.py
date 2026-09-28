@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pytest
 from pypdf import PdfReader
+from pypdf.generic import FloatObject, NameObject
 
 from aletheia_nexus.content import (
     AdaptiveOcrBackend,
     AdaptiveOcrConfig,
     NativePdfBackend,
+    TesseractOcrBackend,
     TesseractOcrConfig,
     parse_document,
     validate_parsed_document,
@@ -150,6 +152,7 @@ def test_optional_backend_failure_preserves_native_evidence():
     )
     assert failure["backend"] == "broken-ocr@1"
     assert failure["degraded"] is True
+    assert failure["reason"] == "TIMEOUT"
     assert "C:\\Users" not in failure["detail"]
     assert "signature=secret" not in failure["detail"]
     assert "<redacted-local-path>" in failure["detail"]
@@ -344,10 +347,54 @@ def test_tesseract_configuration_and_tsv_coordinates():
 
 
 def test_tesseract_refuses_raster_allocation_over_budget():
-    from aletheia_nexus.content import TesseractOcrBackend
-
     page = PdfReader(FIXTURES / "sparse_scan.pdf").pages[0]
     backend = TesseractOcrBackend(TesseractOcrConfig(max_raster_pixels=1))
 
     with pytest.raises(RuntimeError, match="raster budget exceeded"):
         backend.extract_page(page, 1)
+
+
+def test_tesseract_execution_identity_records_configuration_and_runtime():
+    backend = TesseractOcrBackend(
+        TesseractOcrConfig(
+            languages="eng+chi_sim",
+            max_raster_pixels=12_345_678,
+            page_segmentation_mode=6,
+        )
+    )
+
+    identity = backend.execution_identity
+
+    assert identity["configuration"]["languages"] == "eng+chi_sim"
+    assert identity["configuration"]["max_raster_pixels"] == 12_345_678
+    assert identity["configuration"]["page_segmentation_mode"] == 6
+    assert "tesseract" in identity["runtime_dependencies"]
+    assert "poppler" in identity["runtime_dependencies"]
+    assert "pillow" in identity["runtime_dependencies"]
+    assert "/" not in identity["configuration"]["renderer_command"]
+    assert "\\" not in identity["configuration"]["renderer_command"]
+
+
+def test_tesseract_raster_budget_accounts_for_pdf_user_unit():
+    page = PdfReader(FIXTURES / "sparse_scan.pdf").pages[0]
+    page[NameObject("/UserUnit")] = FloatObject(10)
+    backend = TesseractOcrBackend(
+        TesseractOcrConfig(max_raster_pixels=50_000_000)
+    )
+
+    with pytest.raises(RuntimeError, match="raster budget exceeded"):
+        backend.extract_page(page, 1)
+
+
+def test_adaptive_execution_identity_includes_nested_backend_configuration():
+    ocr = TesseractOcrBackend(
+        TesseractOcrConfig(languages="eng", page_segmentation_mode=6)
+    )
+    backend = AdaptiveOcrBackend(ocr_backends=(ocr,))
+
+    identity = backend.execution_identity
+
+    assert identity["native"]["name"] == "pypdf-native-layout"
+    assert "runtime_dependencies" in identity["native"]["components"]
+    assert identity["ocr"][0]["name"] == "tesseract-ocr"
+    assert identity["ocr"][0]["components"]["configuration"]["page_segmentation_mode"] == 6
