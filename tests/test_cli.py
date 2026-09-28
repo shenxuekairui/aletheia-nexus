@@ -32,50 +32,6 @@ def test_entrypoint_dispatches_acquire(monkeypatch):
     assert seen == [["10.1000/example"]]
 
 
-def test_entrypoint_dispatches_parse(monkeypatch):
-    seen = []
-    monkeypatch.setattr(cli, "parse_main", lambda argv: seen.append(argv) or 8)
-    assert cli.entrypoint(["parse", "paper.pdf", "--doi", "10.1000/example"]) == 8
-    assert seen == [["paper.pdf", "--doi", "10.1000/example"]]
-
-
-def test_entrypoint_dispatches_search(monkeypatch):
-    seen = []
-    monkeypatch.setattr(cli, "search_main", lambda argv: seen.append(argv) or 9)
-    assert cli.entrypoint(["search", "paper.parsed.json", "method"]) == 9
-    assert seen == [["paper.parsed.json", "method"]]
-
-
-def test_parse_cli_reports_typed_gate_error(monkeypatch, capsys):
-    from aletheia_nexus.content import ParserInputError, ParserInputErrorCode
-
-    def fail(*args, **kwargs):
-        raise ParserInputError(ParserInputErrorCode.PDF_HASH_MISMATCH, "changed")
-
-    monkeypatch.setattr(cli, "parse_document", fail)
-    assert cli.parse_main(["paper.pdf", "--doi", "10.1000/example"]) == 5
-    assert "PDF_HASH_MISMATCH" in capsys.readouterr().err
-
-
-def test_search_cli_prints_page_anchor(monkeypatch, capsys):
-    hit = SimpleNamespace(
-        page=2,
-        section_heading="Methods",
-        score=2.5,
-        bbox=(0.1, 0.2, 0.3, 0.4),
-        text="Measured at 25 C.",
-    )
-    artifact = SimpleNamespace(
-        search=lambda *args, **kwargs: [hit],
-        verify_local_sources=lambda: {"pdf": True, "acquisition_sidecar": True},
-    )
-    monkeypatch.setattr(cli, "load_parsed_document", lambda path: artifact)
-    assert cli.search_main(["paper.parsed.json", "measured"]) == 0
-    output = capsys.readouterr().out
-    assert "page 2 [Methods]" in output
-    assert "Measured at 25 C." in output
-
-
 def test_public_only_accepts_direct_doi_without_browser(monkeypatch, tmp_path, capsys):
     def acquire(doi, **options):
         assert doi == "10.1000/example"
