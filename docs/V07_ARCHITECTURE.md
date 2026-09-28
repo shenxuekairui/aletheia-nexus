@@ -56,6 +56,9 @@ Backend output is validated before it can enter the long-lived artifact. Invalid
 page numbers, dimensions, rotations, boxes, non-finite numbers, confidence,
 agreement, object metadata, or warning structures fail that backend result. The
 parser also verifies backend dimensions/rotation against the actual PDF page.
+Execution identity includes backend configuration and relevant runtime dependency
+versions so materially different extraction environments do not share one
+execution fingerprint.
 
 ## Optional backends and degradation
 
@@ -66,10 +69,12 @@ do not erase native lines. Diagnostic text is scrubbed of local paths and URLs
 before persistence.
 
 Native/OCR overlap retains native text. Agreement is recorded separately as
-`engine_agreement`; it does not manufacture `1.0` extraction confidence. Conflicts
-emit a review warning. Figures and tables describe only observed caption, painted
-region, or positioned-cell evidence through `evidence_status`; every such object
-has `interpretation_status: not-interpreted`.
+`engine_agreement`; it does not manufacture `1.0` extraction confidence. Optional
+failures also record a stable reason category for machine consumers. Conflicts emit
+a review warning. Figures and tables describe only observed caption, painted
+region, or positioned-cell evidence through `evidence_status`; heuristic table
+cell structure remains explicitly uncertain and every such object has
+`interpretation_status: not-interpreted`.
 
 ## Consumption layer
 
@@ -79,10 +84,11 @@ has `interpretation_status: not-interpreted`.
 - JSONL for pipelines;
 - chunk JSON for RAG/Agent ingestion.
 
-Chunking respects section changes and isolates headings, captions, equations, and
-references. Oversized individual blocks are split deterministically. Every chunk
-contains an evidence chain from block and anchor to page/bbox and the source and
-parsed artifact identities.
+Chunking respects section changes, table-object boundaries, and isolates headings,
+captions, equations, and references. Oversized individual blocks are split
+deterministically. Every chunk is independently attributable: it carries source
+and parsed artifact identities, block/anchor/page identifiers, and the detailed
+page/bbox evidence chain.
 
 ## Status and limits
 
