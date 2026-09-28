@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Frozen benchmark PDFs must remain byte-identical across platforms.
+*.pdf binary
+
+# The v0.7 manifest hashes its JSON fixtures byte-for-byte as well.
+benchmarks/v07_fixtures/*.json binary
