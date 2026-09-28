@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from aletheia_nexus.content import (
+    ParsedArtifact,
+    export_markdown,
     load_parsed_document,
     parse_document,
 )
@@ -62,3 +64,42 @@ def test_search_validates_query_and_limit(tmp_path):
             pass
         else:
             raise AssertionError("invalid search input must fail")
+
+
+def test_constructor_isolates_canonical_document_from_input_mutation(tmp_path):
+    result = parse_document(
+        FIXTURES / "native_article.pdf",
+        "10.5555/an.v07.native",
+        output_path=tmp_path / "isolated.parsed.json",
+        created_at="2026-09-28T00:00:00+00:00",
+    )
+    source = result.document
+    artifact = ParsedArtifact(source)
+    original_text = artifact.document["blocks"][0]["text"]
+
+    source["blocks"][0]["text"] = "externally mutated"
+
+    assert artifact.document["blocks"][0]["text"] == original_text
+
+
+def test_consumer_rejects_tampered_canonical_content_with_stale_identity(tmp_path):
+    artifact = _artifact(tmp_path)
+    original_id = artifact.document["artifact_id"]
+    artifact._document["blocks"][0]["uncertain"] = not artifact._document["blocks"][0][
+        "uncertain"
+    ]
+
+    assert artifact._document["artifact_id"] == original_id
+    try:
+        export_markdown(artifact)
+    except ValueError as exc:
+        assert "artifact_id does not match canonical document content" in str(exc)
+    else:
+        raise AssertionError("tampered canonical content must not be exported")
+
+    try:
+        artifact.search("Introduction")
+    except ValueError as exc:
+        assert "artifact_id does not match canonical document content" in str(exc)
+    else:
+        raise AssertionError("tampered canonical content must not be consumed")
