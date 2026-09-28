@@ -170,7 +170,7 @@ aletheia-nexus parse downloads\paper.pdf --doi 10.1234/example
 
 输出 schema 为 `aletheia-nexus/parsed-document/v2`；未发布的 v1 草案不作为兼容承诺。v2 包含路径无关的 source/parsed `artifact_id`、来源 DOI 与哈希、流水线/后端版本、配置与执行指纹、页面 MediaBox/CropBox/旋转、质量覆盖率、章节、合并段落、结构化引用、图表证据及表格单元。每个文本块使用统一的 `pdf-cropbox-display-bottom-left-normalized/v1` 页码/bbox 和文本 span；本机绝对路径不进入工件，安全的相对 locator 只用于重新核验且不参与身份计算。基线框由 PDF 文本矩阵和字体大小估算，明确标为 `bbox_precision: estimated`，不冒充逐字形精确框。状态始终显式为 `PARSED`、`PARTIAL` 或 `FAILED`。
 
-默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。需要扫描页支持时安装 `aletheia-nexus[ocr]`、安装 Poppler/Tesseract，并使用 `--ocr`。可用 `--ocr-languages` 和 `--ocr-max-raster-pixels` 控制语言与单页内存预算。OCR 只在原生字符过少、乱码、图像主导或图像区域缺少文本锚点时触发；原生文本与 OCR 重叠时保留原生文本，OCR 仅补空白区域。引擎置信度和多引擎一致性分开记录；失败、超时或无资源会保留 native evidence 并显式降级。完整配置见[v0.7 OCR](V07_OCR.md)。
+默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。需要扫描页支持时安装 `aletheia-nexus[ocr]`、安装 Poppler/Tesseract，并使用 `--ocr`。可用 `--ocr-languages` 和 `--ocr-max-raster-pixels` 控制语言与单页内存预算；预算会在渲染前考虑 PDF `/UserUnit`，并在渲染后按实际像素再次检查。OCR 只在原生字符过少、乱码、图像主导或图像区域缺少文本锚点时触发；原生文本与 OCR 重叠时保留原生文本，OCR 仅补空白区域。引擎置信度和多引擎一致性分开记录；失败、超时或无资源会保留 native evidence，并给出稳定的机器可读降级原因。完整配置见[v0.7 OCR](V07_OCR.md)。
 
 解析流水线会合并同栏连续文本行、恢复章节语义与显式未解析引用；图表字段只陈述 `caption-observed`、`caption-and-region-observed` 或 `caption-and-cell-evidence-observed`，并始终写明 `interpretation_status: not-interpreted`。通用 OCR 不等于表格、公式或图表理解，专用解析器须通过区域接口接入。解析成功也不等于论文结论为真。
 
@@ -194,7 +194,7 @@ aletheia-nexus export downloads\paper.parsed.json --format chunks `
   --output downloads\paper.chunks.json --max-chars 6000
 ```
 
-每个 chunk 都带 source/parsed artifact ID、exporter 配置指纹以及 `block → anchor → page/bbox` 证据链。分块优先保留 section 边界，并隔离 heading、caption、equation 和 reference。导出文件也默认拒绝覆盖。
+每个 chunk 都可独立追溯，显式带 source/parsed artifact ID、block/anchor/page 标识及 `block → anchor → page/bbox` 证据链。分块优先保留 section 与 table object 边界，并隔离 heading、caption、equation 和 reference。导出文件默认拒绝覆盖；即使显式使用 `--overwrite`，也只能替换已有派生输出，不能覆盖 canonical parsed artifact、原 PDF 或 acquisition sidecar。
 
 公开回归使用 `benchmarks/v07_fixtures/` 中项目自编、Apache-2.0 可再分发的小型 PDF；运行 `python scripts/evaluate_v07_parser.py` 可复核输入门、逐页 gold 文本、锚点、章节、双栏顺序和图表证据。`benchmarks/v07_public_oa/` 另定义三篇按哈希冻结、按需下载的 OA 资格集。二者都不代表对所有出版社版式或科学语义的泛化质量。
 
