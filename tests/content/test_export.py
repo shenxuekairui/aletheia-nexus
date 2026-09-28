@@ -48,6 +48,8 @@ def test_structure_aware_exports_are_deterministic_and_source_linked(tmp_path):
     assert first["parsed_artifact_id"] == artifact.document["artifact_id"]
     assert first["chunks"]
     for chunk in first["chunks"]:
+        assert chunk["source_artifact_id"] == first["source_artifact_id"]
+        assert chunk["parsed_artifact_id"] == first["parsed_artifact_id"]
         assert chunk["evidence"]
         assert all(
             {"block_id", "anchor_id", "page", "bbox", "coordinate_system"}
@@ -64,6 +66,11 @@ def test_structure_aware_exports_are_deterministic_and_source_linked(tmp_path):
     ]
     assert records[0]["record_type"] == "manifest"
     assert all(record["record_type"] == "chunk" for record in records[1:])
+    assert all(
+        record["source_artifact_id"] == first["source_artifact_id"]
+        and record["parsed_artifact_id"] == first["parsed_artifact_id"]
+        for record in records[1:]
+    )
     assert (
         json.loads(serialize_chunks(artifact, config=config))["chunks"]
         == first["chunks"]
@@ -78,6 +85,19 @@ def test_export_and_parse_outputs_refuse_silent_overwrite(tmp_path):
     with pytest.raises(FileExistsError, match="already exists"):
         write_ai_export(output, serialize_chunks(artifact))
     assert output.read_bytes() == before
+    write_ai_export(output, serialize_chunks(artifact), overwrite=True)
+
+    protected = [
+        artifact.path,
+        artifact.path.parent / artifact.document["source"]["locators"]["pdf"],
+        artifact.path.parent
+        / artifact.document["source"]["locators"]["acquisition_sidecar"],
+    ]
+    for source in protected:
+        source_before = source.read_bytes()
+        with pytest.raises(ValueError, match="must not overwrite"):
+            write_ai_export(source, export_markdown(artifact), overwrite=True)
+        assert source.read_bytes() == source_before
 
     with pytest.raises(FileExistsError, match="already exists"):
         parse_document(
@@ -124,3 +144,20 @@ def test_parsed_identity_is_independent_of_timestamp_and_local_location(tmp_path
         identities.append(result.document["artifact_id"])
 
     assert identities[0] == identities[1]
+
+
+def test_structure_aware_chunks_keep_table_evidence_separate(tmp_path):
+    artifact = _artifact(tmp_path)
+    result = structure_aware_chunks(artifact, config=ChunkConfig(max_characters=512))
+
+    table = artifact.document["tables"][0]
+    table_block_ids = set(table["object_block_ids"])
+    table_chunks = [chunk for chunk in result["chunks"] if chunk["table"] is not None]
+
+    assert table_chunks
+    assert {chunk["table"]["id"] for chunk in table_chunks} == {table["id"]}
+    assert set().union(*(set(chunk["block_ids"]) for chunk in table_chunks)) == table_block_ids
+    assert all(
+        set(chunk["block_ids"]) <= table_block_ids and chunk["kind"] == "table-content"
+        for chunk in table_chunks
+    )
