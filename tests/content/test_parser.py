@@ -12,6 +12,13 @@ from aletheia_nexus.content import (
 )
 from aletheia_nexus.content.evaluation import evaluate_manifest
 from aletheia_nexus.content.models import LayoutLine, PageLayout, PipelineContext
+from aletheia_nexus.content.parser import (
+    _caption_match,
+    _deduplicate_caption_blocks,
+    _kind,
+    _mark_bibliography_blocks,
+    _reference_segments,
+)
 from aletheia_nexus.content.pipeline import ParserPipeline
 from aletheia_nexus.content.schema import serialize_parsed_document
 
@@ -243,9 +250,230 @@ def test_layout_noise_and_scientific_labels_are_disambiguated(tmp_path):
         "introduction",
         "references",
     ]
-    assert block_by_text["12. Liu, Y. et al. Useful study."]["kind"] == "reference"
-    assert len(document["references"]) == 3
+    assert block_by_text["12. Liu, Y. et al. Useful study."]["kind"] == "paragraph"
+    assert len(document["references"]) == 2
     assert document["quality"]["suppressed_page_furniture"] == 4
+
+
+@pytest.mark.parametrize(
+    ("text", "label"),
+    [
+        ("Fig. 1 Electrocatalytic performance", "1"),
+        ("Fig. 1Overview of the workflow", "1"),
+        ("FIGURE 2 | Experimental setup", "2"),
+        ("Figure 2 continued", "2"),
+        ("Table IV. Ablation results", "IV"),
+    ],
+)
+def test_caption_classifier_keeps_real_caption_styles(text, label):
+    match = _caption_match(text)
+    assert match is not None
+    assert match.group("label") == label
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Figure 2 shows the resulting distribution.",
+        "Fig. 5 (d) [12]. There are two regimes.",
+        "Fig. 8 (b) illustrates the measured response.",
+        "Figure 2d on the TEM image marks the region.",
+        "Figure 2, for both experimental settings.",
+        "Table 4 lists all hyperparameters.",
+        "Table I. Regarding both time effects, the response changes.",
+        "Figure captions are provided below.",
+        "Figure Views are available online.",
+    ],
+)
+def test_caption_classifier_rejects_body_mentions_and_partial_roman_words(text):
+    assert _caption_match(text) is None
+
+
+def test_duplicate_caption_layers_keep_one_semantic_object_without_dropping_text():
+    blocks = [
+        {
+            "id": "b1",
+            "page": 3,
+            "kind": "caption",
+            "text": "Figure 1. Structural diagram of the sensor.",
+        },
+        {
+            "id": "b2",
+            "page": 3,
+            "kind": "caption",
+            "text": "Figure 1.Structuraldiagram of the sensor.",
+        },
+        {
+            "id": "b3",
+            "page": 4,
+            "kind": "caption",
+            "text": "Figure 2 continued",
+        },
+        {
+            "id": "b4",
+            "page": 4,
+            "kind": "caption",
+            "text": "Figure 2. Primary result.",
+        },
+    ]
+    original_text = [block["text"] for block in blocks]
+
+    _deduplicate_caption_blocks(blocks)
+
+    assert [block["text"] for block in blocks] == original_text
+    assert [block["kind"] for block in blocks[:2]].count("caption") == 1
+    assert [block["kind"] for block in blocks[2:]] == ["caption", "caption"]
+
+
+def test_duplicate_table_mention_prefers_caption_phrase():
+    blocks = [
+        {
+            "id": "b1",
+            "page": 2,
+            "kind": "caption",
+            "text": "Table 2. Result of multiple comparisons.",
+        },
+        {
+            "id": "b2",
+            "page": 2,
+            "kind": "caption",
+            "text": "Table 2 statistically significant differences were observed.",
+        },
+    ]
+
+    _deduplicate_caption_blocks(blocks)
+
+    assert [block["kind"] for block in blocks] == ["caption", "paragraph"]
+
+
+def test_bracketed_numbers_require_bibliography_context():
+    table_row = LayoutLine("[9] 0.74 0.81", 54, 600, 220, 612, 9)
+    assert _kind(table_row, median_font=9, heading_font_ratio=1.35) == "paragraph"
+
+    blocks = [
+        {"id": "b1", "page": 1, "kind": "paragraph", "text": "[9] 0.74 0.81"},
+        {"id": "b2", "page": 2, "kind": "heading", "text": "References"},
+        {
+            "id": "b3",
+            "page": 2,
+            "kind": "paragraph",
+            "text": "[1] Smith A. First source.",
+        },
+        {
+            "id": "b4",
+            "page": 4,
+            "kind": "paragraph",
+            "text": "1 Department of Physics, Example University",
+        },
+    ]
+    _mark_bibliography_blocks(blocks)
+
+    assert blocks[0]["kind"] == "paragraph"
+    assert blocks[2]["kind"] == "reference"
+    assert blocks[3]["kind"] == "paragraph"
+
+
+def test_post_reference_heading_ends_bibliography_on_the_same_page():
+    blocks = [
+        {"id": "b1", "page": 1, "kind": "heading", "text": "References"},
+        {"id": "b2", "page": 1, "kind": "paragraph", "text": "1 Smith A. Source."},
+        {
+            "id": "b3",
+            "page": 1,
+            "kind": "heading",
+            "text": "Author contributions",
+        },
+        {"id": "b4", "page": 1, "kind": "paragraph", "text": "2 Methodology"},
+    ]
+    _mark_bibliography_blocks(blocks)
+
+    assert blocks[1]["kind"] == "reference"
+    assert blocks[2]["kind"] == "heading"
+    assert blocks[3]["kind"] == "paragraph"
+
+
+def test_bibliography_numbering_rejects_volume_and_year_continuations():
+    blocks = [
+        {"id": "b1", "page": 1, "kind": "heading", "text": "References"},
+        {
+            "id": "b2",
+            "page": 1,
+            "kind": "paragraph",
+            "text": "1. Smith A. First source.",
+        },
+        {
+            "id": "b3",
+            "page": 1,
+            "kind": "paragraph",
+            "text": "2. Jones B. Second source.",
+        },
+        {"id": "b4", "page": 1, "kind": "paragraph", "text": "224, 149–159."},
+        {
+            "id": "b5",
+            "page": 1,
+            "kind": "paragraph",
+            "text": "3. Chen C. Third source.",
+        },
+        {"id": "b6", "page": 1, "kind": "paragraph", "text": "2. Repeated row."},
+    ]
+    _mark_bibliography_blocks(blocks)
+
+    assert [block["kind"] for block in blocks[1:]] == [
+        "reference",
+        "reference",
+        "paragraph",
+        "reference",
+        "paragraph",
+    ]
+
+
+def test_bracketed_bibliography_does_not_accept_plain_numeric_continuations():
+    blocks = [
+        {"id": "b1", "page": 1, "kind": "heading", "text": "References"},
+        {"id": "b2", "page": 1, "kind": "paragraph", "text": "[1] First source."},
+        {"id": "b3", "page": 1, "kind": "paragraph", "text": "13 TeV collisions."},
+        {"id": "b4", "page": 1, "kind": "paragraph", "text": "[2] Second source."},
+    ]
+    _mark_bibliography_blocks(blocks)
+
+    assert [block["kind"] for block in blocks[1:]] == [
+        "reference",
+        "paragraph",
+        "reference",
+    ]
+
+
+def test_merged_reference_blocks_are_split_without_volume_false_positives():
+    assert _reference_segments(
+        "[13] First source.[14] Second source. 2015 volume 92."
+    ) == [
+        ("13", "[13] First source."),
+        ("14", "[14] Second source. 2015 volume 92."),
+    ]
+    assert _reference_segments(
+        "33 Smith A. First source. 60 A. Bordoloi, Second source. 224, 149–159."
+    ) == [
+        ("33", "33 Smith A. First source."),
+        ("60", "60 A. Bordoloi, Second source. 224, 149–159."),
+    ]
+    assert _reference_segments("continued journal title. [3] Third source.") == [
+        ("3", "[3] Third source.")
+    ]
+
+
+def test_end_of_document_bracketed_bibliography_is_inferred_without_heading():
+    blocks = [
+        {"id": "b1", "page": 2, "kind": "paragraph", "text": "[1] table row"},
+        {"id": "b2", "page": 8, "kind": "paragraph", "text": "[1] First source."},
+        {"id": "b3", "page": 8, "kind": "paragraph", "text": "[2] Second source."},
+        {"id": "b4", "page": 9, "kind": "paragraph", "text": "[3] Third source."},
+        {"id": "b5", "page": 10, "kind": "paragraph", "text": "Author biography"},
+    ]
+
+    _mark_bibliography_blocks(blocks)
+
+    assert blocks[0]["kind"] == "paragraph"
+    assert [block["kind"] for block in blocks[1:4]] == ["reference"] * 3
 
 
 def test_schema_rejects_invalid_diagnostic_quality_count(tmp_path):

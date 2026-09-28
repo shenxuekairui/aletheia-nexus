@@ -7,7 +7,9 @@ import json
 import math
 import re
 import statistics
+import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 from pypdf import PdfReader
 
@@ -19,7 +21,7 @@ from aletheia_nexus.content.schema import PARSED_DOCUMENT_SCHEMA
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "2.1.0"
+PARSER_VERSION = "2.2.0"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -29,7 +31,12 @@ _HEADING_NUMBER = re.compile(
 )
 _HEADING_ROMAN = re.compile(r"^(?P<number>[IVXLCDM]+|[A-Z])[.)]\s+(?=\S)")
 _REFERENCE = re.compile(r"^(?:\[(?P<bracket>\d+)\]|(?P<plain>\d+)[.)]?)\s+")
-_BRACKETED_REFERENCE = re.compile(r"^\[\d+\]\s+")
+_BRACKET_REFERENCE_ENTRY = re.compile(r"\[(?P<label>\d{1,3})\]\s+")
+_PLAIN_REFERENCE_ENTRY = re.compile(
+    r"(?<!\S)(?P<label>\d{1,3})[.)]?\s+"
+    r"(?=(?:[A-Z][\w'’\-]+(?:,\s*|\s+)[A-Z]{1,4}\.?"
+    r"|(?:[A-Z]\.\s*){1,4}[A-Z][\w'’\-]+))"
+)
 _AUTHOR_REFERENCE = re.compile(
     r"^\d+[.)]?\s+(?:"
     r"(?:[^,\s]+\s+)*[^,\s]+,\s+[A-Z](?:[.\s]|$)"
@@ -37,11 +44,42 @@ _AUTHOR_REFERENCE = re.compile(
     r"|[^\s]+\s+[A-Z]{1,4}\.\s+[A-Z]"
     r")"
 )
+_YEAR_AUTHOR_REFERENCE = re.compile(
+    r"^\d+[.)]?\s+[A-Z][\w'’\-]+\s+[A-Z]{1,4}\.?\s+\d{4}\b"
+)
+_AFFILIATION_HINT = re.compile(
+    r"\b(?:centre|center|cnrs|collaboration|department|faculty|institute|"
+    r"laboratory|laboratoire|school|universit(?:y|é)|university)\b",
+    re.IGNORECASE,
+)
+_AFFILIATION_COUNTRY = re.compile(r";\s*[A-Z][\w -]+[.;]?$", re.UNICODE)
 _CITATION = re.compile(r"\[(\d+(?:\s*[-,]\s*\d+)*)\]")
 _CAPTION = re.compile(
     r"^(?P<kind>fig(?:ure)?|table)\.?\s*"
-    r"(?P<label>(?:[A-Z]?\d+[A-Za-z]?|[IVXLCDM]+))\s*[:.|\-]?\s*",
+    r"(?P<label>(?:[A-Z]?\d+(?:[A-Za-z](?=$|\s|[,;:.|\-]))?"
+    r"|[IVXLCDM]+(?=$|\s|[,;:.|\-])))",
     re.IGNORECASE,
+)
+_CAPTION_MENTION = re.compile(
+    r"^(?:clearly\s+)?(?:show(?:s|ed)?|present(?:s|ed)?|illustrat(?:e|es|ed)|"
+    r"summari[sz](?:e|es|ed)|list(?:s|ed)?|represent(?:s|ed)?|provide(?:s|d)|"
+    r"depict(?:s|ed)?|demonstrat(?:e|es|ed)|compare(?:s|d)|report(?:s|ed)?|"
+    r"give(?:s)?|contain(?:s|ed)?|display(?:s|ed)?|indicat(?:e|es|ed)|"
+    r"plot(?:s|ted)?|highlight(?:s|ed)?|reveal(?:s|ed)?|correspond(?:s|ed)?|"
+    r"regard(?:s|ed|ing)?)\b",
+    re.IGNORECASE,
+)
+_CAPTION_PANEL_CITATION = re.compile(r"^\([A-Za-z0-9]+\)\s*\[\d")
+_CAPTION_PANEL = re.compile(r"^\([A-Za-z0-9]+\)\s*")
+_CAPTION_SUFFIX_MENTION = re.compile(r"^on\b", re.IGNORECASE)
+_CAPTION_JOINED_SUFFIX_MENTION = re.compile(r"^[A-Za-z]on\b", re.IGNORECASE)
+_CAPTION_SENTENCE = re.compile(
+    r"^(?:the\b.*?\b(?:is|are|was|were|has|have)\b|"
+    r"(?:\S+\s+){0,3}(?:is|are|was|were)\b)",
+    re.IGNORECASE,
+)
+_CAPTION_CONTAMINATION = re.compile(
+    r"\b(?:be concluded|however|in addition|it\s*can)\b", re.IGNORECASE
 )
 _EQUATION = re.compile(r"(?:[=≈≤≥±∑∫√→←]|\b(?:sin|cos|log|exp)\s*\(|^[A-Za-z]\s*=)")
 _MATH_GLYPH = re.compile(r"[αβγδεϵζηθικλμνξοπρστυφχψωΓΔΘΛΞΠΣΦΨΩ]", re.UNICODE)
@@ -68,6 +106,19 @@ _SEMANTIC_SECTIONS = {
     "acknowledgments": "acknowledgments",
     "acknowledgements": "acknowledgments",
 }
+_POST_REFERENCE_HEADINGS = (
+    "additional information",
+    "affiliation",
+    "author contribution",
+    "author information",
+    "authors' contribution",
+    "competing interest",
+    "conflict of interest",
+    "data availability",
+    "ethics statement",
+    "publisher's note",
+    "supplementary information",
+)
 
 
 @dataclass(frozen=True)
@@ -207,9 +258,9 @@ def _semantic_section(text: str) -> str | None:
 
 def _kind(line: LayoutLine, median_font: float, heading_font_ratio: float) -> str:
     text = line.text.strip()
-    if _CAPTION.match(text):
+    if _caption_match(text):
         return "caption"
-    if _BRACKETED_REFERENCE.match(text) or _AUTHOR_REFERENCE.match(text):
+    if _is_author_reference(text):
         return "reference"
     short = len(text) <= 120 and len(text.split()) <= 14
     known_heading = _semantic_section(text) is not None
@@ -239,6 +290,133 @@ def _kind(line: LayoutLine, median_font: float, heading_font_ratio: float) -> st
     if len(text) <= 160 and equation_like:
         return "equation"
     return "paragraph"
+
+
+def _is_author_reference(text: str) -> bool:
+    author_evidence = (
+        _AUTHOR_REFERENCE.match(text) is not None
+        or _YEAR_AUTHOR_REFERENCE.match(text) is not None
+    )
+    return (
+        author_evidence
+        and not _AFFILIATION_HINT.search(text[:80])
+        and not _AFFILIATION_COUNTRY.search(text)
+    )
+
+
+def _caption_match(text: str) -> re.Match[str] | None:
+    """Return a caption prefix only when the remainder reads like a caption."""
+
+    stripped = text.strip()
+    match = _CAPTION.match(stripped)
+    if match is None:
+        return None
+    remainder = stripped[match.end() :].lstrip()
+    if remainder.startswith((",", ";")):
+        return None
+    description = remainder.lstrip(".:|- ")
+    if _CAPTION_MENTION.match(description):
+        return None
+    if _CAPTION_PANEL_CITATION.match(description):
+        return None
+    panel = _CAPTION_PANEL.match(description)
+    if panel is not None and _CAPTION_MENTION.match(description[panel.end() :]):
+        return None
+    if match.group("label")[-1].isalpha() and _CAPTION_SUFFIX_MENTION.match(
+        description
+    ):
+        return None
+    if _CAPTION_JOINED_SUFFIX_MENTION.match(description):
+        return None
+    return match
+
+
+def _caption_description(text: str, match: re.Match[str]) -> str:
+    return text.strip()[match.end() :].lstrip(".:|- ")
+
+
+def _caption_comparison_text(text: str, match: re.Match[str]) -> str:
+    description = _caption_description(text, match)
+    normalized = unicodedata.normalize("NFKD", description).casefold()
+    return "".join(character for character in normalized if character.isalnum())
+
+
+def _caption_quality(text: str, match: re.Match[str]) -> tuple[int, int, int, int]:
+    description = _caption_description(text, match)
+    marker = match.group("kind")
+    marker_count = len(re.findall(rf"\b{re.escape(marker)}", text, re.IGNORECASE))
+    return (
+        -int(_CAPTION_SENTENCE.search(description) is not None),
+        -int(_CAPTION_CONTAMINATION.search(description) is not None),
+        -marker_count,
+        len(_caption_comparison_text(text, match)),
+    )
+
+
+def _deduplicate_caption_blocks(blocks: list[dict[str, object]]) -> None:
+    """Keep one semantic caption for duplicated PDF text-layer evidence."""
+
+    kept: dict[tuple[str, str], list[dict[str, object]]] = {}
+    for block in blocks:
+        if block["kind"] != "caption":
+            continue
+        text = str(block["text"])
+        match = _caption_match(text)
+        if match is None:
+            continue
+        key = (match.group("kind").casefold(), match.group("label").casefold())
+        description = _caption_description(text, match).casefold()
+        if "continued" in description or "supplement" in description:
+            kept.setdefault(key, []).append(block)
+            continue
+        comparison = _caption_comparison_text(text, match)
+        duplicate: dict[str, object] | None = None
+        for candidate in kept.get(key, []):
+            candidate_text = str(candidate["text"])
+            candidate_match = _caption_match(candidate_text)
+            if candidate_match is None:
+                continue
+            candidate_description = _caption_description(
+                candidate_text, candidate_match
+            ).casefold()
+            if "continued" in candidate_description or "supplement" in (
+                candidate_description
+            ):
+                continue
+            page_distance = abs(int(block["page"]) - int(candidate["page"]))
+            candidate_comparison = _caption_comparison_text(
+                candidate_text, candidate_match
+            )
+            minimum_length = min(len(comparison), len(candidate_comparison))
+            similar = (
+                minimum_length >= 12
+                and (
+                    comparison in candidate_comparison
+                    or candidate_comparison in comparison
+                )
+            ) or (
+                minimum_length >= 30
+                and SequenceMatcher(
+                    None, comparison, candidate_comparison, autojunk=False
+                ).ratio()
+                >= 0.72
+            )
+            if page_distance == 0 or (page_distance == 1 and similar):
+                duplicate = candidate
+                break
+        if duplicate is None:
+            kept.setdefault(key, []).append(block)
+            continue
+        duplicate_text = str(duplicate["text"])
+        duplicate_match = _caption_match(duplicate_text)
+        if duplicate_match is not None and _caption_quality(
+            text, match
+        ) > _caption_quality(duplicate_text, duplicate_match):
+            duplicate["kind"] = "paragraph"
+            kept[key].remove(duplicate)
+            kept[key].append(block)
+        else:
+            block["kind"] = "paragraph"
 
 
 def _looks_like_heading_text(text: str) -> bool:
@@ -561,61 +739,169 @@ def _citation_labels(value: str) -> list[str]:
 def _mark_bibliography_blocks(blocks: list[dict[str, object]]) -> None:
     """Use an explicit References heading to disambiguate numbered entries."""
 
+    reference_heading_indices = [
+        index
+        for index, block in enumerate(blocks)
+        if block["kind"] == "heading"
+        and _semantic_section(str(block["text"])) == "references"
+    ]
+    if not reference_heading_indices:
+        _mark_inferred_bracketed_bibliography(blocks)
+        return
+
+    first_heading_index = reference_heading_indices[0]
+    first_heading_page = int(blocks[first_heading_index]["page"])
+    later_reference_page = (
+        min(int(blocks[index]["page"]) for index in reference_heading_indices[1:])
+        if len(reference_heading_indices) > 1
+        else None
+    )
     in_bibliography = False
-    for block in blocks:
+    for index, block in enumerate(blocks):
+        page = int(block["page"])
         semantic_type = (
             _semantic_section(str(block["text"]))
             if block["kind"] == "heading"
             else None
         )
-        if semantic_type == "references":
+        if index == first_heading_index:
             in_bibliography = True
             continue
-        if not in_bibliography:
+        if index < first_heading_index:
+            match = _REFERENCE.match(str(block["text"]))
+            if (
+                page == first_heading_page
+                and match is not None
+                and match.group("bracket") is not None
+            ):
+                block["kind"] = "reference"
+            elif page != first_heading_page and block["kind"] == "reference":
+                block["kind"] = "paragraph"
             continue
-        if semantic_type is not None:
+        if later_reference_page is not None and page >= later_reference_page:
+            in_bibliography = False
+        if not in_bibliography:
+            if block["kind"] == "reference":
+                block["kind"] = "paragraph"
+            continue
+        text = str(block["text"])
+        match = _REFERENCE.match(text)
+        contextual_reference = _BRACKET_REFERENCE_ENTRY.search(text) is not None or (
+            match is not None and _is_author_reference(text)
+        )
+        if contextual_reference:
+            block["kind"] = "reference"
+            continue
+        normalized = _strip_heading_number(text)
+        if semantic_type is not None or (
+            block["kind"] == "heading"
+            and normalized.startswith(_POST_REFERENCE_HEADINGS)
+        ):
             in_bibliography = False
             continue
-        if _REFERENCE.match(str(block["text"])):
-            block["kind"] = "reference"
-        elif block["kind"] == "heading":
+        if block["kind"] == "heading":
+            block["kind"] = "paragraph"
+        if block["kind"] == "reference":
             block["kind"] = "paragraph"
 
 
-def _references(
-    blocks: list[dict[str, object]], sections: list[dict[str, object]]
-) -> list[dict[str, object]]:
-    references: list[dict[str, object]] = []
-    by_label: dict[str, dict[str, object]] = {}
-    bibliography_blocks = {
-        str(block_id)
-        for section in sections
-        if section.get("semantic_type") == "references"
-        for block_id in section["block_ids"]
-    }
-    resolved_block_ids: set[str] = set()
+def _mark_inferred_bracketed_bibliography(
+    blocks: list[dict[str, object]],
+) -> None:
+    """Recognize an end-of-document bracketed bibliography without a heading."""
+
+    if not blocks:
+        return
+    max_page = max(int(block["page"]) for block in blocks)
+    minimum_page = max(1, math.ceil(max_page * 0.55))
+    candidates: list[tuple[dict[str, object], int, int]] = []
     for block in blocks:
         match = _REFERENCE.match(str(block["text"]))
         if (
-            block["kind"] != "reference" and str(block["id"]) not in bibliography_blocks
-        ) or match is None:
+            match is not None
+            and match.group("bracket") is not None
+            and int(block["page"]) >= minimum_page
+        ):
+            candidates.append((block, int(block["page"]), int(match.group("bracket"))))
+    start_index = next(
+        (index for index, (_, _, label) in enumerate(candidates) if label <= 3), None
+    )
+    if start_index is None:
+        return
+    segment: list[tuple[dict[str, object], int, int]] = []
+    previous_page: int | None = None
+    for candidate in candidates[start_index:]:
+        if previous_page is not None and candidate[1] > previous_page + 1:
+            break
+        segment.append(candidate)
+        previous_page = candidate[1]
+    if len(segment) < 3:
+        return
+    start_page = segment[0][1]
+    end_page = segment[-1][1]
+    for block in blocks:
+        if (
+            start_page <= int(block["page"]) <= end_page
+            and _BRACKET_REFERENCE_ENTRY.search(str(block["text"])) is not None
+        ):
+            block["kind"] = "reference"
+
+
+def _reference_segments(text: str) -> list[tuple[str, str]]:
+    first = _REFERENCE.match(text)
+    if first is None:
+        pattern = _BRACKET_REFERENCE_ENTRY
+    else:
+        pattern = (
+            _BRACKET_REFERENCE_ENTRY
+            if first.group("bracket")
+            else _PLAIN_REFERENCE_ENTRY
+        )
+    matches = list(pattern.finditer(text))
+    if not matches:
+        if first is None:
+            return []
+        label = first.group("bracket") or first.group("plain")
+        return [(label, text)]
+    return [
+        (
+            match.group("label"),
+            text[match.start() : matches[index + 1].start()].strip()
+            if index + 1 < len(matches)
+            else text[match.start() :].strip(),
+        )
+        for index, match in enumerate(matches)
+    ]
+
+
+def _references(blocks: list[dict[str, object]]) -> list[dict[str, object]]:
+    references: list[dict[str, object]] = []
+    by_label: dict[str, dict[str, object]] = {}
+    resolved_block_ids: set[str] = set()
+    for block in blocks:
+        if block["kind"] != "reference":
             continue
-        label = match.group("bracket") or match.group("plain")
-        dois = extract_dois(str(block["text"]))
-        item = {
-            "id": f"r{len(references) + 1:05d}",
-            "label": label,
-            "block_id": block["id"],
-            "anchor_id": block["anchor_id"],
-            "raw_text": block["text"],
-            "doi": dois[0] if len(dois) == 1 else None,
-            "doi_candidates": dois,
-            "cited_by_block_ids": [],
-            "resolved": True,
-            "ambiguous": len(dois) > 1,
-        }
-        references.append(item)
-        by_label[label] = item
+        for label, raw_text in _reference_segments(str(block["text"])):
+            existing = by_label.get(label)
+            if existing is not None:
+                if existing["raw_text"] != raw_text:
+                    existing["ambiguous"] = True
+                continue
+            dois = extract_dois(raw_text)
+            item = {
+                "id": f"r{len(references) + 1:05d}",
+                "label": label,
+                "block_id": block["id"],
+                "anchor_id": block["anchor_id"],
+                "raw_text": raw_text,
+                "doi": dois[0] if len(dois) == 1 else None,
+                "doi_candidates": dois,
+                "cited_by_block_ids": [],
+                "resolved": True,
+                "ambiguous": len(dois) > 1,
+            }
+            references.append(item)
+            by_label[label] = item
         resolved_block_ids.add(str(block["id"]))
 
     unresolved: dict[str, dict[str, object]] = {}
@@ -764,7 +1050,7 @@ def _objects(
     by_block = {str(item["id"]): item for item in blocks}
 
     for block in blocks:
-        match = _CAPTION.match(str(block["text"]))
+        match = _caption_match(str(block["text"]))
         if block["kind"] != "caption" or match is None:
             continue
         is_figure = match.group("kind").lower().startswith("fig")
@@ -850,8 +1136,9 @@ class _StructureStage:
 
     def run(self, context: PipelineContext) -> None:
         _mark_bibliography_blocks(context.blocks)
+        _deduplicate_caption_blocks(context.blocks)
         context.sections = _sections(context.blocks)
-        context.references = _references(context.blocks, context.sections)
+        context.references = _references(context.blocks)
         (
             context.figures,
             context.tables,

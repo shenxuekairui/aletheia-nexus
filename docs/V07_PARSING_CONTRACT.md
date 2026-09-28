@@ -93,12 +93,15 @@ or publisher response is not part of this benchmark.
 2. **Complete:** the self-authored fixture manifest, SHA-256 values, gold
    annotations, schema validator, stable IDs, and deterministic serialization
    are checked in.
-3. **Complete:** `structured-pdf-pipeline/2.1.0` separates a public extraction
+3. **Complete:** `structured-pdf-pipeline/2.2.0` separates a public extraction
    backend contract from block assembly, structure/object linking, and quality
    stages. The bundled native backend merges paragraph lines, suppresses
    repeated page furniture, uses font weight plus conservative text-shape rules
-   for headings, distinguishes equations and author-style references, and
-   resolves citations explicitly. It records only image XObjects actually
+   for headings, distinguishes equations and bibliography-scoped references,
+   filters sentence-style figure/table mentions, and resolves citations
+   explicitly. Duplicate PDF text-layer captions are collapsed only at the
+   semantic-object level while all source blocks remain anchored. It records
+   only image XObjects actually
    painted by the page content stream, links nearby positioned images to
    captions, recovers positioned table cells (including mathematical cells),
    and enforces page/block/text budgets. A validated consumer API provides
@@ -130,6 +133,18 @@ tables with recovered cells increased from 3 to 11. Runtime increased from
 These aggregate diagnostics are not gold annotations or a publisher-wide
 accuracy claim; the protected PDFs and per-paper artifacts remain outside the
 repository.
+
+The follow-up 2.2.0 audit re-extracted every source page and compared normalized
+retained text with the parsed blocks. All 24 documents and all 436 pages matched
+exactly, with zero omitted and zero added tokens. Documents with duplicate
+reference labels fell from 7 to 0 after table rows, volume/page continuations,
+affiliation numbers, and peer-review numbering were excluded from the main
+bibliography. Merged multi-reference blocks retain one source anchor while
+emitting separate entries, reducing unresolved citations from 62 to 41.
+High-confidence duplicate caption layers are represented once;
+real `continued` and figure-supplement evidence remains separate. This is a
+source-fidelity and targeted semantic audit, not a claim that every scientific
+structure has complete gold-label recall.
 
 Out of scope: interpreting scientific claims, factual truth assessment,
 knowledge-graph correctness, and automatic entitlement decisions.
