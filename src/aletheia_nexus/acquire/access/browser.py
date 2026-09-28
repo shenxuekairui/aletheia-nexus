@@ -6,6 +6,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
 from aletheia_nexus.acquire.access.browser_route import attempt_browser_route
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
@@ -21,6 +22,7 @@ from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import CandidateUrlType, FullTextCandidate
 from aletheia_nexus.acquire.fulltext.models import AcquisitionResult, AcquisitionStatus
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.models import PaperMetadata
 
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -60,6 +62,8 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         "wait_for_interaction",
         "keep_unverified",
         "cdp_resume_existing_page",
+        "cnki_enabled",
+        "cnki_search_all_titles",
     ):
         if not isinstance(getattr(config, name), bool):
             raise TypeError(f"{name} must be a bool")
@@ -99,7 +103,7 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         value = getattr(config, name)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
             raise ValueError(f"{name} must be a non-negative number")
-    for name in ("max_source_routes", "max_pdf_candidates"):
+    for name in ("max_source_routes", "max_pdf_candidates", "cnki_max_results"):
         value = getattr(config, name)
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise ValueError(f"{name} must be a positive integer")
@@ -756,6 +760,43 @@ class BrowserSession:
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
+    def acquire_provider(
+        self,
+        provider: BaseBrowserProvider,
+        *,
+        doi: str,
+        output_dir: str | Path,
+        metadata: PaperMetadata | None = None,
+        expected_title: str | None = None,
+        metadata_mailto: str | None = None,
+    ) -> BrowserAccessAttempt:
+        """Run one registered provider in this reusable authenticated context."""
+
+        if not isinstance(provider, BaseBrowserProvider):
+            raise TypeError("provider must be a BaseBrowserProvider")
+        context = self._ensure_started()
+        page = context.new_page()
+        attempt = None
+        try:
+            attempt = provider.fetch(
+                doi=doi,
+                context=context,
+                page=page,
+                output_dir=output_dir,
+                config=self.config,
+                metadata=metadata,
+                expected_title=expected_title,
+                metadata_mailto=metadata_mailto,
+            )
+            return attempt
+        finally:
+            preserve_interaction_page = (
+                attempt is not None
+                and attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
+            )
+            if not preserve_interaction_page and not page.is_closed():
+                page.close()
+
 
 def acquire_with_browser(
     *,
@@ -777,4 +818,27 @@ def acquire_with_browser(
             routes=routes,
             output_dir=output_dir,
             expected_title=expected_title,
+        )
+
+
+def acquire_with_browser_provider(
+    provider: BaseBrowserProvider,
+    *,
+    doi: str,
+    output_dir: str | Path,
+    metadata: PaperMetadata | None = None,
+    expected_title: str | None = None,
+    metadata_mailto: str | None = None,
+    config: BrowserAccessConfig | None = None,
+) -> BrowserAccessAttempt:
+    """Run a site-specific provider with a temporary persistent browser session."""
+
+    with BrowserSession(config) as session:
+        return session.acquire_provider(
+            provider,
+            doi=doi,
+            output_dir=output_dir,
+            metadata=metadata,
+            expected_title=expected_title,
+            metadata_mailto=metadata_mailto,
         )

@@ -311,6 +311,18 @@ def main() -> int:
     parser.add_argument("--request-timeout", type=float, default=45.0)
     parser.add_argument("--max-source-routes", type=int, default=12)
     parser.add_argument("--max-pdf-candidates", type=int, default=12)
+    parser.add_argument(
+        "--cnki",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable the CNKI browser provider (default: enabled).",
+    )
+    parser.add_argument(
+        "--cnki-all-titles",
+        action="store_true",
+        help="Try CNKI for all unresolved titles, not only Chinese/CNKI DOI records.",
+    )
+    parser.add_argument("--cnki-max-results", type=int, default=5)
     parser.add_argument("--base-timeout", type=float, default=30.0)
     parser.add_argument("--max-route-attempts", type=int, default=16)
     parser.add_argument("--max-file-attempts", type=int, default=24)
@@ -386,6 +398,9 @@ def main() -> int:
         request_timeout=args.request_timeout,
         max_source_routes=args.max_source_routes,
         max_pdf_candidates=args.max_pdf_candidates,
+        cnki_enabled=args.cnki,
+        cnki_search_all_titles=args.cnki_all_titles,
+        cnki_max_results=args.cnki_max_results,
         keep_unverified=args.keep_unverified,
     )
     if (

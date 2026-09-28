@@ -78,6 +78,9 @@ python -u scripts/batch_v06_download.py dois.txt `
 | `--keep-unverified` | 保留未通过正文身份验证的 PDF，便于诊断。 |
 | `--fail-on-unverified` | 任意有效 DOI 未 `VERIFIED` 时以非零状态退出。 |
 | `--unpaywall-email EMAIL` | 为适用的开放获取发现服务提供联系邮箱。 |
+| `--cnki` / `--no-cnki` | 启用或关闭 CNKI 浏览器 Provider；默认启用。 |
+| `--cnki-all-titles` | 对所有未获取文献尝试 CNKI，包括登记元数据仅有英文标题的论文。 |
+| `--cnki-max-results N` | CNKI 标题/作者匹配时检查的最大结果数；默认 5。 |
 
 所有参数可运行 `python scripts/batch_v06_download.py --help` 查看。遇到慢站点可以适度增大 `--base-timeout`、`--request-timeout`、`--max-source-routes` 和 `--max-pdf-candidates`；预算增加会延长批次运行时间，不能创造未获得的订阅权限。
 
@@ -92,6 +95,22 @@ Elsevier 等站点可能按网络 IP 自动推荐机构。即使 AN 复用同一
 如果确认没有订阅权限，可以关闭当前挑战页面，或设置有限的 `--interaction-timeout N`；当前 DOI 可结束为 `INTERACTION_REQUIRED`，默认继续后续 DOI。这与“已确认无权限”的人工判断应分别记录，不要把没有完成的登录自动解释成 `ENTITLEMENT_REQUIRED`。`Ctrl+C` 会中断整个命令：之前已写入检查点的论文仍可在下次复用，但本次完整 `batch-report.json` 不保证更新。若出版社明确显示购买或无权限页面，AN 才可能自动归类 `ENTITLEMENT_REQUIRED`。
 
 IEEE DOI 也进入同一浏览器流程。出现已记住的 “Access Through …” 机构按钮时，AN 会尝试点击、等待约 5 秒并重试 PDF；账号密码、MFA 和其他人工验证仍由用户完成。所有文件都受同样的正文验证规则约束。
+
+### CNKI（中国知网）
+
+公开来源和适用的官方接口失败后，浏览器 Provider 会对元数据标题含中文的论文尝试 CNKI。它先复用 Crossref/DataCite 已解析的标题与作者，按标题检索并用作者辅助排序，打开详情页时捕获新标签，只选择明确的 PDF 下载控件；CAJ 链接不会作为 PDF 保存。下载结果仍须通过统一的 PDF 结构和 DOI/标题身份校验，成功文件的 sidecar 会记录 `cnki_authenticated_browser`、来源页和 SHA-256，但不记录 cookie 或凭据。
+
+默认配置不会让每篇外文文献都访问 CNKI。需要显式扩大范围或完全关闭时，可在 Python API 中设置：
+
+```python
+BrowserAccessConfig(
+    cnki_enabled=True,
+    cnki_search_all_titles=True,  # 默认 False，仅自动处理中文标题
+    cnki_max_results=5,
+)
+```
+
+若出现知网滑块或验证码，AN 不代答、不模拟拖动；可见浏览器会等待用户操作，并通过 `interaction_callback` 报告 `CAPTCHA`。超时或禁用交互时结果为 `INTERACTION_REQUIRED`。是否能够下载 PDF 仍取决于当前校园网、机构 VPN、登录会话与订阅范围；只有 CAJ 或无 PDF 权限时不会伪装成成功。
 
 ## 5. 断点续跑与文件核验
 

@@ -7,6 +7,7 @@ class DiscoveryProvider(StrEnum):
 
     OPENALEX = "openalex"
     UNPAYWALL = "unpaywall"
+    CNKI = "cnki"
 
 
 class CandidateUrlType(StrEnum):
