@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aletheia-nexus"
-version = "0.6.1"
-description = "A local-first scientific knowledge acquisition infrastructure."
+version = "0.7.0"
+description = "Local-first, verifiable paper acquisition and source-linked parsing."
 readme = "README.en.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -22,9 +22,9 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "fonttools>=4.60,<5",
-    "httpx>=0.27,<1",
-    "pypdf[crypto]>=6.14,<7",
+    "fonttools>=4.60.2,<5",
+    "httpx>=0.28.1,<1",
+    "pypdf[crypto]>=6.19,<7",
 ]
 
 [project.urls]
@@ -40,6 +40,9 @@ aletheia-nexus = "aletheia_nexus.cli:entrypoint"
 [project.optional-dependencies]
 browser = [
     "playwright>=1.63,<2",
+]
+ocr = [
+    "Pillow>=12.3,<13",
 ]
 dev = [
     "pytest>=8,<10",

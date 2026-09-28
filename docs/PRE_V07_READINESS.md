@@ -1,6 +1,6 @@
 # Before v0.7: acquisition closure and parsing readiness
 
-This is a forward-looking checklist, not a claim that v0.7 parsing already exists. The frozen `v0.6.1` release remains the installable acquisition baseline. Any later fixes belong to a new release; never rewrite the tag or silently change the evidence behind its published test numbers.
+This is the historical readiness checklist used before the v0.7 implementation. The frozen `v0.6.1` evidence remains an acquisition baseline; the current source tree contains the `0.7.0` implementation described in the [architecture](V07_ARCHITECTURE.md) and [contract](V07_PARSING_CONTRACT.md). Never rewrite the v0.6.1 tag or silently change the evidence behind its published test numbers.
 
 ## Current evidence and open gates
 
@@ -48,7 +48,7 @@ The legacy acceptance runner tests *one* institution per run. A second instituti
 
 ## v0.7 design entry
 
-v0.7 may begin a **scientific content parsing layer** under the [versioned parsing entry contract](V07_PARSING_CONTRACT.md). Its input must be a locally existing `VERIFIED` main-article PDF with a matching SHA-256 and provenance sidecar. Parsing must not silently upgrade an `EXHAUSTED`, `INTERACTION_REQUIRED`, or unverified file into trusted input. The contract is written; the rights-cleared fixture set and parser implementation are not yet complete.
+v0.7 was scoped here as a **scientific content parsing layer** under the [versioned parsing entry contract](V07_PARSING_CONTRACT.md). Its implementation accepts only a locally existing `VERIFIED` main-article PDF with a matching SHA-256 and provenance sidecar. Parsing does not silently upgrade an `EXHAUSTED`, `INTERACTION_REQUIRED`, or unverified file into trusted input. The rights-cleared fixture set, parser pipeline, versioned artifact, consumer API, CLI, native-first selective OCR interface and offline evaluator are included in `0.7.0`; broader human-labelled layout qualification remains ongoing evidence work.
 
 Define a small versioned output schema before implementation: document identity, section hierarchy, text blocks, page/span anchors, bibliography links, tables/figures as referenced objects, extraction method, uncertainty, and errors. Source anchors must let a researcher navigate back to the PDF passage. “Parsed” is not “scientifically true”; inference and claim verification are later, separate layers.
 

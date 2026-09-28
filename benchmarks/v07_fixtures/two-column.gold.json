@@ -1,0 +1,18 @@
+{
+  "schema": "aletheia-nexus/parser-gold/v1",
+  "expected_status": "PARSED",
+  "text_pages": [
+    {
+      "page": 1,
+      "text": "Two-Column Reading Order Fixture DOI: 10.5555/an.v07.columns 1 Introduction Left column first line. Left column second line. 2 Methods Left column method detail. 3 Results Right column first line. Right column second line. 4 Conclusion Right column conclusion detail."
+    }
+  ],
+  "selected_anchors": [
+    {"page": 1, "text": "Left column first line"},
+    {"page": 1, "text": "Right column first line"}
+  ],
+  "sections": ["1 Introduction", "2 Methods", "3 Results", "4 Conclusion"],
+  "figures": [],
+  "tables": [],
+  "reading_order": ["1 Introduction", "Left column first line", "2 Methods", "Left column method detail", "3 Results", "Right column first line", "4 Conclusion"]
+}

@@ -1,3 +1,4 @@
+import html
 import re
 import unicodedata
 from difflib import SequenceMatcher
@@ -59,6 +60,10 @@ _ORIGINAL_ARTICLE_DOI_LABEL = re.compile(
 
 
 def _normalize_title(value: str) -> str:
+    # Metadata providers may return either literal HTML or escaped markup.
+    # Decode first, then remove only tag-shaped fragments so mathematical
+    # comparisons containing angle brackets are not discarded wholesale.
+    value = re.sub(r"</?[A-Za-z][^>]*>", "", html.unescape(value))
     value = unicodedata.normalize("NFKC", value).lower()
     value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
     return " ".join(value.split())

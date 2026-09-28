@@ -1,2 +1,11 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Frozen benchmark PDFs must remain byte-identical across platforms.
+*.pdf binary
+
+# Frozen JSON fixtures remain byte-identical while staying reviewable in diffs.
+benchmarks/v07_fixtures/*.json text eol=lf
+
+# Deterministic line-oriented AI exports use LF on every platform.
+*.jsonl text eol=lf

@@ -1,79 +1,329 @@
 # Aletheia Nexus
 
-> A local-first path from a verifiable research paper to durable scientific knowledge.
+[中文 README](README.md) · [User Manual](docs/USER_MANUAL.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Release History](docs/RELEASE_HISTORY.md)
 
-[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User manual (Chinese)](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
+> **Turn scientific literature into verified, source-linked, AI-ready data.**
 
-**Why this name?** *Aletheia* is Greek for truth; *Nexus* means connection. We want evidence scattered across papers, data, tools, and research practice to form trustworthy connections—so conclusions can be traced to their sources and each investigation can add to a researcher's long-term knowledge.
-
-## Why this project exists
-
-Research has increasingly capable models, but still lacks a dependable entry point for facts. A DOI can lead to the main article, supporting information, a login screen, a paywall, a citation, or a dead link. Finding a plausible PDF is not the same as acquiring the **correct main article with an explainable provenance**. Errors at this boundary propagate into parsers, search indexes, knowledge systems, and agents.
-
-Aletheia Nexus (AN) begins with a deliberately testable question: *Is this locally saved file the intended paper's main text, and how did it get here?* It treats a failed acquisition as an informative result rather than quietly importing the wrong document. The larger ambition is a researcher-controlled, auditable scientific knowledge foundation that can eventually connect evidence, methods, workflows, and decisions. The current repository implements the acquisition layer, not that entire future system.
-
-## What works today
-
-| Maturity | Capability | Boundary |
-| --- | --- | --- |
-| **Implemented** | DOI normalization and Crossref/DataCite metadata resolution | External services can be unavailable or incomplete. |
-| **Implemented** | Full-text candidate discovery from metadata, OpenAlex, Unpaywall, and other configured sources | A candidate URL is only a lead, not proof of access or identity. |
-| **Implemented** | Bounded public HTTP acquisition and static article/landing-page expansion | No subscription or access-control bypass. |
-| **Implemented** | PDF structure, DOI/title identity, and main-article-versus-supplement checks | `VERIFIED` means the file identity/role is supported, not that its scientific claims are true. |
-| **Implemented** | Provenance, SHA-256, explicit outcomes, and resumable verified-file checkpoints | Sensitive browser credentials are not stored in these records. |
-| **Experimental** | Official Elsevier API where configured; persistent browser sessions and human handoff for legitimate institutional access | Requires the user's actual entitlement and may need login, MFA, or CAPTCHA. One post-release source commit passed single-institution controls across ACS and Wiley; multi-institution generalization is not established. |
-| **Experimental** | Sequential batch runs with browser-session reuse | Site changes and access state can still require intervention. |
-| **Planned** | Structured parsing, scientific memory, knowledge graphs, and agent workflows | Not delivered by the current release. |
-
-The first public code release was **v0.6.0**. **v0.6.1** adds publisher adapters, an installed CLI, Windows CI, and PyPI packaging without changing the frozen v0.6.0 tag. A later source commit completed a single-institution qualification; that evidence must not be retroactively attributed to the frozen PyPI release. See the [release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) and [pre-v0.7 readiness record](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/PRE_V07_READINESS.md) for exact scope. First-time testing by independent users remains open; the three-minute onboarding target has not yet been independently established.
-
-## How it works
+Aletheia Nexus (AN) is a **local-first scientific knowledge infrastructure** project. It starts from one of the most basic scientific objects—a paper—and turns literature handling into a verifiable, reusable pipeline:
 
 ```text
-DOI → metadata and candidate sources → bounded acquisition
-    → PDF structure and identity checks → main-text role check
-    → VERIFIED file + provenance + hash, or an explicit non-success status
+DOI / scientific object
+        ↓
+discovery and legitimate acquisition
+        ↓
+VERIFIED main article + provenance
+        ↓
+source-linked canonical document
+        ↓
+Markdown / JSONL / structure-aware chunks
+        ↓
+LLM / RAG / Workflow / Agent / Knowledge
 ```
 
-Every access route converges on the same document validation. The browser engine handles navigation, response/download capture, challenge observation, and handoff. Narrow publisher adapters handle known article URL patterns and visible page differences; they cannot declare an article verified. A browser that displays a PDF has not by itself completed acquisition.
+AN does not treat “a PDF opened in a browser” as success, and it does not treat “text was extracted from a PDF” as trustworthy data. It asks whether the document is the intended main article, where the bytes came from, whether the source changed, whether parsed objects can return to page-level evidence, and whether failures and uncertainty remain explicit.
 
-## Get started
+The long-term direction is deliberately layered: reliable evidence and data contracts first, then scientific semantics, knowledge, workflows, agents, and higher-level scientific intelligence.
 
-Python 3.11 or newer is required. With the v0.6.1 PyPI release:
+---
+
+## v0.7: from verified papers to AI-ready scientific data
+
+v0.6 focused on:
+
+> **Did I actually obtain the intended paper?**
+
+v0.7 adds the next trust boundary:
+
+> **Can machine-produced structure reliably return to the original evidence?**
+
+```text
+VERIFIED PDF
+    ↓
+strict DOI / role / schema / hash / page-count gate
+    ↓
+native-first extraction + optional OCR
+    ↓
+canonical PageGeometry
+    ↓
+sections / blocks / references / figures / tables
+    ↓
+page / bbox / source anchors
+    ↓
+parsed-document/v2
+    ↓
+Markdown / JSONL / structure-aware chunks
+```
+
+Here, **AI-ready** does not mean that a model has already “understood” the science. It means the document has a durable, model-agnostic representation with identity, provenance, structure, location, quality state, and uncertainty—ready for downstream LLM, RAG, Agent, or knowledge workflows without reparsing the PDF.
+
+---
+
+## Current capabilities
+
+| Layer | Capability | Status |
+| --- | --- | --- |
+| Identity / Metadata | DOI normalization and Crossref / DataCite metadata | Implemented |
+| Discovery | Metadata, OpenAlex, Unpaywall, PMC and related full-text leads | Implemented |
+| Acquisition | Bounded public HTTP, official routes, persistent browser sessions, batch/resume | Implemented / Experimental |
+| Verification | PDF structure, DOI/title identity, main-document role, SHA-256 and provenance | Implemented |
+| Parse | Native-first blocks, sections, references, figure/table evidence, page/bbox anchors | Implemented |
+| OCR | Optional real Poppler + Tesseract path with orientation, deskew and resource budgets | Implemented |
+| Search | Search parsed artifacts with optional local source verification | Implemented |
+| AI Export | Deterministic Markdown, JSONL and structure-aware chunks | Implemented |
+| Scientific semantics | Entity / condition / measurement / claim / relation extraction | Planned |
+| Knowledge / Workflow / Agent | Scientific memory, workflows and agent orchestration | Planned |
+
+### Acquisition trust boundary
+
+Only a fully validated target main document becomes `VERIFIED`.
+
+AN does not provide subscriptions, bypass paywalls, answer CAPTCHAs, or invent user entitlement. When legitimate access requires login, MFA, institution selection, or a CAPTCHA, the user completes that step in their own visible browser and AN resumes from the resulting state.
+
+Explicit non-success states include:
+
+- `INTERACTION_REQUIRED`
+- `ENTITLEMENT_REQUIRED`
+- `EXHAUSTED`
+
+These are meaningful workflow outcomes, not errors to hide.
+
+### Parsing trust boundary
+
+The v0.7 parser accepts only an unchanged `VERIFIED` artifact whose DOI, document role, PDF hash, acquisition-sidecar hash, readability, and page count still match.
+
+The resulting `aletheia-nexus/parsed-document/v2` is a separate canonical artifact. It records stable source and parsed identities, sections, blocks, references, observed figure/table evidence, normalized page coordinates, extraction provenance, confidence/agreement, warnings, errors, and quality state.
+
+**`PARSED` does not mean scientifically true.** Observing a caption, region, or positioned table cells is not the same as interpreting their scientific meaning.
+
+---
+
+## AI-ready exports
+
+The canonical parsed artifact remains the Source of Truth. AI exports are deterministic derived views.
 
 ```bash
-python -m pip install aletheia-nexus
-aletheia-nexus doctor
-aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir downloads
+aletheia-nexus export PAPER.parsed.json --format markdown --output PAPER.ai.md
+aletheia-nexus export PAPER.parsed.json --format jsonl --output PAPER.ai.jsonl
+aletheia-nexus export PAPER.parsed.json --format chunks --output PAPER.chunks.json
 ```
 
-The `--public-only` example does not require a browser and may legitimately report `EXHAUSTED` if no verified main article is publicly reachable. A quick local CLI smoke test is `aletheia-nexus --help`; a live DOI attempt depends on network services and access rights.
+Structure-aware chunking respects section, heading, caption, reference, equation, and table-object boundaries instead of blindly cutting every N tokens.
 
-For the experimental authenticated browser path:
+Each chunk independently retains:
+
+```text
+source_artifact_id
+parsed_artifact_id
+block_ids
+anchor_ids
+pages
+page/bbox evidence
+```
+
+This preserves the chain:
+
+```text
+chunk → block → anchor → page/bbox → source artifact → PDF
+```
+
+AN core does not depend on a specific model provider, embedding API, tokenizer, or vector database. Those belong to downstream consumers.
+
+---
+
+## Quick start
+
+Python 3.11+ is required.
+
+### Install the latest published version
+
+```bash
+python -m pip install -U aletheia-nexus
+aletheia-nexus --version
+aletheia-nexus doctor
+```
+
+Check the [PyPI project](https://pypi.org/project/aletheia-nexus/) for the currently published version.
+
+### Acquire a publicly reachable paper
+
+```bash
+aletheia-nexus acquire 10.1371/journal.pone.0310216 \
+  --public-only \
+  --output-dir downloads/first-paper
+```
+
+A valid `EXHAUSTED` result simply means the configured public routes did not yield a verified main article.
+
+### Browser-assisted legitimate access
 
 ```bash
 python -m pip install "aletheia-nexus[browser]"
 python -m playwright install chromium
-aletheia-nexus acquire papers.json --output-dir downloads/papers --fail-on-unverified
+
+aletheia-nexus acquire papers.json \
+  --output-dir downloads/papers \
+  --fail-on-unverified
 ```
 
-`papers.json` may contain DOI strings or objects with `doi` and optional `title`. TXT and CSV input are also supported. The installed `aletheia-nexus acquire` command replaces the old `scripts/batch_v06_download.py` invocation; that script remains as a compatibility wrapper. For all options, run `aletheia-nexus acquire --help` and consult the [detailed manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md).
+### Parse a VERIFIED artifact
 
-Check the [PyPI project](https://pypi.org/project/aletheia-nexus/) for published versions; a GitHub source checkout or release alone does not prove that a PyPI upload succeeded. To try an unmerged development branch instead, clone the repository and run `python -m pip install -e .` from its root.
+```bash
+aletheia-nexus parse downloads/paper.pdf --doi 10.1234/example
+aletheia-nexus search PAPER.parsed.json QUERY --verify-sources
+```
 
-## Result semantics
+### Enable real OCR
 
-- `VERIFIED`: a validated main-article PDF exists locally with traceable acquisition evidence.
-- `INTERACTION_REQUIRED`: the site needs human action; the program can wait and resume when the page becomes usable.
-- `ENTITLEMENT_REQUIRED`: the current legitimate session has no full-text access, or the site asks for purchase.
-- `EXHAUSTED`: configured routes and budgets were used without a verified main article. This does not mean the paper is nonexistent.
+Install Poppler and Tesseract, then:
 
-The output includes per-paper status, a batch report and checkpoint, and a `.acquisition.json` sidecar for verified PDFs. Only a file that still exists and matches its SHA-256 can be reused as verified on a later run. The tool does not provide publisher subscriptions, answer CAPTCHAs, or bypass paywalls.
+```bash
+aletheia-nexus parse downloads/paper.pdf \
+  --doi 10.1234/example \
+  --ocr
+```
 
-## Roadmap and participation
+Native text remains authoritative. Optional OCR failure does not destroy already validated native evidence.
 
-The next near-term priorities are to stabilize the acquisition architecture, make installation and first use straightforward across Windows/Linux, and obtain feedback from researchers who did not build the project. The [v0.7 parsing entry contract](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_PARSING_CONTRACT.md) now specifies proposed input, output, fixture and evaluation gates; no parser is shipped in v0.6.1. Later work will parse verified papers into source-linked objects, connect those objects to experimental context and research decisions, and expose auditable workflows to agents. These are directions, not current features.
+See the [User Manual](docs/USER_MANUAL.md) for detailed options and troubleshooting.
 
-If you are trying AN for the first time, please join the [v0.6.1 first-time setup trial](https://github.com/shenxuekairui/aletheia-nexus/issues/3). A small report is especially valuable: which DOI, which legal access route, what status AN returned, and what you observed instead. **Remove cookies, tokens, account details, institutional login screenshots, signed URLs, and copyrighted PDF bytes** before opening an issue. See [CONTRIBUTING.md](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) and the [issue templates](https://github.com/shenxuekairui/aletheia-nexus/tree/main/.github/ISSUE_TEMPLATE).
+---
 
-The code is licensed under [Apache-2.0](https://github.com/shenxuekairui/aletheia-nexus/blob/main/LICENSE). Third-party papers retain their own copyright and access terms; the project license does not authorize their redistribution.
+## Why not just convert PDF to Markdown?
+
+For scientific workflows, the costly failures are often not formatting mistakes. They are provenance and identity failures:
+
+- supporting information imported as the main article;
+- a wrong PDF entering an Agent pipeline;
+- OCR and native coordinates living in different frames;
+- document identity depending on a machine-specific absolute path;
+- a caption being mistaken for fully understood figure content;
+- a new parser run silently overwriting old evidence;
+- a RAG chunk that cannot return to the source passage.
+
+AN treats these as scientific data-infrastructure problems.
+
+The v0.7 trust chain is therefore:
+
+```text
+Identity
+→ Integrity
+→ Transformation
+→ Location
+→ Uncertainty
+→ Consumption
+```
+
+---
+
+## Verification evidence
+
+The final v0.7 release-candidate PR verification includes:
+
+- Python 3.11 deterministic suite: **889 passed / 8 skipped**;
+- Windows/Python 3.11: **889 passed / 8 skipped**;
+- Python 3.12 / 3.13 / 3.14 compatibility jobs: all green;
+- Linux real Chromium: **7 passed**;
+- Windows real Chromium: **7 passed**;
+- real Poppler + Tesseract raster-only OCR smoke: **1 passed**;
+- wheel/sdist build, `twine check`, clean-wheel install, `pip check`, CLI doctor: passed;
+- frozen parser evaluator emits machine-readable qualification evidence in CI.
+
+The self-authored frozen gold set records 4/4 gate decisions, 32/32 anchored blocks, 6/6 selected anchors, 10/10 sections, 18/18 structural assertions, and 886/886 gold characters with zero deletion/insertion/substitution errors.
+
+Public real-layout evidence includes three hash-frozen OA papers fetched on demand from official sources. A separate private stress corpus covers **38 papers / 655 pages**. These results are evidence of parser completion, anchoring, and real-layout behavior—not claims of complete semantic correctness or universal visual-information recovery.
+
+Independent user feedback has also demonstrated real local deployment and verified batch workflows (1/1, 3/3, and 6/6 in the reported batches). The stricter clean-PyPI three-minute onboarding goal remains unverified because the report did not capture a complete clean-install timing/environment record.
+
+See [Release History](docs/RELEASE_HISTORY.md) for exact evidence boundaries.
+
+---
+
+## Project structure
+
+```text
+src/aletheia_nexus/
+├── core/identifiers/
+├── acquire/
+│   ├── metadata/
+│   ├── discovery/
+│   ├── fulltext/
+│   └── access/
+└── content/
+    ├── gate.py
+    ├── geometry.py
+    ├── backends/
+    ├── parser.py
+    ├── schema.py
+    ├── artifact.py
+    ├── export.py
+    └── evaluation.py
+
+benchmarks/
+scripts/
+tests/
+```
+
+---
+
+## Engineering principles
+
+AN favors correctness over automation, explicit failure over silent corruption, local ownership over platform lock-in, and stable data contracts over premature intelligence.
+
+Stable capability belongs in tools and Skills; deterministic repeated processes belong in Workflows; open-ended decisions belong in Agents. Source evidence and canonical artifacts must remain auditable, portable, reproducible, and recoverable.
+
+---
+
+## Roadmap
+
+```text
+Identity / Metadata
+        ↓
+Discovery
+        ↓
+Acquisition
+        ↓
+Verification
+        ↓
+Canonical Document          ← v0.7
+        ↓
+AI Consumption Views        ← v0.7
+        ↓
+Scientific Semantic Layer   ← next
+        ↓
+Knowledge
+        ↓
+Workflow / Skill
+        ↓
+Agent
+        ↓
+Lab Scientific Intelligence
+```
+
+The next layer is scientific semantics: entities, methods, conditions, measurements, claims, and relations. Those capabilities are intentionally not claimed as part of v0.7.
+
+---
+
+## Documentation and participation
+
+- [User Manual](docs/USER_MANUAL.md)
+- [v0.7 Parsing Contract](docs/V07_PARSING_CONTRACT.md)
+- [v0.7 Architecture](docs/V07_ARCHITECTURE.md)
+- [v0.7 OCR](docs/V07_OCR.md)
+- [v0.7.0 Release Notes](docs/RELEASE_NOTES_v0.7.0.md)
+- [Release History](docs/RELEASE_HISTORY.md)
+- [CI Architecture](docs/CI_ARCHITECTURE.md)
+- [Benchmarks](benchmarks/README.md)
+
+If you are trying AN for the first time, feedback is welcome in [Issue #3](https://github.com/shenxuekairui/aletheia-nexus/issues/3).
+
+Do not post copyrighted PDFs, cookies, tokens, institutional login screenshots, signed URLs, or unredacted local paths in public issues. Use private vulnerability reporting for security problems.
+
+---
+
+## License
+
+Code is released under the [Apache License 2.0](LICENSE). Third-party papers and supplementary materials remain subject to their own copyright, licenses, and access conditions.
+
+*Aletheia* means truth; *Nexus* means connection.
+
+AN is not trying to become a smarter download script. It is building a layer of scientific data infrastructure that can be trusted long enough for every later layer of AI to stand on.

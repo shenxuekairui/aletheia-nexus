@@ -1,0 +1,25 @@
+{
+  "schema": "aletheia-nexus/parser-gold/v1",
+  "expected_status": "PARSED",
+  "text_pages": [
+    {
+      "page": 1,
+      "text": "A Self-Authored Study of Traceable Parsing DOI: 10.5555/an.v07.native Abstract We test citations [1], unresolved links [2], and uncertainty. 1 Introduction Source-linked blocks let a reader return to the exact PDF page. 2 Methods The score is defined as S = correct / total. Table 1. Evaluation counts for the deterministic fixture. Metric Correct Total Anchors 4 4 Figure 1. Flow from verified bytes to anchored blocks."
+    },
+    {
+      "page": 2,
+      "text": "3 Results The baseline preserves every selected source span [1]. 4 Conclusion Parsing is not a claim that scientific conclusions are true. References [1] A. Author. Reproducible fixture design. 2026."
+    }
+  ],
+  "selected_anchors": [
+    {"page": 1, "text": "A Self-Authored Study of Traceable Parsing"},
+    {"page": 1, "text": "Source-linked blocks let a reader return"},
+    {"page": 1, "text": "Table 1. Evaluation counts"},
+    {"page": 2, "text": "Parsing is not a claim"}
+  ],
+  "sections": ["Abstract", "1 Introduction", "2 Methods", "3 Results", "4 Conclusion", "References"],
+  "figures": [{"label": "1", "caption_contains": "verified bytes", "association": "caption+single-page-image", "source_object_count": 1}],
+  "tables": [{"label": "1", "caption_contains": "Evaluation counts", "row_count": 2, "column_count": 3, "cells": [["Metric", "Correct", "Total"], ["Anchors", "4", "4"]]}],
+  "references": [{"label": "1", "resolved": true}, {"label": "2", "resolved": false}],
+  "reading_order": ["1 Introduction", "Source-linked blocks", "2 Methods"]
+}

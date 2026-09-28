@@ -352,6 +352,56 @@ def test_fused_acs_title_and_supporting_information_nav_are_main_article():
     assert result.title_similarity == 1.0
 
 
+def test_html_markup_in_expected_acs_title_does_not_hide_main_article():
+    expected_title = (
+        "New Model to Predict Infinite Dilution Activity Coefficients Based on "
+        "(∂<i>p</i>/∂<i>x</i>)<sub><i>T</i>,<i>x</i> → 0</sub>"
+    )
+    extracted_title = (
+        "NewModeltoPredictInfiniteDilutionActivityCoefficientsBasedon(∂p/∂x)T,x →0"
+    )
+
+    result = validate_paper_identity(
+        target_doi="10.1021/acsomega.3c00368",
+        source_url="https://example.test/PMC10077546.1.pdf",
+        expected_title=expected_title,
+        inspection=_inspection(
+            text=(
+                f"{extracted_title} Authors Cite This Supporting Information "
+                "ABSTRACT: Accurate prediction. DOI 10.1021/acsomega.3c00368"
+            ),
+            first_page_text=(
+                f"{extracted_title} Authors Cite This Supporting Information "
+                "ABSTRACT: Accurate prediction."
+            ),
+            title="ao3c00368 1..6",
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
+    assert result.title_similarity == 1.0
+
+
+def test_escaped_html_markup_is_removed_without_dropping_comparison_text():
+    expected_title = "Response of &lt;i&gt;p&lt;/i&gt; when a < b > c"
+    extracted_title = "Response of p when a b c"
+
+    result = validate_paper_identity(
+        target_doi="10.1000/escaped-markup",
+        source_url="https://example.test/article.pdf",
+        expected_title=expected_title,
+        inspection=_inspection(
+            text=f"{extracted_title} ABSTRACT: Test article.",
+            first_page_text=f"{extracted_title} ABSTRACT: Test article.",
+            title=extracted_title,
+        ),
+    )
+
+    assert result.status == IdentityStatus.MATCH
+    assert result.title_similarity == 1.0
+
+
 def test_true_supplement_heading_without_article_abstract_remains_supplement():
     title = "Target Main Article"
     result = validate_paper_identity(

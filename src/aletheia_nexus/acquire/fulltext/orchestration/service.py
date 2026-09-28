@@ -8,6 +8,7 @@ from urllib.parse import quote, urlsplit
 from aletheia_nexus.acquire.discovery.models import (
     AccessType,
     CandidateUrlType,
+    DiscoveryProvider,
     DiscoveryResult,
     FullTextCandidate,
     FullTextVersion,
@@ -33,6 +34,10 @@ from aletheia_nexus.acquire.fulltext.orchestration.models import (
 from aletheia_nexus.acquire.fulltext.orchestration.route_expansion import (
     ExpandedRouteCandidate,
     derive_route_expansions,
+)
+from aletheia_nexus.acquire.fulltext.pmc_cloud import (
+    PMC_CLOUD_SOURCE_NAME,
+    augment_with_pmc_cloud,
 )
 from aletheia_nexus.acquire.fulltext.resolution.models import (
     DerivedFullTextCandidate,
@@ -348,6 +353,12 @@ def acquire_from_discovery(
 
     started_at = time.perf_counter()
     doi = normalize_doi(discovery.doi)
+    discovery = augment_with_pmc_cloud(
+        discovery,
+        timeout=timeout,
+        max_attempts=max_attempts_per_route,
+        backoff_base=backoff_base,
+    )
     discovery_failed = _discovery_failed_without_candidates(discovery)
     route_attempts: list[RouteAttempt] = []
     file_attempts: list[FileAttempt] = []
@@ -444,11 +455,18 @@ def acquire_from_discovery(
 
         return result, _fallback_route_from_invalid_pdf(result)
 
-    direct_candidates = [
-        candidate
-        for candidate in discovery.candidates
-        if candidate.url_type == CandidateUrlType.PDF
-    ]
+    direct_candidates = sorted(
+        (
+            candidate
+            for candidate in discovery.candidates
+            if candidate.url_type == CandidateUrlType.PDF
+        ),
+        key=lambda candidate: (
+            DiscoveryProvider.PMC_CLOUD in candidate.provenance
+            or candidate.source_name == PMC_CLOUD_SOURCE_NAME
+        ),
+        reverse=True,
+    )
     discovered_routes = sorted(
         (
             candidate

@@ -1,0 +1,20 @@
+{
+  "acquired_at": "2026-09-28T00:00:00+00:00",
+  "identity_validation": {
+    "document_role": "ARTICLE",
+    "status": "MATCH"
+  },
+  "pdf_validation": {
+    "page_count": 1,
+    "valid_pdf": true
+  },
+  "retrieval": {
+    "sha256": "c0c529f9731e05bb37fb04614b41a34bec68453a1ff98eb0072c04812937b5f3"
+  },
+  "schema": "aletheia-nexus/acquisition-record/v1",
+  "status": "VERIFIED",
+  "target": {
+    "doi": "10.5555/an.v07.columns",
+    "expected_title": null
+  }
+}

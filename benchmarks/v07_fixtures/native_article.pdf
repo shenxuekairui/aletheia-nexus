@@ -1,0 +1,133 @@
+%PDF-1.3
+%‚„œ”
+1 0 obj
+<<
+/Producer (pypdf)
+/Title (A Self\055Authored Study of Traceable Parsing)
+/Author (Aletheia Nexus contributors)
+/Subject (Apache\0552\0560 self\055authored parser fixture)
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Count 2
+/Kids [ 5 0 R 8 0 R ]
+>>
+endobj
+3 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+4 0 obj
+<<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+endobj
+5 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+/XObject <<
+/Im1 6 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 7 0 R
+>>
+endobj
+6 0 obj
+<<
+/Type /XObject
+/Subtype /Image
+/Width 2
+/Height 2
+/ColorSpace /DeviceRGB
+/BitsPerComponent 8
+/Length 12
+>>
+stream
+P†P†P†P†
+endstream
+endobj
+7 0 obj
+<<
+/Length 1082
+>>
+stream
+q 160 0 0 80 54 320 cm /Im1 Do Q
+BT /F1 18 Tf 1 0 0 1 54 744 Tm (A Self-Authored Study of Traceable Parsing) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 718 Tm (DOI: 10.5555/an.v07.native) Tj ET
+BT /F1 14 Tf 1 0 0 1 54 680 Tm (Abstract) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 660 Tm (We test citations [1], unresolved links [2], and uncertainty.) Tj ET
+BT /F1 14 Tf 1 0 0 1 54 620 Tm (1 Introduction) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 600 Tm (Source-linked blocks let a reader return to the exact PDF page.) Tj ET
+BT /F1 14 Tf 1 0 0 1 54 560 Tm (2 Methods) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 540 Tm (The score is defined as S = correct / total.) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 500 Tm (Table 1. Evaluation counts for the deterministic fixture.) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 480 Tm (Metric) Tj ET
+BT /F1 10 Tf 1 0 0 1 190 480 Tm (Correct) Tj ET
+BT /F1 10 Tf 1 0 0 1 330 480 Tm (Total) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 464 Tm (Anchors) Tj ET
+BT /F1 10 Tf 1 0 0 1 190 464 Tm (4) Tj ET
+BT /F1 10 Tf 1 0 0 1 330 464 Tm (4) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 424 Tm (Figure 1. Flow from verified bytes to anchored blocks.) Tj ET
+
+endstream
+endobj
+8 0 obj
+<<
+/Type /Page
+/Resources <<
+/Font <<
+/F1 4 0 R
+>>
+>>
+/MediaBox [ 0.0 0.0 612 792 ]
+/Parent 2 0 R
+/Contents 9 0 R
+>>
+endobj
+9 0 obj
+<<
+/Length 434
+>>
+stream
+BT /F1 14 Tf 1 0 0 1 54 744 Tm (3 Results) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 722 Tm (The baseline preserves every selected source span [1].) Tj ET
+BT /F1 14 Tf 1 0 0 1 54 680 Tm (4 Conclusion) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 658 Tm (Parsing is not a claim that scientific conclusions are true.) Tj ET
+BT /F1 14 Tf 1 0 0 1 54 610 Tm (References) Tj ET
+BT /F1 10 Tf 1 0 0 1 54 588 Tm ([1] A. Author. Reproducible fixture design. 2026.) Tj ET
+
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000015 00000 n 
+0000000207 00000 n 
+0000000272 00000 n 
+0000000321 00000 n 
+0000000391 00000 n 
+0000000549 00000 n 
+0000000704 00000 n 
+0000001838 00000 n 
+0000001970 00000 n 
+trailer
+<<
+/Size 10
+/Root 3 0 R
+/Info 1 0 R
+>>
+startxref
+2455
+%%EOF

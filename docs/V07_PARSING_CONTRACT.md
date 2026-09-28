@@ -1,89 +1,112 @@
-# v0.7 parsing entry contract (design, not an implemented feature)
+# v0.7 scientific content parsing contract
 
-The acquisition layer answers **which file was obtained and why AN considers it
-the requested main article**. The proposed parsing layer answers **which
-source-linked objects can be extracted from those bytes**. It must not turn a
-successful parse into a claim that the article, its conclusions, or the user's
-subscription has been independently verified.
+Status: implemented for `0.7.0` by `structured-pdf-pipeline/2.5.0`.
 
-## Input gate
+The release target is:
 
-A parser request identifies a local PDF and its sibling `.acquisition.json`
-sidecar. Before parsing, the caller must check all of the following:
+> VERIFIED PDF → source-linked canonical scientific document → model-agnostic AI-ready data
 
-1. Both files exist and are regular files; the PDF is not in `_unverified`.
-2. The sidecar `schema` is a recognized acquisition-record variant (currently
-   `aletheia-nexus/acquisition-record/v1` or
-   `aletheia-nexus/access-acquisition-record/v1`). Unknown versions fail
-   closed, rather than being guessed into a new shape.
-3. `status == "VERIFIED"`, `pdf_validation.valid_pdf == true`,
-   `identity_validation.status == "MATCH"`, and
-   `identity_validation.document_role == "ARTICLE"`.
-4. `target.doi` normalizes to the requested DOI; `retrieval.sha256` is a
-   64-character hex digest and matches a fresh streaming SHA-256 of the PDF.
-5. The PDF can still be opened and its page count agrees with the recorded
-   `pdf_validation.page_count`. A corrupt, changed, or encrypted file is not
-   silently recovered via a different route inside the parser.
+## Trusted input
 
-An acquisition checkpoint alone is insufficient: its `VERIFIED` entry is a
-resume record, not the full sidecar. Any failed gate yields a typed input error
-and leaves the acquisition artifact untouched. A newer sidecar schema needs an
-explicit compatibility adapter and regression fixtures.
+Parsing requires a local PDF and acquisition sidecar. The gate fails closed unless:
 
-## Proposed output artifact
+1. both are regular files and the PDF is not in `_unverified`;
+2. the acquisition schema is explicitly supported;
+3. the status is `VERIFIED`, validation says it is a readable main `ARTICLE`, and
+   the normalized DOI equals the requested DOI;
+4. a fresh PDF SHA-256 and page count equal the acquisition evidence; and
+5. neither PDF nor sidecar changes while parsing.
 
-Write a *new* `.parsed.json` artifact (working schema identifier
-`aletheia-nexus/parsed-document/v1`) alongside, not instead of, the PDF and
-acquisition sidecar. This is a design target; no producer or consumer exists
-in v0.6.1. The minimum fields for the first implementation are:
+The parser never reacquires a failed input or converts an acquisition failure into
+a trusted source.
+
+## Canonical artifact
+
+`aletheia-nexus/parsed-document/v2` is the long-lived Canonical Scientific
+Document. Its important fields are:
 
 | Field | Contract |
 | --- | --- |
-| `schema`, `created_at`, `parser` | Versioned schema, UTC timestamp, method/name/version and configuration fingerprint. |
-| `source` | Normalized DOI, PDF SHA-256, acquisition-sidecar SHA-256, page count, and the acquisition schema identifier. Paths are local references, not evidence to publish. |
-| `status`, `warnings`, `errors` | Explicit `PARSED`, `PARTIAL`, or `FAILED`; machine-readable codes and human-readable detail. `PARTIAL` is never silently treated as complete. |
-| `sections` | Stable IDs, parent IDs, heading text, order and referenced block IDs; do not infer missing hierarchy as fact. |
-| `blocks` | Stable IDs, text or object reference, reading order, kind (paragraph, heading, caption, equation, etc.), extraction method and uncertainty flag. |
-| `anchors` | For every text block: one-based PDF page, page-relative bounding box when available, and text/span evidence. If location is unavailable, mark the block unanchored rather than fabricating coordinates. |
-| `references`, `figures`, `tables` | Identifiers and links to source blocks/anchors; unresolved or ambiguous links remain explicit. Tables may include cells only when their positions and associations can be supported. |
+| `artifact_id` | Deterministic parsed identity, independent of timestamp and local path. |
+| `source` | DOI, stable source identity, PDF/sidecar hashes, page count, acquisition schema, and optional safe relative locators. |
+| `parser` | Parser/backend versions, ordered stages, configuration and execution fingerprints, including relevant backend/runtime dependency identity. |
+| `pages` | Displayed dimensions, MediaBox, CropBox, rotation, and canonical coordinate-system identifier. |
+| `blocks` / `anchors` | Ordered text evidence with extraction method, confidence, separate engine agreement, page, bbox, and text span. |
+| `sections` / `references` | Conservative structure and explicit resolved/unresolved citation evidence. |
+| `figures` / `tables` | Caption, painted-region, and positioned-cell evidence only; `interpretation_status` is always `not-interpreted`. |
+| `quality` | Coverage, counts, OCR use, uncertainty/review state, and resource termination. |
+| `warnings` / `errors` | Structured code/detail plus page, stage, backend, and degradation fields where applicable. |
 
-IDs should be deterministic for identical input bytes, parser version and
-configuration. JSON ordering should be stable. Re-running a parser must not
-modify the acquisition sidecar. A parser implementation may add fields through
-a documented minor-compatible extension but must not reinterpret existing
-fields without a new schema version.
+The canonical coordinate system is
+`pdf-cropbox-display-bottom-left-normalized/v1`. All native, image, and OCR
+evidence must map into it. Runtime validation rejects non-finite or out-of-range
+geometry, invalid dimensions/rotation, malformed confidence/agreement, bad warning
+records, dangling references, fingerprint mismatch, and invalid artifact identity.
 
-## Fixture and evaluation gate
+An existing parsed target is a conflict by default. `--overwrite` is the explicit
+opt-in. Source locators cannot be absolute paths, drive/UNC paths, traversal paths, or
+URLs under either POSIX or Windows path semantics, and are excluded from artifact
+identity. This keeps artifacts portable and prevents default disclosure of
+machine-specific paths.
 
-Do **not** commit downloaded publisher full texts or authenticated URLs merely
-because AN could access them. Before implementation, assemble redistributable
-or self-authored fixtures with a recorded source and redistribution permission,
-plus separate synthetic adversarial examples. The initial matrix should cover
-native text, two-column reading order, section hierarchy, references, a table,
-figure/caption association, equations, scanned or sparse-text pages, and an
-article-plus-supplement pair. Keep institution-only PDFs in ignored local paths
-for private exploratory tests; they are not public CI fixtures.
+## Extraction and uncertainty
 
-For each fixture, record the expected document identity, pages, selected
-anchor spans, sections and table/figure links in a versioned gold annotation.
-Report exact denominators and both false associations and omissions. The
-minimum release report should include DOI/hash gate pass/fail, anchored-block
-coverage, anchor correctness, section recall, table/figure link precision,
-runtime and peak memory on Windows and Linux. A parser/model change must be
-compared against the same frozen fixture hashes and annotations; live metadata
-or publisher response is not part of this benchmark.
+Native text is authoritative. Optional OCR or specialist failures preserve native
+evidence and create an explicit degradation warning. OCR confidence is the engine's
+confidence; agreement is a different field. A figure caption does not mean the
+figure was interpreted, and table-like positioned text does not mean a universal
+table parser succeeded.
 
-## First v0.7 implementation sequence
+`PARSED` means the configured evidence extraction completed. `PARTIAL` signals
+sparse text, failed pages, or resource limits. `FAILED` means no usable page result
+survived. None of these states validates scientific claims.
 
-1. Add pure input-gate tests for both current sidecar variants, corrupted PDF,
-   hash mismatch, status/role mismatch and unknown schema.
-2. Freeze the rights-cleared fixture manifest and gold annotations, then add a
-   minimal schema validator with deterministic serialization.
-3. Implement one baseline parser behind the gate and measure it before adding
-   model-assisted extraction or more formats.
-4. Expose outputs as explicitly experimental until the benchmark, privacy
-   check, and local/hosted platform tests pass. Keep the current acquisition
-   API and `VERIFIED` semantics unchanged.
+## Derived AI views
 
-Out of scope: interpreting scientific claims, factual truth assessment,
-knowledge-graph correctness, and automatic entitlement decisions.
+Markdown, JSONL, and structure-aware chunk exports are deterministic derived
+artifacts, not new Sources of Truth. Every chunk independently includes source and
+parsed IDs, block/anchor/page identifiers, exporter version/configuration identity
+through its enclosing export, and detailed evidence chains:
+
+```text
+chunk → block → anchor → page/bbox → source artifact
+```
+
+Chunking respects sections and isolates headings, captions, equations, and
+references. v0.7 includes no embeddings, vector store, model-provider integration,
+summarization, entity extraction, claim extraction, knowledge graph, MCP server, or
+Agent implementation.
+
+## Qualification evidence
+
+Three evidence layers are kept distinct:
+
+1. `benchmarks/v07_fixtures`: self-authored, deterministic PDFs and frozen gold.
+   The evaluator currently checks 4/4 input gates, 32/32 anchored blocks, 6/6
+   selected anchors, 10/10 sections, 18/18 structural assertions, no object-link
+   omission/false association, and 886/886 gold characters with zero deletion,
+   insertion, or substitution. A raster-only fixture is exercised through real
+   Poppler + Tesseract in its dedicated smoke.
+2. `benchmarks/v07_public_oa`: three hash-frozen OA papers fetched from the official
+   PMC dataset, with manually selected title/section/object-count assertions. This
+   qualifies representative real layouts, not complete semantics.
+3. Private corpora: 24 papers/436 pages and 14 papers/219 pages completed parsing on
+   the final pipeline. They are broader stress evidence only. Aggregate block/text
+   diagnostics and native-layer comparison are not human semantic accuracy.
+
+The change from parser 2.3 to canonical CropBox clipping removes hidden/off-page
+duplicate text layers in several PDFs. Rendered-page spot checks confirmed that the
+removed MDPI/JHEP samples were not visible page content. This is a geometry
+correction, not a claim that all visual information loss is below 1%.
+
+The hosted release gate also runs the frozen evaluator explicitly and uploads its
+machine-readable report as a CI artifact bound to the tested commit.
+
+Run the bounded local gate with:
+
+```console
+python scripts/verify_v07_rc.py --ocr-smoke --public-oa --report qualification-report.json
+```
+
+Public paper text, private PDFs, parsed artifacts, and AI exports are not committed
+by default. Project licensing does not change the copyright of source papers.

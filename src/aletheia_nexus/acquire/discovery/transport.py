@@ -33,15 +33,15 @@ def build_user_agent() -> str:
     return f"Aletheia-Nexus/{_package_version()}"
 
 
-def get_json(
+def _get_response(
     url: str,
     *,
     context: str,
     params: Mapping[str, object] | None = None,
     headers: Mapping[str, str] | None = None,
     timeout: float = DEFAULT_TIMEOUT,
-) -> dict:
-    """Perform one discovery HTTP GET and return a JSON object."""
+) -> httpx.Response:
+    """Perform one discovery GET with the shared provider error contract."""
 
     request_headers = dict(headers or {})
     request_headers["User-Agent"] = build_user_agent()
@@ -74,6 +74,26 @@ def get_json(
     if not 200 <= status_code < 300:
         raise DiscoveryServiceError(f"{context} returned unexpected HTTP {status_code}")
 
+    return response
+
+
+def get_json(
+    url: str,
+    *,
+    context: str,
+    params: Mapping[str, object] | None = None,
+    headers: Mapping[str, str] | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> dict:
+    """Perform one discovery HTTP GET and return a JSON object."""
+
+    response = _get_response(
+        url,
+        context=context,
+        params=params,
+        headers=headers,
+        timeout=timeout,
+    )
     try:
         data = response.json()
     except ValueError as exc:
@@ -83,3 +103,22 @@ def get_json(
         raise DiscoveryParseError(f"{context} returned a non-object JSON response")
 
     return data
+
+
+def get_text(
+    url: str,
+    *,
+    context: str,
+    params: Mapping[str, object] | None = None,
+    headers: Mapping[str, str] | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> str:
+    """Perform one discovery HTTP GET and return decoded text."""
+
+    return _get_response(
+        url,
+        context=context,
+        params=params,
+        headers=headers,
+        timeout=timeout,
+    ).text

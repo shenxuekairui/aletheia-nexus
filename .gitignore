@@ -51,6 +51,13 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Derived parser/AI artifacts can contain copyrighted full text and local run data.
+*.parsed.json
+*.ai.md
+*.ai.jsonl
+*.chunks.json
+qualification-report.json
+
 # Translations
 *.mo
 *.pot

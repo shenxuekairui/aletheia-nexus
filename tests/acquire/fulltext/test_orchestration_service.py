@@ -117,6 +117,43 @@ def test_direct_verified_pdf_stops_before_route_resolution(monkeypatch, tmp_path
     assert result.route_attempts == ()
 
 
+def test_pmc_cloud_pdf_is_prioritized_by_provenance(monkeypatch, tmp_path):
+    regular = _candidate("https://example.org/paper.pdf", CandidateUrlType.PDF)
+    pmc = replace(
+        regular,
+        url="https://pmc-oa-opendata.s3.amazonaws.com/PMC1.1/article.pdf",
+        provenance=(DiscoveryProvider.PMC_CLOUD,),
+        source_name=None,
+    )
+    attempted: list[str] = []
+
+    monkeypatch.setattr(
+        service,
+        "augment_with_pmc_cloud",
+        lambda discovery, **kwargs: discovery,
+    )
+
+    def acquire(candidate, **kwargs):
+        attempted.append(candidate.url)
+        status = (
+            AcquisitionStatus.RETRIEVED_UNVERIFIED
+            if candidate is pmc
+            else AcquisitionStatus.VERIFIED
+        )
+        return _acquisition(candidate, status)
+
+    monkeypatch.setattr(service, "acquire_direct_pdf", acquire)
+
+    result = service.acquire_from_discovery(
+        _discovery(regular, pmc),
+        output_dir=tmp_path,
+        use_doi_resolver_fallback=False,
+    )
+
+    assert result.status == FullTextAcquisitionStatus.VERIFIED
+    assert attempted == [pmc.url, regular.url]
+
+
 def test_failed_direct_pdf_falls_back_to_route_and_verifies(monkeypatch, tmp_path):
     direct = _candidate("https://example.org/bad.pdf", CandidateUrlType.PDF)
     landing = _candidate("https://example.org/article", CandidateUrlType.LANDING_PAGE)

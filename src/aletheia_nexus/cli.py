@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -25,6 +26,20 @@ from aletheia_nexus.acquire.access import (
 from aletheia_nexus.acquire.fulltext import (
     FullTextAcquisitionStatus,
     acquire_full_text,
+)
+from aletheia_nexus.content import (
+    AdaptiveOcrBackend,
+    ChunkConfig,
+    ParserConfig,
+    ParserInputError,
+    TesseractOcrBackend,
+    TesseractOcrConfig,
+    export_jsonl,
+    export_markdown,
+    load_parsed_document,
+    parse_document,
+    serialize_chunks,
+    write_ai_export,
 )
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
@@ -526,19 +541,182 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def parse_main(argv: list[str] | None = None) -> int:
+    """Run the experimental parser only after its acquisition-evidence gate."""
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus parse",
+        description="Parse a VERIFIED PDF into source-linked structured JSON.",
+    )
+    parser.add_argument("pdf", type=Path)
+    parser.add_argument("--doi", required=True)
+    parser.add_argument("--sidecar", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--max-pages", type=int, default=2000)
+    parser.add_argument("--max-blocks", type=int, default=200_000)
+    parser.add_argument("--max-text-characters", type=int, default=20_000_000)
+    parser.add_argument(
+        "--ocr",
+        action="store_true",
+        help="Enable native-first selective OCR through Poppler and Tesseract.",
+    )
+    parser.add_argument("--ocr-languages", default="eng")
+    parser.add_argument("--ocr-max-raster-pixels", type=int, default=50_000_000)
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Explicitly replace an existing parsed output.",
+    )
+    parser.add_argument(
+        "--no-merge-paragraph-lines",
+        action="store_true",
+        help="Keep each positioned PDF text line as a separate block.",
+    )
+    parser.add_argument(
+        "--fail-on-partial",
+        action="store_true",
+        help="Return status 6 when parsing is PARTIAL or FAILED.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        config = ParserConfig(
+            max_pages=args.max_pages,
+            max_blocks=args.max_blocks,
+            max_text_characters=args.max_text_characters,
+            merge_paragraph_lines=not args.no_merge_paragraph_lines,
+        )
+        backend = None
+        if args.ocr:
+            backend = AdaptiveOcrBackend(
+                ocr_backends=(
+                    TesseractOcrBackend(
+                        TesseractOcrConfig(
+                            languages=args.ocr_languages,
+                            max_raster_pixels=args.ocr_max_raster_pixels,
+                        )
+                    ),
+                )
+            )
+        result = parse_document(
+            args.pdf,
+            args.doi,
+            sidecar_path=args.sidecar,
+            output_path=args.output,
+            config=config,
+            backend=backend,
+            overwrite=args.overwrite,
+        )
+    except ParserInputError as exc:
+        print(str(exc), file=sys.stderr)
+        return 5
+    except (OSError, ValueError) as exc:
+        print(f"Could not write parsed artifact: {exc}", file=sys.stderr)
+        return 2
+    print(f"{result.source.doi}: {result.status}")
+    print(f"Parsed artifact: {result.output_path}")
+    quality = result.document["quality"]
+    print(
+        "Objects: "
+        f"{len(result.document['sections'])} sections, "
+        f"{len(result.document['references'])} references, "
+        f"{len(result.document['figures'])} figures, "
+        f"{len(result.document['tables'])} tables; "
+        f"anchor coverage {quality['anchor_coverage']['ratio']:.1%}"
+    )
+    if args.fail_on_partial and result.status != "PARSED":
+        return 6
+    return 0
+
+
+def search_main(argv: list[str] | None = None) -> int:
+    """Search parsed blocks and print their source locations."""
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus search",
+        description="Search a validated parsed artifact with PDF source anchors.",
+    )
+    parser.add_argument("artifact", type=Path)
+    parser.add_argument("query")
+    parser.add_argument("--section-type")
+    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument(
+        "--verify-sources",
+        action="store_true",
+        help="Require the local PDF and acquisition sidecar hashes to still match.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        artifact = load_parsed_document(args.artifact)
+        if args.verify_sources:
+            checks = artifact.verify_local_sources()
+            if not all(checks.values()):
+                failed = ", ".join(
+                    name for name, passed in checks.items() if not passed
+                )
+                print(f"Source integrity failed: {failed}", file=sys.stderr)
+                return 7
+        hits = artifact.search(
+            args.query, section_type=args.section_type, limit=args.limit
+        )
+    except (OSError, ValueError) as exc:
+        print(f"Could not search parsed artifact: {exc}", file=sys.stderr)
+        return 2
+    for hit in hits:
+        section = f" [{hit.section_heading}]" if hit.section_heading else ""
+        bbox = f" bbox={list(hit.bbox)}" if hit.bbox else ""
+        print(f"page {hit.page}{section} score={hit.score:.3f}{bbox}\n  {hit.text}")
+    print(f"Hits: {len(hits)}")
+    return 0
+
+
+def export_main(argv: list[str] | None = None) -> int:
+    """Export a validated canonical document without reparsing its PDF."""
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus export",
+        description="Create deterministic Markdown, JSONL, or chunk JSON views.",
+    )
+    parser.add_argument("artifact", type=Path)
+    parser.add_argument(
+        "--format", choices=("markdown", "jsonl", "chunks"), required=True
+    )
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--max-chars", type=int, default=6000)
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        artifact = load_parsed_document(args.artifact)
+        config = ChunkConfig(max_characters=args.max_chars)
+        serializers = {
+            "markdown": export_markdown,
+            "jsonl": export_jsonl,
+            "chunks": serialize_chunks,
+        }
+        payload = serializers[args.format](artifact, config=config)
+        output = write_ai_export(args.output, payload, overwrite=args.overwrite)
+    except (OSError, ValueError) as exc:
+        print(f"Could not export parsed artifact: {exc}", file=sys.stderr)
+        return 7
+    print(f"Exported {args.format}: {output}")
+    return 0
+
+
 def entrypoint(argv: list[str] | None = None) -> int:
     """Dispatch the stable installed CLI without importing optional Playwright."""
 
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(
-            "Aletheia Nexus — verifiable research-paper acquisition\n\n"
+            "Aletheia Nexus — verifiable paper acquisition and parsing\n\n"
             "Usage:\n"
             "  aletheia-nexus acquire DOI [options]\n"
             "  aletheia-nexus acquire INPUT.txt [options]\n"
+            "  aletheia-nexus parse PAPER.pdf --doi DOI [options]\n"
+            "  aletheia-nexus search PAPER.parsed.json QUERY [options]\n"
+            "  aletheia-nexus export PAPER.parsed.json --format FORMAT --output PATH\n"
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus --version\n\n"
-            "Use 'aletheia-nexus acquire --help' for acquisition options."
+            "Use 'aletheia-nexus COMMAND --help' for command options."
         )
         return 0
     if args[0] in {"-V", "--version"}:
@@ -550,7 +728,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
         return 0
     if args[0] == "doctor":
         if args[1:] in (["-h"], ["--help"]):
-            print("Usage: aletheia-nexus doctor\nCheck the local Python/browser setup.")
+            print(
+                "Usage: aletheia-nexus doctor\n"
+                "Check local Python, browser, and OCR executable setup."
+            )
             return 0
         if len(args) != 1:
             print("doctor takes no arguments", file=sys.stderr)
@@ -575,9 +756,24 @@ def entrypoint(argv: list[str] | None = None) -> int:
                 '  python -m pip install "aletheia-nexus[browser]"\n'
                 "  python -m playwright install chromium"
             )
+        poppler = shutil.which("pdftoppm")
+        tesseract = shutil.which("tesseract")
+        print(f"Poppler OCR renderer: {'ready' if poppler else 'missing'}")
+        print(f"Tesseract OCR engine: {'ready' if tesseract else 'missing'}")
+        if not poppler or not tesseract:
+            print(
+                "Selective OCR remains optional; install Poppler and Tesseract "
+                "and ensure pdftoppm/tesseract are on PATH to use parse --ocr."
+            )
         return 0
     if args[0] == "acquire":
         return main(args[1:])
+    if args[0] == "parse":
+        return parse_main(args[1:])
+    if args[0] == "search":
+        return search_main(args[1:])
+    if args[0] == "export":
+        return export_main(args[1:])
     print(f"Unknown command: {args[0]!r}. Use --help.", file=sys.stderr)
     return 2
 
