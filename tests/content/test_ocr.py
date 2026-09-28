@@ -311,10 +311,10 @@ def test_adaptive_pipeline_records_ocr_provenance_and_quality(tmp_path):
         block["source_engines"] == ["ocr-a@1", "ocr-b@1"]
         for block in result.document["blocks"]
     )
-    assert result.document["parser"]["backend"]["components"]["ocr"] == [
-        "ocr-a@1",
-        "ocr-b@1",
-    ]
+    assert [
+        item["name"]
+        for item in result.document["parser"]["backend"]["components"]["ocr"]
+    ] == ["ocr-a", "ocr-b"]
 
 
 def test_tesseract_configuration_and_tsv_coordinates():
