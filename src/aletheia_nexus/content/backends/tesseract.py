@@ -8,7 +8,8 @@ import math
 import re
 import subprocess
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from importlib import metadata
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -76,6 +77,22 @@ def _run(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str
         ) from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"OCR command timed out after {timeout} seconds") from exc
+
+
+def _package_version(name: str) -> str:
+    try:
+        return metadata.version(name)
+    except metadata.PackageNotFoundError:
+        return "unavailable"
+
+
+def _tool_version(command: str, *args: str, timeout: int) -> str:
+    try:
+        result = _run([command, *args], timeout=timeout)
+    except RuntimeError:
+        return "unavailable"
+    lines = (result.stdout + result.stderr).splitlines()
+    return lines[0].strip() if lines else "unknown"
 
 
 def _otsu_threshold(image: Any) -> int:
@@ -309,22 +326,45 @@ class TesseractOcrBackend:
 
     def __init__(self, config: TesseractOcrConfig | None = None) -> None:
         self.config = config or TesseractOcrConfig()
-        try:
-            version_result = _run(
-                [self.config.tesseract_command, "--version"],
-                timeout=min(self.config.timeout_seconds, 10),
-            )
-            version_lines = (version_result.stdout + version_result.stderr).splitlines()
-            version = version_lines[0] if version_lines else "unknown"
-        except RuntimeError:
-            version = "unavailable"
+        timeout = min(self.config.timeout_seconds, 10)
+        version = _tool_version(
+            self.config.tesseract_command,
+            "--version",
+            timeout=timeout,
+        )
         self.version = version.removeprefix("tesseract ").strip() or "unknown"
+        self.renderer_version = _tool_version(
+            self.config.renderer_command,
+            "-v",
+            timeout=timeout,
+        )
+
+    @property
+    def execution_identity(self) -> dict[str, object]:
+        configuration = asdict(self.config)
+        # Persist executable basenames, never machine-specific absolute paths.
+        configuration["renderer_command"] = Path(self.config.renderer_command).name
+        configuration["tesseract_command"] = Path(self.config.tesseract_command).name
+        return {
+            "configuration": configuration,
+            "runtime_dependencies": {
+                "tesseract": self.version,
+                "poppler": self.renderer_version,
+                "pillow": _package_version("Pillow"),
+            },
+        }
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
         geometry = PageGeometry.from_page(page)
         page_width = geometry.width
         page_height = geometry.height
-        scale = self.config.dpi / 72
+        try:
+            user_unit = float(getattr(page, "user_unit", 1.0) or 1.0)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("PDF page has an invalid /UserUnit") from exc
+        if not math.isfinite(user_unit) or user_unit <= 0:
+            raise RuntimeError("PDF page has an invalid /UserUnit")
+        scale = self.config.dpi / 72 * user_unit
         expected_pixels = math.ceil(page_width * scale) * math.ceil(page_height * scale)
         if expected_pixels > self.config.max_raster_pixels:
             raise RuntimeError(
@@ -364,8 +404,17 @@ class TesseractOcrBackend:
                 timeout=self.config.timeout_seconds,
             )
             rendered = prefix.with_suffix(".png")
-            image = Image.open(rendered).convert("L")
-            original_width, original_height = image.size
+            rendered_image = Image.open(rendered)
+            original_width, original_height = rendered_image.size
+            actual_pixels = original_width * original_height
+            if actual_pixels > self.config.max_raster_pixels:
+                rendered_image.close()
+                raise RuntimeError(
+                    "OCR raster budget exceeded after rendering: "
+                    f"{actual_pixels} pixels > {self.config.max_raster_pixels}"
+                )
+            image = rendered_image.convert("L")
+            rendered_image.close()
 
             rotation = 0
             if self.config.detect_orientation:
