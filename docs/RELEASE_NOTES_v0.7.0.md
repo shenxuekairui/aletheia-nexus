@@ -355,8 +355,8 @@ v0.7 不使用一个模糊的“总体准确率”概括所有质量，而是把
 
 最终发布候选验证包括：
 
-- Python 3.11 deterministic suite：**886 passed / 8 skipped**；
-- Windows / Python 3.11：**886 passed / 8 skipped**；
+- Python 3.11 deterministic suite：**889 passed / 8 skipped**；
+- Windows / Python 3.11：**889 passed / 8 skipped**；
 - Python 3.12 / 3.13 / 3.14 compatibility jobs：全部通过；
 - Linux real Chromium integration：**7 passed**；
 - Windows real Chromium integration：**7 passed**；
