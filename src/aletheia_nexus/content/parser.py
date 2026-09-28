@@ -43,9 +43,7 @@ _CAPTION = re.compile(
     r"(?P<label>(?:[A-Z]?\d+[A-Za-z]?|[IVXLCDM]+))\s*[:.|\-]?\s*",
     re.IGNORECASE,
 )
-_EQUATION = re.compile(
-    r"(?:[=≈≤≥±∑∫√→←]|\b(?:sin|cos|log|exp)\s*\(|^[A-Za-z]\s*=)"
-)
+_EQUATION = re.compile(r"(?:[=≈≤≥±∑∫√→←]|\b(?:sin|cos|log|exp)\s*\(|^[A-Za-z]\s*=)")
 _MATH_GLYPH = re.compile(r"[αβγδεϵζηθικλμνξοπρστυφχψωΓΔΘΛΞΠΣΦΨΩ]", re.UNICODE)
 _PAGE_LABEL = re.compile(
     r"^(?:[-–—]\s*)?\d+(?:\s*of\s*\d+)*(?:\s*[-–—])?$", re.IGNORECASE

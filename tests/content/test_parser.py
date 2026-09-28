@@ -219,8 +219,7 @@ def test_layout_noise_and_scientific_labels_are_disambiguated(tmp_path):
                 page=page_number,
                 width=612,
                 height=792,
-                lines=body
-                + (LayoutLine(str(page_number), 300, 10, 306, 20, 8),),
+                lines=body + (LayoutLine(str(page_number), 300, 10, 306, 20, 8),),
             )
 
     result = parse_document(
