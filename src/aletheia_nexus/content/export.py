@@ -181,6 +181,9 @@ def structure_aware_chunks(
                         if table
                         else None
                     ),
+                    "block_ids": [block["id"] for block in group],
+                    "anchor_ids": [item["anchor_id"] for item in evidence],
+                    "pages": sorted({int(item["page"]) for item in evidence}),
                     "text": text,
                     "evidence": evidence,
                 }
