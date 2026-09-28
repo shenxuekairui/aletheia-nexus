@@ -361,6 +361,10 @@ def validate_parsed_document(document: object) -> None:
         anchor = anchor_by_id[str(block["anchor_id"])]
         if anchor["block_id"] != block["id"]:
             raise ValueError(f"blocks[{index}] does not own its referenced anchor")
+        if anchor["page"] != block["page"]:
+            raise ValueError(
+                f"blocks[{index}].page conflicts with its referenced anchor page"
+            )
     for index, section in enumerate(document["sections"]):
         parent_id = section.get("parent_id")
         if parent_id is not None and parent_id not in section_ids:
