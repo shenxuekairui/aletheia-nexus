@@ -21,7 +21,10 @@ from aletheia_nexus.content.parser import (
     _references,
 )
 from aletheia_nexus.content.pipeline import ParserPipeline
-from aletheia_nexus.content.schema import serialize_parsed_document
+from aletheia_nexus.content.schema import (
+    compute_parsed_artifact_id,
+    serialize_parsed_document,
+)
 
 FIXTURES = Path(__file__).resolve().parents[2] / "benchmarks" / "v07_fixtures"
 
@@ -51,11 +54,15 @@ def test_native_parser_emits_valid_source_linked_objects(tmp_path):
     assert [item["label"] for item in document["figures"]] == ["1"]
     assert [item["label"] for item in document["tables"]] == ["1"]
     assert document["figures"][0]["association"] == "caption+single-page-image"
+    assert "resolved" not in document["figures"][0]
+    assert document["figures"][0]["evidence_status"] == ("caption-and-region-observed")
+    assert document["figures"][0]["interpretation_status"] == "not-interpreted"
     assert document["figures"][0]["source_objects"][0]["name"] == "Im1"
     assert document["figures"][0]["source_objects"][0]["bbox"] is not None
     assert document["tables"][0]["row_count"] == 2
     assert document["tables"][0]["column_count"] == 3
     assert len(document["tables"][0]["cells"]) == 6
+    assert "resolved" not in document["tables"][0]
     assert document["references"][0]["cited_by_block_ids"]
     assert any(not item["resolved"] for item in document["references"])
     assert document["quality"]["anchor_coverage"]["ratio"] == 1.0
@@ -110,6 +117,25 @@ def test_schema_rejects_tampered_provenance_and_quality(tmp_path):
     payload = json.loads(json.dumps(result.document))
     payload["quality"]["anchor_coverage"]["anchored"] -= 1
     with pytest.raises(ValueError, match="does not match document content"):
+        validate_parsed_document(payload)
+
+
+def test_schema_rejects_nonportable_or_ambiguous_metadata(tmp_path):
+    result = _parse("native_article.pdf", "10.5555/an.v07.native", tmp_path)
+
+    payload = json.loads(json.dumps(result.document))
+    payload["created_at"] = "2026-09-28"
+    with pytest.raises(ValueError, match="timezone"):
+        validate_parsed_document(payload)
+
+    payload = json.loads(json.dumps(result.document))
+    payload["source"]["locators"]["remote"] = "https://example.invalid/token"
+    with pytest.raises(ValueError, match="unsupported locator"):
+        validate_parsed_document(payload)
+
+    payload = json.loads(json.dumps(result.document))
+    payload["pages"][0]["coordinate_system"] = "backend-private-space"
+    with pytest.raises(ValueError, match="unsupported coordinate system"):
         validate_parsed_document(payload)
 
 
@@ -202,6 +228,27 @@ def test_custom_backend_is_recorded_and_consumed(tmp_path):
         "version": "9",
     }
     assert result.document["sections"][0]["semantic_type"] == "methods"
+
+
+def test_backend_geometry_must_match_source_page(tmp_path):
+    class WrongGeometry:
+        name = "wrong-geometry"
+        version = "1"
+
+        def extract_page(self, page, page_number):
+            del page
+            return PageLayout(page=page_number, width=1, height=1)
+
+    result = parse_document(
+        FIXTURES / "sparse_scan.pdf",
+        "10.5555/an.v07.sparse",
+        output_path=tmp_path / "wrong.parsed.json",
+        backend=WrongGeometry(),
+    )
+
+    assert result.status == "FAILED"
+    assert result.document["errors"][0]["code"] == "PAGE_EXTRACTION_FAILED"
+    assert result.document["errors"][0]["stage"] == "layout-extraction"
 
 
 def test_layout_noise_and_scientific_labels_are_disambiguated(tmp_path):
@@ -605,6 +652,7 @@ def test_schema_rejects_invalid_diagnostic_quality_count(tmp_path):
     payload = json.loads(json.dumps(result.document))
     del payload["quality"]["suppressed_page_furniture"]
     del payload["quality"]["unassociated_image_resources"]
+    payload["artifact_id"] = compute_parsed_artifact_id(payload)
     validate_parsed_document(payload)
 
 

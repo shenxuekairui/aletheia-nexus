@@ -1,75 +1,79 @@
-# Aletheia Nexus v0.7.0 — source-linked parsing
+# Aletheia Nexus v0.7.0 — canonical scientific documents
 
-v0.7.0 connects the verified acquisition artifact to a versioned,
-source-linked document representation. It also closes acquisition defects
-found while building the parser corpus. This release does not claim scientific
-truth assessment, knowledge-graph correctness, or universal publisher access.
+v0.7.0 turns an unchanged, verified paper into a portable, source-linked
+Canonical Scientific Document and deterministic AI-ready derived views. It does
+not add embeddings, model calls, scientific claim interpretation, or Agents.
 
 ## Acquisition closure
 
-- PMC records discovered through existing providers can be resolved through
-  the official PMC Article Datasets public AWS bucket. Metadata DOI, article
-  type, retraction state, and PDF availability are checked before a candidate
-  is attempted.
-- PMC augmentation is idempotent, retry-bounded, and isolated per article
-  version so one malformed version does not discard another valid version.
-- Expected titles normalize literal and escaped HTML markup without persisting
-  provider markup in identity comparison.
-- Browser startup failures recognize common Chromium profile lock markers and
-  provide a safe recovery hint without exposing the original command line.
+- The parser gate accepts only a matching `VERIFIED` main article and rechecks
+  DOI, role, schema, PDF/sidecar hashes, readability, and page count before and
+  after parsing.
+- PMC records can use the official Article Datasets route with bounded retries,
+  version isolation, and DOI/article/retraction/PDF checks.
+- Title normalization and browser profile-lock diagnostics were corrected without
+  weakening acquisition identity or access-control boundaries.
 
-The PMC route was exercised against the public record for
-`10.1016/j.heliyon.2024.e27078`: the official cloud PDF produced a 14-page
-`VERIFIED` article with DOI/title identity match and a sidecar-matching SHA-256.
-This is a route smoke test, not a general acquisition success-rate claim.
+## Canonical parsing contract
 
-## Parsing and OCR
+- `structured-pdf-pipeline/2.4.0` writes validated
+  `aletheia-nexus/parsed-document/v2` artifacts with stable source and parsed IDs.
+- Source identity is separate from local location. Only safe relative locators may
+  be persisted; moving unchanged artifacts preserves identity.
+- MediaBox, CropBox, non-zero origins, page rotation, rendered pixels, OCR
+  orientation, and deskew share one canonical displayed-page coordinate system.
+- Backend output is validated at runtime for page identity, dimensions, finite
+  geometry, confidence/agreement, provenance, objects, and warnings.
+- Optional OCR/specialist failure is isolated and explicit; reliable native
+  evidence is retained.
+- Existing parsed outputs are not silently replaced. `--overwrite` is required.
+- Figures and tables describe caption/region/cell evidence and explicitly state
+  `not-interpreted`; captions are not presented as scientific understanding.
 
-- A fail-closed input gate accepts only an unchanged `VERIFIED` main article
-  with matching DOI, hash, role, readability, and page count.
-- `parsed-document/v2` records stable source anchors, pipeline/backend identity,
-  sections, references, figures, tables, cells, budgets, warnings, and explicit
-  `PARSED`/`PARTIAL`/`FAILED` status.
-- Pipeline 2.3.0 improves multi-column line splitting, decorated headings,
-  numbered and author-year references, end-of-bibliography detection, caption
-  discrimination, and continued/supplement object handling.
-- Optional `AdaptiveOcrBackend` keeps native text authoritative and triggers OCR
-  only for sparse, suspicious, image-dominant, or unanchored regions.
-- The Tesseract adapter supports 300-DPI rendering, orientation correction,
-  deskew, Otsu binarization, TSV coordinates, and confidence. Coordinate/text
-  fusion removes overlap; multi-engine agreement raises confidence and
-  disagreement requests manual review.
-- Table, formula, and figure specialists can use the public
-  `RegionExtractionBackend` contract.
+## OCR and AI-ready exports
 
-## Validation evidence
+- `aletheia-nexus parse --ocr` provides the real Poppler + Tesseract executable
+  path with a per-page raster-pixel budget.
+- Native text remains authoritative. Engine confidence and engine agreement are
+  separate fields, and disagreement remains reviewable.
+- `aletheia-nexus export` creates deterministic Markdown, JSONL, or
+  structure-aware chunk JSON. Every chunk links through block/anchor/page/bbox to
+  the source artifact and records exporter/configuration identity.
 
-Two private, hash-frozen real-layout corpora were reprocessed without entering
-the repository:
+## Qualification
 
-- 24 papers / 436 pages: 24/24 `PARSED`, zero omitted and zero added normalized
-  native-layer tokens;
-- 14 papers / 219 pages: 14/14 `PARSED`, zero omitted and zero added normalized
-  native-layer tokens;
-- combined: 38 papers / 655 pages and 2,609,595 retained text characters.
+- Self-authored frozen evaluator: 4/4 gate decisions, 32/32 anchored blocks, 6/6
+  selected anchors, 10/10 sections, 18/18 structural assertions, and 886/886 gold
+  characters with zero deletions, insertions, or substitutions.
+- Real executable OCR smoke: the raster-only fixture renders through Poppler,
+  extracts through Tesseract, returns exact expected text, and retains positioned
+  anchors.
+- Public OA qualification: three hash-frozen PMC papers passed status, pages,
+  anchors, selected text, and conservative reference/figure/table thresholds.
+- Private stress sets: 24/24 papers (436 pages) and 14/14 papers (219 pages)
+  completed as `PARSED`. These figures demonstrate completion and diagnostics,
+  not human-labelled semantic accuracy.
+- Final local deterministic suite on Windows/Python 3.14: **874 passed, 8
+  skipped**. The skipped group contains opt-in real browser/OCR integrations,
+  which are run separately and in dedicated CI jobs.
 
-The checked-in deterministic suite covers acquisition, input gating, source
-anchors, layout/structure, OCR trigger and fusion, double-engine disagreement,
-specialist routing, schema validation, and consumer lookup. The final commit
-completed locally on Windows/Python 3.14 with **858 passed, 7 skipped**; Ruff,
-bytecode compilation, the frozen acquisition benchmark, and the parser
-evaluation gate also passed. It must additionally pass the repository's Python
-3.11, Python 3.14, Linux Chromium, and Windows Chromium PR jobs before merge.
+The release workflow now tests Python 3.11, 3.12, 3.13, and 3.14; real Chromium;
+real Poppler + Tesseract; distribution build/twine validation; and installation of
+the wheel in a clean environment. The final PR commit must be green before merge.
 
-## Boundaries
+## Security, privacy, copyright, and boundaries
 
-Zero loss above means equality with the PDFs' native text layers. The real
-corpora contain no textless pages, so actual OCR executable quality is not
-measured by that number. A claim below 1% total visual information loss requires
-human-reviewed page transcription covering raster text, tables, formulas, and
-charts. Unresolved semantic objects retain source anchors for review rather
-than being silently discarded or guessed.
+Minimum dependency versions include fixes available in pypdf 6.19, Pillow 12.3,
+and FontTools 4.60.2. Persistent diagnostics redact local paths and URLs. Git
+ignores parsed documents, AI exports, and qualification reports because they may
+contain copyrighted full text or local run data. OA PDFs are hash-frozen but
+fetched on demand rather than redistributed.
 
-The package version is `0.7.0`. A version change and GitHub Release do not prove
-PyPI availability; confirm the published project and a clean installation
-separately.
+The exact synthetic OCR result and native-text stress results do not justify a
+general “below 1% visual information loss” claim. That requires representative,
+human-transcribed visual truth for scans, equations, tables, and figures.
+
+Deferred to v0.8+: embeddings, vector databases, semantic search, LLM summaries,
+scientific entity/condition/measurement/claim/relation extraction, knowledge
+graphs, MCP/Agent/laboratory-memory features, plot digitization, spectroscopy,
+scientific image interpretation, and universal table/chart/formula understanding.

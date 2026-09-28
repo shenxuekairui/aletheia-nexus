@@ -46,6 +46,33 @@ def test_entrypoint_dispatches_search(monkeypatch):
     assert seen == [["paper.parsed.json", "method"]]
 
 
+def test_entrypoint_dispatches_export(monkeypatch):
+    seen = []
+    monkeypatch.setattr(cli, "export_main", lambda argv: seen.append(argv) or 10)
+    assert (
+        cli.entrypoint(
+            [
+                "export",
+                "paper.parsed.json",
+                "--format",
+                "chunks",
+                "--output",
+                "paper.chunks.json",
+            ]
+        )
+        == 10
+    )
+    assert seen == [
+        [
+            "paper.parsed.json",
+            "--format",
+            "chunks",
+            "--output",
+            "paper.chunks.json",
+        ]
+    ]
+
+
 def test_parse_cli_reports_typed_gate_error(monkeypatch, capsys):
     from aletheia_nexus.content import ParserInputError, ParserInputErrorCode
 

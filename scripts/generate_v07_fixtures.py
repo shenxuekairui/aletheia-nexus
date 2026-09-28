@@ -30,6 +30,7 @@ def _write_pdf(
     *,
     title: str,
     image_pages: set[int] | None = None,
+    raster_text_pages: dict[int, list[str]] | None = None,
 ) -> None:
     writer = PdfWriter()
     font = DictionaryObject(
@@ -46,6 +47,31 @@ def _write_pdf(
             {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font_ref})}
         )
         commands = []
+        if raster_text_pages and page_index in raster_text_pages:
+            from PIL import Image, ImageDraw, ImageFont
+
+            raster = Image.new("L", (1224, 1584), 255)
+            draw = ImageDraw.Draw(raster)
+            font = ImageFont.load_default(size=42)
+            for line_index, text in enumerate(raster_text_pages[page_index]):
+                draw.text((108, 180 + line_index * 84), text, font=font, fill=0)
+            image = DecodedStreamObject()
+            image.update(
+                {
+                    NameObject("/Type"): NameObject("/XObject"),
+                    NameObject("/Subtype"): NameObject("/Image"),
+                    NameObject("/Width"): NumberObject(raster.width),
+                    NameObject("/Height"): NumberObject(raster.height),
+                    NameObject("/ColorSpace"): NameObject("/DeviceGray"),
+                    NameObject("/BitsPerComponent"): NumberObject(8),
+                }
+            )
+            image.set_data(raster.tobytes())
+            image_ref = writer._add_object(image)
+            resources[NameObject("/XObject")] = DictionaryObject(
+                {NameObject("/Scan1"): image_ref}
+            )
+            commands.append("q 612 0 0 792 0 0 cm /Scan1 Do Q")
         if image_pages and page_index in image_pages:
             image = DecodedStreamObject()
             image.update(
@@ -195,7 +221,16 @@ def main() -> int:
     _write_pdf(
         sparse,
         [[]],
-        title="Synthetic Scanned Page Without Native Text",
+        title="Synthetic Raster-Only Scientific Page",
+        raster_text_pages={
+            0: [
+                "RASTER ONLY SCIENTIFIC ARTICLE",
+                "Methods",
+                "The verified sample contains forty two observations.",
+                "Results",
+                "OCR preserves this source linked evidence.",
+            ]
+        },
     )
     _write_pdf(
         supplement,

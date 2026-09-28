@@ -22,9 +22,9 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "fonttools>=4.60,<5",
-    "httpx>=0.27,<1",
-    "pypdf[crypto]>=6.14,<7",
+    "fonttools>=4.60.2,<5",
+    "httpx>=0.28.1,<1",
+    "pypdf[crypto]>=6.19,<7",
 ]
 
 [project.urls]
@@ -42,7 +42,7 @@ browser = [
     "playwright>=1.63,<2",
 ]
 ocr = [
-    "Pillow>=11,<13",
+    "Pillow>=12.3,<13",
 ]
 dev = [
     "pytest>=8,<10",

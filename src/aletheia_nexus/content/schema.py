@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
+from datetime import datetime
 from pathlib import Path
+
+from aletheia_nexus.content.geometry import CANONICAL_COORDINATE_SYSTEM
 
 PARSED_DOCUMENT_SCHEMA = "aletheia-nexus/parsed-document/v2"
 PARSED_STATUSES = frozenset({"PARSED", "PARTIAL", "FAILED"})
@@ -14,6 +18,19 @@ BLOCK_KINDS = frozenset(
     {"paragraph", "heading", "caption", "equation", "reference", "other"}
 )
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_ARTIFACT_ID = re.compile(r"^an:(?:source|parsed):(?:v2:)?sha256:[0-9a-f]{64}$")
+
+
+def compute_parsed_artifact_id(document: dict[str, object]) -> str:
+    """Return a path- and timestamp-independent content identity."""
+
+    payload = json.loads(json.dumps(document))
+    payload.pop("artifact_id", None)
+    payload.pop("created_at", None)
+    source = payload.get("source")
+    if isinstance(source, dict):
+        source.pop("locators", None)
+    return f"an:parsed:v2:sha256:{_fingerprint(payload)}"
 
 
 def validate_parsed_document(document: object) -> None:
@@ -25,8 +42,18 @@ def validate_parsed_document(document: object) -> None:
         raise ValueError("unsupported parsed-document schema")
     if document.get("status") not in PARSED_STATUSES:
         raise ValueError("status must be PARSED, PARTIAL, or FAILED")
-    if not document.get("created_at"):
-        raise ValueError("missing required field: created_at")
+    created_at = document.get("created_at")
+    if not isinstance(created_at, str) or not created_at:
+        raise ValueError("created_at must be an ISO-8601 timestamp string")
+    try:
+        parsed_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("created_at must be an ISO-8601 timestamp string") from exc
+    if parsed_time.tzinfo is None:
+        raise ValueError("created_at must include a timezone")
+    artifact_id = document.get("artifact_id")
+    if not isinstance(artifact_id, str) or not _ARTIFACT_ID.fullmatch(artifact_id):
+        raise ValueError("artifact_id must be a canonical parsed SHA-256 identity")
     parser = document.get("parser")
     if not isinstance(parser, dict) or not all(
         isinstance(parser.get(key), str) and parser.get(key)
@@ -76,27 +103,92 @@ def validate_parsed_document(document: object) -> None:
         "acquisition_sidecar_sha256",
         "page_count",
         "acquisition_schema",
-        "pdf_path",
-        "acquisition_sidecar_path",
+        "artifact_id",
+        "locators",
     ):
         if key not in source:
             raise ValueError(f"source is missing {key}")
     if not isinstance(source["doi"], str) or not source["doi"]:
         raise ValueError("source.doi must be a non-empty string")
-    for key in ("acquisition_schema", "pdf_path", "acquisition_sidecar_path"):
+    for key in ("acquisition_schema", "artifact_id"):
         if not isinstance(source[key], str) or not source[key]:
             raise ValueError(f"source.{key} must be a non-empty string")
-    if not isinstance(source["page_count"], int) or source["page_count"] < 1:
+    if (
+        isinstance(source["page_count"], bool)
+        or not isinstance(source["page_count"], int)
+        or source["page_count"] < 1
+    ):
         raise ValueError("source.page_count must be a positive integer")
     for key in ("pdf_sha256", "acquisition_sidecar_sha256"):
         if not isinstance(source[key], str) or not _SHA256.fullmatch(source[key]):
             raise ValueError(f"source.{key} must be a lowercase SHA-256")
+    if source["artifact_id"] != f"an:source:sha256:{source['pdf_sha256']}":
+        raise ValueError("source.artifact_id does not match source.pdf_sha256")
+    locators = source["locators"]
+    if not isinstance(locators, dict):
+        raise ValueError("source.locators must be an object")
+    if not set(locators) <= {"pdf", "acquisition_sidecar"}:
+        raise ValueError("source.locators contains an unsupported locator")
+    for key in ("pdf", "acquisition_sidecar"):
+        value = locators.get(key)
+        if value is not None and (
+            not isinstance(value, str)
+            or not value
+            or Path(value).is_absolute()
+            or ".." in Path(value).parts
+            or "://" in value
+        ):
+            raise ValueError(f"source.locators.{key} must be a relative local path")
     for key in ("warnings", "errors", "sections", "blocks", "anchors"):
         if not isinstance(document.get(key), list):
             raise ValueError(f"{key} must be a list")
     for key in ("references", "figures", "tables"):
         if not isinstance(document.get(key), list):
             raise ValueError(f"{key} must be a list")
+    pages = document.get("pages")
+    if not isinstance(pages, list):
+        raise ValueError("pages must be a list")
+    page_metadata: dict[int, dict[str, object]] = {}
+    for index, page_item in enumerate(pages):
+        if not isinstance(page_item, dict):
+            raise ValueError(f"pages[{index}] must be an object")
+        page_number = page_item.get("page")
+        if (
+            isinstance(page_number, bool)
+            or not isinstance(page_number, int)
+            or not 1 <= page_number <= source["page_count"]
+            or page_number in page_metadata
+        ):
+            raise ValueError(f"pages[{index}].page is invalid or duplicated")
+        dimensions = (page_item.get("width"), page_item.get("height"))
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or value <= 0
+            for value in dimensions
+        ):
+            raise ValueError(f"pages[{index}] has invalid dimensions")
+        if page_item.get("rotation") not in {0, 90, 180, 270}:
+            raise ValueError(f"pages[{index}] has invalid rotation")
+        if page_item.get("coordinate_system") != CANONICAL_COORDINATE_SYSTEM:
+            raise ValueError(f"pages[{index}] has an unsupported coordinate system")
+        for box_name in ("media_box", "crop_box"):
+            box = page_item.get(box_name)
+            if box is not None and (
+                not isinstance(box, list)
+                or len(box) != 4
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    for value in box
+                )
+                or box[2] <= box[0]
+                or box[3] <= box[1]
+            ):
+                raise ValueError(f"pages[{index}].{box_name} is invalid")
+        page_metadata[page_number] = page_item
     for label in ("warnings", "errors"):
         for index, message in enumerate(document[label]):
             if not isinstance(message, dict) or not all(
@@ -104,6 +196,19 @@ def validate_parsed_document(document: object) -> None:
                 for key in ("code", "detail")
             ):
                 raise ValueError(f"{label}[{index}] needs code and detail strings")
+            if "page" in message and (
+                isinstance(message["page"], bool)
+                or not isinstance(message["page"], int)
+                or not 1 <= message["page"] <= source["page_count"]
+            ):
+                raise ValueError(f"{label}[{index}].page is out of range")
+            for key in ("stage", "backend"):
+                if key in message and (
+                    not isinstance(message[key], str) or not message[key]
+                ):
+                    raise ValueError(f"{label}[{index}].{key} must be a string")
+            if "degraded" in message and not isinstance(message["degraded"], bool):
+                raise ValueError(f"{label}[{index}].degraded must be a boolean")
     quality = document.get("quality")
     if not isinstance(quality, dict):
         raise ValueError("quality must be an object")
@@ -112,6 +217,7 @@ def validate_parsed_document(document: object) -> None:
         label="quality.page_coverage",
         numerator="parsed",
         expected_total=source["page_count"],
+        expected_numerator=len(pages),
     )
 
     blocks = document["blocks"]
@@ -131,7 +237,8 @@ def validate_parsed_document(document: object) -> None:
         if not isinstance(block.get("text"), str):
             raise ValueError(f"blocks[{index}].text must be a string")
         if (
-            not isinstance(block.get("page"), int)
+            isinstance(block.get("page"), bool)
+            or not isinstance(block.get("page"), int)
             or not 1 <= block["page"] <= source["page_count"]
         ):
             raise ValueError(f"blocks[{index}].page is out of range")
@@ -142,12 +249,21 @@ def validate_parsed_document(document: object) -> None:
         if not isinstance(block.get("extraction_method"), str):
             raise ValueError(f"blocks[{index}] needs an extraction method")
         confidence = block.get("extraction_confidence")
-        if confidence is not None and (
+        if (
             isinstance(confidence, bool)
             or not isinstance(confidence, (int, float))
+            or not math.isfinite(float(confidence))
             or not 0 <= confidence <= 1
         ):
             raise ValueError(f"blocks[{index}] has invalid extraction confidence")
+        agreement = block.get("engine_agreement")
+        if agreement is not None and (
+            isinstance(agreement, bool)
+            or not isinstance(agreement, (int, float))
+            or not math.isfinite(float(agreement))
+            or not 0 <= agreement <= 1
+        ):
+            raise ValueError(f"blocks[{index}] has invalid engine agreement")
         engines = block.get("source_engines")
         if engines is not None and (
             not isinstance(engines, list)
@@ -179,14 +295,24 @@ def validate_parsed_document(document: object) -> None:
     anchor_by_id: dict[str, dict[str, object]] = {}
     for index, anchor in enumerate(anchors):
         page = anchor.get("page")
-        if not isinstance(page, int) or not 1 <= page <= source["page_count"]:
+        if (
+            isinstance(page, bool)
+            or not isinstance(page, int)
+            or not 1 <= page <= source["page_count"]
+        ):
             raise ValueError(f"anchors[{index}].page is out of range")
         bbox = anchor.get("bbox")
         if bbox is not None and (
             not isinstance(bbox, list)
             or len(bbox) != 4
-            or any(not isinstance(value, (int, float)) for value in bbox)
-            or any(value < 0 or value > 1 for value in bbox)
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                for value in bbox
+            )
+            or not 0 <= bbox[0] < bbox[2] <= 1
+            or not 0 <= bbox[1] < bbox[3] <= 1
         ):
             raise ValueError(f"anchors[{index}].bbox must be four 0..1 numbers")
         if anchor.get("block_id") not in block_ids:
@@ -212,6 +338,11 @@ def validate_parsed_document(document: object) -> None:
             or not 0 <= start <= end <= len(evidence)
         ):
             raise ValueError(f"anchors[{index}].span is out of range")
+        page_item = page_metadata.get(page)
+        if page_item is None:
+            raise ValueError(f"anchors[{index}] references missing page metadata")
+        if anchor.get("coordinate_system") != page_item["coordinate_system"]:
+            raise ValueError(f"anchors[{index}] coordinate system conflicts with page")
     if set(anchor_by_block) != block_ids or len(anchors) != len(blocks):
         raise ValueError("every block must have exactly one anchor")
     for index, block in enumerate(blocks):
@@ -231,21 +362,10 @@ def validate_parsed_document(document: object) -> None:
             raise ValueError(f"sections[{index}] references unknown heading block")
     for label in ("figures", "tables"):
         for index, item in enumerate(document[label]):
-            resolved = item.get("resolved")
-            if not isinstance(resolved, bool):
-                raise ValueError(f"{label}[{index}].resolved must be a boolean")
-            if resolved:
-                if item.get("caption_block_id") not in block_ids:
-                    raise ValueError(
-                        f"{label}[{index}] references unknown caption block"
-                    )
-                if item.get("anchor_id") not in anchor_ids:
-                    raise ValueError(f"{label}[{index}] references unknown anchor")
-            elif (
-                item.get("caption_block_id") is not None
-                or item.get("anchor_id") is not None
-            ):
-                raise ValueError(f"{label}[{index}] has unresolved caption evidence")
+            if item.get("caption_block_id") not in block_ids:
+                raise ValueError(f"{label}[{index}] references unknown caption block")
+            if item.get("anchor_id") not in anchor_ids:
+                raise ValueError(f"{label}[{index}] references unknown anchor")
             object_blocks = item.get("object_block_ids")
             if not isinstance(object_blocks, list) or any(
                 block_id not in block_ids for block_id in object_blocks
@@ -255,6 +375,16 @@ def validate_parsed_document(document: object) -> None:
                 item.get("association"), str
             ):
                 raise ValueError(f"{label}[{index}] needs association/uncertainty")
+            if item.get("interpretation_status") != "not-interpreted":
+                raise ValueError(
+                    f"{label}[{index}] must not claim semantic interpretation"
+                )
+            if item.get("evidence_status") not in {
+                "caption-observed",
+                "caption-and-region-observed",
+                "caption-and-cell-evidence-observed",
+            }:
+                raise ValueError(f"{label}[{index}] has invalid evidence status")
             if label == "figures":
                 source_objects = item.get("source_objects")
                 if not isinstance(source_objects, list):
@@ -271,6 +401,32 @@ def validate_parsed_document(document: object) -> None:
                         raise ValueError(
                             f"figures[{index}].source_objects[{object_index}] is invalid"
                         )
+                    object_bbox = source_object.get("bbox")
+                    if object_bbox is not None and (
+                        not isinstance(object_bbox, list)
+                        or len(object_bbox) != 4
+                        or any(
+                            isinstance(value, bool)
+                            or not isinstance(value, (int, float))
+                            or not math.isfinite(float(value))
+                            for value in object_bbox
+                        )
+                        or not 0 <= object_bbox[0] < object_bbox[2] <= 1
+                        or not 0 <= object_bbox[1] < object_bbox[3] <= 1
+                    ):
+                        raise ValueError(
+                            f"figures[{index}].source_objects[{object_index}].bbox is invalid"
+                        )
+                    for dimension in ("width", "height"):
+                        value = source_object.get(dimension)
+                        if value is not None and (
+                            isinstance(value, bool)
+                            or not isinstance(value, int)
+                            or value < 1
+                        ):
+                            raise ValueError(
+                                f"figures[{index}].source_objects[{object_index}].{dimension} is invalid"
+                            )
             if label == "tables":
                 cells = item.get("cells")
                 if not isinstance(cells, list):
@@ -278,7 +434,9 @@ def validate_parsed_document(document: object) -> None:
                 row_count = item.get("row_count")
                 column_count = item.get("column_count")
                 if (
-                    not isinstance(row_count, int)
+                    isinstance(row_count, bool)
+                    or isinstance(column_count, bool)
+                    or not isinstance(row_count, int)
                     or not isinstance(column_count, int)
                     or row_count < 0
                     or column_count < 0
@@ -298,7 +456,9 @@ def validate_parsed_document(document: object) -> None:
                             f"tables[{index}].cells[{cell_index}] has unknown anchor"
                         )
                     if (
-                        not isinstance(cell.get("row"), int)
+                        isinstance(cell.get("row"), bool)
+                        or isinstance(cell.get("column"), bool)
+                        or not isinstance(cell.get("row"), int)
                         or not 1 <= cell["row"] <= row_count
                         or not isinstance(cell.get("column"), int)
                         or not 1 <= cell["column"] <= column_count
@@ -349,8 +509,9 @@ def validate_parsed_document(document: object) -> None:
             not bool(item["resolved"]) for item in document["references"]
         ),
         "figure_count": len(document["figures"]),
-        "unresolved_figure_count": sum(
-            not bool(item["resolved"]) for item in document["figures"]
+        "figures_with_region_evidence": sum(
+            item.get("evidence_status") == "caption-and-region-observed"
+            for item in document["figures"]
         ),
         "table_count": len(document["tables"]),
         "tables_with_cells": sum(bool(item["cells"]) for item in document["tables"]),
@@ -386,9 +547,23 @@ def validate_parsed_document(document: object) -> None:
     if mean_confidence is not None and (
         isinstance(mean_confidence, bool)
         or not isinstance(mean_confidence, (int, float))
+        or not math.isfinite(float(mean_confidence))
         or not 0 <= mean_confidence <= 1
     ):
         raise ValueError("quality.mean_extraction_confidence must be between 0 and 1")
+    expected_mean_confidence = (
+        round(
+            sum(float(block.get("extraction_confidence", 1.0)) for block in blocks)
+            / len(blocks),
+            6,
+        )
+        if blocks
+        else 0.0
+    )
+    if mean_confidence != expected_mean_confidence:
+        raise ValueError(
+            "quality.mean_extraction_confidence does not match document content"
+        )
     if "manual_review_required" in quality and not isinstance(
         quality["manual_review_required"], bool
     ):
@@ -416,6 +591,8 @@ def validate_parsed_document(document: object) -> None:
         blocking_warnings or document["errors"] or quality["stopped_early"]
     ):
         raise ValueError("PARSED status conflicts with warnings, errors, or truncation")
+    if artifact_id != compute_parsed_artifact_id(document):
+        raise ValueError("artifact_id does not match canonical document content")
 
 
 def _fingerprint(value: object) -> str:
@@ -474,8 +651,15 @@ def serialize_parsed_document(document: dict[str, object]) -> str:
     return json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
-def write_parsed_document(path: str | Path, document: dict[str, object]) -> Path:
+def write_parsed_document(
+    path: str | Path,
+    document: dict[str, object],
+    *,
+    overwrite: bool = False,
+) -> Path:
     target = Path(path)
+    if target.exists() and not overwrite:
+        raise FileExistsError(f"parsed artifact already exists: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(target.suffix + ".part")
     try:

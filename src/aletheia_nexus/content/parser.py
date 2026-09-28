@@ -8,20 +8,30 @@ import math
 import re
 import statistics
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 
 from pypdf import PdfReader
 
 from aletheia_nexus.content.backends import ExtractionBackend, NativePdfBackend
+from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.gate import ParserInput
-from aletheia_nexus.content.models import LayoutLine, PageLayout, PipelineContext
+from aletheia_nexus.content.geometry import PageGeometry
+from aletheia_nexus.content.models import (
+    LayoutLine,
+    PageLayout,
+    PipelineContext,
+    validate_page_layout,
+)
 from aletheia_nexus.content.pipeline import ParserPipeline
-from aletheia_nexus.content.schema import PARSED_DOCUMENT_SCHEMA
+from aletheia_nexus.content.schema import (
+    PARSED_DOCUMENT_SCHEMA,
+    compute_parsed_artifact_id,
+)
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "2.3.0"
+PARSER_VERSION = "2.4.0"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -655,11 +665,44 @@ class _NativeExtractionStage:
         for page_index, page in enumerate(reader.pages[: config.max_pages], start=1):
             try:
                 layout = backend.extract_page(page, page_index)
+                validate_page_layout(layout, expected_page=page_index)
+                expected = PageGeometry.from_page(page)
+                if not (
+                    math.isclose(layout.width, expected.width, abs_tol=0.01)
+                    and math.isclose(layout.height, expected.height, abs_tol=0.01)
+                    and layout.rotation == expected.rotation
+                ):
+                    raise ValueError(
+                        "backend page dimensions/rotation differ from canonical geometry"
+                    )
+                if layout.media_box is not None and any(
+                    not math.isclose(actual, wanted, abs_tol=0.01)
+                    for actual, wanted in zip(layout.media_box, expected.media_box)
+                ):
+                    raise ValueError("backend MediaBox differs from source page")
+                if layout.crop_box is not None and any(
+                    not math.isclose(actual, wanted, abs_tol=0.01)
+                    for actual, wanted in zip(layout.crop_box, expected.crop_box)
+                ):
+                    raise ValueError("backend CropBox differs from source page")
+                layout = replace(
+                    layout,
+                    media_box=expected.media_box,
+                    crop_box=expected.crop_box,
+                    rotation=expected.rotation,
+                )
             except Exception as exc:
                 context.errors.append(
                     {
                         "code": "PAGE_EXTRACTION_FAILED",
-                        "detail": (f"page {page_index}: {type(exc).__name__}: {exc}"),
+                        "detail": (
+                            f"page {page_index}: {type(exc).__name__}: "
+                            f"{safe_exception_detail(exc)}"
+                        ),
+                        "page": page_index,
+                        "stage": "layout-extraction",
+                        "backend": f"{backend.name}@{backend.version}",
+                        "degraded": False,
                     }
                 )
                 continue
@@ -739,6 +782,19 @@ class _NativeExtractionStage:
                     block["source_engines"] = list(
                         dict.fromkeys([*block["source_engines"], *line_engines])
                     )
+                    agreements = [
+                        value
+                        for value in (
+                            block.get("engine_agreement"),
+                            line.engine_agreement,
+                        )
+                        if value is not None
+                    ]
+                    block["engine_agreement"] = (
+                        min(float(value) for value in agreements)
+                        if agreements
+                        else None
+                    )
                     if block["extraction_method"] != line.extraction_method:
                         block["extraction_method"] = "mixed-positioned-text"
                     if block["content_region"] != line.content_region:
@@ -784,6 +840,7 @@ class _NativeExtractionStage:
                         "extraction_method": line.extraction_method,
                         "extraction_confidence": line.extraction_confidence,
                         "source_engines": list(line_engines),
+                        "engine_agreement": line.engine_agreement,
                         "content_region": line.content_region,
                         "uncertain": line.uncertain or kind == "equation",
                         "line_count": 1,
@@ -795,7 +852,7 @@ class _NativeExtractionStage:
                         "block_id": block_id,
                         "page": page_index,
                         "bbox": bbox,
-                        "coordinate_system": "pdf-bottom-left-normalized",
+                        "coordinate_system": layout.coordinate_system,
                         "bbox_precision": "estimated" if bbox is not None else None,
                         "text_evidence": line.text,
                         "span": {"start": 0, "end": len(line.text)},
@@ -1258,8 +1315,9 @@ def _objects(
             "caption_block_id": block["id"],
             "anchor_id": block["anchor_id"],
             "object_block_ids": [],
-            "resolved": True,
             "uncertain": True,
+            "evidence_status": "caption-observed",
+            "interpretation_status": "not-interpreted",
         }
         if is_figure:
             images = [
@@ -1292,9 +1350,11 @@ def _objects(
             ]
             if len(linked_images) == 1:
                 item["association"] = "caption+single-page-image"
+                item["evidence_status"] = "caption-and-region-observed"
                 associated_images.add((int(block["page"]), linked_images[0].name))
             elif linked_images:
                 item["association"] = "caption+positioned-page-images"
+                item["evidence_status"] = "caption-and-region-observed"
                 associated_images.update(
                     (int(block["page"]), image.name) for image in linked_images
                 )
@@ -1310,6 +1370,7 @@ def _objects(
             )
             if cells:
                 item["association"] = "caption+positioned-cells"
+                item["evidence_status"] = "caption-and-cell-evidence-observed"
                 item["uncertain"] = False
             else:
                 item["association"] = "caption-only"
@@ -1360,7 +1421,6 @@ class _QualityStage:
         unresolved_references = sum(
             not bool(item["resolved"]) for item in context.references
         )
-        unresolved_figures = sum(not bool(item["resolved"]) for item in context.figures)
         confidences = [
             float(item.get("extraction_confidence", 1.0)) for item in context.blocks
         ]
@@ -1392,7 +1452,10 @@ class _QualityStage:
             "reference_count": len(context.references),
             "unresolved_reference_count": unresolved_references,
             "figure_count": len(context.figures),
-            "unresolved_figure_count": unresolved_figures,
+            "figures_with_region_evidence": sum(
+                item.get("evidence_status") == "caption-and-region-observed"
+                for item in context.figures
+            ),
             "table_count": len(context.tables),
             "tables_with_cells": sum(
                 bool(item.get("cells")) for item in context.tables
@@ -1455,7 +1518,7 @@ def _document(context: PipelineContext, pipeline: ParserPipeline) -> dict[str, o
             "utf-8"
         )
     ).hexdigest()
-    return {
+    document = {
         "schema": PARSED_DOCUMENT_SCHEMA,
         "created_at": context.created_at,
         "parser": {
@@ -1468,18 +1531,30 @@ def _document(context: PipelineContext, pipeline: ParserPipeline) -> dict[str, o
             "execution_fingerprint": execution_fingerprint,
         },
         "source": {
+            "artifact_id": f"an:source:sha256:{source.pdf_sha256}",
             "doi": source.doi,
             "pdf_sha256": source.pdf_sha256,
             "acquisition_sidecar_sha256": source.sidecar_sha256,
             "page_count": source.page_count,
             "acquisition_schema": source.acquisition_schema,
-            "pdf_path": str(source.pdf_path),
-            "acquisition_sidecar_path": str(source.sidecar_path),
+            "locators": {},
         },
         "status": context.status,
         "warnings": context.warnings,
         "errors": context.errors,
         "quality": context.quality,
+        "pages": [
+            {
+                "page": page_number,
+                "width": layout.width,
+                "height": layout.height,
+                "rotation": layout.rotation,
+                "media_box": list(layout.media_box) if layout.media_box else None,
+                "crop_box": list(layout.crop_box) if layout.crop_box else None,
+                "coordinate_system": layout.coordinate_system,
+            }
+            for page_number, layout in sorted(context.layouts.items())
+        ],
         "sections": context.sections,
         "blocks": context.blocks,
         "anchors": context.anchors,
@@ -1487,6 +1562,8 @@ def _document(context: PipelineContext, pipeline: ParserPipeline) -> dict[str, o
         "figures": context.figures,
         "tables": context.tables,
     }
+    document["artifact_id"] = compute_parsed_artifact_id(document)
+    return document
 
 
 def parse_pdf(

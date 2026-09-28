@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,7 @@ def parse_document(
     config: ParserConfig | None = None,
     backend: ExtractionBackend | None = None,
     created_at: str | None = None,
+    overwrite: bool = False,
 ) -> ParseResult:
     """Parse a VERIFIED main article without changing either input artifact."""
 
@@ -65,7 +67,19 @@ def parse_document(
     )
     if target in {source.pdf_path, source.sidecar_path}:
         raise ValueError("parsed output must not overwrite an acquisition artifact")
-    write_parsed_document(target, document)
+    locators: dict[str, str] = {}
+    for key, source_path in (
+        ("pdf", source.pdf_path),
+        ("acquisition_sidecar", source.sidecar_path),
+    ):
+        try:
+            relative = Path(os.path.relpath(source_path, target.parent))
+        except ValueError:
+            continue
+        if not relative.is_absolute() and ".." not in relative.parts:
+            locators[key] = relative.as_posix()
+    document["source"]["locators"] = locators
+    write_parsed_document(target, document, overwrite=overwrite)
     return ParseResult(
         status=str(document["status"]),
         output_path=target,

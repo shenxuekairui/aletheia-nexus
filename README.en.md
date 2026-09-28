@@ -79,9 +79,19 @@ aletheia-nexus parse downloads/paper.pdf --doi 10.1234/example
 
 The command requires the sibling `.acquisition.json`, rechecks its schema, `VERIFIED` status, article role, DOI, hash, readability, and page count, then writes a separate `.parsed.json`. Search it with `aletheia-nexus search PAPER.parsed.json QUERY --verify-sources`. `PARSED` means the configured extraction pipeline completed; it does not validate claims. `PARTIAL` is explicit for sparse, scanned, failed-page, or resource-limited input. See the [v0.7 parsing contract](docs/V07_PARSING_CONTRACT.md) and [architecture](docs/V07_ARCHITECTURE.md).
 
+Enable the real selective OCR path with `--ocr` when Poppler and Tesseract are installed. Export the validated canonical artifact without reparsing the PDF:
+
+```bash
+aletheia-nexus export PAPER.parsed.json --format markdown --output PAPER.ai.md
+aletheia-nexus export PAPER.parsed.json --format jsonl --output PAPER.ai.jsonl
+aletheia-nexus export PAPER.parsed.json --format chunks --output PAPER.chunks.json
+```
+
+Exports are deterministic derived views with source and parsed artifact IDs; chunks preserve structural boundaries and carry block → anchor → page/bbox evidence. Existing parse/export targets require explicit `--overwrite`.
+
 ## Roadmap and participation
 
-v0.7 implements the [parsing contract](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_PARSING_CONTRACT.md) with deterministic native parsing, optional selective OCR, specialist-region interfaces, explicit uncertainty, and source-linked quality metrics. Private fixed-corpus tests cover 38 papers and 655 pages, while the public suite remains redistribution-safe. Human-transcribed truth sets, scientific claim interpretation, knowledge organization, and agent workflows remain future work.
+v0.7 implements the [parsing contract](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_PARSING_CONTRACT.md) with canonical geometry, portable artifact identity, runtime validation, deterministic AI-ready exports, optional selective OCR, and explicit uncertainty. Public evidence combines self-authored exact gold, a real Poppler + Tesseract smoke, and three hash-frozen OA papers; private stress tests cover 38 papers and 655 pages. These are not claims of complete semantic or visual accuracy. Scientific claim interpretation, knowledge organization, and agent workflows remain future work.
 
 If you are trying AN for the first time, please join the [v0.6.1 first-time setup trial](https://github.com/shenxuekairui/aletheia-nexus/issues/3). A small report is especially valuable: which DOI, which legal access route, what status AN returned, and what you observed instead. **Remove cookies, tokens, account details, institutional login screenshots, signed URLs, and copyrighted PDF bytes** before opening an issue. See [CONTRIBUTING.md](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) and the [issue templates](https://github.com/shenxuekairui/aletheia-nexus/tree/main/.github/ISSUE_TEMPLATE).
 

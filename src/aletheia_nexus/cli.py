@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -27,10 +28,18 @@ from aletheia_nexus.acquire.fulltext import (
     acquire_full_text,
 )
 from aletheia_nexus.content import (
+    AdaptiveOcrBackend,
+    ChunkConfig,
     ParserConfig,
     ParserInputError,
+    TesseractOcrBackend,
+    TesseractOcrConfig,
+    export_jsonl,
+    export_markdown,
     load_parsed_document,
     parse_document,
+    serialize_chunks,
+    write_ai_export,
 )
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
@@ -547,6 +556,18 @@ def parse_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-blocks", type=int, default=200_000)
     parser.add_argument("--max-text-characters", type=int, default=20_000_000)
     parser.add_argument(
+        "--ocr",
+        action="store_true",
+        help="Enable native-first selective OCR through Poppler and Tesseract.",
+    )
+    parser.add_argument("--ocr-languages", default="eng")
+    parser.add_argument("--ocr-max-raster-pixels", type=int, default=50_000_000)
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Explicitly replace an existing parsed output.",
+    )
+    parser.add_argument(
         "--no-merge-paragraph-lines",
         action="store_true",
         help="Keep each positioned PDF text line as a separate block.",
@@ -564,12 +585,26 @@ def parse_main(argv: list[str] | None = None) -> int:
             max_text_characters=args.max_text_characters,
             merge_paragraph_lines=not args.no_merge_paragraph_lines,
         )
+        backend = None
+        if args.ocr:
+            backend = AdaptiveOcrBackend(
+                ocr_backends=(
+                    TesseractOcrBackend(
+                        TesseractOcrConfig(
+                            languages=args.ocr_languages,
+                            max_raster_pixels=args.ocr_max_raster_pixels,
+                        )
+                    ),
+                )
+            )
         result = parse_document(
             args.pdf,
             args.doi,
             sidecar_path=args.sidecar,
             output_path=args.output,
             config=config,
+            backend=backend,
+            overwrite=args.overwrite,
         )
     except ParserInputError as exc:
         print(str(exc), file=sys.stderr)
@@ -634,6 +669,38 @@ def search_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def export_main(argv: list[str] | None = None) -> int:
+    """Export a validated canonical document without reparsing its PDF."""
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus export",
+        description="Create deterministic Markdown, JSONL, or chunk JSON views.",
+    )
+    parser.add_argument("artifact", type=Path)
+    parser.add_argument(
+        "--format", choices=("markdown", "jsonl", "chunks"), required=True
+    )
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--max-chars", type=int, default=6000)
+    parser.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        artifact = load_parsed_document(args.artifact)
+        config = ChunkConfig(max_characters=args.max_chars)
+        serializers = {
+            "markdown": export_markdown,
+            "jsonl": export_jsonl,
+            "chunks": serialize_chunks,
+        }
+        payload = serializers[args.format](artifact, config=config)
+        output = write_ai_export(args.output, payload, overwrite=args.overwrite)
+    except (OSError, ValueError) as exc:
+        print(f"Could not export parsed artifact: {exc}", file=sys.stderr)
+        return 7
+    print(f"Exported {args.format}: {output}")
+    return 0
+
+
 def entrypoint(argv: list[str] | None = None) -> int:
     """Dispatch the stable installed CLI without importing optional Playwright."""
 
@@ -646,6 +713,7 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "  aletheia-nexus acquire INPUT.txt [options]\n"
             "  aletheia-nexus parse PAPER.pdf --doi DOI [options]\n"
             "  aletheia-nexus search PAPER.parsed.json QUERY [options]\n"
+            "  aletheia-nexus export PAPER.parsed.json --format FORMAT --output PATH\n"
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus --version\n\n"
             "Use 'aletheia-nexus COMMAND --help' for command options."
@@ -660,7 +728,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
         return 0
     if args[0] == "doctor":
         if args[1:] in (["-h"], ["--help"]):
-            print("Usage: aletheia-nexus doctor\nCheck the local Python/browser setup.")
+            print(
+                "Usage: aletheia-nexus doctor\n"
+                "Check local Python, browser, and OCR executable setup."
+            )
             return 0
         if len(args) != 1:
             print("doctor takes no arguments", file=sys.stderr)
@@ -685,6 +756,15 @@ def entrypoint(argv: list[str] | None = None) -> int:
                 '  python -m pip install "aletheia-nexus[browser]"\n'
                 "  python -m playwright install chromium"
             )
+        poppler = shutil.which("pdftoppm")
+        tesseract = shutil.which("tesseract")
+        print(f"Poppler OCR renderer: {'ready' if poppler else 'missing'}")
+        print(f"Tesseract OCR engine: {'ready' if tesseract else 'missing'}")
+        if not poppler or not tesseract:
+            print(
+                "Selective OCR remains optional; install Poppler and Tesseract "
+                "and ensure pdftoppm/tesseract are on PATH to use parse --ocr."
+            )
         return 0
     if args[0] == "acquire":
         return main(args[1:])
@@ -692,6 +772,8 @@ def entrypoint(argv: list[str] | None = None) -> int:
         return parse_main(args[1:])
     if args[0] == "search":
         return search_main(args[1:])
+    if args[0] == "export":
+        return export_main(args[1:])
     print(f"Unknown command: {args[0]!r}. Use --help.", file=sys.stderr)
     return 2
 

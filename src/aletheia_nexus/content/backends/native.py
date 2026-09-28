@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from aletheia_nexus.content.geometry import PageGeometry
 from aletheia_nexus.content.models import LayoutLine, PageLayout, PageObject
 
 
@@ -43,7 +44,7 @@ def _matrix(tm: list[float], cm: list[float]) -> list[float]:
     ]
 
 
-def _text_lines(page: Any) -> tuple[LayoutLine, ...]:
+def _text_lines(page: Any, geometry: PageGeometry) -> tuple[LayoutLine, ...]:
     fragments: list[_Fragment] = []
 
     def visitor(
@@ -94,8 +95,8 @@ def _text_lines(page: Any) -> tuple[LayoutLine, ...]:
         rows.append(current_row)
 
     segmented_rows: list[list[_Fragment]] = []
-    page_left = float(page.mediabox.left)
-    page_width = float(page.mediabox.width)
+    page_left = float(page.cropbox.left)
+    page_width = float(page.cropbox.width)
     column_boundary = page_left + page_width * 0.5
     for row in rows:
         row.sort(key=lambda item: item.x)
@@ -138,14 +139,23 @@ def _text_lines(page: Any) -> tuple[LayoutLine, ...]:
         font_size = max(item.font_size for item in row)
         x0 = min(item.x for item in row)
         x1 = max(item.x + item.font_size * 0.45 * len(item.text) for item in row)
-        y0 = min(item.y for item in row)
+        raw_y = min(item.y for item in row)
+        x0, y0, x1, y1 = geometry.box_points(
+            (x0, raw_y - font_size * 0.25, x1, raw_y + font_size)
+        )
+        x0 = max(0.0, min(geometry.width, x0))
+        y0 = max(0.0, min(geometry.height, y0))
+        x1 = max(0.0, min(geometry.width, x1))
+        y1 = max(0.0, min(geometry.height, y1))
+        if x1 <= x0 or y1 <= y0:
+            continue
         lines.append(
             LayoutLine(
                 text="".join(text_parts).strip(),
                 x0=x0,
-                y0=max(0.0, y0 - font_size * 0.25),
+                y0=y0,
                 x1=x1,
-                y1=y0 + font_size,
+                y1=y1,
                 font_size=font_size,
                 extraction_confidence=1.0,
                 source_engines=("pypdf-native-layout@2.1.0",),
@@ -162,7 +172,7 @@ def _dereference(value: Any) -> Any:
     return value.get_object() if hasattr(value, "get_object") else value
 
 
-def _page_objects(page: Any) -> tuple[PageObject, ...]:
+def _page_objects(page: Any, geometry: PageGeometry) -> tuple[PageObject, ...]:
     """Record images actually painted on a page, without decoding their bytes."""
 
     resources = _dereference(page.get("/Resources"))
@@ -185,10 +195,6 @@ def _page_objects(page: Any) -> tuple[PageObject, ...]:
 
     objects: list[PageObject] = []
     occurrences: dict[str, int] = {}
-    page_width = float(page.mediabox.width)
-    page_height = float(page.mediabox.height)
-    left = float(page.mediabox.left)
-    bottom = float(page.mediabox.bottom)
 
     def visit_operand(
         operator: bytes,
@@ -201,7 +207,7 @@ def _page_objects(page: Any) -> tuple[PageObject, ...]:
             return
         raw_name = str(operands[0])
         value = image_resources.get(raw_name)
-        if value is None or page_width <= 0 or page_height <= 0:
+        if value is None:
             return
         try:
             a, b, c, d, e, f = (float(item) for item in cm)
@@ -211,14 +217,9 @@ def _page_objects(page: Any) -> tuple[PageObject, ...]:
                 (c + e, d + f),
                 (a + c + e, b + d + f),
             )
-            x_values = [(x - left) / page_width for x, _ in points]
-            y_values = [(y - bottom) / page_height for _, y in points]
-            bbox = (
-                max(0.0, min(1.0, min(x_values))),
-                max(0.0, min(1.0, min(y_values))),
-                max(0.0, min(1.0, max(x_values))),
-                max(0.0, min(1.0, max(y_values))),
-            )
+            bbox = geometry.normalized_box_from_points(points)
+            if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+                return
             width = value.get("/Width")
             height = value.get("/Height")
             base_name = raw_name.lstrip("/")
@@ -248,10 +249,14 @@ class NativePdfBackend:
     version = "2.1.0"
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
+        geometry = PageGeometry.from_page(page)
         return PageLayout(
             page=page_number,
-            width=float(page.mediabox.width),
-            height=float(page.mediabox.height),
-            lines=_text_lines(page),
-            objects=_page_objects(page),
+            width=geometry.width,
+            height=geometry.height,
+            media_box=geometry.media_box,
+            crop_box=geometry.crop_box,
+            rotation=geometry.rotation,
+            lines=_text_lines(page, geometry),
+            objects=_page_objects(page, geometry),
         )

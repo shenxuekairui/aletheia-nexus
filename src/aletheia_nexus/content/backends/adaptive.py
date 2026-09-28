@@ -14,7 +14,13 @@ from aletheia_nexus.content.backends.base import (
     RegionExtractionBackend,
 )
 from aletheia_nexus.content.backends.native import NativePdfBackend
-from aletheia_nexus.content.models import LayoutLine, PageLayout, PageRegion
+from aletheia_nexus.content.diagnostics import safe_exception_detail
+from aletheia_nexus.content.models import (
+    LayoutLine,
+    PageLayout,
+    PageRegion,
+    validate_page_layout,
+)
 
 _FORMULA_TEXT = re.compile(r"(?:[=≈≤≥±∑∫√→←]|[αβγδεϵζηθικλμνξοπρστυφχψωΓΔΘΛΞΠΣΦΨΩ])")
 
@@ -217,13 +223,18 @@ def _trigger_reasons(layout: PageLayout, config: AdaptiveOcrConfig) -> list[str]
 
 
 def _similar(first: str, second: str, threshold: float) -> bool:
+    return _agreement(first, second) >= threshold
+
+
+def _agreement(first: str, second: str) -> float:
     left = _normalized_text(first)
     right = _normalized_text(second)
     if not left or not right:
-        return False
+        return 0.0
     return (
-        left == right
-        or SequenceMatcher(None, left, right, autojunk=False).ratio() >= threshold
+        1.0
+        if left == right
+        else SequenceMatcher(None, left, right, autojunk=False).ratio()
     )
 
 
@@ -261,6 +272,7 @@ class AdaptiveOcrBackend:
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
         native = self.native_backend.extract_page(page, page_number)
+        validate_page_layout(native, expected_page=page_number)
         reasons = _trigger_reasons(native, self.config)
         regions = [
             *_image_regions_without_text(native, self.config),
@@ -268,6 +280,36 @@ class AdaptiveOcrBackend:
         ]
         warnings = list(native.warnings)
         candidate_layouts: list[PageLayout] = []
+
+        def add_optional(backend: object, extract) -> None:
+            engine = _engine_id(backend)
+            try:
+                extracted = extract()
+                validate_page_layout(extracted, expected_page=page_number)
+                if not (
+                    math.isclose(extracted.width, native.width, abs_tol=0.01)
+                    and math.isclose(extracted.height, native.height, abs_tol=0.01)
+                ):
+                    raise ValueError(
+                        "backend page dimensions differ from native geometry"
+                    )
+            except Exception as exc:
+                warnings.append(
+                    {
+                        "code": "OPTIONAL_BACKEND_FAILED",
+                        "detail": (
+                            f"page {page_number}: {engine}: {type(exc).__name__}: "
+                            f"{safe_exception_detail(exc)}"
+                        ),
+                        "page": page_number,
+                        "stage": "optional-extraction",
+                        "backend": engine,
+                        "degraded": True,
+                    }
+                )
+                return
+            warnings.extend(extracted.warnings)
+            candidate_layouts.append(extracted)
 
         if reasons and not self.ocr_backends:
             warnings.append(
@@ -284,21 +326,29 @@ class AdaptiveOcrBackend:
                 }
             )
             for backend in self.ocr_backends:
-                candidate_layouts.append(backend.extract_page(page, page_number))
+                add_optional(
+                    backend,
+                    lambda backend=backend: backend.extract_page(page, page_number),
+                )
 
         for region in regions:
             for backend in self.specialist_backends:
                 if region.region_type not in backend.supported_regions:
                     continue
-                extracted = backend.extract_region(page, page_number, region)
-                candidate_layouts.append(
-                    replace(
+
+                def extract_region(backend=backend, region=region):
+                    extracted = backend.extract_region(page, page_number, region)
+                    return replace(
                         extracted,
                         lines=tuple(
                             replace(line, content_region=region.region_type)
                             for line in extracted.lines
                         ),
                     )
+
+                add_optional(
+                    backend,
+                    extract_region,
                 )
 
         lines, merge_warnings = self._merge(native, candidate_layouts)
@@ -307,10 +357,10 @@ class AdaptiveOcrBackend:
 
     def _merge(
         self, native: PageLayout, candidate_layouts: Sequence[PageLayout]
-    ) -> tuple[tuple[LayoutLine, ...], list[dict[str, str]]]:
+    ) -> tuple[tuple[LayoutLine, ...], list[dict[str, object]]]:
         native_lines = list(native.lines)
         supplements: list[LayoutLine] = []
-        warnings: list[dict[str, str]] = []
+        warnings: list[dict[str, object]] = []
 
         for layout in candidate_layouts:
             for raw_line in layout.lines:
@@ -349,9 +399,8 @@ class AdaptiveOcrBackend:
                                     existing.source_engines + line.source_engines
                                 )
                             ),
-                            extraction_confidence=max(
-                                existing.extraction_confidence, confidence
-                            ),
+                            extraction_confidence=existing.extraction_confidence,
+                            engine_agreement=_agreement(existing.text, line.text),
                             content_region=(
                                 line.content_region
                                 if line.content_region != "body"
@@ -394,18 +443,12 @@ class AdaptiveOcrBackend:
                     supplements[index] = replace(
                         preferred,
                         extraction_method="ocr-consensus",
-                        extraction_confidence=min(
-                            1.0,
-                            max(
-                                existing.extraction_confidence,
-                                line.extraction_confidence,
-                            )
-                            + 0.1,
-                        ),
+                        extraction_confidence=preferred.extraction_confidence,
+                        engine_agreement=_agreement(existing.text, line.text),
                         source_engines=tuple(
                             dict.fromkeys(existing.source_engines + line.source_engines)
                         ),
-                        uncertain=False,
+                        uncertain=existing.uncertain or line.uncertain,
                     )
                 else:
                     warnings.append(

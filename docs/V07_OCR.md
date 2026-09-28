@@ -1,70 +1,59 @@
 # v0.7 native-first OCR
 
-The v0.7 parser treats the PDF content stream as the authoritative source and
-uses OCR only as positioned supplementary evidence. This prevents a normal
-born-digital article from being flattened into a lower-quality raster copy.
+OCR is an optional evidence-recovery path, not a replacement for reliable native
+PDF text.
 
-## Enable selective OCR
+## CLI
 
-Install the optional Python dependency and provide Poppler's `pdftoppm` and
-Tesseract 5 on `PATH`:
+Install the Python image dependency and make Poppler `pdftoppm` and Tesseract 5
+available on `PATH`:
 
 ```console
 python -m pip install "aletheia-nexus[ocr]"
+aletheia-nexus parse paper.pdf --doi 10.1234/example --ocr
 ```
 
-```python
-from aletheia_nexus.content import (
-    AdaptiveOcrBackend,
-    TesseractOcrBackend,
-    parse_document,
-)
+`--ocr-languages` selects Tesseract languages and
+`--ocr-max-raster-pixels` bounds each page allocation. The default render is 300
+DPI with orientation detection, small-angle deskew, Otsu binarization, and TSV
+word coordinates.
 
-backend = AdaptiveOcrBackend(ocr_backends=(TesseractOcrBackend(),))
-result = parse_document(
-    "paper.pdf",
-    "10.1234/example",
-    sidecar_path="paper.acquisition.json",
-    backend=backend,
-)
-```
+## Trigger and fusion contract
 
-The Tesseract backend renders at 300 DPI, detects page orientation, estimates
-and corrects small skew, applies Otsu binarization, and reads TSV word
-coordinates and confidence. OCR is triggered only when a page has too little
-native text, suspicious replacement/control characters, dominant image
-coverage, or a meaningful painted image region without overlapping native text.
+OCR is requested only for sparse native text, suspicious characters,
+image-dominant pages, or meaningful painted-image regions without native anchors.
 
-Fusion is coordinate-aware:
+- Native text always wins on overlap.
+- OCR fills only spatial gaps.
+- Coordinate overlap and normalized text similarity suppress duplicates.
+- `extraction_confidence` remains the chosen engine's reported confidence.
+- `engine_agreement` separately records native/OCR or multi-engine agreement.
+- Disagreement emits `OCR_ENGINE_DISAGREEMENT` and requires review.
+- Timeout, missing executable, invalid geometry, specialist failure, and resource
+  exhaustion are explicit; validated native evidence remains available.
 
-- overlapping native text is always retained;
-- similar OCR at the same coordinates becomes corroborating provenance;
-- OCR is added only where native coordinates are empty;
-- overlapping OCR engines are deduplicated;
-- agreement between engines raises confidence;
-- disagreement is retained as uncertainty and emits
-  `OCR_ENGINE_DISAGREEMENT`, making manual review explicit.
+All raster boxes are inverted through applied deskew/orientation transforms and
+mapped into `pdf-cropbox-display-bottom-left-normalized/v1`. MediaBox, CropBox,
+non-zero origins, and PDF page rotation use the same geometry implementation as
+native text.
 
-Every parsed block records `extraction_method`, `extraction_confidence`,
-`source_engines`, page, normalized anchor coordinates, and `content_region`.
-The quality summary reports OCR-supplemented blocks, consensus blocks, mean
-confidence, and whether manual review is required.
+## Executable evidence and limits
 
-## Tables, formulas, and figures
+CI installs real Poppler and Tesseract and runs the self-authored raster-only PDF
+through rendering, OCR, fusion, parsing, and schema validation. The smoke fixture
+asserts exact expected text and a positioned title anchor. Unit fixtures cover
+rotation/origin transforms, optional-backend timeout/failure, malformed geometry,
+confidence/agreement separation, and raster budget rejection.
 
-General OCR is not a table, formula, or chart parser. Implement
-`RegionExtractionBackend` for a specialist and pass it through
-`specialist_backends`. The adaptive backend detects unanchored painted regions,
-routes `table` and `figure` regions only to compatible specialists, and fuses
-their positioned output through the same native-first rules. Formula specialists
-can use the same contract when a formula-region detector supplies a
-`PageRegion(region_type="formula", ...)`.
+The deterministic fixture's exact OCR text is useful regression evidence, but it
+does not prove a sub-1% loss rate on arbitrary scans. A general loss claim requires
+human-transcribed page truth across representative scan quality, scripts, tables,
+equations, and figures.
 
-## Validation
+## Specialist boundary
 
-Frozen fixture manifests may provide `gold.text_pages`. The offline evaluator
-then reports character deletions, insertions, substitutions, information-loss
-rate, total character-error rate, exact duplicate-text rate, and aggregate
-structural recall. A reported loss rate is meaningful only for pages with
-human-reviewed gold text; native-text conservation alone cannot measure text
-that exists only inside pixels.
+Generic OCR does not understand a table, formula, plot, or scientific image.
+`RegionExtractionBackend` may add positioned evidence through the same validation
+and fusion rules. v0.7 records what was observed and leaves scientific image
+understanding, plot digitization, formula semantics, and universal table recovery
+to later releases.

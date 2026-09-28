@@ -1,0 +1,51 @@
+{
+  "schema": "aletheia-nexus/public-oa-qualification/v1",
+  "policy": "PDFs are fetched on demand from the official PMC Article Datasets bucket and are not redistributed by this repository.",
+  "entries": [
+    {
+      "id": "acs-omega-chemistry",
+      "doi": "10.1021/acsomega.2c08031",
+      "title": "Design and Synthesis of Covalent Inhibitors of FabA",
+      "license": "CC BY",
+      "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC10099128.1/PMC10099128.1.pdf?md5=35480fd5ffadce51020cfafb885e1911",
+      "sha256": "e05f4de86ceaf82a1eb27f1e35e40e7972ae38baced7fd6c1a52727dc6e4384f",
+      "page_count": 18,
+      "gold": {
+        "required_text": ["Design and Synthesis of Covalent Inhibitors of FabA", "References"],
+        "minimum_references": 20,
+        "minimum_figures": 5,
+        "minimum_tables": 1
+      }
+    },
+    {
+      "id": "scientific-reports-surveillance",
+      "doi": "10.1038/s41598-023-33576-3",
+      "title": "Vibrio cholerae in rural and urban Bangladesh, findings from hospital-based surveillance, 2000-2021",
+      "license": "CC BY",
+      "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC10115832.2/PMC10115832.2.pdf?md5=dc9002e85baebf047851cb80317481b7",
+      "sha256": "d1cf69918f7b88ee39ad7092bb1a1174daaea6262814ff8d703a7b95a2bf691b",
+      "page_count": 11,
+      "gold": {
+        "required_text": ["Vibrio cholerae", "Methods", "References"],
+        "minimum_references": 40,
+        "minimum_figures": 2,
+        "minimum_tables": 3
+      }
+    },
+    {
+      "id": "scientific-reports-physics",
+      "doi": "10.1038/s41598-023-35336-9",
+      "title": "Phase transitions in the classical simulability of open quantum systems",
+      "license": "CC BY",
+      "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC10232539.1/PMC10232539.1.pdf?md5=b89cfbf619742f1c5a1467a0e9a5a286",
+      "sha256": "5d76eff3907d57edc58a7625008c7d25d025d4b690190f3da4f82d55510e7b26",
+      "page_count": 9,
+      "gold": {
+        "required_text": ["Phase transitions", "Discussion", "References"],
+        "minimum_references": 50,
+        "minimum_figures": 3,
+        "minimum_tables": 0
+      }
+    }
+  ]
+}

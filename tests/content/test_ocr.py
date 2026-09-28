@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
 from aletheia_nexus.content import (
     AdaptiveOcrBackend,
@@ -96,7 +97,8 @@ def test_adaptive_ocr_preserves_native_and_adds_only_consensus_gap():
     assert result.lines[0].source_engines == ("native@1", "ocr-a@1")
     assert result.lines[1].extraction_method == "ocr-consensus"
     assert result.lines[1].source_engines == ("ocr-a@1", "ocr-b@1")
-    assert result.lines[1].extraction_confidence == pytest.approx(1.0)
+    assert result.lines[1].extraction_confidence == pytest.approx(0.90)
+    assert result.lines[1].engine_agreement == pytest.approx(1.0)
     assert {item["code"] for item in result.warnings} == {
         "OCR_TRIGGERED",
         "OCR_TEXT_SUPPLEMENTED",
@@ -118,6 +120,55 @@ def test_adaptive_ocr_disagreement_is_uncertain_and_reviewable():
     assert result.lines[0].text == "omega result"
     assert result.lines[0].uncertain is True
     assert "OCR_ENGINE_DISAGREEMENT" in {item["code"] for item in result.warnings}
+
+
+def test_optional_backend_failure_preserves_native_evidence():
+    native_line = LayoutLine("Reliable native evidence", 20, 700, 240, 720, 12)
+    native = _StaticBackend("native", (native_line,))
+
+    class Broken:
+        name = "broken-ocr"
+        version = "1"
+
+        def extract_page(self, page, page_number):
+            raise TimeoutError(
+                "budget exhausted at C:\\Users\\private\\token.txt "
+                "https://example.invalid/file?signature=secret"
+            )
+
+    result = AdaptiveOcrBackend(
+        native_backend=native,
+        ocr_backends=(Broken(),),
+        config=AdaptiveOcrConfig(min_native_characters=100),
+    ).extract_page(object(), 1)
+
+    assert [line.text for line in result.lines] == ["Reliable native evidence"]
+    failure = next(
+        warning
+        for warning in result.warnings
+        if warning["code"] == "OPTIONAL_BACKEND_FAILED"
+    )
+    assert failure["backend"] == "broken-ocr@1"
+    assert failure["degraded"] is True
+    assert "C:\\Users" not in failure["detail"]
+    assert "signature=secret" not in failure["detail"]
+    assert "<redacted-local-path>" in failure["detail"]
+    assert "<redacted-url>" in failure["detail"]
+
+
+def test_invalid_optional_backend_geometry_is_quarantined():
+    native = _StaticBackend(
+        "native", (LayoutLine("Native evidence", 20, 700, 200, 720, 12),)
+    )
+    invalid = _StaticBackend("invalid", (LayoutLine("Bad", float("nan"), 1, 2, 3, 10),))
+    result = AdaptiveOcrBackend(
+        native_backend=native,
+        ocr_backends=(invalid,),
+        config=AdaptiveOcrConfig(min_native_characters=100),
+    ).extract_page(object(), 1)
+
+    assert [line.text for line in result.lines] == ["Native evidence"]
+    assert "OPTIONAL_BACKEND_FAILED" in {warning["code"] for warning in result.warnings}
 
 
 def test_specialist_backend_receives_unanchored_table_region():
@@ -266,6 +317,8 @@ def test_adaptive_pipeline_records_ocr_provenance_and_quality(tmp_path):
 def test_tesseract_configuration_and_tsv_coordinates():
     with pytest.raises(ValueError, match="at least 300"):
         TesseractOcrConfig(dpi=299)
+    with pytest.raises(ValueError, match="max_raster_pixels"):
+        TesseractOcrConfig(max_raster_pixels=0)
 
     payload = (
         "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
@@ -288,3 +341,13 @@ def test_tesseract_configuration_and_tsv_coordinates():
     assert lines[0].y0 == 690
     assert lines[0].extraction_confidence == pytest.approx(0.95)
     assert lines[0].source_engines == ("tesseract@5",)
+
+
+def test_tesseract_refuses_raster_allocation_over_budget():
+    from aletheia_nexus.content import TesseractOcrBackend
+
+    page = PdfReader(FIXTURES / "sparse_scan.pdf").pages[0]
+    backend = TesseractOcrBackend(TesseractOcrConfig(max_raster_pixels=1))
+
+    with pytest.raises(RuntimeError, match="raster budget exceeded"):
+        backend.extract_page(page, 1)

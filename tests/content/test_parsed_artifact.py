@@ -1,8 +1,6 @@
-import json
 from pathlib import Path
 
 from aletheia_nexus.content import (
-    ParsedArtifact,
     load_parsed_document,
     parse_document,
 )
@@ -42,14 +40,17 @@ def test_search_can_filter_semantic_section_and_read_section_text(tmp_path):
 
 def test_artifact_rechecks_local_source_hashes(tmp_path):
     artifact = _artifact(tmp_path)
-    assert artifact.verify_local_sources() == {
+    assert artifact.verify_local_sources(
+        pdf_path=FIXTURES / "native_article.pdf",
+        sidecar_path=FIXTURES / "native_article.acquisition.json",
+    ) == {
         "pdf": True,
         "acquisition_sidecar": True,
     }
 
-    payload = json.loads(json.dumps(artifact.document))
-    payload["source"]["pdf_path"] = str(tmp_path / "missing.pdf")
-    assert ParsedArtifact(payload).verify_local_sources()["pdf"] is False
+    assert (
+        artifact.verify_local_sources(pdf_path=tmp_path / "missing.pdf")["pdf"] is False
+    )
 
 
 def test_search_validates_query_and_limit(tmp_path):

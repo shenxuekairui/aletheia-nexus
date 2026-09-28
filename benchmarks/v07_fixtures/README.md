@@ -6,11 +6,16 @@ institutional URL, or authenticated content and are redistributable under the
 repository's Apache-2.0 license.
 
 `manifest.json` freezes the PDF and acquisition-sidecar SHA-256 values. Gold
-files record selected anchors and structural associations rather than copying
-third-party full text. The set covers native text, two-column order, headings,
+files record exact self-authored page text, selected anchors, and structural
+associations without copying third-party full text. The set covers native text, two-column order, headings,
 citations, an equation, a table caption, a figure caption, a no-native-text
 page, and an article/supplement rejection pair. It is deliberately small: its
 scores are regression gates, not evidence of broad publisher-layout quality.
+
+The raster-only page contains visible text but no native text layer. The normal
+evaluator expects `PARTIAL` without OCR; the opt-in executable smoke renders it
+with Poppler and requires Tesseract to recover the exact authored text and
+positioned anchors.
 
 Regenerate the PDFs only when intentionally revising the fixture version, then
 review and commit the changed hashes and gold annotations together. Evaluate

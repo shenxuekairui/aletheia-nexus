@@ -19,6 +19,15 @@ from aletheia_nexus.content.backends import (
     TesseractOcrConfig,
 )
 from aletheia_nexus.content.errors import ParserInputError, ParserInputErrorCode
+from aletheia_nexus.content.export import (
+    AI_EXPORT_SCHEMA,
+    ChunkConfig,
+    export_jsonl,
+    export_markdown,
+    serialize_chunks,
+    structure_aware_chunks,
+    write_ai_export,
+)
 from aletheia_nexus.content.gate import ParserInput, validate_parser_input
 from aletheia_nexus.content.parser import ParserConfig
 from aletheia_nexus.content.schema import (
@@ -49,4 +58,11 @@ __all__ = [
     "serialize_parsed_document",
     "validate_parsed_document",
     "validate_parser_input",
+    "AI_EXPORT_SCHEMA",
+    "ChunkConfig",
+    "export_jsonl",
+    "export_markdown",
+    "serialize_chunks",
+    "structure_aware_chunks",
+    "write_ai_export",
 ]

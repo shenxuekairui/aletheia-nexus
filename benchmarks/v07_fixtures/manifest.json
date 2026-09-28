@@ -4,7 +4,7 @@
       "doi": "10.5555/an.v07.native",
       "expected_gate": "PASS",
       "gold": "native.gold.json",
-      "gold_sha256": "9fc06ac629380eb7927ece59bec6ede4755f84cd853dde9dfa18c74ee8c1e75c",
+      "gold_sha256": "ffe4307658af7f6b2264706ad416e51ca681f2dab77a65b519352b531f9dbe76",
       "id": "native",
       "pdf": "native_article.pdf",
       "pdf_sha256": "189bff47f994522f0a78e5fef66092ce4c4444eb988491a1aeec8b9d1d475bc0",
@@ -15,7 +15,7 @@
       "doi": "10.5555/an.v07.columns",
       "expected_gate": "PASS",
       "gold": "two-column.gold.json",
-      "gold_sha256": "cb5b488dc362fdeddc65e9e35ebc90e5babc84761baedeb277662ebfb3fb8891",
+      "gold_sha256": "c1e076c47596e8eb1bc478596125104a5f92d1d76adf3363c69da6861903ef2c",
       "id": "two-column",
       "pdf": "two_column_article.pdf",
       "pdf_sha256": "c0c529f9731e05bb37fb04614b41a34bec68453a1ff98eb0072c04812937b5f3",
@@ -29,9 +29,9 @@
       "gold_sha256": "f9e320004001de4b91e4c830cdf01814675e942a4ed0207da809cf8f7dece181",
       "id": "sparse",
       "pdf": "sparse_scan.pdf",
-      "pdf_sha256": "b5349bdebd0f92dea5c671bea43d05f41ffbbf066dd5c13928ccc8d60fbc0d33",
+      "pdf_sha256": "ea9aa408b6710bfbbbed31c24674820cca036a41fad743c503041d240fc36183",
       "sidecar": "sparse_scan.acquisition.json",
-      "sidecar_sha256": "1eda10d50da3ec654c3e9d439c8f139c07fee2bad2fde72a963eba6cfa453060"
+      "sidecar_sha256": "20e8c88c3009748ba7d148457c51fb099806e5d67c3c5dc9dab88d7a9aa54c07"
     },
     {
       "doi": "10.5555/an.v07.supplement",

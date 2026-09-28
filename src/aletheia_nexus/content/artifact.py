@@ -49,21 +49,36 @@ class ParsedArtifact:
             raise ValueError(f"could not read parsed artifact: {exc}") from exc
         return cls(payload, path=source)
 
-    def verify_local_sources(self) -> dict[str, bool]:
+    def verify_local_sources(
+        self,
+        *,
+        pdf_path: str | Path | None = None,
+        sidecar_path: str | Path | None = None,
+    ) -> dict[str, bool]:
         """Recheck local references without changing or reacquiring either file."""
 
         source = self.document["source"]
+        locators = source.get("locators", {})
+        base = self.path.parent if self.path is not None else None
         checks: dict[str, bool] = {}
-        for name, path_key, hash_key in (
-            ("pdf", "pdf_path", "pdf_sha256"),
+        for name, override, hash_key in (
+            ("pdf", pdf_path, "pdf_sha256"),
             (
                 "acquisition_sidecar",
-                "acquisition_sidecar_path",
+                sidecar_path,
                 "acquisition_sidecar_sha256",
             ),
         ):
-            path = Path(str(source[path_key]))
-            checks[name] = path.is_file() and sha256_file(path) == source[hash_key]
+            path = Path(override) if override is not None else None
+            if path is None and base is not None and isinstance(locators, dict):
+                locator = locators.get(name)
+                if isinstance(locator, str):
+                    path = base / locator
+            checks[name] = bool(
+                path is not None
+                and path.is_file()
+                and sha256_file(path) == source[hash_key]
+            )
         return checks
 
     def section_text(self, section_id: str) -> str:
@@ -87,6 +102,8 @@ class ParsedArtifact:
             "bbox": anchor["bbox"],
             "bbox_precision": anchor.get("bbox_precision"),
             "text_evidence": anchor["text_evidence"],
+            "source_artifact_id": self.document["source"]["artifact_id"],
+            "parsed_artifact_id": self.document["artifact_id"],
         }
 
     def search(

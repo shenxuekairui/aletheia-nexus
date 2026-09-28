@@ -166,13 +166,13 @@ ELSEVIER_BEARER_TOKEN    # 可选
 aletheia-nexus parse downloads\paper.pdf --doi 10.1234/example
 ```
 
-默认输出与 PDF 同目录、同文件名的 `.parsed.json`，原 PDF 与 `.acquisition.json` 保持不变。需要显式路径时使用 `--sidecar` 和 `--output`。批处理或 CI 若不允许降级结果，可加 `--fail-on-partial`；输入门失败退出码为 `5`，`PARTIAL`/`FAILED` 在该选项下退出码为 `6`。
+默认输出与 PDF 同目录、同文件名的 `.parsed.json`，原 PDF 与 `.acquisition.json` 保持不变。需要显式路径时使用 `--sidecar` 和 `--output`。已有输出默认视为冲突，不会静默覆盖；只有明确使用 `--overwrite` 才会替换。批处理或 CI 若不允许降级结果，可加 `--fail-on-partial`；输入门失败退出码为 `5`，`PARTIAL`/`FAILED` 在该选项下退出码为 `6`。
 
-输出 schema 为 `aletheia-nexus/parsed-document/v2`；未发布的 v1 草案不作为兼容承诺。v2 包含来源 DOI 与哈希、流水线/后端版本、配置与执行指纹、质量覆盖率、章节、合并段落、结构化引用、图表对象及表格单元，以及每个文本块的一基页码、PDF 左下角坐标系归一化 bounding box 与文本 span。基线框由 PDF 文本矩阵和字体大小估算，明确标为 `bbox_precision: estimated`，不冒充逐字形精确框。状态始终显式为 `PARSED`、`PARTIAL` 或 `FAILED`。
+输出 schema 为 `aletheia-nexus/parsed-document/v2`；未发布的 v1 草案不作为兼容承诺。v2 包含路径无关的 source/parsed `artifact_id`、来源 DOI 与哈希、流水线/后端版本、配置与执行指纹、页面 MediaBox/CropBox/旋转、质量覆盖率、章节、合并段落、结构化引用、图表证据及表格单元。每个文本块使用统一的 `pdf-cropbox-display-bottom-left-normalized/v1` 页码/bbox 和文本 span；本机绝对路径不进入工件，安全的相对 locator 只用于重新核验且不参与身份计算。基线框由 PDF 文本矩阵和字体大小估算，明确标为 `bbox_precision: estimated`，不冒充逐字形精确框。状态始终显式为 `PARSED`、`PARTIAL` 或 `FAILED`。
 
-默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。需要扫描页支持时安装 `aletheia-nexus[ocr]`，并在 Python API 中组合 `AdaptiveOcrBackend` 与 `TesseractOcrBackend`。OCR 只在原生字符过少、乱码、图像主导或图像区域缺少文本锚点时触发；原生文本与 OCR 重叠时保留原生文本，OCR 仅补空白区域，并记录引擎、置信度、坐标和人工复核状态。完整配置见[v0.7 OCR](V07_OCR.md)。
+默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。需要扫描页支持时安装 `aletheia-nexus[ocr]`、安装 Poppler/Tesseract，并使用 `--ocr`。可用 `--ocr-languages` 和 `--ocr-max-raster-pixels` 控制语言与单页内存预算。OCR 只在原生字符过少、乱码、图像主导或图像区域缺少文本锚点时触发；原生文本与 OCR 重叠时保留原生文本，OCR 仅补空白区域。引擎置信度和多引擎一致性分开记录；失败、超时或无资源会保留 native evidence 并显式降级。完整配置见[v0.7 OCR](V07_OCR.md)。
 
-解析流水线会合并同栏连续文本行、恢复章节语义与显式未解析引用；当标题、PDF 图像资源或位置化表格行有充分证据时建立关联和单元格，否则保留 `caption-only`/`unresolved` 与不确定标记。通用 OCR 不等于表格、公式或图表解析，专用解析器须通过区域接口接入。解析成功也不等于论文结论为真。
+解析流水线会合并同栏连续文本行、恢复章节语义与显式未解析引用；图表字段只陈述 `caption-observed`、`caption-and-region-observed` 或 `caption-and-cell-evidence-observed`，并始终写明 `interpretation_status: not-interpreted`。通用 OCR 不等于表格、公式或图表理解，专用解析器须通过区域接口接入。解析成功也不等于论文结论为真。
 
 可用 `--max-pages`、`--max-blocks`、`--max-text-characters` 控制资源上限，或用 `--no-merge-paragraph-lines` 保留逐行块。达到上限时输出 `PARTIAL`，不会静默截断。解析结果可直接做带来源检索：
 
@@ -183,7 +183,20 @@ aletheia-nexus search downloads\paper.parsed.json "experimental condition" `
 
 每个命中包含章节、PDF 页、归一化 bbox 和原文；`--verify-sources` 会重新核对 PDF 与 acquisition sidecar 的 SHA-256。Python 调用方可使用 `ParsedArtifact.search()`、`section_text()`、`locate()` 和 `verify_local_sources()`。模块边界与自定义后端约束见[v0.7 架构](V07_ARCHITECTURE.md)。
 
-公开回归只使用 `benchmarks/v07_fixtures/` 中项目自编、Apache-2.0 可再分发的小型 PDF；运行 `python scripts/evaluate_v07_parser.py` 可复核输入门、锚点、章节、双栏顺序和图表标题关联。它是确定性回归集，不代表对所有出版社版式的泛化质量。
+下游不需要重新解析 PDF。可从规范工件导出三种确定性派生视图：
+
+```powershell
+aletheia-nexus export downloads\paper.parsed.json --format markdown `
+  --output downloads\paper.ai.md
+aletheia-nexus export downloads\paper.parsed.json --format jsonl `
+  --output downloads\paper.ai.jsonl
+aletheia-nexus export downloads\paper.parsed.json --format chunks `
+  --output downloads\paper.chunks.json --max-chars 6000
+```
+
+每个 chunk 都带 source/parsed artifact ID、exporter 配置指纹以及 `block → anchor → page/bbox` 证据链。分块优先保留 section 边界，并隔离 heading、caption、equation 和 reference。导出文件也默认拒绝覆盖。
+
+公开回归使用 `benchmarks/v07_fixtures/` 中项目自编、Apache-2.0 可再分发的小型 PDF；运行 `python scripts/evaluate_v07_parser.py` 可复核输入门、逐页 gold 文本、锚点、章节、双栏顺序和图表证据。`benchmarks/v07_public_oa/` 另定义三篇按哈希冻结、按需下载的 OA 资格集。二者都不代表对所有出版社版式或科学语义的泛化质量。
 
 ## 8. 故障排查
 
@@ -207,6 +220,8 @@ python -m compileall -q src scripts
 python scripts/verify_frozen_benchmark.py
 python scripts/evaluate_v07_parser.py
 python -m pytest -q
+python scripts/verify_v07_rc.py --ocr-smoke --public-oa `
+  --report qualification-report.json
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
@@ -220,8 +235,8 @@ v0.7.0 的最终 PR 必须直接面向 `main`；不要把功能分支直接推�
 报告路径；代码门槛失败或缺证时不合并、不打稳定标签。
 
 1. 在最终代码上运行第 9 节的 Ruff、编译、冻结基准、解析评测和完整
-   测试。Python 3.11 与 3.14 都须通过；支持浏览器的环境还须运行真实
-   Chromium 集成测试。
+   测试。Python 3.11–3.14 都须通过；专用 job 还须运行真实 Chromium、
+   Poppler + Tesseract 和 clean-wheel 安装验证。
 2. 对固定的 24 篇回归集和 14 篇获取验证集核对输入哈希、逐篇状态、
    每页原生文本守恒、重复语义对象和未解析对象。私有 PDF 与输出留在
    Git 忽略目录；“原生文本层零遗漏”不得写成“视觉内容或语义 100% 正确”。
@@ -232,8 +247,8 @@ v0.7.0 的最终 PR 必须直接面向 `main`；不要把功能分支直接推�
    提交构建 sdist/wheel，执行依赖检查，并从 wheel 的全新临时环境验证
    `aletheia-nexus --version`、`doctor` 和核心导入。GitHub Release 本身不
    证明 PyPI 已上传，仍须检查项目页和全新安装。
-5. 推送功能分支并更新现有 PR。在**最终提交**上等待 Python 3.11、3.14、
-   Linux Chromium 和 Windows Chromium 四个 job 均为实际 `success`；
+5. 推送功能分支并更新现有 PR。在**最终提交**上等待 Python 3.11–3.14、
+   Linux/Windows Chromium、OCR 和 package jobs 均为实际 `success`；
    `skipped`、取消或旧提交的绿色结果均不能替代。通过评审后由维护者合并
    PR，再对合并后的 `main` 提交打不可变的 `v0.7.0` 标签并发布。
 

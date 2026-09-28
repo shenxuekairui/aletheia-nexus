@@ -78,7 +78,7 @@ VERIFIED 主论文工件     → 可交给后续科研流程
 | `Experimental` | 授权访问 | 在适用且已配置时使用 Elsevier 官方 API；复用独立持久浏览器与合法机构/账号会话，允许用户完成登录、MFA、验证码。实际访问取决于订阅和站点。 |
 | `Experimental` | 批量与续跑 | 顺序处理 DOI，复用浏览器会话；只有仍存在且 SHA-256 匹配的 `VERIFIED` 文件可从检查点直接复用。跨站点交互仍可能需要人工。 |
 | `Implemented` | 审计 | 保存逐篇状态、尝试路径和验证依据；对持久化 URL 中的敏感参数脱敏，不保存浏览器凭据。 |
-| `Implemented` | 内容解析与检索 | 只接受哈希与来源记录仍一致的 `VERIFIED` 正文；原生文本优先，输出合并段落、语义章节、引用、图表、位置化表格单元、质量/预算信息和页码/bbox。可选 OCR 仅补充无原生文本区域并保留引擎、坐标、置信度与人工复核标记；解析成功不代表科学结论正确。 |
+| `Implemented` | 内容解析与 AI-ready 导出 | 只接受哈希与来源记录仍一致的 `VERIFIED` 正文；统一 CropBox/旋转/OCR 坐标，输出可移植稳定身份、章节、引用、图表证据、表格单元、质量状态和页码/bbox。可选 OCR 仅补充无原生文本区域；Markdown、JSONL 和结构感知 chunks 均可回溯到原文。解析成功不代表科学结论正确。 |
 | `Planned` | 知识组织、工作流与 Agent | 将有来源的结构对象连接为可维护知识与可审计科研行动；目前不作为已交付功能宣传。 |
 
 `v0.6.0` 是 AN 的首个公开代码级版本，包含授权 Access Layer，以及针对共享 PDF 验证层可复现正确性缺陷的回归修复。为保护旧开发历史中的个人信息，公开仓库从审计后的源码快照建立；`v0.5.2` 冻结标签保留在原私有开发仓库，**不在这个公开仓库中**。本版封板依据是确定性测试、真实 Chromium 集成测试、最终提交的云端 CI 与有限的真实 DOI 烟测。**发布当时**尚未完成机构授权阳性对照资格验收；后续源码提交已通过一次单机构、双访问体系的资格验收，但它不是对冻结的 v0.6.0/v0.6.1 标签追认，也不证明跨机构通用。各出版社的实际访问仍取决于用户的合法订阅、机构、网络与站点状态。[发布前的后续准备与单机构验收](docs/PRE_V07_READINESS.md)和[版本与验收记录](docs/RELEASE_HISTORY.md)分别记录当前进展与历史快照。
@@ -222,7 +222,7 @@ python -m pip install -e ".[dev,browser]"
 .\scripts\verify_v06_rc.ps1 -Browser
 ```
 
-云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，正式面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11、3.14、Linux Chromium 与 Windows Chromium 四个 job 的实际 `success`。`skipped` 不是通过。v0.6.1 发布时机构阳性对照验收与首次陌生用户试用均尚未完成，这一历史事实保留在发布说明中；后续源码现已完成一次单机构验收，陌生用户试用仍待反馈。[合并与发布清单](docs/USER_MANUAL.md#10-合并-main-前的发布检查)列出了代码门槛与延期项目。
+云端 CI 采用[分层策略](docs/CI_ARCHITECTURE.md)：普通草稿更新不消耗 runner，高风险草稿可主动请求一次完整云端检查，正式面向 `main` 的 ready PR 必须在最终提交上获得 Python 3.11–3.14、clean-wheel、真实 OCR、Linux Chromium 与 Windows Chromium jobs 的实际 `success`。`skipped` 不是通过。v0.6.1 发布时机构阳性对照验收与首次陌生用户试用均尚未完成，这一历史事实保留在发布说明中；后续源码现已完成一次单机构验收，陌生用户试用仍待反馈。[合并与发布清单](docs/USER_MANUAL.md#10-合并-main-前的发布检查)列出了代码门槛与延期项目。
 
 ## 文档导航
 
@@ -234,7 +234,7 @@ python -m pip install -e ".[dev,browser]"
 | [v0.7 前准备与单机构验收](docs/PRE_V07_READINESS.md) | 后续源码的授权验收、证据边界、隐私处理和下一阶段入口。 |
 | [v0.7 内容解析契约](docs/V07_PARSING_CONTRACT.md) | 已实现的可信输入门、版本化输出、合法测试夹具、基线解析器与评测边界。 |
 | [v0.7 解析架构](docs/V07_ARCHITECTURE.md) | 后端、流水线、schema、质量门、资源预算与带来源检索的模块边界。 |
-| [v0.7 OCR](docs/V07_OCR.md) | 原生文本优先的选择性 OCR、坐标融合、置信度和专用区域解析接口。 |
+| [v0.7 OCR](docs/V07_OCR.md) | 原生文本优先的选择性 OCR、统一坐标、真实可执行链路、资源预算和专用区域接口。 |
 | [v0.7.0 发布说明](docs/RELEASE_NOTES_v0.7.0.md) | 获取层收口、解析能力、真实语料验证和仍需人工真值的边界。 |
 | [v0.6.0 发布说明](docs/RELEASE_NOTES_v0.6.0.md) | 首次公开版本交付内容、验证证据与未完成的授权资格验收。 |
 | [v0.6.1 发布说明](docs/RELEASE_NOTES_v0.6.1.md) | CLI、PyPI、架构拆分、Windows CI 与仍待完成的外部试用。 |

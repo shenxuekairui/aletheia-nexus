@@ -9,7 +9,7 @@
     "valid_pdf": true
   },
   "retrieval": {
-    "sha256": "b5349bdebd0f92dea5c671bea43d05f41ffbbf066dd5c13928ccc8d60fbc0d33"
+    "sha256": "ea9aa408b6710bfbbbed31c24674820cca036a41fad743c503041d240fc36183"
   },
   "schema": "aletheia-nexus/acquisition-record/v1",
   "status": "VERIFIED",

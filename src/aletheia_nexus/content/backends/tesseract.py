@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import re
 import subprocess
 from collections import defaultdict
@@ -14,6 +15,7 @@ from typing import Any
 
 from pypdf import PdfWriter
 
+from aletheia_nexus.content.geometry import PageGeometry, raster_bbox_to_canonical
 from aletheia_nexus.content.models import LayoutLine, PageLayout
 
 
@@ -28,6 +30,7 @@ class TesseractOcrConfig:
     deskew: bool = True
     binarize: bool = True
     timeout_seconds: int = 120
+    max_raster_pixels: int = 50_000_000
     renderer_command: str = "pdftoppm"
     tesseract_command: str = "tesseract"
 
@@ -40,6 +43,12 @@ class TesseractOcrConfig:
             raise ValueError("page_segmentation_mode must be between 0 and 13")
         if self.timeout_seconds < 1:
             raise ValueError("timeout_seconds must be positive")
+        if (
+            isinstance(self.max_raster_pixels, bool)
+            or not isinstance(self.max_raster_pixels, int)
+            or self.max_raster_pixels < 1
+        ):
+            raise ValueError("max_raster_pixels must be a positive integer")
         if not self.renderer_command or not self.tesseract_command:
             raise ValueError("renderer and tesseract commands are required")
 
@@ -56,10 +65,17 @@ def _run(command: list[str], *, timeout: int) -> subprocess.CompletedProcess[str
             timeout=timeout,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError(f"OCR executable is unavailable: {command[0]}") from exc
+        executable = Path(command[0]).name
+        raise RuntimeError(f"OCR executable is unavailable: {executable}") from exc
     except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or "unknown OCR failure").strip()
-        raise RuntimeError(f"OCR command failed: {detail[:500]}") from exc
+        # Tool output may contain local temporary paths. Keep persisted warnings
+        # diagnostic but portable and safe to publish.
+        executable = Path(command[0]).name
+        raise RuntimeError(
+            f"OCR command failed: {executable} exited with status {exc.returncode}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"OCR command timed out after {timeout} seconds") from exc
 
 
 def _otsu_threshold(image: Any) -> int:
@@ -148,6 +164,10 @@ def _parse_tsv(
     image_width: int,
     image_height: int,
     engine_id: str,
+    original_image_width: int | None = None,
+    original_image_height: int | None = None,
+    orientation_rotation: int = 0,
+    deskew_angle: float = 0.0,
 ) -> tuple[LayoutLine, ...]:
     words: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     for row in csv.DictReader(io.StringIO(payload), delimiter="\t"):
@@ -172,14 +192,31 @@ def _parse_tsv(
         bottom = max(int(item["top"]) + int(item["height"]) for item in rows)
         confidences = [float(item["conf"]) / 100 for item in rows]
         confidence = sum(confidences) / len(confidences)
-        height_points = max((bottom - top) / image_height * page_height, 1.0)
+        canonical = _prepared_bbox_to_canonical(
+            (left, top, right, bottom),
+            prepared_width=image_width,
+            prepared_height=image_height,
+            original_width=original_image_width or image_width,
+            original_height=original_image_height or image_height,
+            orientation_rotation=orientation_rotation,
+            deskew_angle=deskew_angle,
+        )
+        x0, y0, x1, y1 = (
+            canonical[0] * page_width,
+            canonical[1] * page_height,
+            canonical[2] * page_width,
+            canonical[3] * page_height,
+        )
+        if x1 <= x0 or y1 <= y0:
+            continue
+        height_points = max(y1 - y0, 1.0)
         result.append(
             LayoutLine(
                 text=text,
-                x0=left / image_width * page_width,
-                y0=(1 - bottom / image_height) * page_height,
-                x1=right / image_width * page_width,
-                y1=(1 - top / image_height) * page_height,
+                x0=x0,
+                y0=y0,
+                x1=x1,
+                y1=y1,
                 font_size=height_points,
                 extraction_method="tesseract-tsv-ocr",
                 extraction_confidence=max(0.0, min(1.0, confidence)),
@@ -188,6 +225,81 @@ def _parse_tsv(
             )
         )
     return tuple(result)
+
+
+def _rotate_point(
+    x: float,
+    y: float,
+    *,
+    angle: float,
+    source_size: tuple[int, int],
+    target_size: tuple[int, int],
+) -> tuple[float, float]:
+    """Apply Pillow-compatible visual rotation between centered canvases."""
+
+    radians = math.radians(angle)
+    cosine, sine = math.cos(radians), math.sin(radians)
+    source_x, source_y = source_size[0] / 2, source_size[1] / 2
+    target_x, target_y = target_size[0] / 2, target_size[1] / 2
+    centered_x, centered_y = x - source_x, y - source_y
+    return (
+        cosine * centered_x + sine * centered_y + target_x,
+        -sine * centered_x + cosine * centered_y + target_y,
+    )
+
+
+def _prepared_bbox_to_canonical(
+    box: tuple[float, float, float, float],
+    *,
+    prepared_width: int,
+    prepared_height: int,
+    original_width: int,
+    original_height: int,
+    orientation_rotation: int,
+    deskew_angle: float,
+) -> tuple[float, float, float, float]:
+    """Invert OCR preprocessing before mapping evidence to the PDF page."""
+
+    corners = (
+        (box[0], box[1]),
+        (box[0], box[3]),
+        (box[2], box[1]),
+        (box[2], box[3]),
+    )
+    oriented_size = (prepared_width, prepared_height)
+    if orientation_rotation in {90, 270}:
+        oriented_size = (original_height, original_width)
+    elif orientation_rotation in {0, 180}:
+        oriented_size = (original_width, original_height)
+    else:
+        raise ValueError("orientation rotation must be 0, 90, 180, or 270")
+
+    restored: list[tuple[float, float]] = []
+    for x, y in corners:
+        if deskew_angle:
+            x, y = _rotate_point(
+                x,
+                y,
+                angle=-deskew_angle,
+                source_size=(prepared_width, prepared_height),
+                target_size=oriented_size,
+            )
+        if orientation_rotation:
+            x, y = _rotate_point(
+                x,
+                y,
+                angle=orientation_rotation,
+                source_size=oriented_size,
+                target_size=(original_width, original_height),
+            )
+        restored.append((x, y))
+    xs = [point[0] for point in restored]
+    ys = [point[1] for point in restored]
+    return raster_bbox_to_canonical(
+        (min(xs), min(ys), max(xs), max(ys)),
+        image_width=original_width,
+        image_height=original_height,
+    )
 
 
 class TesseractOcrBackend:
@@ -216,8 +328,16 @@ class TesseractOcrBackend:
                 "Tesseract OCR requires the 'ocr' optional dependencies"
             ) from exc
 
-        page_width = float(page.mediabox.width)
-        page_height = float(page.mediabox.height)
+        geometry = PageGeometry.from_page(page)
+        page_width = geometry.width
+        page_height = geometry.height
+        scale = self.config.dpi / 72
+        expected_pixels = math.ceil(page_width * scale) * math.ceil(page_height * scale)
+        if expected_pixels > self.config.max_raster_pixels:
+            raise RuntimeError(
+                "OCR raster budget exceeded: "
+                f"{expected_pixels} pixels > {self.config.max_raster_pixels}"
+            )
         warnings: list[dict[str, str]] = []
         with TemporaryDirectory(prefix="an-ocr-") as directory:
             root = Path(directory)
@@ -237,6 +357,7 @@ class TesseractOcrBackend:
                     "-r",
                     str(self.config.dpi),
                     "-png",
+                    "-cropbox",
                     "-singlefile",
                     str(one_page_pdf),
                     str(prefix),
@@ -245,6 +366,7 @@ class TesseractOcrBackend:
             )
             rendered = prefix.with_suffix(".png")
             image = Image.open(rendered).convert("L")
+            original_width, original_height = image.size
 
             rotation = 0
             if self.config.detect_orientation:
@@ -266,11 +388,13 @@ class TesseractOcrBackend:
                         }
                     )
 
+            deskew_angle = 0.0
             if self.config.deskew:
-                angle = _deskew_angle(image)
-                if abs(angle) >= 0.25:
+                proposed_angle = _deskew_angle(image)
+                if abs(proposed_angle) >= 0.25:
+                    deskew_angle = proposed_angle
                     image = image.rotate(
-                        angle,
+                        deskew_angle,
                         resample=Image.Resampling.BICUBIC,
                         expand=False,
                         fillcolor=255,
@@ -278,7 +402,7 @@ class TesseractOcrBackend:
                     warnings.append(
                         {
                             "code": "OCR_DESKEW_APPLIED",
-                            "detail": f"page {page_number}: deskewed by {angle:.2f} degrees",
+                            "detail": f"page {page_number}: deskewed by {deskew_angle:.2f} degrees",
                         }
                     )
 
@@ -312,11 +436,18 @@ class TesseractOcrBackend:
                 image_width=image.width,
                 image_height=image.height,
                 engine_id=engine_id,
+                original_image_width=original_width,
+                original_image_height=original_height,
+                orientation_rotation=rotation,
+                deskew_angle=deskew_angle,
             )
         return PageLayout(
             page=page_number,
             width=page_width,
             height=page_height,
+            media_box=geometry.media_box,
+            crop_box=geometry.crop_box,
+            rotation=geometry.rotation,
             lines=lines,
             warnings=tuple(warnings),
         )

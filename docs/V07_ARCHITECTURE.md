@@ -1,92 +1,92 @@
 # v0.7 parsing architecture
 
-v0.7 is the boundary between a verified acquisition artifact and reusable,
-source-linked document structure. It is deliberately a pipeline rather than a
-single PDF helper so alternative layout/OCR implementations can improve byte
-interpretation without weakening acquisition evidence or changing downstream
-objects.
+v0.7 implements one bounded transition:
 
 ```text
-VERIFIED PDF + acquisition sidecar
-        │
-        ▼
-fail-closed input gate ── DOI / role / schema / SHA-256 / pages
-        │
-        ▼
-ExtractionBackend ────── PageLayout(lines, page objects, warnings)
-        │
-        ▼
-native-layout-and-block-assembly
-        │                 reading order, page-furniture suppression,
-        │                 paragraph/heading merge, anchors, budgets
-        ▼
-sections-references-and-objects
-        │                 hierarchy, semantic sections, citations,
-        │                 image/caption links, positioned table cells
-        ▼
-quality-classification ─ coverage, unresolved counts, PARSED/PARTIAL/FAILED
-        │
-        ▼
-parsed-document/v2 ───── immutable new artifact
-        │
-        ├── ParsedArtifact.search() → block + section + PDF page/bbox
-        ├── ParsedArtifact.locate() → source evidence
-        └── ParsedArtifact.verify_local_sources() → fresh hash checks
+VERIFIED PDF
+  → source identity and integrity gate
+  → native-first extraction with optional OCR
+  → canonical scientific document (`parsed-document/v2`)
+  → deterministic Markdown / JSONL / structure-aware chunks
 ```
 
-## Module boundaries
+The canonical document records observable source evidence. It does not claim to
+understand scientific facts, figures, formulas, or tables semantically.
 
-| Module | Ownership |
+## Data flow and ownership
+
+| Module | Responsibility |
 | --- | --- |
-| `content.gate` | Trust transition from acquisition; recognizes explicit acquisition schemas and raises typed input errors. |
-| `content.backends` | Pluggable byte/layout interpretation. The bundled backend reads native PDF text matrices, font-weight evidence, and placements of image resources actually painted by the page content stream without decoding or publishing image bytes. |
-| `content.pipeline` | Ordered, request-local stages. Stage identities are persisted in parser provenance. |
-| `content.parser` | Block assembly, structure, reference/object links, resource budgets, quality classification, and v2 document construction. |
-| `content.schema` | Cross-reference, hash, coverage, anchor, object, and table-cell validation plus deterministic serialization. |
-| `content.artifact` | Read-only consumer API for section text, local integrity checks, and source-linked search. |
-| `content.evaluation` | Offline measurement against frozen, rights-cleared fixture hashes and gold annotations. |
+| `content.gate` | Revalidate the acquisition schema, `VERIFIED` article role, DOI, PDF hash, readability, and page count. |
+| `content.geometry` | Convert MediaBox/CropBox coordinates, non-zero origins, page rotation, and raster coordinates into one displayed-CropBox space. |
+| `content.backends` | Produce validated `PageLayout` evidence. Native extraction is authoritative; OCR and specialist backends are optional supplements. |
+| `content.pipeline` / `content.parser` | Assemble ordered blocks, sections, references, caption/region evidence, quality state, and deterministic IDs. |
+| `content.schema` | Validate geometry, finite values, confidence/agreement, warning structure, cross-references, fingerprints, and artifact identity before persistence. |
+| `content.artifact` | Navigate/search the canonical artifact and recheck source hashes using portable locators or caller-supplied paths. |
+| `content.export` | Derive deterministic Markdown, JSONL, and structure-aware chunks without reparsing the PDF. |
 
-No parser stage calls discovery, HTTP acquisition, a browser, or entitlement
-logic. The service hashes the PDF and acquisition sidecar both before and after
-parsing; a concurrent change aborts without writing output.
+No parse or export stage performs discovery, network acquisition, entitlement
+decisions, embeddings, model inference, or scientific fact extraction.
 
-## Extension contract
+## Identity, portability, and persistence
 
-An extraction backend implements `name`, `version`, and
-`extract_page(page, page_number) -> PageLayout`. Native text, OCR, or a model
-layout backend must return the same backend-neutral lines/objects and expose
-uncertainty rather than writing parsed JSON directly. Backend identity,
-pipeline stages, configuration fingerprint, and an overall execution
-fingerprint are recorded in every artifact.
+The source identity is `an:source:sha256:<pdf-sha256>`. The parsed identity is a
+content-derived `an:parsed:v2:sha256:<digest>` that excludes creation time and
+local locators. Moving an unchanged PDF, sidecar, and parsed artifact therefore
+does not change identity. `source.locators` may contain only safe relative paths;
+absolute paths and URLs are rejected. Consumers may instead pass explicit local
+paths when rechecking hashes.
 
-Backends may improve coordinates or add page objects, but cannot:
+Parsed and exported files refuse to replace an existing target unless the caller
+uses the explicit overwrite option. They are written through a temporary file and
+atomic replacement. Parsed artifacts are the Source of Truth for downstream use;
+AI exports are labelled derived artifacts and carry source/parsed IDs plus exporter
+configuration fingerprints.
 
-- bypass the verified-artifact input gate;
-- mutate or replace the acquisition PDF/sidecar;
-- declare scientific claims true;
-- convert unavailable coordinates into invented boxes;
-- silently truncate at resource limits.
+## Canonical geometry
 
-The bundled native backend is the authoritative default for the v0.7
-deterministic contract. `AdaptiveOcrBackend` can add one or more optional OCR
-engines only on sparse, suspicious, image-dominant, or unanchored regions;
-coordinate and text-similarity fusion keeps overlapping native text and
-deduplicates OCR. The bundled Tesseract adapter records TSV coordinates and
-confidence after 300-DPI rendering, orientation correction, deskew, and
-binarization. OCR disagreements remain explicit and request manual review.
-Tables, formulas, and figures can be routed through `RegionExtractionBackend`
-specialists without weakening the same fusion and provenance rules. See
-[the OCR contract](V07_OCR.md).
+`pdf-cropbox-display-bottom-left-normalized/v1` is the only accepted anchor
+coordinate system. Page metadata retains MediaBox, CropBox, rotation, displayed
+width, and displayed height. Native text and painted PDF image boxes are translated
+from PDF user space after CropBox origin and page rotation. OCR boxes are mapped
+from top-left raster space back through deskew and orientation transforms into the
+same displayed page space.
 
-## Quality and budgets
+Backend output is validated before it can enter the long-lived artifact. Invalid
+page numbers, dimensions, rotations, boxes, non-finite numbers, confidence,
+agreement, object metadata, or warning structures fail that backend result. The
+parser also verifies backend dimensions/rotation against the actual PDF page.
 
-`quality` reports page and anchor coverage, text volume, object counts,
-unresolved references/figures, table-cell recovery, repeated page furniture
-suppressed from semantic output, painted images left unassociated, and early termination.
-`ParserConfig` bounds pages, blocks, and extracted characters. Hitting a bound
-adds a machine-readable warning, records `stopped_early`, and produces
-`PARTIAL`; it never returns a silently incomplete `PARSED` result.
+## Optional backends and degradation
 
-`PARSED` only states that the configured pipeline completed without extraction
-warnings or errors. It does not establish factual correctness, entitlement,
-claim validity, or knowledge-graph correctness.
+`AdaptiveOcrBackend` preserves validated native evidence. OCR and specialist
+failures are isolated per page/backend and recorded as
+`OPTIONAL_BACKEND_FAILED` with page, stage, backend, and degradation state. They
+do not erase native lines. Diagnostic text is scrubbed of local paths and URLs
+before persistence.
+
+Native/OCR overlap retains native text. Agreement is recorded separately as
+`engine_agreement`; it does not manufacture `1.0` extraction confidence. Conflicts
+emit a review warning. Figures and tables describe only observed caption, painted
+region, or positioned-cell evidence through `evidence_status`; every such object
+has `interpretation_status: not-interpreted`.
+
+## Consumption layer
+
+`aletheia-nexus export` creates:
+
+- Markdown for human review and prompt attachment;
+- JSONL for pipelines;
+- chunk JSON for RAG/Agent ingestion.
+
+Chunking respects section changes and isolates headings, captions, equations, and
+references. Oversized individual blocks are split deterministically. Every chunk
+contains an evidence chain from block and anchor to page/bbox and the source and
+parsed artifact identities.
+
+## Status and limits
+
+`PARSED` means the configured extraction completed without a blocking warning,
+error, or resource truncation. `PARTIAL` and `FAILED` remain explicit. Page, block,
+text, and OCR raster-pixel budgets prevent silent truncation or excessive raster
+allocation. These statuses do not establish semantic accuracy or scientific truth.
