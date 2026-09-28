@@ -10,7 +10,7 @@ import subprocess
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from importlib import metadata
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
 from typing import Any
 
@@ -84,6 +84,12 @@ def _package_version(name: str) -> str:
         return metadata.version(name)
     except metadata.PackageNotFoundError:
         return "unavailable"
+
+
+def _command_name(command: str) -> str:
+    """Return a portable executable basename without retaining local directories."""
+
+    return Path(PureWindowsPath(command).name).name
 
 
 def _tool_version(command: str, *args: str, timeout: int) -> str:
@@ -343,14 +349,17 @@ class TesseractOcrBackend:
     def execution_identity(self) -> dict[str, object]:
         configuration = asdict(self.config)
         # Persist executable basenames, never machine-specific absolute paths.
-        configuration["renderer_command"] = Path(self.config.renderer_command).name
-        configuration["tesseract_command"] = Path(self.config.tesseract_command).name
+        configuration["renderer_command"] = _command_name(self.config.renderer_command)
+        configuration["tesseract_command"] = _command_name(
+            self.config.tesseract_command
+        )
         return {
             "configuration": configuration,
             "runtime_dependencies": {
                 "tesseract": self.version,
                 "poppler": self.renderer_version,
                 "pillow": _package_version("Pillow"),
+                "pypdf": _package_version("pypdf"),
             },
         }
 
