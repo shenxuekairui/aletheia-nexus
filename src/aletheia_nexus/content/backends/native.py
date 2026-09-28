@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from importlib import metadata
 from typing import Any
 
 from aletheia_nexus.content.geometry import PageGeometry
@@ -247,6 +248,14 @@ class NativePdfBackend:
 
     name = "pypdf-native-layout"
     version = "2.1.0"
+
+    @property
+    def execution_identity(self) -> dict[str, object]:
+        try:
+            pypdf_version = metadata.version("pypdf")
+        except metadata.PackageNotFoundError:
+            pypdf_version = "unavailable"
+        return {"runtime_dependencies": {"pypdf": pypdf_version}}
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
         geometry = PageGeometry.from_page(page)
