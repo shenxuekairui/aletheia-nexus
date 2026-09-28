@@ -1,6 +1,6 @@
 # v0.7 scientific content parsing contract
 
-Status: implemented for `0.7.0` by `structured-pdf-pipeline/2.4.0`.
+Status: implemented for `0.7.0` by `structured-pdf-pipeline/2.5.0`.
 
 The release target is:
 
