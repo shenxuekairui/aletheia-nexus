@@ -7,6 +7,7 @@ from aletheia_nexus.acquire.access.browser import (
     BrowserCapabilityUnavailable,
     BrowserSession,
     acquire_with_browser,
+    acquire_with_browser_provider,
 )
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
 from aletheia_nexus.acquire.access.manual import resolve_user_operated_access
@@ -17,6 +18,9 @@ from aletheia_nexus.acquire.access.models import (
     ElsevierAccessStatus,
     MaximizedAcquisitionResult,
     MaximizedAcquisitionStatus,
+)
+from aletheia_nexus.acquire.access.provider_registry import (
+    applicable_browser_providers,
 )
 from aletheia_nexus.acquire.access.publisher_routes import (
     canonical_pdf_route,
@@ -466,6 +470,81 @@ def acquire_full_text_maximized(
                 message="Official Elsevier API acquired a verified main article.",
             )
 
+    # Site-specific browser providers run only after public discovery/direct
+    # retrieval and applicable official APIs. CNKI is registered here with a
+    # Chinese-title predicate by default, so ordinary foreign literature keeps
+    # the existing route plan unless the caller explicitly opts into all titles.
+    provider_attempts = []
+    for provider in applicable_browser_providers(
+        doi=normalized_doi,
+        metadata=base.metadata,
+        expected_title=base.expected_title,
+        config=config,
+    ):
+        try:
+            if browser_session is not None:
+                provider_attempt = browser_session.acquire_provider(
+                    provider,
+                    doi=normalized_doi,
+                    output_dir=output_dir,
+                    metadata=base.metadata,
+                    expected_title=base.expected_title,
+                    metadata_mailto=metadata_mailto,
+                )
+            else:
+                provider_attempt = acquire_with_browser_provider(
+                    provider,
+                    doi=normalized_doi,
+                    output_dir=output_dir,
+                    metadata=base.metadata,
+                    expected_title=base.expected_title,
+                    metadata_mailto=metadata_mailto,
+                    config=config,
+                )
+        except BrowserCapabilityUnavailable as exc:
+            return MaximizedAcquisitionResult(
+                doi=normalized_doi,
+                status=MaximizedAcquisitionStatus.BROWSER_UNAVAILABLE,
+                base_result=base,
+                browser_attempts=tuple(provider_attempts),
+                elsevier_attempt=elsevier_attempt,
+                elapsed_seconds=time.perf_counter() - started_at,
+                message=str(exc),
+            )
+        provider_attempts.append(provider_attempt)
+        if (
+            provider_attempt.result is not None
+            and provider_attempt.result.status == AcquisitionStatus.VERIFIED
+        ):
+            return MaximizedAcquisitionResult(
+                doi=normalized_doi,
+                status=MaximizedAcquisitionStatus.VERIFIED,
+                base_result=base,
+                browser_attempts=tuple(provider_attempts),
+                elsevier_attempt=elsevier_attempt,
+                verified_result=provider_attempt.result,
+                elapsed_seconds=time.perf_counter() - started_at,
+                message=(
+                    f"{provider.name.upper()} browser provider acquired a verified "
+                    "main article."
+                ),
+            )
+        if provider_attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED:
+            status, message = _final_status_from_browser(
+                base,
+                provider_attempts,
+                elsevier_attempt=elsevier_attempt,
+            )
+            return MaximizedAcquisitionResult(
+                doi=normalized_doi,
+                status=status,
+                base_result=base,
+                browser_attempts=tuple(provider_attempts),
+                elsevier_attempt=elsevier_attempt,
+                elapsed_seconds=time.perf_counter() - started_at,
+                message=message,
+            )
+
     routes = browser_recovery_routes(
         base,
         limit=config.max_source_routes,
@@ -492,6 +571,7 @@ def acquire_full_text_maximized(
             doi=normalized_doi,
             status=MaximizedAcquisitionStatus.BROWSER_UNAVAILABLE,
             base_result=base,
+            browser_attempts=tuple(provider_attempts),
             elsevier_attempt=elsevier_attempt,
             elapsed_seconds=time.perf_counter() - started_at,
             message=str(exc),
@@ -501,6 +581,7 @@ def acquire_full_text_maximized(
             doi=normalized_doi,
             status=MaximizedAcquisitionStatus.ERROR,
             base_result=base,
+            browser_attempts=tuple(provider_attempts),
             elsevier_attempt=elsevier_attempt,
             elapsed_seconds=time.perf_counter() - started_at,
             message=(f"Browser recovery failed unexpectedly: {type(exc).__name__}"),
@@ -511,7 +592,7 @@ def acquire_full_text_maximized(
             doi=normalized_doi,
             status=MaximizedAcquisitionStatus.VERIFIED,
             base_result=base,
-            browser_attempts=recovery.attempts,
+            browser_attempts=(*provider_attempts, *recovery.attempts),
             elsevier_attempt=elsevier_attempt,
             verified_result=recovery.verified_result,
             elapsed_seconds=time.perf_counter() - started_at,
@@ -520,14 +601,14 @@ def acquire_full_text_maximized(
 
     status, message = _final_status_from_browser(
         base,
-        recovery.attempts,
+        (*provider_attempts, *recovery.attempts),
         elsevier_attempt=elsevier_attempt,
     )
     return MaximizedAcquisitionResult(
         doi=normalized_doi,
         status=status,
         base_result=base,
-        browser_attempts=recovery.attempts,
+        browser_attempts=(*provider_attempts, *recovery.attempts),
         elsevier_attempt=elsevier_attempt,
         elapsed_seconds=time.perf_counter() - started_at,
         message=message,

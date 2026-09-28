@@ -137,6 +137,9 @@ class BrowserAccessConfig:
     max_request_redirects: int = 10
     max_bytes: int = 100 * 1024 * 1024
     keep_unverified: bool = False
+    cnki_enabled: bool = True
+    cnki_search_all_titles: bool = False
+    cnki_max_results: int = 5
 
 
 @dataclass(frozen=True, slots=True)
