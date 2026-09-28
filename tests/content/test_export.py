@@ -156,7 +156,10 @@ def test_structure_aware_chunks_keep_table_evidence_separate(tmp_path):
 
     assert table_chunks
     assert {chunk["table"]["id"] for chunk in table_chunks} == {table["id"]}
-    assert set().union(*(set(chunk["block_ids"]) for chunk in table_chunks)) == table_block_ids
+    observed_table_blocks = set().union(
+        *(set(chunk["block_ids"]) for chunk in table_chunks)
+    )
+    assert observed_table_blocks == table_block_ids
     assert all(
         set(chunk["block_ids"]) <= table_block_ids and chunk["kind"] == "table-content"
         for chunk in table_chunks
