@@ -55,6 +55,15 @@ jobs:
           python -m ruff check src tests scripts
           python -m compileall -q src scripts
           python scripts/verify_frozen_benchmark.py
+      - name: Run frozen parser qualification
+        run: python scripts/evaluate_v07_parser.py --output parser-evaluation.json
+      - name: Upload parser qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: parser-evaluation-${{ github.sha }}
+          path: parser-evaluation.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Run deterministic suite
         run: python -m pytest -q
 
