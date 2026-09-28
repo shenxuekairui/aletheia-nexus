@@ -6,10 +6,10 @@
 
 ## 当前状态
 
-- v0.7 源码版本：`0.7.0`。解析流水线 2.4.0 已实现严格 `VERIFIED` 输入门、统一 CropBox/旋转/OCR 坐标、稳定可移植 artifact identity、运行时 schema/backend 校验、原生优先且可降级的真实 Poppler + Tesseract 路径，以及带证据链的确定性 Markdown/JSONL/chunk 导出。科学主张解释、知识组织和基于代表性人工逐页真值的总视觉信息损失率仍未宣称完成。
+- v0.7 源码版本：`0.7.0`。解析流水线 2.5.0 已实现严格 `VERIFIED` 输入门、统一 CropBox/旋转/OCR 坐标、稳定可移植 artifact identity、运行时 schema/backend 校验、原生优先且可降级的真实 Poppler + Tesseract 路径，以及带证据链的确定性 Markdown/JSONL/chunk 导出。科学主张解释、知识组织和基于代表性人工逐页真值的总视觉信息损失率仍未宣称完成。
 - 本次封板版本：`v0.7.0`。合并、标签和 PyPI 发布是提交后的独立维护动作；PyPI 是否已上传，以[项目页](https://pypi.org/project/aletheia-nexus/)和全新环境安装验证为准。旧标签及其测试证据保持不变。
 - v0.6.0 源码版本：`0.6.0`。首个公开版按代码正确性与可安装性封板，正式机构授权资格验收不在本次完成范围内。
-- 代码级封板要求最终发布提交的 Python 3.11–3.14、真实 Chromium、真实 OCR 和 clean-wheel 云端 job 均实际 `success`；草稿 PR 的 `skipped` 或零步骤失败不计入通过。具体运行记录随 GitHub Release 提供。
+- 代码级封板要求最终发布提交的 Python 3.11–3.14、真实 Chromium、真实 OCR 和 clean-wheel 云端 job 均实际 `success`；冻结解析评测还须在 CI 中生成并保存机器可读报告。草稿 PR 的 `skipped` 或零步骤失败不计入通过。具体运行记录随 GitHub Release 提供。
 - 项目发起者于 2026-09-24 决定将正式机构授权阳性对照验收延后至公开版之后。它不是已通过，也不能用历史 37/40、19/20 累计结果替代；发布说明须明确披露实际访问依赖用户的合法订阅、机构和站点状态。
 - 合并与打标签顺序以[使用说明书的发布检查](USER_MANUAL.md#10-合并-main-前的发布检查)及[v0.6 技术规范](v0.6-acquisition-maximization.md#16-exit-criteria)为准。
 
