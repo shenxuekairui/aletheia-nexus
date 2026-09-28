@@ -397,4 +397,7 @@ def test_adaptive_execution_identity_includes_nested_backend_configuration():
     assert identity["native"]["name"] == "pypdf-native-layout"
     assert "runtime_dependencies" in identity["native"]["components"]
     assert identity["ocr"][0]["name"] == "tesseract-ocr"
-    assert identity["ocr"][0]["components"]["configuration"]["page_segmentation_mode"] == 6
+    assert (
+        identity["ocr"][0]["components"]["configuration"]["page_segmentation_mode"]
+        == 6
+    )
