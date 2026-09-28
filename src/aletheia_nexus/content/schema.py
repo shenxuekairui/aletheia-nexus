@@ -8,7 +8,7 @@ import math
 import os
 import re
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from aletheia_nexus.content.geometry import CANONICAL_COORDINATE_SYSTEM
 
@@ -21,10 +21,20 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ARTIFACT_ID = re.compile(r"^an:(?:source|parsed):(?:v2:)?sha256:[0-9a-f]{64}$")
 
 
+def _is_safe_relative_locator(value: str) -> bool:
+    if "://" in value:
+        return False
+    posix = PurePosixPath(value.replace("\\", "/"))
+    windows = PureWindowsPath(value)
+    if posix.is_absolute() or windows.is_absolute() or windows.drive:
+        return False
+    return ".." not in posix.parts and ".." not in windows.parts
+
+
 def compute_parsed_artifact_id(document: dict[str, object]) -> str:
     """Return a path- and timestamp-independent content identity."""
 
-    payload = json.loads(json.dumps(document))
+    payload = json.loads(json.dumps(document, allow_nan=False))
     payload.pop("artifact_id", None)
     payload.pop("created_at", None)
     source = payload.get("source")
@@ -134,9 +144,7 @@ def validate_parsed_document(document: object) -> None:
         if value is not None and (
             not isinstance(value, str)
             or not value
-            or Path(value).is_absolute()
-            or ".." in Path(value).parts
-            or "://" in value
+            or not _is_safe_relative_locator(value)
         ):
             raise ValueError(f"source.locators.{key} must be a relative local path")
     for key in ("warnings", "errors", "sections", "blocks", "anchors"):
@@ -209,6 +217,10 @@ def validate_parsed_document(document: object) -> None:
                     raise ValueError(f"{label}[{index}].{key} must be a string")
             if "degraded" in message and not isinstance(message["degraded"], bool):
                 raise ValueError(f"{label}[{index}].degraded must be a boolean")
+            if "reason" in message and (
+                not isinstance(message["reason"], str) or not message["reason"]
+            ):
+                raise ValueError(f"{label}[{index}].reason must be a string")
     quality = document.get("quality")
     if not isinstance(quality, dict):
         raise ValueError("quality must be an object")
@@ -596,7 +608,12 @@ def validate_parsed_document(document: object) -> None:
 
 
 def _fingerprint(value: object) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -648,7 +665,16 @@ def _unique_ids(items: list[object], label: str) -> set[str]:
 
 def serialize_parsed_document(document: dict[str, object]) -> str:
     validate_parsed_document(document)
-    return json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    return (
+        json.dumps(
+            document,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n"
+    )
 
 
 def write_parsed_document(
