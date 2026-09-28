@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 import unicodedata
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from difflib import SequenceMatcher
 from typing import Any, Iterable, Sequence
 
@@ -242,6 +242,30 @@ def _engine_id(backend: object) -> str:
     return f"{getattr(backend, 'name')}@{getattr(backend, 'version')}"
 
 
+def _backend_execution_identity(backend: object) -> dict[str, object]:
+    identity: dict[str, object] = {
+        "name": str(getattr(backend, "name")),
+        "version": str(getattr(backend, "version")),
+    }
+    components = getattr(backend, "execution_identity", None)
+    if components is not None:
+        identity["components"] = components
+    return identity
+
+
+def _optional_failure_reason(exc: Exception) -> str:
+    detail = str(exc).casefold()
+    if isinstance(exc, TimeoutError) or "timed out" in detail:
+        return "TIMEOUT"
+    if "raster budget exceeded" in detail or "resource limit" in detail:
+        return "RESOURCE_LIMIT"
+    if "executable is unavailable" in detail or "optional dependencies" in detail:
+        return "DEPENDENCY_UNAVAILABLE"
+    if isinstance(exc, ValueError):
+        return "INVALID_OUTPUT"
+    return "BACKEND_ERROR"
+
+
 class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
@@ -264,10 +288,12 @@ class AdaptiveOcrBackend:
     @property
     def execution_identity(self) -> dict[str, object]:
         return {
-            "native": _engine_id(self.native_backend),
-            "ocr": [_engine_id(item) for item in self.ocr_backends],
-            "specialists": [_engine_id(item) for item in self.specialist_backends],
-            "config": self.config.__dict__,
+            "native": _backend_execution_identity(self.native_backend),
+            "ocr": [_backend_execution_identity(item) for item in self.ocr_backends],
+            "specialists": [
+                _backend_execution_identity(item) for item in self.specialist_backends
+            ],
+            "config": asdict(self.config),
         }
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
@@ -304,6 +330,7 @@ class AdaptiveOcrBackend:
                         "page": page_number,
                         "stage": "optional-extraction",
                         "backend": engine,
+                        "reason": _optional_failure_reason(exc),
                         "degraded": True,
                     }
                 )
