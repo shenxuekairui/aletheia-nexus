@@ -321,13 +321,6 @@ class TesseractOcrBackend:
         self.version = version.removeprefix("tesseract ").strip() or "unknown"
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
-        try:
-            from PIL import Image
-        except ImportError as exc:
-            raise RuntimeError(
-                "Tesseract OCR requires the 'ocr' optional dependencies"
-            ) from exc
-
         geometry = PageGeometry.from_page(page)
         page_width = geometry.width
         page_height = geometry.height
@@ -338,6 +331,12 @@ class TesseractOcrBackend:
                 "OCR raster budget exceeded: "
                 f"{expected_pixels} pixels > {self.config.max_raster_pixels}"
             )
+        try:
+            from PIL import Image
+        except ImportError as exc:
+            raise RuntimeError(
+                "Tesseract OCR requires the 'ocr' optional dependencies"
+            ) from exc
         warnings: list[dict[str, str]] = []
         with TemporaryDirectory(prefix="an-ocr-") as directory:
             root = Path(directory)
