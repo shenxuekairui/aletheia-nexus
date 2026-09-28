@@ -65,3 +65,51 @@ def test_page_geometry_rejects_non_finite_boxes():
     page.cropbox = _Box((0, 0, float("nan"), 10))
     with pytest.raises(ValueError, match="finite"):
         PageGeometry.from_page(page)
+
+
+@pytest.mark.parametrize(
+    ("rotation", "prepared_size", "expected"),
+    [
+        (180, (600, 800), (0.5, 0.25, 5 / 6, 0.325)),
+        (270, (800, 600), (17 / 30, 0.625, 2 / 3, 0.875)),
+    ],
+)
+def test_ocr_orientation_180_and_270_map_back_to_original_raster(
+    rotation, prepared_size, expected
+):
+    bbox = _prepared_bbox_to_canonical(
+        (100, 200, 300, 260),
+        prepared_width=prepared_size[0],
+        prepared_height=prepared_size[1],
+        original_width=600,
+        original_height=800,
+        orientation_rotation=rotation,
+        deskew_angle=0,
+    )
+
+    assert bbox == pytest.approx(expected)
+
+
+def test_ocr_deskew_inverse_mapping_remains_bounded_and_changes_extent():
+    baseline = _prepared_bbox_to_canonical(
+        (100, 200, 300, 260),
+        prepared_width=600,
+        prepared_height=800,
+        original_width=600,
+        original_height=800,
+        orientation_rotation=0,
+        deskew_angle=0,
+    )
+    deskewed = _prepared_bbox_to_canonical(
+        (100, 200, 300, 260),
+        prepared_width=600,
+        prepared_height=800,
+        original_width=600,
+        original_height=800,
+        orientation_rotation=0,
+        deskew_angle=1.0,
+    )
+
+    assert deskewed != pytest.approx(baseline)
+    assert 0 <= deskewed[0] < deskewed[2] <= 1
+    assert 0 <= deskewed[1] < deskewed[3] <= 1
