@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,16 +30,27 @@ class ParsedArtifact:
     """Read-only navigation over a validated parsed-document artifact."""
 
     def __init__(self, document: dict[str, object], *, path: Path | None = None):
-        validate_parsed_document(document)
-        self.document = document
+        snapshot = deepcopy(document)
+        validate_parsed_document(snapshot)
+        self._document = snapshot
         self.path = path
-        self._blocks = {str(item["id"]): item for item in document["blocks"]}
-        self._anchors = {str(item["id"]): item for item in document["anchors"]}
-        self._sections = {str(item["id"]): item for item in document["sections"]}
+        self._blocks = {str(item["id"]): item for item in snapshot["blocks"]}
+        self._anchors = {str(item["id"]): item for item in snapshot["anchors"]}
+        self._sections = {str(item["id"]): item for item in snapshot["sections"]}
         self._section_by_block: dict[str, dict[str, object]] = {}
-        for section in document["sections"]:
+        for section in snapshot["sections"]:
             for block_id in section["block_ids"]:
                 self._section_by_block[str(block_id)] = section
+
+    def _validate_integrity(self) -> None:
+        validate_parsed_document(self._document)
+
+    @property
+    def document(self) -> dict[str, object]:
+        """Return a validated snapshot, never a mutable alias to canonical state."""
+
+        self._validate_integrity()
+        return deepcopy(self._document)
 
     @classmethod
     def load(cls, path: str | Path) -> "ParsedArtifact":
@@ -57,7 +69,8 @@ class ParsedArtifact:
     ) -> dict[str, bool]:
         """Recheck local references without changing or reacquiring either file."""
 
-        source = self.document["source"]
+        self._validate_integrity()
+        source = self._document["source"]
         locators = source.get("locators", {})
         base = self.path.parent if self.path is not None else None
         checks: dict[str, bool] = {}
@@ -82,6 +95,7 @@ class ParsedArtifact:
         return checks
 
     def section_text(self, section_id: str) -> str:
+        self._validate_integrity()
         try:
             section = self._sections[section_id]
         except KeyError as exc:
@@ -91,6 +105,7 @@ class ParsedArtifact:
         )
 
     def locate(self, block_id: str) -> dict[str, object]:
+        self._validate_integrity()
         try:
             block = self._blocks[block_id]
         except KeyError as exc:
@@ -102,8 +117,8 @@ class ParsedArtifact:
             "bbox": anchor["bbox"],
             "bbox_precision": anchor.get("bbox_precision"),
             "text_evidence": anchor["text_evidence"],
-            "source_artifact_id": self.document["source"]["artifact_id"],
-            "parsed_artifact_id": self.document["artifact_id"],
+            "source_artifact_id": self._document["source"]["artifact_id"],
+            "parsed_artifact_id": self._document["artifact_id"],
         }
 
     def search(
@@ -113,6 +128,7 @@ class ParsedArtifact:
         section_type: str | None = None,
         limit: int = 20,
     ) -> list[SearchHit]:
+        self._validate_integrity()
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query must be a non-empty string")
         if limit < 1:
@@ -120,7 +136,7 @@ class ParsedArtifact:
         phrase = " ".join(query.casefold().split())
         tokens = set(_TOKEN.findall(phrase))
         hits: list[SearchHit] = []
-        for block in self.document["blocks"]:
+        for block in self._document["blocks"]:
             section = self._section_by_block.get(str(block["id"]))
             if section_type is not None and (
                 section is None or section.get("semantic_type") != section_type
