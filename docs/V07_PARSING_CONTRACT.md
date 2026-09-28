@@ -29,7 +29,7 @@ Document. Its important fields are:
 | --- | --- |
 | `artifact_id` | Deterministic parsed identity, independent of timestamp and local path. |
 | `source` | DOI, stable source identity, PDF/sidecar hashes, page count, acquisition schema, and optional safe relative locators. |
-| `parser` | Parser/backend versions, ordered stages, configuration and execution fingerprints. |
+| `parser` | Parser/backend versions, ordered stages, configuration and execution fingerprints, including relevant backend/runtime dependency identity. |
 | `pages` | Displayed dimensions, MediaBox, CropBox, rotation, and canonical coordinate-system identifier. |
 | `blocks` / `anchors` | Ordered text evidence with extraction method, confidence, separate engine agreement, page, bbox, and text span. |
 | `sections` / `references` | Conservative structure and explicit resolved/unresolved citation evidence. |
@@ -44,8 +44,9 @@ geometry, invalid dimensions/rotation, malformed confidence/agreement, bad warni
 records, dangling references, fingerprint mismatch, and invalid artifact identity.
 
 An existing parsed target is a conflict by default. `--overwrite` is the explicit
-opt-in. Source locators cannot be absolute paths or URLs, and are excluded from
-artifact identity. This keeps artifacts portable and prevents default disclosure of
+opt-in. Source locators cannot be absolute paths, drive/UNC paths, traversal paths, or
+URLs under either POSIX or Windows path semantics, and are excluded from artifact
+identity. This keeps artifacts portable and prevents default disclosure of
 machine-specific paths.
 
 ## Extraction and uncertainty
@@ -63,8 +64,9 @@ survived. None of these states validates scientific claims.
 ## Derived AI views
 
 Markdown, JSONL, and structure-aware chunk exports are deterministic derived
-artifacts, not new Sources of Truth. They include source and parsed IDs, exporter
-version/configuration fingerprint, and evidence chains:
+artifacts, not new Sources of Truth. Every chunk independently includes source and
+parsed IDs, block/anchor/page identifiers, exporter version/configuration identity
+through its enclosing export, and detailed evidence chains:
 
 ```text
 chunk → block → anchor → page/bbox → source artifact
@@ -96,6 +98,9 @@ The change from parser 2.3 to canonical CropBox clipping removes hidden/off-page
 duplicate text layers in several PDFs. Rendered-page spot checks confirmed that the
 removed MDPI/JHEP samples were not visible page content. This is a geometry
 correction, not a claim that all visual information loss is below 1%.
+
+The hosted release gate also runs the frozen evaluator explicitly and uploads its
+machine-readable report as a CI artifact bound to the tested commit.
 
 Run the bounded local gate with:
 
