@@ -736,9 +736,7 @@ def test_public_fixtures_contain_no_authenticated_or_publisher_material():
         r"..\\paper.pdf",
     ],
 )
-def test_schema_rejects_nonportable_locator_on_every_platform(
-    tmp_path, locator
-):
+def test_schema_rejects_nonportable_locator_on_every_platform(tmp_path, locator):
     result = _parse("native_article.pdf", "10.5555/an.v07.native", tmp_path)
     payload = json.loads(json.dumps(result.document))
     payload["source"]["locators"]["pdf"] = locator
