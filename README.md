@@ -323,8 +323,8 @@ AN 不把一个单一“准确率”作为全部质量证明，而是使用不�
 
 v0.7 发布候选 PR 的最终验证包括：
 
-- Python 3.11 deterministic suite：**886 passed / 8 skipped**；
-- Windows/Python 3.11：**886 passed / 8 skipped**；
+- Python 3.11 deterministic suite：**889 passed / 8 skipped**；
+- Windows/Python 3.11：**889 passed / 8 skipped**；
 - Python 3.12 / 3.13 / 3.14 compatibility jobs：全部通过；
 - Linux real Chromium：**7 passed**；
 - Windows real Chromium：**7 passed**；
