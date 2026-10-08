@@ -1,7 +1,9 @@
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from pypdf import PdfWriter
 
 from aletheia_nexus.acquire.access import cnki_provider, service
@@ -13,6 +15,11 @@ from aletheia_nexus.acquire.access.cnki_provider import (
     _pdf_control,
     _ScholarlyMetadataParser,
     _wait_for_manual_captcha,
+)
+from aletheia_nexus.acquire.access.cnki_runtime import (
+    CNKIFileCapture,
+    CNKIGate,
+    CNKIInteractionRequired,
 )
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
@@ -70,12 +77,13 @@ class _EmptyLocator:
 
 
 class _Element:
-    def __init__(self, *, text="", href="", visible=True, click=None):
+    def __init__(self, *, text="", href="", visible=True, click=None, content=None):
         self.text = text
         self.href = href
         self.visible = visible
         self.value = None
         self._click = click
+        self.content = content
 
     @property
     def first(self):
@@ -91,11 +99,13 @@ class _Element:
     def is_visible(self):
         return self.visible
 
-    def inner_text(self):
+    def inner_text(self, **kwargs):
         return self.text
 
     def get_attribute(self, name):
-        return self.href if name == "href" else None
+        return (
+            self.href if name == "href" else self.content if name == "content" else None
+        )
 
     def fill(self, value):
         self.value = value
@@ -107,14 +117,13 @@ class _Element:
 
 class _Rows:
     def __init__(self, row):
-        self.row = row
+        self.rows = row if isinstance(row, list) else [row]
 
     def count(self):
-        return 1
+        return len(self.rows)
 
     def nth(self, index):
-        assert index == 0
-        return self.row
+        return self.rows[index]
 
 
 class _Row:
@@ -146,12 +155,30 @@ class _EventInfo:
         return False
 
 
-class _DetailPage:
+class _Events:
+    def on(self, event, handler):
+        if not hasattr(self, "listeners"):
+            self.listeners = {}
+        self.listeners.setdefault(event, []).append(handler)
+
+    def remove_listener(self, event, handler):
+        self.listeners[event].remove(handler)
+
+    def emit(self, event, value):
+        for handler in getattr(self, "listeners", {}).get(event, ()):
+            handler(value)
+
+
+class _DetailPage(_Events):
     url = "https://kns.cnki.net/kcms2/article/abstract?v=public"
 
     def __init__(self):
         self.closed = False
-        self.pdf = _Element(text="PDF下载", href="/download/article.pdf")
+        self.pdf = _Element(
+            text="PDF下载",
+            href="/download/article.pdf",
+            click=lambda: self.emit("download", _Download()),
+        )
 
     def locator(self, selector):
         if selector == "a#pdfDown":
@@ -164,6 +191,10 @@ class _DetailPage:
     def expect_download(self, **kwargs):
         return _EventInfo(_Download())
 
+    def wait_for_timeout(self, value):
+        if hasattr(self, "on_poll"):
+            self.on_poll()
+
     def is_closed(self):
         return self.closed
 
@@ -171,7 +202,7 @@ class _DetailPage:
         self.closed = True
 
 
-class _SearchPage:
+class _SearchPage(_Events):
     url = "https://kns.cnki.net/kns8s/"
 
     def __init__(self, title):
@@ -185,7 +216,7 @@ class _SearchPage:
             return self.search
         if selector == ".search-btn":
             return self.button
-        if selector == ".result-table-list tbody tr":
+        if selector == cnki_provider._RESULT_ROW_SELECTOR:
             return self.rows
         return _EmptyLocator()
 
@@ -199,7 +230,7 @@ class _SearchPage:
         return False
 
 
-class _Context:
+class _Context(_Events):
     def __init__(self, detail_page):
         self.detail_page = detail_page
 
@@ -218,14 +249,17 @@ def test_cnki_defaults_to_chinese_titles_and_can_be_explicitly_broadened():
     chinese = _metadata()
     english = _metadata(title="An English Article")
 
-    assert len(
-        applicable_browser_providers(
-            doi=chinese.doi,
-            metadata=chinese,
-            expected_title=None,
-            config=BrowserAccessConfig(),
+    assert (
+        len(
+            applicable_browser_providers(
+                doi=chinese.doi,
+                metadata=chinese,
+                expected_title=None,
+                config=BrowserAccessConfig(),
+            )
         )
-    ) == 1
+        == 1
+    )
     assert (
         applicable_browser_providers(
             doi=english.doi,
@@ -235,33 +269,42 @@ def test_cnki_defaults_to_chinese_titles_and_can_be_explicitly_broadened():
         )
         == ()
     )
-    assert len(
-        applicable_browser_providers(
-            doi=english.doi,
-            metadata=english,
-            expected_title=None,
-            config=BrowserAccessConfig(cnki_search_all_titles=True),
+    assert (
+        len(
+            applicable_browser_providers(
+                doi=english.doi,
+                metadata=english,
+                expected_title=None,
+                config=BrowserAccessConfig(cnki_search_all_titles=True),
+            )
         )
-    ) == 1
+        == 1
+    )
 
 
 def test_cnki_doi_markers_trigger_provider_without_resolved_metadata():
-    assert len(
-        applicable_browser_providers(
-            doi="10.13822/j.cnki.hxsj.2024.0476",
-            metadata=None,
-            expected_title=None,
-            config=BrowserAccessConfig(),
+    assert (
+        len(
+            applicable_browser_providers(
+                doi="10.13822/j.cnki.hxsj.2024.0476",
+                metadata=None,
+                expected_title=None,
+                config=BrowserAccessConfig(),
+            )
         )
-    ) == 1
-    assert len(
-        applicable_browser_providers(
-            doi="10.7503/cjcu20250333",
-            metadata=None,
-            expected_title=None,
-            config=BrowserAccessConfig(),
+        == 1
+    )
+    assert (
+        len(
+            applicable_browser_providers(
+                doi="10.7503/cjcu20250333",
+                metadata=None,
+                expected_title=None,
+                config=BrowserAccessConfig(),
+            )
         )
-    ) == 1
+        == 1
+    )
 
 
 def test_cnki_metadata_parser_reads_chndoi_title_and_authors():
@@ -382,9 +425,7 @@ def test_cnki_captcha_uses_human_handoff_callback_without_solving():
 
 def test_cnki_recognizes_server_side_verify_redirect_before_widget_renders():
     class Page:
-        url = (
-            "https://kns.cnki.net/verify/home?captchaType=blockPuzzle&returnUrl=x"
-        )
+        url = "https://kns.cnki.net/verify/home?captchaType=blockPuzzle&returnUrl=x"
 
         def locator(self, selector):
             return _EmptyLocator()
@@ -403,9 +444,7 @@ def test_cnki_fetch_uses_popup_pdf_download_hash_and_shared_finalizer(
     def finalize(**kwargs):
         resource = kwargs["resource"]
         captured.update(kwargs)
-        assert resource.sha256 == hashlib.sha256(
-            b"%PDF-1.7\nCNKI test"
-        ).hexdigest()
+        assert resource.sha256 == hashlib.sha256(b"%PDF-1.7\nCNKI test").hexdigest()
         return AcquisitionResult(
             candidate=kwargs["candidate"],
             status=AcquisitionStatus.VERIFIED,
@@ -480,7 +519,9 @@ def test_maximized_acquisition_uses_cnki_after_public_routes_before_generic_brow
         service,
         "acquire_with_browser",
         lambda **kwargs: (_ for _ in ()).throw(
-            AssertionError("generic browser routes must not run after CNKI verification")
+            AssertionError(
+                "generic browser routes must not run after CNKI verification"
+            )
         ),
     )
 
@@ -531,9 +572,7 @@ def test_cnki_artifact_records_hash_source_and_access_method(tmp_path):
         access_details={
             "provider": "cnki",
             "fetcher": "CNKIProvider",
-            "source_page_url": (
-                "https://kns.cnki.net/kcms2/article/abstract?v=public"
-            ),
+            "source_page_url": ("https://kns.cnki.net/kcms2/article/abstract?v=public"),
             "access_method": "playwright_institution_auth",
         },
     )
@@ -545,3 +584,520 @@ def test_cnki_artifact_records_hash_source_and_access_method(tmp_path):
     assert payload["transport"] == "cnki_authenticated_browser"
     assert payload["access"]["fetcher"] == "CNKIProvider"
     assert payload["access"]["access_method"] == "playwright_institution_auth"
+
+
+def _valid_pdf(title="中文论文标题", *, doi=None):
+    from io import BytesIO
+
+    buffer = BytesIO()
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    if doi:
+        from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+        font = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject({NameObject("/F1"): font}),
+            }
+        )
+        contents = DecodedStreamObject()
+        contents.set_data(f"BT /F1 12 Tf 50 700 Td ({doi}) Tj ET".encode("ascii"))
+        page[NameObject("/Contents")] = writer._add_object(contents)
+    writer.add_metadata({"/Title": title})
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def _response(page, *, body=None, url="https://kns.cnki.net/article.pdf"):
+    return SimpleNamespace(
+        frame=SimpleNamespace(page=page),
+        headers={"content-type": "application/pdf"},
+        status=200,
+        url=url,
+        body=lambda: body if body is not None else _valid_pdf(),
+    )
+
+
+def _fetch(
+    page, detail, tmp_path, *, context=None, config=None, doi="10.1000/cnki-target"
+):
+    return CNKIProvider().fetch(
+        doi=doi,
+        context=context or _Context(detail),
+        page=page,
+        output_dir=tmp_path,
+        config=config or BrowserAccessConfig(),
+        metadata=_metadata(),
+    )
+
+
+def test_cnki_inline_pdf_response_passes_real_identity_and_provenance(tmp_path):
+    detail = _DetailPage()
+    context = _Context(detail)
+    detail.pdf._click = lambda: context.emit("response", _response(detail))
+
+    attempt = _fetch(_SearchPage("中文论文标题"), detail, tmp_path, context=context)
+
+    assert attempt.status == BrowserAttemptStatus.VERIFIED
+    assert attempt.file_attempts[0].method == "cnki_pdf_response"
+    record = json.loads(attempt.result.sidecar_path.read_text(encoding="utf-8"))
+    assert record["retrieval"]["sha256"] == hashlib.sha256(_valid_pdf()).hexdigest()
+    assert record["access"]["matched_result_title"] == "中文论文标题"
+    assert record["access"]["download_method"] == "cnki_pdf_response"
+    assert not list((tmp_path / "_browser-downloads").glob("*.part"))
+    assert not any(context.listeners.values())
+
+
+def test_cnki_popup_download_is_captured_and_popup_closed_after_save(tmp_path):
+    detail = _DetailPage()
+    popup = _DetailPage()
+    popup.opener = lambda: detail
+    context = _Context(detail)
+
+    class Download(_Download):
+        def save_as(self, path):
+            assert not popup.closed
+            Path(path).write_bytes(_valid_pdf())
+
+    def click():
+        context.emit("page", popup)
+        popup.emit("download", Download())
+
+    detail.pdf._click = click
+    attempt = _fetch(_SearchPage("中文论文标题"), detail, tmp_path, context=context)
+
+    assert attempt.status == BrowserAttemptStatus.VERIFIED
+    assert popup.closed and detail.closed
+
+
+def test_cnki_capture_ignores_other_tabs_and_caj_responses():
+    detail, other = _DetailPage(), _DetailPage()
+    context = _Context(detail)
+    capture = CNKIFileCapture(context, detail, 100_000)
+    context.emit("response", _response(other))
+    caj = _response(detail, url="https://kns.cnki.net/article.caj")
+    context.emit("response", caj)
+    assert capture.next_file() is None
+    capture.close()
+    assert not any(context.listeners.values())
+
+
+def test_cnki_pdf_response_size_limit_cleans_up_and_reports_failure(tmp_path):
+    detail = _DetailPage()
+    context = _Context(detail)
+    detail.pdf._click = lambda: context.emit("response", _response(detail))
+    attempt = _fetch(
+        _SearchPage("中文论文标题"),
+        detail,
+        tmp_path,
+        context=context,
+        config=BrowserAccessConfig(max_bytes=20),
+    )
+
+    assert attempt.status == BrowserAttemptStatus.RETRIEVAL_FAILED
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_cnki_continues_to_next_result_after_conflicting_detail_doi(tmp_path):
+    search = _SearchPage("中文论文标题")
+    other_link = _Element(text="中文论文标题", href="/kcms2/article/abstract?id=second")
+    search.rows = _Rows([_Row(search.link), _Row(other_link)])
+
+    class Conflict(_DetailPage):
+        def locator(self, selector):
+            if selector == "meta[name='citation_doi']":
+                return _Element(content="10.1000/unrelated")
+            return super().locator(selector)
+
+    first, second = Conflict(), _DetailPage()
+
+    class Context(_Context):
+        def __init__(self):
+            self.queue = [first, second]
+
+        def expect_page(self, **kwargs):
+            return _EventInfo(self.queue.pop(0))
+
+    context = Context()
+    second.pdf._click = lambda: context.emit("response", _response(second))
+    first.pdf._click = lambda: pytest.fail("conflicting DOI must not download")
+
+    attempt = _fetch(search, second, tmp_path, context=context)
+
+    assert attempt.status == BrowserAttemptStatus.VERIFIED
+    assert attempt.candidates_considered == 2
+    assert "detail DOI mismatch" in attempt.evidence
+    assert first.closed and second.closed
+
+
+def test_cnki_title_typography_matching_handles_subscripts_and_fullwidth():
+    page = _SearchPage("银修饰铜纳米阵列用于电催化还原ＣＯ₂")
+    assert (
+        cnki_provider._best_result_link(
+            page, title="银修饰铜纳米阵列用于电催化还原CO_2", authors=(), limit=5
+        )
+        is page.link
+    )
+
+
+def test_cnki_metadata_label_preserves_nested_formula_and_inline_authors():
+    parser = _ScholarlyMetadataParser()
+    parser.feed(
+        "<td>题名：银修饰铜纳米阵列用于电催化还原CO<sub>2</sub></td>"
+        "<td>作者：<a>张三</a>;<a>李四</a></td>"
+    )
+    title, authors = parser.result()
+    assert cnki_provider._normalized_title(title) == "银修饰铜纳米阵列用于电催化还原co2"
+    assert authors == ("张三", "李四")
+
+
+def test_cnki_keeps_english_metadata_if_chinese_fallback_is_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        cnki_provider,
+        "_metadata_from_chinese_sources",
+        lambda *args, **kwargs: (None, ()),
+    )
+    title, _, _ = _metadata_for_query(
+        "10.7503/cjcu20250333",
+        metadata=_metadata(title="An English Article"),
+        expected_title=None,
+        metadata_mailto=None,
+    )
+    assert title == "An English Article"
+
+
+def test_author_overlap_does_not_rescue_an_unrelated_title():
+    assert (
+        cnki_provider._best_result_link(
+            _SearchPage("完全无关的研究"),
+            title="中文论文标题",
+            authors=("张三",),
+            limit=5,
+        )
+        is None
+    )
+
+
+def test_cnki_same_tab_navigation_does_not_click_result_twice(tmp_path):
+    page = _SearchPage("中文论文标题")
+    detail = _DetailPage()
+    clicks = []
+
+    def click():
+        clicks.append(True)
+        page.url = detail.url
+        page.locator = detail.locator
+
+    page.link._click = click
+
+    class NoPopup(_EventInfo):
+        def __exit__(self, *args):
+            raise TimeoutError()
+
+    class Context(_Context):
+        def expect_page(self, **kwargs):
+            return NoPopup(None)
+
+    context = Context(detail)
+    page.wait_for_load_state = detail.wait_for_load_state
+    page.wait_for_timeout = detail.wait_for_timeout
+    detail.pdf._click = lambda: context.emit("response", _response(page))
+    attempt = _fetch(page, detail, tmp_path, context=context)
+
+    assert attempt.status == BrowserAttemptStatus.VERIFIED
+    assert len(clicks) == 1
+
+
+def test_cnki_post_click_captcha_hands_off_popup_and_leaves_it_open(tmp_path):
+    detail, popup = _DetailPage(), _DetailPage()
+    popup.url = "https://kns.cnki.net/verify/home?captchaType=blockPuzzle"
+    popup.opener = lambda: detail
+    context = _Context(detail)
+    detail.pdf._click = lambda: context.emit("page", popup)
+    callbacks = []
+    attempt = _fetch(
+        _SearchPage("中文论文标题"),
+        detail,
+        tmp_path,
+        context=context,
+        config=BrowserAccessConfig(
+            interactive=False,
+            interaction_callback=lambda report, url: callbacks.append((report, url)),
+        ),
+    )
+
+    assert attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
+    assert callbacks[0][0].kind == ChallengeKind.CAPTCHA
+    assert "blockPuzzle" not in callbacks[0][1]
+    assert not popup.closed
+    assert not any(context.listeners.values())
+
+
+def test_cnki_manual_completion_resumes_post_click_download(tmp_path):
+    detail = _DetailPage()
+    context = _Context(detail)
+    clicks = []
+
+    def click():
+        clicks.append(True)
+        if len(clicks) == 1:
+            detail.url = "https://kns.cnki.net/verify/home?captchaType=blockPuzzle"
+        else:
+            context.emit("response", _response(detail))
+
+    def human_completes_challenge():
+        detail.url = "https://kns.cnki.net/kcms2/article/abstract?v=public"
+
+    detail.pdf._click = click
+    detail.on_poll = human_completes_challenge
+    callbacks = []
+    attempt = _fetch(
+        _SearchPage("中文论文标题"),
+        detail,
+        tmp_path,
+        context=context,
+        config=BrowserAccessConfig(
+            interaction_callback=lambda *args: callbacks.append(args)
+        ),
+    )
+
+    assert attempt.status == BrowserAttemptStatus.VERIFIED
+    assert attempt.interaction_used
+    assert len(callbacks) == 1 and len(clicks) == 2
+
+
+def test_cnki_real_login_form_hands_off_but_navbar_login_does_not():
+    class Login(_DetailPage):
+        def __init__(self, form):
+            super().__init__()
+            self.form = form
+
+        def locator(self, selector):
+            if selector == "body":
+                return _Element(text="机构登录 请先登录")
+            if selector == "input[type='password']" and self.form:
+                return _Element()
+            return super().locator(selector)
+
+    gate = CNKIGate(BrowserAccessConfig(interactive=False))
+    assert gate.check(Login(False)) is False
+    with pytest.raises(CNKIInteractionRequired) as exc:
+        gate.check(Login(True))
+    assert exc.value.report.kind in {ChallengeKind.SSO, ChallengeKind.AUTHENTICATION}
+
+
+def test_title_only_resolves_article_doi_and_preserves_target_title(tmp_path):
+    class Detail(_DetailPage):
+        def locator(self, selector):
+            if selector == "meta[name='citation_doi']":
+                return _Element(content="10.1000/title-discovered")
+            return super().locator(selector)
+
+    detail = Detail()
+    context = _Context(detail)
+    detail.pdf._click = lambda: context.emit("response", _response(detail))
+    attempt = _fetch(
+        _SearchPage("中文论文标题"), detail, tmp_path, context=context, doi=""
+    )
+
+    assert attempt.status == BrowserAttemptStatus.VERIFIED
+    assert attempt.source_candidate.doi == "10.1000/title-discovered"
+    payload = json.loads(attempt.result.sidecar_path.read_text(encoding="utf-8"))
+    assert payload["target"]["expected_title"] == "中文论文标题"
+
+
+def test_title_only_never_invents_doi_when_article_has_none(tmp_path):
+    detail = _DetailPage()
+    context = _Context(detail)
+    detail.pdf._click = lambda: context.emit("response", _response(detail))
+    attempt = _fetch(
+        _SearchPage("中文论文标题"), detail, tmp_path, context=context, doi=""
+    )
+
+    assert attempt.status != BrowserAttemptStatus.VERIFIED
+    assert not attempt.source_candidate.doi
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_title_only_resolves_unique_doi_from_real_pdf_first_page(tmp_path):
+    detail = _DetailPage()
+    context = _Context(detail)
+    body = _valid_pdf(doi="10.1000/title-in-pdf")
+    detail.pdf._click = lambda: context.emit("response", _response(detail, body=body))
+    attempt = _fetch(
+        _SearchPage("中文论文标题"), detail, tmp_path, context=context, doi=""
+    )
+    assert attempt.status == BrowserAttemptStatus.VERIFIED
+    assert attempt.source_candidate.doi == "10.1000/title-in-pdf"
+    assert attempt.result.identity_validation.doi_match
+
+
+def test_title_only_rejects_ambiguous_pdf_dois(tmp_path):
+    detail = _DetailPage()
+    context = _Context(detail)
+    body = _valid_pdf(doi="10.1000/one 10.1000/two")
+    detail.pdf._click = lambda: context.emit("response", _response(detail, body=body))
+    attempt = _fetch(
+        _SearchPage("中文论文标题"), detail, tmp_path, context=context, doi=""
+    )
+    assert attempt.status == BrowserAttemptStatus.RETRIEVAL_FAILED
+    assert not attempt.source_candidate.doi
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_cnki_invalid_pdf_download_is_failure_instead_of_unverified_pdf(tmp_path):
+    detail = _DetailPage()
+
+    class Download(_Download):
+        def save_as(self, path):
+            Path(path).write_bytes(b"<html>login page</html>")
+
+    detail.pdf._click = lambda: detail.emit("download", Download())
+    attempt = _fetch(_SearchPage("中文论文标题"), detail, tmp_path)
+    assert attempt.status == BrowserAttemptStatus.RETRIEVAL_FAILED
+    assert attempt.result.status == AcquisitionStatus.INVALID_PDF
+    assert not list(tmp_path.rglob("*.part"))
+
+
+@pytest.mark.parametrize(
+    "origin,verified",
+    [
+        ("https://kns.cnki.net", True),
+        ("https://other.example", False),
+    ],
+)
+def test_blob_download_requires_the_article_origin(tmp_path, origin, verified):
+    detail = _DetailPage()
+
+    class Download(_Download):
+        url = f"blob:{origin}/generated-pdf"
+
+        def save_as(self, path):
+            Path(path).write_bytes(_valid_pdf())
+
+    detail.pdf._click = lambda: detail.emit("download", Download())
+    attempt = _fetch(_SearchPage("中文论文标题"), detail, tmp_path)
+    assert (attempt.status == BrowserAttemptStatus.VERIFIED) is verified
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_unverified_first_pdf_does_not_prevent_second_result_verification(tmp_path):
+    search = _SearchPage("中文论文标题")
+    second_link = _Element(
+        text="中文论文标题", href="/kcms2/article/abstract?id=second"
+    )
+    search.rows = _Rows([_Row(search.link), _Row(second_link)])
+    first, second = _DetailPage(), _DetailPage()
+
+    class Context(_Context):
+        def __init__(self):
+            self.queue = [first, second]
+
+        def expect_page(self, **kwargs):
+            return _EventInfo(self.queue.pop(0))
+
+    context = Context()
+    first.pdf._click = lambda: context.emit(
+        "response", _response(first, body=_valid_pdf("另一篇研究论文"))
+    )
+    second.pdf._click = lambda: context.emit("response", _response(second))
+    result = _fetch(search, second, tmp_path, context=context)
+    assert result.status == BrowserAttemptStatus.VERIFIED
+    assert len(result.file_attempts) == 2
+    assert result.file_attempts[0].result.file_path is None
+    assert result.result is result.file_attempts[1].result
+
+
+def test_cnki_login_iframe_is_detected_without_matching_body_words():
+    page = _DetailPage()
+    frame = SimpleNamespace(
+        frame_element=lambda: _Element(),
+        locator=lambda selector: (
+            _Element() if selector == "input[type='password']" else _EmptyLocator()
+        ),
+    )
+    page.frames = [frame]
+    with pytest.raises(CNKIInteractionRequired) as exc:
+        CNKIGate(BrowserAccessConfig(interactive=False)).check(page)
+    assert exc.value.report.kind == ChallengeKind.AUTHENTICATION
+
+
+def test_chndoi_error_document_title_is_not_used_as_paper_metadata(monkeypatch):
+    monkeypatch.setattr(
+        cnki_provider.httpx,
+        "get",
+        lambda *args, **kwargs: SimpleNamespace(
+            status_code=200, text="<title>系统繁忙 - 中国知网</title>"
+        ),
+    )
+    assert cnki_provider._metadata_from_chinese_sources(
+        "10.13822/j.cnki.hxsj.2024.0476", mailto=None
+    ) == (None, ())
+
+
+def test_cnki_direct_api_passes_title_and_authors_to_reusable_session(tmp_path):
+    from aletheia_nexus.acquire.access import acquire_cnki_pdf
+
+    class Session:
+        def acquire_provider(self, provider, **kwargs):
+            assert provider.authors == ("张三",)
+            assert kwargs["doi"] == ""
+            assert kwargs["expected_title"] == "中文论文标题"
+            return "acquired"
+
+    assert (
+        acquire_cnki_pdf(
+            title="中文论文标题",
+            authors=("张三",),
+            output_dir=tmp_path,
+            browser_session=Session(),
+        )
+        == "acquired"
+    )
+    with pytest.raises(ValueError):
+        acquire_cnki_pdf(output_dir=tmp_path)
+    with pytest.raises(ValueError):
+        acquire_cnki_pdf(title=" ", output_dir=tmp_path)
+
+
+def test_cnki_closed_target_restarts_once_with_same_session_config(
+    monkeypatch, tmp_path
+):
+    from aletheia_nexus.acquire.access import BrowserSession
+
+    session = BrowserSession(BrowserAccessConfig(profile_root=tmp_path))
+    contexts = []
+    restarts = []
+
+    def context():
+        contexts.append(True)
+        return SimpleNamespace(new_page=_DetailPage)
+
+    monkeypatch.setattr(session, "_ensure_started", context)
+    monkeypatch.setattr(session, "close", lambda: restarts.append(True))
+    provider = CNKIProvider()
+    calls = []
+
+    def fetch(**kwargs):
+        calls.append(kwargs)
+        return BrowserAccessAttempt(
+            source_candidate=cnki_provider._source_candidate(kwargs["doi"]),
+            final_url=None,
+            status=BrowserAttemptStatus.ERROR
+            if len(calls) == 1
+            else BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            evidence=("CNKI browser target closed",) if len(calls) == 1 else (),
+        )
+
+    monkeypatch.setattr(provider, "fetch", fetch)
+    result = session.acquire_provider(provider, doi="10.1000/test", output_dir=tmp_path)
+    assert result.status == BrowserAttemptStatus.NO_FILE_CANDIDATES
+    assert len(calls) == 2 and len(restarts) == 1
+    assert calls[0]["config"] is calls[1]["config"]

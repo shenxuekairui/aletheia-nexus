@@ -15,6 +15,7 @@ from aletheia_nexus.acquire.access.browser import (
     browser_profile_dir,
 )
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
+from aletheia_nexus.acquire.access.cnki import acquire_cnki_pdf
 from aletheia_nexus.acquire.access.cnki_provider import CNKIProvider
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
 from aletheia_nexus.acquire.access.manual import import_local_pdf
@@ -58,6 +59,7 @@ __all__ = [
     "MaximizedAcquisitionResult",
     "MaximizedAcquisitionStatus",
     "acquire_elsevier_pdf",
+    "acquire_cnki_pdf",
     "acquire_full_text_batch_maximized",
     "acquire_full_text_maximized",
     "acquire_with_browser",

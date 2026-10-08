@@ -39,6 +39,41 @@ def test_exact_doi_match_verifies_article_identity():
     assert result.doi_match is True
 
 
+def test_specific_chinese_title_with_per_character_pdf_spacing_verifies():
+    title = "银修饰铜纳米阵列用于电催化还原CO2"
+    result = validate_paper_identity(
+        target_doi="10.1000/chinese",
+        source_url="https://kns.cnki.net/paper.pdf",
+        expected_title=title,
+        inspection=_inspection(text=" ".join(title) + " 作者 摘要"),
+    )
+    assert result.status == IdentityStatus.MATCH
+    assert result.title_similarity == 1.0
+
+
+def test_short_generic_spaced_chinese_heading_cannot_verify():
+    result = validate_paper_identity(
+        target_doi="10.1000/chinese",
+        source_url="https://kns.cnki.net/paper.pdf",
+        expected_title="电催化剂研究",
+        inspection=_inspection(text="电 催 化 剂 研 究 摘要"),
+    )
+    assert result.status == IdentityStatus.UNKNOWN
+
+
+def test_spaced_chinese_title_on_later_page_cannot_verify_a_reference():
+    title = "银修饰铜纳米阵列用于电催化还原CO2"
+    result = validate_paper_identity(
+        target_doi="10.1000/chinese",
+        source_url="https://kns.cnki.net/paper.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            text="参考文献 " + " ".join(title), first_page_text="其他论文"
+        ),
+    )
+    assert result.status == IdentityStatus.UNKNOWN
+
+
 def test_doi_only_in_later_pages_does_not_verify_cited_article():
     result = validate_paper_identity(
         target_doi="10.1000/target",
