@@ -121,30 +121,41 @@ def trigger_embedded_pdf_frame_fetch(
         page_parts = urlsplit(page_url)
     except Exception:
         return False
-    for frame in list(getattr(page, "frames", ()) or ())[:12]:
+    candidates = []
+    for index, frame in enumerate(getattr(page, "frames", ()) or ()):
         if frame is page:
             continue
         try:
-            frame_url = validate_url(str(frame.url or ""))
-            path = urlsplit(frame_url).path.lower()
-            has_pdf_embed = bool(
-                frame.locator(
-                    "embed[type='application/pdf'], object[type='application/pdf']"
-                ).count()
-            )
-            if not (
-                path.endswith(".pdf")
-                or "/pdfdirect/" in path
-                or "/doi/pdf/" in path
-                or has_pdf_embed
-            ):
-                continue
+            frame_url = str(frame.url or "")
             frame_parts = urlsplit(frame_url)
             if (
                 frame_parts.scheme,
                 frame_parts.hostname,
                 frame_parts.port,
             ) != (page_parts.scheme, page_parts.hostname, page_parts.port):
+                continue
+            path = frame_parts.path.lower()
+            pdf_path = (
+                path.endswith(".pdf")
+                or "/pdfdirect/" in path
+                or "/doi/pdf/" in path
+                or "/doi/epdf/" in path
+            )
+            candidates.append((not pdf_path, index, frame, frame_url))
+        except Exception:
+            continue
+
+    # Analytics/ad frames must not consume the PDF recovery budget. Prefer
+    # explicit same-origin PDF routes before inspecting generic embed frames.
+    for needs_embed, _, frame, frame_url in sorted(candidates)[:12]:
+        try:
+            frame_url = validate_url(frame_url)
+            if (
+                needs_embed
+                and not frame.locator(
+                    "embed[type='application/pdf'], object[type='application/pdf']"
+                ).count()
+            ):
                 continue
             result = page.evaluate(
                 script,

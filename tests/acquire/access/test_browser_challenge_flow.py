@@ -613,6 +613,18 @@ def test_ieee_access_through_university_control_is_clicked():
 
 
 def test_ieee_remembered_institution_is_distinguished_from_chooser():
+    from aletheia_nexus.acquire.access.publisher_adapters.ieee import (
+        _ACCESS_THROUGH_ATTRIBUTES,
+    )
+
+    class ControlLocator(_InstitutionLocator):
+        def filter(self, *, has_text):
+            assert has_text.search(self.control.text)
+            return self
+
+        def or_(self, other):
+            return self
+
     class Modal:
         def __init__(self, label):
             self.control = _InstitutionControl(label)
@@ -621,8 +633,11 @@ def test_ieee_remembered_institution_is_distinguished_from_chooser():
             return True
 
         def locator(self, selector):
-            assert selector == browser_route._INTERACTIVE_CONTROL_SELECTOR
-            return _InstitutionLocator(self.control)
+            assert selector in {
+                browser_route._INTERACTIVE_CONTROL_SELECTOR,
+                _ACCESS_THROUGH_ATTRIBUTES,
+            }
+            return ControlLocator(self.control)
 
     class Dialogs:
         def __init__(self, label):
@@ -998,6 +1013,46 @@ def test_accessible_pdf_control_is_clicked_without_visible_text():
     assert page.control.clicked is True
 
 
+def test_main_pdf_link_after_hundreds_of_citation_controls_is_clicked():
+    class ListLocator:
+        def __init__(self, items):
+            self.items = items
+
+        def count(self):
+            return len(self.items)
+
+        def nth(self, index):
+            return self.items[index]
+
+        def filter(self, *, has_text):
+            return ListLocator(
+                [item for item in self.items if has_text.search(item.inner_text())]
+            )
+
+        def or_(self, other):
+            return ListLocator(list(dict.fromkeys([*self.items, *other.items])))
+
+    citations = [_InstitutionControl("Reference") for _ in range(608)]
+    supplement = _InstitutionControl(
+        "Supporting information PDF", href="/doi/pdf/supplement"
+    )
+    article = _InstitutionControl(
+        "DOWNLOAD PDF", href="/doi/pdf/10.1126/science.adj7081?download=true"
+    )
+
+    class Page:
+        def locator(self, selector):
+            if selector == browser_route._PDF_LINK_CONTROL_SELECTOR:
+                return ListLocator([supplement, article])
+            assert selector == browser_route._INTERACTIVE_CONTROL_SELECTOR
+            return ListLocator([*citations, supplement, article])
+
+    assert browser_route._click_semantic_pdf_control(Page()) is True
+    assert article.clicked is True
+    assert supplement.clicked is False
+    assert all(not citation.clicked for citation in citations)
+
+
 def test_pdf_control_closes_incidental_modal_and_ignores_its_recommendations():
     class ListLocator:
         def __init__(self, items):
@@ -1198,6 +1253,46 @@ def test_pdfdirect_response_is_captured_with_generic_content_type():
     )
 
     assert browser_route._response_is_pdf_candidate(response) is True
+
+
+def test_embedded_pdf_is_not_hidden_by_unrelated_or_cross_origin_frames():
+    from aletheia_nexus.acquire.access.browser_engine.viewer import (
+        trigger_embedded_pdf_frame_fetch,
+    )
+
+    target = "https://publisher.example/doi/pdfdirect/10.1000/target"
+    frames = (
+        [SimpleNamespace(url="https://ads.example/tracker.pdf") for _ in range(20)]
+        + [
+            SimpleNamespace(url=f"https://publisher.example/analytics/{i}")
+            for i in range(20)
+        ]
+        + [SimpleNamespace(url=target)]
+    )
+    fetched = []
+    validated = []
+
+    def evaluate(script, args):
+        fetched.append(args["url"])
+        return {
+            "url": target,
+            "bodyBase64": base64.b64encode(b"%PDF-test").decode("ascii"),
+        }
+
+    def validate_url(url):
+        validated.append(url)
+        return url
+
+    page = SimpleNamespace(
+        url="https://publisher.example/doi/pdf/10.1000/target",
+        frames=frames,
+        evaluate=evaluate,
+    )
+    assert trigger_embedded_pdf_frame_fetch(
+        page, max_bytes=1000, validate_url=validate_url
+    ) == (target, b"%PDF-test")
+    assert fetched == [target]
+    assert all(url.startswith("https://publisher.example/") for url in validated)
 
 
 def test_ieee_runtime_document_url_requires_user_operated_access():

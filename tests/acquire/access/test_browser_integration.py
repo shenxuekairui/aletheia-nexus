@@ -24,6 +24,162 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture
+def control_browser():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        instance = playwright.chromium.launch(headless=True)
+        yield instance
+        instance.close()
+
+
+@pytest.mark.parametrize(
+    "control",
+    [
+        '<a href="/doi/pdf/10.1126/test">Download PDF</a>',
+        '<a href="/doi/pdf/10.1021/test">View PDF</a>',
+        '<a href="/doi/epdf/10.1002/test">PDF</a>',
+        '<a href="/doi/pdfdirect/10.1002/test">PDF</a>',
+        '<a href="/en/content/articlepdf/2026/test">PDF</a>',
+        '<a href="/science/article/pii/test/pdfft">Download PDF</a>',
+        '<a href="/stamp/stamp.jsp?tp=&arnumber=123" aria-label="View PDF"></a>',
+        '<a href="/articles/test.pdf">Download PDF</a>',
+        '<a href="/test/pdf">PDF</a>',
+        '<a href="/products/ejournals/pdf/test.pdf">PDF</a>',
+        '<button onclick="window.clicked=true">Download PDF</button>',
+        '<button aria-label="Download PDF"></button>',
+        '<button title="View PDF"></button>',
+        '<div role="button">View PDF</div>',
+    ],
+    ids=[
+        "science",
+        "acs",
+        "wiley-epdf",
+        "wiley-pdfdirect",
+        "rsc",
+        "elsevier",
+        "ieee",
+        "nature",
+        "mdpi",
+        "thieme",
+        "javascript",
+        "aria",
+        "title",
+        "role",
+    ],
+)
+def test_real_browser_finds_late_pdf_controls(control_browser, control):
+    page = control_browser.new_page()
+    try:
+        citations = '<a href="#reference">Reference</a>' * 608
+        page.set_content(
+            "<style>a {display:inline-block; min-width:20px; min-height:20px}</style>"
+            + citations
+            + '<dialog open><a href="/doi/pdf/other">View PDF</a></dialog>'
+            + '<a href="/doi/pdf/supplement">Supporting information PDF</a>'
+            + '<a href="/doi/suppl/10.1126/test/suppl_file/test_sm.pdf">Download PDF</a>'
+            + '<a href="/suppinfo/test_si.pdf">Download PDF</a>'
+            + '<a href="/cms/asset/test/mmc1.pdf">Download PDF</a>'
+            + control
+        )
+        # Mark only the final article control, suppressing all navigation so the
+        # fixture exercises actual DOM ordering, CSS and click handling offline.
+        page.locator(browser_route._INTERACTIVE_CONTROL_SELECTOR).last.evaluate(
+            "el => el.setAttribute('id', 'article-pdf')"
+        )
+        page.evaluate("""() => {
+            document.querySelector('dialog').close();
+            document.addEventListener('click', event => {
+                event.preventDefault();
+                window.clickedId = event.target.id;
+            }, true);
+        }""")
+        assert browser_route._click_semantic_pdf_control(page) is True
+        assert page.evaluate("window.clickedId") == "article-pdf"
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize(
+    "control",
+    [
+        "<button>Access through your institution</button>",
+        '<button aria-label="Sign in through your institution"></button>',
+        '<a href="/login" title="Access via OpenAthens"></a>',
+    ],
+    ids=["text", "aria", "title"],
+)
+def test_real_browser_finds_late_institution_controls(control_browser, control):
+    page = control_browser.new_page()
+    try:
+        page.set_content(
+            "<style>a {display:inline-block; min-width:20px; min-height:20px}</style>"
+            + '<a href="#reference">Reference</a>' * 608
+            + control
+        )
+        page.locator(browser_route._INTERACTIVE_CONTROL_SELECTOR).last.evaluate(
+            "el => el.setAttribute('id', 'institution-access')"
+        )
+        page.evaluate("""() => document.addEventListener('click', event => {
+            event.preventDefault(); window.clickedId = event.target.id;
+        }, true)""")
+        assert browser_route._click_semantic_institution_control(page) is True
+        assert page.evaluate("window.clickedId") == "institution-access"
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("accessible", [False, True], ids=["text", "aria"])
+def test_real_browser_finds_late_ieee_dialog_access(control_browser, accessible):
+    from aletheia_nexus.acquire.access.publisher_adapters.ieee import IeeeAdapter
+
+    page = control_browser.new_page()
+    try:
+        control = (
+            '<button aria-label="Access through Test University"></button>'
+            if accessible
+            else "<button>Access through Test University</button>"
+        )
+        page.set_content(
+            "<dialog open>Full text access may be available"
+            + "<button>Unrelated option</button>" * 80
+            + control
+            + "</dialog>"
+        )
+        page.locator("button").last.evaluate(
+            "el => el.setAttribute('id', 'institution-access')"
+        )
+        page.evaluate("""() => document.addEventListener('click', event => {
+            event.preventDefault(); window.clickedId = event.target.id;
+        }, true)""")
+        adapter = IeeeAdapter()
+        assert adapter.remembered_institution(page, browser_route._control_semantics)
+        assert adapter.click_institution_control(page, browser_route._control_semantics)
+        assert page.evaluate("window.clickedId") == "institution-access"
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("accessible", [False, True], ids=["text", "aria"])
+def test_real_browser_finds_late_modal_dismiss_control(control_browser, accessible):
+    page = control_browser.new_page()
+    try:
+        close = '<button aria-label="Close window"' if accessible else "<button"
+        close += " onclick=\"this.closest('dialog').close()\">"
+        close += "</button>" if accessible else "Close</button>"
+        page.set_content(
+            "<dialog open><button>View PDF</button>"
+            + "<button>Unrelated recommendation</button>" * 80
+            + close
+            + "</dialog>"
+        )
+        assert browser_route._dismiss_blocking_modal(page) is True
+        assert page.locator("dialog").is_visible() is False
+    finally:
+        page.close()
+
+
 def _pdf_bytes(title: str = "Authenticated Browser Integration Article") -> bytes:
     output = BytesIO()
     writer = PdfWriter()

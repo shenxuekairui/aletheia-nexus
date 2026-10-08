@@ -4,7 +4,7 @@ import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 from uuid import uuid4
 
 from aletheia_nexus.acquire.access.artifact import finalize_browser_resource
@@ -58,6 +58,11 @@ _SEMANTIC_PDF_CONTROL = re.compile(
     r"(?:download|view|read|open)?\s*(?:full[- ]?text\s*)?(?:article\s*)?pdf",
     re.IGNORECASE,
 )
+_AUXILIARY_PDF_PATH = re.compile(
+    r"(?:^|[/_.-])(?:supp(?:data)?|suppl(?:ement(?:ary|al)?)?|suppl_file|si|sm|esi|esm|mmc\d*)"
+    r"(?=[/_.-]|$)",
+    re.IGNORECASE,
+)
 _SEMANTIC_INSTITUTION_CONTROL = re.compile(
     r"(?:access|sign\s*in|log\s*in).{0,50}(?:institution|organization|organisation)"
     r"|access\s+through.{0,50}(?:university|academy|college|library)"
@@ -66,6 +71,23 @@ _SEMANTIC_INSTITUTION_CONTROL = re.compile(
     re.IGNORECASE,
 )
 _INTERACTIVE_CONTROL_SELECTOR = "a, button, [role='button'], [role='link']"
+_PDF_LINK_CONTROL_SELECTOR = (
+    "a[href*='pdf' i], "
+    ":is(a, button, [role='button'], [role='link'])[aria-label*='pdf' i], "
+    ":is(a, button, [role='button'], [role='link'])[title*='pdf' i]"
+)
+_INSTITUTION_CONTROL_SELECTOR = ", ".join(
+    f":is(a, button, [role='button'], [role='link'])[{attribute}*='{term}' i]"
+    for attribute in ("aria-label", "title", "href")
+    for term in (
+        "institution",
+        "organization",
+        "organisation",
+        "shibboleth",
+        "openathens",
+        "carsi",
+    )
+)
 _MODAL_SELECTORS = (".js-react-modal", "dialog, [role='dialog']")
 _MODAL_DISMISS_LABELS = frozenset(
     {
@@ -80,6 +102,17 @@ _MODAL_DISMISS_LABELS = frozenset(
         "no thanks",
         "not now",
     }
+)
+_MODAL_DISMISS_PATTERN = re.compile(
+    r"^\s*(?:"
+    + "|".join(re.escape(label) for label in sorted(_MODAL_DISMISS_LABELS))
+    + r")\s*$",
+    re.IGNORECASE,
+)
+_MODAL_DISMISS_SELECTOR = ", ".join(
+    f":is(a, button, [role='button'], [role='link'])[{attribute}='{label}' i]"
+    for attribute in ("aria-label", "title")
+    for label in sorted(_MODAL_DISMISS_LABELS)
 )
 
 
@@ -822,8 +855,38 @@ def _control_is_inside_modal(item) -> bool:
 
 
 def _click_semantic_pdf_control_once(page) -> bool:
+    # Long article pages can place the main PDF link after hundreds of citation
+    # controls. Bound the PDF-link scan independently of the generic UI scan.
     try:
-        locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
+        locator = _semantic_controls(
+            page, _SEMANTIC_PDF_CONTROL, _PDF_LINK_CONTROL_SELECTOR
+        )
+    except Exception:
+        # Retain the bounded generic fallback if a browser cannot filter controls.
+        locator = None
+    if locator is not None and _click_semantic_pdf_control_from_locator(locator):
+        return True
+    return _click_semantic_pdf_control_from_selector(
+        page, _INTERACTIVE_CONTROL_SELECTOR
+    )
+
+
+def _semantic_controls(page, pattern: re.Pattern, attribute_selector: str):
+    """Filter the entire DOM before applying the per-control attempt budget."""
+    controls = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
+    return controls.filter(has_text=pattern).or_(page.locator(attribute_selector))
+
+
+def _click_semantic_pdf_control_from_selector(page, selector: str) -> bool:
+    try:
+        locator = page.locator(selector)
+    except Exception:
+        return False
+    return _click_semantic_pdf_control_from_locator(locator)
+
+
+def _click_semantic_pdf_control_from_locator(locator) -> bool:
+    try:
         count = min(locator.count(), 120)
     except Exception:
         return False
@@ -833,10 +896,15 @@ def _click_semantic_pdf_control_once(page) -> bool:
         item = locator.nth(index)
         text = _control_semantics(item)
         lowered = text.lower()
+        try:
+            href_path = unquote(urlsplit(item.get_attribute("href") or "").path)
+        except Exception:
+            href_path = ""
         if (
             not text
             or _control_is_inside_modal(item)
             or not _SEMANTIC_PDF_CONTROL.search(text)
+            or _AUXILIARY_PDF_PATH.search(href_path)
             or any(
                 marker in lowered
                 for marker in (
@@ -881,7 +949,12 @@ def _dismiss_blocking_modal(page) -> bool:
         for modal_index in range(modal_count):
             modal = modals.nth(modal_index)
             try:
-                controls = modal.locator(_INTERACTIVE_CONTROL_SELECTOR)
+                try:
+                    controls = _semantic_controls(
+                        modal, _MODAL_DISMISS_PATTERN, _MODAL_DISMISS_SELECTOR
+                    )
+                except Exception:
+                    controls = modal.locator(_INTERACTIVE_CONTROL_SELECTOR)
                 control_count = min(controls.count(), 40)
             except Exception:
                 continue
@@ -948,7 +1021,12 @@ def _click_semantic_institution_control(page) -> bool:
         pass
 
     try:
-        locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
+        try:
+            locator = _semantic_controls(
+                page, _SEMANTIC_INSTITUTION_CONTROL, _INSTITUTION_CONTROL_SELECTOR
+            )
+        except Exception:
+            locator = page.locator(_INTERACTIVE_CONTROL_SELECTOR)
         count = min(locator.count(), 120)
     except Exception:
         locator = None
