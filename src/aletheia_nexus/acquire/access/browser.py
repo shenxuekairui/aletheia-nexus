@@ -214,9 +214,12 @@ def _install_context_event_capture(
         except Exception:
             return
 
+    def on_download(download) -> None:
+        downloads.append(download)
+
     def attach_page(page) -> None:
         try:
-            page.on("download", downloads.append)
+            page.on("download", on_download)
         except Exception:
             return
 
@@ -774,28 +777,63 @@ class BrowserSession:
 
         if not isinstance(provider, BaseBrowserProvider):
             raise TypeError("provider must be a BaseBrowserProvider")
-        context = self._ensure_started()
-        page = context.new_page()
-        attempt = None
-        try:
-            attempt = provider.fetch(
-                doi=doi,
-                context=context,
-                page=page,
-                output_dir=output_dir,
-                config=self.config,
-                metadata=metadata,
-                expected_title=expected_title,
-                metadata_mailto=metadata_mailto,
-            )
-            return attempt
-        finally:
-            preserve_interaction_page = (
-                attempt is not None
-                and attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
-            )
-            if not preserve_interaction_page and not page.is_closed():
-                page.close()
+        for retry in range(2):
+            page = None
+            attempt = None
+            target_closed = False
+            try:
+                context = self._ensure_started()
+                self._pdf_responses.clear()
+                self._downloads.clear()
+                page = context.new_page()
+                attempt = provider.fetch(
+                    doi=doi,
+                    context=context,
+                    page=page,
+                    output_dir=output_dir,
+                    config=self.config,
+                    metadata=metadata,
+                    expected_title=expected_title,
+                    metadata_mailto=metadata_mailto,
+                )
+                target_closed = (
+                    attempt.status == BrowserAttemptStatus.ERROR
+                    and "CNKI browser target closed" in attempt.evidence
+                    and not attempt.challenge_history
+                    and not attempt.file_attempts
+                )
+                if not target_closed or retry:
+                    if retry:
+                        attempt = replace(
+                            attempt,
+                            evidence=(
+                                "Browser context reconnected once after target closure",
+                                *attempt.evidence,
+                            ),
+                        )
+                    return attempt
+            except Exception as exc:
+                if type(exc).__name__ != "TargetClosedError" or retry:
+                    raise
+                target_closed = True
+            finally:
+                self._pdf_responses.clear()
+                self._downloads.clear()
+                preserve_interaction_page = (
+                    attempt is not None
+                    and attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
+                )
+                if page is not None and not preserve_interaction_page:
+                    try:
+                        if not page.is_closed():
+                            page.close()
+                    except Exception:
+                        pass
+            if target_closed:
+                # A fresh connection/context uses the same local profile. Never
+                # restart after a manual handoff or repeat an acquired download.
+                self.close()
+        raise RuntimeError("Unreachable provider retry state")
 
 
 def acquire_with_browser(

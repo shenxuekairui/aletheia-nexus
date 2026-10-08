@@ -112,6 +112,8 @@ BrowserAccessConfig(
 
 若出现知网滑块或验证码，AN 不代答、不模拟拖动；可见浏览器会等待用户操作，并通过 `interaction_callback` 报告 `CAPTCHA`。超时或禁用交互时结果为 `INTERACTION_REQUIRED`。是否能够下载 PDF 仍取决于当前校园网、机构 VPN、登录会话与订阅范围；只有 CAJ 或无 PDF 权限时不会伪装成成功。
 
+也可通过 `python scripts/download_cnki.py --doi "10.16560/j.cnki.gzhx.20230412"` 直接运行 CNKI，或用 `--title "论文标题" --author "作者"` 按标题获取。标题模式会从详情页或 PDF 首页解析真实 DOI；缺少唯一 DOI 时不生成假标识符。默认在可见浏览器中等待人工认证完成，再自动继续。API、批量参数、错误状态和离线验证说明见 [CNKI 自动化获取](CNKI_AUTOMATION.md)。
+
 ## 5. 断点续跑与文件核验
 
 每次批次会在输出目录写入：

@@ -98,7 +98,15 @@ def _title_score(
     # A long exact compact match on page one is still strong front-matter
     # evidence, unlike loose token overlap elsewhere in the document.
     compact_expected = _compact_title(expected_title)
-    if len(compact_expected) >= 40 and compact_expected in _compact_title(
+    # CJK PDFs often insert a space between EACH ideograph. Eight or more CJK
+    # characters in a title of at least twelve characters are sufficiently
+    # specific for an exact compact first-page match; short generic headings
+    # still cannot verify a document. No fuzzy matching is added here.
+    cjk_characters = len(re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]", compact_expected))
+    specific_compact_title = len(compact_expected) >= 40 or (
+        len(compact_expected) >= 12 and cjk_characters >= 8
+    )
+    if specific_compact_title and compact_expected in _compact_title(
         inspection.first_page_text
     ):
         return 1.0, "Expected title found on PDF first page", True
