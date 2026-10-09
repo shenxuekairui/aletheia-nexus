@@ -147,6 +147,53 @@ def test_browser_native_challenge_can_clear_without_human_interaction(tmp_path):
     assert interaction_used is False
 
 
+def test_human_wait_updates_prompt_when_captcha_reveals_institution_login(tmp_path):
+    sso = (
+        "Institution login",
+        "https://publisher.example/institutional-login?state=private-ticket",
+        "Access through your institution",
+        "<button>Access through your institution</button>",
+    )
+    page = _Page(
+        [
+            (
+                "Verify you are human",
+                "https://publisher.example/challenge",
+                "Verify you are human",
+                '<div class="g-recaptcha"></div>',
+            ),
+            sso,
+            sso,
+            (
+                "Article",
+                "https://publisher.example/article",
+                "Article text",
+                "<main />",
+            ),
+        ]
+    )
+    notices = []
+    report, history, used = _resolve_page_challenge(
+        page,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            auto_challenge_grace=0,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+            interaction_callback=lambda report, url: notices.append((report.kind, url)),
+        ),
+    )
+    assert report.kind == ChallengeKind.NONE
+    assert used
+    assert [kind for kind, _ in notices] == [ChallengeKind.CAPTCHA, ChallengeKind.SSO]
+    assert "private-ticket" not in notices[-1][1]
+    assert [item.kind for item in history] == [
+        ChallengeKind.CAPTCHA,
+        ChallengeKind.SSO,
+        ChallengeKind.NONE,
+    ]
+
+
 def test_transient_blank_challenge_page_does_not_count_as_cleared():
     challenge = (
         "Verify you are human",
@@ -371,7 +418,7 @@ def test_rsc_direct_pdf_navigates_before_any_extra_request(monkeypatch, tmp_path
     assert request_calls == [pdf_url]
 
 
-def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_path):
+def test_pdf_endpoint_challenge_handoff_does_not_replay_http(monkeypatch, tmp_path):
     article_url = "https://publisher.example/article"
     pdf_url = "https://publisher.example/article.pdf"
     page = _RoutePage(article_url)
@@ -404,7 +451,15 @@ def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda value, *, config: (ChallengeReport(kind=ChallengeKind.NONE), (), True),
+        lambda value, *, config, completion_check=None: (
+            challenge
+            if pdf_url in value.goto_calls
+            else ChallengeReport(kind=ChallengeKind.NONE),
+            (challenge,)
+            if pdf_url in value.goto_calls
+            else (ChallengeReport(kind=ChallengeKind.NONE),),
+            True,
+        ),
     )
     monkeypatch.setattr(browser_route, "parse_html", lambda html: object())
     monkeypatch.setattr(
@@ -439,10 +494,108 @@ def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_
         session_downloads=[],
     )
 
-    assert request_urls == [pdf_url, pdf_url]
+    assert request_urls == [pdf_url]
     assert page.goto_calls == [article_url, pdf_url]
     assert result.status == BrowserAttemptStatus.INTERACTION_REQUIRED
     assert result.challenge_history[-1].kind == ChallengeKind.CAPTCHA
+
+
+@pytest.mark.parametrize(
+    "host,click_pdf,native_only",
+    [
+        ("onlinelibrary.wiley.com", False, False),
+        ("onlinelibrary.wiley.com", True, False),
+        ("publisher.example", True, False),
+        ("publisher.example", True, True),
+    ],
+)
+def test_pdf_fallback_order_and_budget_include_popups(
+    monkeypatch, tmp_path, host, click_pdf, native_only
+):
+    source = FullTextCandidate(
+        doi="10.1000/fallback-budget",
+        url=f"https://{host}/article",
+        provenance=(),
+    )
+    page = _RoutePage(source.url)
+    context = _RouteContext(page)
+    urls = [f"https://{host}/{name}.pdf" for name in ("first", "second", "third")]
+    candidates = [
+        FullTextCandidate(doi=source.doi, url=url, provenance=())
+        for url in [urls[0], urls[0] + "#duplicate", *urls[1:]]
+    ]
+    events = []
+    popup = _RoutePage(urls[0])
+    popup.closed = False
+    popup.wait_for_load_state = lambda *a, **k: None
+    popup.close = lambda: setattr(popup, "closed", True)
+    popup.is_closed = lambda: popup.closed
+
+    def click(value):
+        events.append("click")
+        if click_pdf:
+            context.pages.append(popup)
+        return click_pdf
+
+    def request(context_value, *, candidate, **kwargs):
+        events.append(candidate.url)
+        return BrowserFileAttempt(candidate=candidate, error="Unavailable"), None
+
+    monkeypatch.setattr(browser_route, "_request_pdf_candidate", request)
+    monkeypatch.setattr(browser_route, "_click_semantic_pdf_control", click)
+    monkeypatch.setattr(
+        browser_route, "_report_for_page", lambda p: ChallengeReport(ChallengeKind.NONE)
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "_resolve_page_challenge",
+        lambda p, **k: (ChallengeReport(ChallengeKind.NONE), (), False),
+    )
+    monkeypatch.setattr(browser_route, "parse_html", lambda html: object())
+    monkeypatch.setattr(
+        browser_route,
+        "validate_page_identity",
+        lambda **k: SimpleNamespace(status=SimpleNamespace(value="MATCH"), evidence=()),
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "derive_pdf_candidates",
+        lambda **k: tuple(SimpleNamespace(candidate=c) for c in candidates),
+    )
+    monkeypatch.setattr(
+        browser_route, "_runtime_publisher_pdf_candidate", lambda *a: None
+    )
+    monkeypatch.setattr(
+        browser_route, "_trigger_embedded_pdf_frame_fetch", lambda *a, **k: None
+    )
+    monkeypatch.setattr(browser_route, "_trigger_pdf_viewer_save", lambda *a, **k: None)
+    monkeypatch.setattr(
+        browser_route, "_trigger_pdf_viewer_same_origin_fetch", lambda *a, **k: False
+    )
+
+    result = browser_route.attempt_browser_route(
+        context,
+        page,
+        source=source,
+        output_dir=tmp_path,
+        expected_title="Target article",
+        config=BrowserAccessConfig(profile_root=tmp_path, max_pdf_candidates=2),
+        session_blocked_urls=[],
+        session_pdf_responses=[],
+        session_downloads=[],
+        _browser_native_only=native_only,
+    )
+
+    assert result.status != BrowserAttemptStatus.VERIFIED
+    assert [event for event in events if event != "click"] == (
+        [] if native_only else urls[:2]
+    )
+    assert events[0] == (
+        "click" if native_only or host == "onlinelibrary.wiley.com" else urls[0]
+    )
+    assert result.candidates_considered == len(result.file_attempts)
+    if click_pdf:
+        assert popup.closed
 
 
 def test_article_route_automatically_enters_institutional_sso(
@@ -556,10 +709,10 @@ class _InstitutionControl:
         }
         self.clicked = False
 
-    def inner_text(self):
+    def inner_text(self, timeout=0):
         return self.text
 
-    def get_attribute(self, name):
+    def get_attribute(self, name, timeout=0):
         return self.attributes.get(name)
 
     def click(self, timeout=0):
@@ -613,6 +766,18 @@ def test_ieee_access_through_university_control_is_clicked():
 
 
 def test_ieee_remembered_institution_is_distinguished_from_chooser():
+    from aletheia_nexus.acquire.access.publisher_adapters.ieee import (
+        _ACCESS_THROUGH_ATTRIBUTES,
+    )
+
+    class ControlLocator(_InstitutionLocator):
+        def filter(self, *, has_text):
+            assert has_text.search(self.control.text)
+            return self
+
+        def or_(self, other):
+            return self
+
     class Modal:
         def __init__(self, label):
             self.control = _InstitutionControl(label)
@@ -621,8 +786,11 @@ def test_ieee_remembered_institution_is_distinguished_from_chooser():
             return True
 
         def locator(self, selector):
-            assert selector == browser_route._INTERACTIVE_CONTROL_SELECTOR
-            return _InstitutionLocator(self.control)
+            assert selector in {
+                browser_route._INTERACTIVE_CONTROL_SELECTOR,
+                _ACCESS_THROUGH_ATTRIBUTES,
+            }
+            return ControlLocator(self.control)
 
     class Dialogs:
         def __init__(self, label):
@@ -998,6 +1166,46 @@ def test_accessible_pdf_control_is_clicked_without_visible_text():
     assert page.control.clicked is True
 
 
+def test_main_pdf_link_after_hundreds_of_citation_controls_is_clicked():
+    class ListLocator:
+        def __init__(self, items):
+            self.items = items
+
+        def count(self):
+            return len(self.items)
+
+        def nth(self, index):
+            return self.items[index]
+
+        def filter(self, *, has_text):
+            return ListLocator(
+                [item for item in self.items if has_text.search(item.inner_text())]
+            )
+
+        def or_(self, other):
+            return ListLocator(list(dict.fromkeys([*self.items, *other.items])))
+
+    citations = [_InstitutionControl("Reference") for _ in range(608)]
+    supplement = _InstitutionControl(
+        "Supporting information PDF", href="/doi/pdf/supplement"
+    )
+    article = _InstitutionControl(
+        "DOWNLOAD PDF", href="/doi/pdf/10.1126/science.adj7081?download=true"
+    )
+
+    class Page:
+        def locator(self, selector):
+            if selector == browser_route._PDF_LINK_CONTROL_SELECTOR:
+                return ListLocator([supplement, article])
+            assert selector == browser_route._INTERACTIVE_CONTROL_SELECTOR
+            return ListLocator([*citations, supplement, article])
+
+    assert browser_route._click_semantic_pdf_control(Page()) is True
+    assert article.clicked is True
+    assert supplement.clicked is False
+    assert all(not citation.clicked for citation in citations)
+
+
 def test_pdf_control_closes_incidental_modal_and_ignores_its_recommendations():
     class ListLocator:
         def __init__(self, items):
@@ -1016,7 +1224,7 @@ def test_pdf_control_closes_incidental_modal_and_ignores_its_recommendations():
             self.inside_modal = inside_modal
             self.closes = closes
 
-        def evaluate(self, expression):
+        def evaluate(self, expression, timeout=0):
             return self.inside_modal
 
         def click(self, timeout=0):
@@ -1067,7 +1275,7 @@ def test_pdf_control_closes_incidental_modal_and_ignores_its_recommendations():
     assert page.article.clicked is True
 
 
-def test_popup_processing_can_defer_close_until_response_body_is_consumed(
+def test_popup_observation_leaves_target_alive_for_response_capture(
     monkeypatch,
     tmp_path,
 ):
@@ -1108,15 +1316,13 @@ def test_popup_processing_can_defer_close_until_response_body_is_consumed(
         url_type=CandidateUrlType.LANDING_PAGE,
     )
 
-    browser_route._process_new_popup_pages(
+    browser_route._observe_pdf_popups(
         context,
         original_page=original,
         existing_page_ids={id(original)},
         source=source,
-        output_dir=tmp_path,
         expected_title="Target article",
         config=BrowserAccessConfig(profile_root=tmp_path),
-        close_pages=False,
     )
 
     assert popup.closed is False
@@ -1129,10 +1335,11 @@ def test_pdf_viewer_shell_triggers_bounded_same_origin_fetch():
         def __init__(self):
             self.max_bytes = None
 
-        def evaluate(self, script, max_bytes):
-            assert "fetch(location.href" in script
-            assert "cache: 'no-store'" in script
-            self.max_bytes = max_bytes
+        def evaluate(self, script, args):
+            assert "AbortController" in script
+            assert "reader.read()" in script
+            assert args["cache"] == "no-store"
+            self.max_bytes = args["maxBytes"]
             return True
 
     page = ViewerPage()
@@ -1168,7 +1375,7 @@ def test_embedded_pdf_frame_triggers_bounded_same_origin_fetch():
 
         def evaluate(self, script, args):
             assert "fetch(url" in script
-            assert "cache: 'force-cache'" in script
+            assert args["cache"] == "force-cache"
             self.args = args
             return {
                 "url": "https://publisher.example/doi/pdfdirect/10.1000/target",
@@ -1185,10 +1392,10 @@ def test_embedded_pdf_frame_triggers_bounded_same_origin_fetch():
         "https://publisher.example/doi/pdfdirect/10.1000/target",
         b"%PDF-test",
     )
-    assert page.args == {
-        "url": "https://publisher.example/doi/pdfdirect/10.1000/target",
-        "maxBytes": 54_321,
-    }
+    assert page.args["url"] == "https://publisher.example/doi/pdfdirect/10.1000/target"
+    assert page.args["maxBytes"] == 54_321
+    assert 0 < page.args["timeoutMs"] <= 20_000
+    assert page.args["returnBody"] is True
 
 
 def test_pdfdirect_response_is_captured_with_generic_content_type():
@@ -1198,6 +1405,46 @@ def test_pdfdirect_response_is_captured_with_generic_content_type():
     )
 
     assert browser_route._response_is_pdf_candidate(response) is True
+
+
+def test_embedded_pdf_is_not_hidden_by_unrelated_or_cross_origin_frames():
+    from aletheia_nexus.acquire.access.browser_engine.viewer import (
+        trigger_embedded_pdf_frame_fetch,
+    )
+
+    target = "https://publisher.example/doi/pdfdirect/10.1000/target"
+    frames = (
+        [SimpleNamespace(url="https://ads.example/tracker.pdf") for _ in range(20)]
+        + [
+            SimpleNamespace(url=f"https://publisher.example/analytics/{i}")
+            for i in range(20)
+        ]
+        + [SimpleNamespace(url=target)]
+    )
+    fetched = []
+    validated = []
+
+    def evaluate(script, args):
+        fetched.append(args["url"])
+        return {
+            "url": target,
+            "bodyBase64": base64.b64encode(b"%PDF-test").decode("ascii"),
+        }
+
+    def validate_url(url):
+        validated.append(url)
+        return url
+
+    page = SimpleNamespace(
+        url="https://publisher.example/doi/pdf/10.1000/target",
+        frames=frames,
+        evaluate=evaluate,
+    )
+    assert trigger_embedded_pdf_frame_fetch(
+        page, max_bytes=1000, validate_url=validate_url
+    ) == (target, b"%PDF-test")
+    assert fetched == [target]
+    assert all(url.startswith("https://publisher.example/") for url in validated)
 
 
 def test_ieee_runtime_document_url_requires_user_operated_access():

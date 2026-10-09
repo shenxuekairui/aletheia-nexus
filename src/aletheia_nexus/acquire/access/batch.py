@@ -153,7 +153,9 @@ def _verified_checkpoint_item(
     )
 
 
-def _checkpoint_record(item: BatchAcquisitionItem) -> dict[str, object]:
+def _checkpoint_record(
+    item: BatchAcquisitionItem, previous: Mapping[str, object] | None = None
+) -> dict[str, object]:
     record: dict[str, object] = {
         "status": item.status.value,
         "attempts": item.attempts,
@@ -168,6 +170,14 @@ def _checkpoint_record(item: BatchAcquisitionItem) -> dict[str, object]:
         record["sha256"] = (
             resource.sha256 if resource is not None else _sha256_file(path)
         )
+    history = (previous or {}).get("attempt_history", [])
+    record["attempt_history"] = [
+        *(history if isinstance(history, list) else []),
+        {"status": item.status.value, "at": datetime.now(timezone.utc).isoformat()},
+    ]
+    record["resume_stage"] = (
+        "ACCESS_CHECK" if item.status == BatchItemStatus.INTERACTION_REQUIRED else None
+    )
     return record
 
 
@@ -392,7 +402,9 @@ def acquire_full_text_batch_maximized(
                 )
 
             items.append(item)
-            checkpoint_records[doi] = _checkpoint_record(item)
+            checkpoint_records[doi] = _checkpoint_record(
+                item, checkpoint_records.get(doi)
+            )
             if checkpoint is not None:
                 _write_checkpoint(checkpoint, checkpoint_records)
             if progress_callback is not None:
@@ -403,6 +415,48 @@ def acquire_full_text_batch_maximized(
                 and item.status == BatchItemStatus.INTERACTION_REQUIRED
             ):
                 halted = True
+
+        # A login for an earlier paper may have completed while later papers
+        # ran. Revisit only retained challenges that visibly cleared; never
+        # blindly repeat an unchanged login or entitlement boundary.
+        if not halted and session.config.interactive:
+            for index, item in enumerate(items):
+                if (
+                    item.status != BatchItemStatus.INTERACTION_REQUIRED
+                    or item.doi is None
+                ):
+                    continue
+                if not session.interaction_ready(item.doi):
+                    continue
+                try:
+                    recovered = acquire_full_text_maximized(
+                        item.doi,
+                        output_dir=output_dir,
+                        browser_session=session,
+                        expected_title=titles.get(item.doi),
+                        local_pdf_path=local_files.get(item.doi),
+                        **acquisition_options,
+                    )
+                except Exception:
+                    # Preserve the original result if the recovery runner fails.
+                    continue
+                fresh = BatchAcquisitionItem(
+                    input_value=item.input_value,
+                    doi=item.doi,
+                    status=BatchItemStatus(recovered.status.value),
+                    result=recovered,
+                    verified_path=recovered.verified_path,
+                    attempts=item.attempts + 1,
+                    elapsed_seconds=item.elapsed_seconds + recovered.elapsed_seconds,
+                )
+                items[index] = fresh
+                checkpoint_records[item.doi] = _checkpoint_record(
+                    fresh, checkpoint_records.get(item.doi)
+                )
+                if checkpoint is not None:
+                    _write_checkpoint(checkpoint, checkpoint_records)
+                if progress_callback is not None:
+                    progress_callback(fresh, index + 1, len(prepared))
 
     return BatchAcquisitionResult(
         items=tuple(items),

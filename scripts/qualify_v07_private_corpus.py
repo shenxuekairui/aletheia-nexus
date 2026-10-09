@@ -45,21 +45,22 @@ def main(argv: list[str] | None = None) -> int:
             for pdf in sorted(args.input_dir.glob("*.pdf"))
         ]
     for pdf, sidecar, expected_pdf_hash, expected_sidecar_hash in inputs:
-        if not sidecar.is_file():
-            continue
-        for path, expected_hash in (
-            (pdf, expected_pdf_hash),
-            (sidecar, expected_sidecar_hash),
-        ):
-            if (
-                expected_hash
-                and hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash
-            ):
-                raise ValueError(f"frozen cohort hash changed: {path.name}")
-        acquisition = json.loads(sidecar.read_text(encoding="utf-8"))
-        doi = str(acquisition["target"]["doi"])
-        output = args.output_dir / f"{pdf.stem}.parsed.json"
+        doi = None
         try:
+            for path, expected_hash in (
+                (pdf, expected_pdf_hash),
+                (sidecar, expected_sidecar_hash),
+            ):
+                if not path.is_file():
+                    raise FileNotFoundError(f"corpus input is missing: {path.name}")
+                if (
+                    expected_hash
+                    and hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash
+                ):
+                    raise ValueError(f"frozen cohort hash changed: {path.name}")
+            acquisition = json.loads(sidecar.read_text(encoding="utf-8"))
+            doi = str(acquisition["target"]["doi"])
+            output = args.output_dir / f"{pdf.stem}.parsed.json"
             result = parse_document(
                 pdf,
                 doi,
@@ -100,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     counts = Counter(str(record["status"]) for record in records)
+    passed = bool(inputs) and counts.get("PARSED", 0) == len(inputs)
     report = {
         "schema": "aletheia-nexus/private-parser-qualification/v1",
         "scope": (
@@ -107,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             "claim semantic accuracy or total visual information recovery."
         ),
         "status_counts": dict(sorted(counts.items())),
+        "input_count": len(inputs),
+        "passed": passed,
         "totals": {
             "papers": len(records),
             "pages": sum(int(record.get("pages", 0)) for record in records),
@@ -122,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(json.dumps(report["totals"], sort_keys=True))
     print(json.dumps(report["status_counts"], sort_keys=True))
-    return 1 if counts.get("RUNNER_ERROR") or counts.get("FAILED") else 0
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

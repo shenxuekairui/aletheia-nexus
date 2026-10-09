@@ -11,6 +11,20 @@ from .base import PublisherAdapter
 
 _CONTROLS = "a, button, [role='button'], [role='link']"
 _DIALOGS = "dialog, [role='dialog'], .js-react-modal"
+_ACCESS_THROUGH = re.compile(r"^access\s+through\b", re.IGNORECASE)
+_ACCESS_THROUGH_ATTRIBUTES = (
+    ":is(a, button, [role='button'], [role='link'])"
+    "[aria-label*='access through' i], "
+    ":is(a, button, [role='button'], [role='link'])"
+    "[title*='access through' i]"
+)
+
+
+def _access_through_controls(dialog):
+    controls = dialog.locator(_CONTROLS)
+    return controls.filter(has_text=_ACCESS_THROUGH).or_(
+        dialog.locator(_ACCESS_THROUGH_ATTRIBUTES)
+    )
 
 
 class IeeeAdapter(PublisherAdapter):
@@ -81,7 +95,7 @@ class IeeeAdapter(PublisherAdapter):
                 dialog = dialogs.nth(dialog_index)
                 if not dialog.is_visible():
                     continue
-                controls = dialog.locator(_CONTROLS)
+                controls = _access_through_controls(dialog)
                 for control_index in range(min(controls.count(), 40)):
                     control = controls.nth(control_index)
                     if not control.is_visible():
@@ -105,7 +119,7 @@ class IeeeAdapter(PublisherAdapter):
                 dialog = dialogs.nth(dialog_index)
                 if not dialog.is_visible():
                     continue
-                controls = dialog.locator(_CONTROLS)
+                controls = _access_through_controls(dialog)
                 for control_index in range(min(controls.count(), 40)):
                     control = controls.nth(control_index)
                     if not control.is_visible():

@@ -22,6 +22,10 @@ class PublisherAdapter:
     ) -> tuple[str, str] | None:
         return None
 
+    def article_route(self, parts: SplitResult) -> str | None:
+        """Resolve an observed official intermediary, never guess identifiers."""
+        return None
+
     def refine_page_challenge(self, page, report: ChallengeReport) -> ChallengeReport:
         return report
 
@@ -37,6 +41,10 @@ class PublisherAdapter:
     def prefer_browser_pdf_navigation(self) -> bool:
         """Avoid a duplicate pre-navigation HTTP request for sensitive PDF routes."""
 
+        return False
+
+    def prefer_visible_pdf_controls(self) -> bool:
+        """Order live controls before HTTP fallback; do not suppress fallback."""
         return False
 
     def refine_non_pdf_challenge(

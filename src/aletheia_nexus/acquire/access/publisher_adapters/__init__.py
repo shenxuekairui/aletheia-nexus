@@ -5,11 +5,15 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 
 from .base import PublisherAdapter
+from .elsevier import LinkingHubAdapter
 from .ieee import IeeeAdapter
 from .routes import BrowserFirstPdfAdapter, DoiPdfAdapter, MdpiAdapter, NatureAdapter
+from .taylor_francis import TaylorFrancisAdapter
 from .thieme import ThiemeAdapter
+from .wiley import WileyAdapter
 
 _ADAPTERS: tuple[PublisherAdapter, ...] = (
+    LinkingHubAdapter(),
     BrowserFirstPdfAdapter("rsc", frozenset({"pubs.rsc.org"})),
     BrowserFirstPdfAdapter(
         "sciencedirect", frozenset({"sciencedirect.com", "www.sciencedirect.com"})
@@ -22,14 +26,8 @@ _ADAPTERS: tuple[PublisherAdapter, ...] = (
         doi_prefix="10.1021/",
         canonical_host="pubs.acs.org",
     ),
-    DoiPdfAdapter(
-        "wiley",
-        frozenset({"onlinelibrary.wiley.com"}),
-        subdomain_hosts=frozenset({"onlinelibrary.wiley.com"}),
-    ),
-    DoiPdfAdapter(
-        "taylor-francis", frozenset({"tandfonline.com", "www.tandfonline.com"})
-    ),
+    WileyAdapter(),
+    TaylorFrancisAdapter(),
     DoiPdfAdapter(
         "asce",
         frozenset({"ascelibrary.org"}),

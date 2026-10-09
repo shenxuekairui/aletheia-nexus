@@ -458,7 +458,7 @@ def test_cdp_attach_reuses_existing_page_without_navigating_or_closing(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
@@ -604,7 +604,7 @@ def test_cdp_batch_navigation_resumes_strong_title_match(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
@@ -648,7 +648,7 @@ def test_cdp_batch_navigation_resumes_exact_pdf_url_without_title_match(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
@@ -703,7 +703,7 @@ def test_cdp_attach_prefers_title_matching_pdf_tab(monkeypatch, tmp_path):
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
@@ -749,7 +749,7 @@ def test_cdp_attach_matches_acs_article_code_when_pdf_title_is_blank(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
@@ -803,7 +803,7 @@ def test_cdp_attach_avoids_expired_signed_pdf_tab(monkeypatch, tmp_path):
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
