@@ -27,7 +27,12 @@ def main():
     parser.add_argument("--profile", default="publisher-check")
     parser.add_argument("--doi", action="append", default=[])
     parser.add_argument("--non-interactive", action="store_true")
-    parser.add_argument("--interaction-timeout", type=float, default=180)
+    parser.add_argument(
+        "--interaction-timeout",
+        type=float,
+        default=None,
+        help="Human wait in seconds; omit to wait until verification completes.",
+    )
     args = parser.parse_args()
     rows = json.loads(args.manifest.read_text(encoding="utf-8"))
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -47,7 +52,12 @@ def main():
         cdp_endpoint=args.cdp_endpoint,
         cdp_resume_existing_page=False,
         interactive=not args.non_interactive,
-        interaction_timeout=0 if args.non_interactive else args.interaction_timeout,
+        interaction_timeout=(
+            0 if args.non_interactive else args.interaction_timeout or 0
+        ),
+        wait_for_interaction=(
+            not args.non_interactive and args.interaction_timeout is None
+        ),
         interaction_callback=notice,
         navigation_timeout=45,
         request_timeout=30,

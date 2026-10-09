@@ -42,6 +42,64 @@ def control_browser():
         instance.close()
 
 
+@pytest.mark.parametrize("kind", ["pdf", "institution"])
+def test_hidden_duplicate_controls_do_not_delay_visible_entry(control_browser, kind):
+    page = control_browser.new_page()
+    label = "Download PDF" if kind == "pdf" else "Access through your institution"
+    click = (
+        browser_route._click_semantic_pdf_control
+        if kind == "pdf"
+        else browser_route._click_semantic_institution_control
+    )
+    try:
+        page.set_content(
+            f'<button style="display:none">{label}</button>' * 100
+            + f'<button onclick="window.selected=true">{label}</button>'
+        )
+        started = time.monotonic()
+        assert click(page)
+        assert page.evaluate("window.selected") is True
+        assert time.monotonic() - started < 5
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("kind", ["pdf", "institution"])
+def test_removed_controls_do_not_wait_for_stale_count(
+    control_browser, monkeypatch, kind
+):
+    page = control_browser.new_page()
+    label = "Download PDF" if kind == "pdf" else "Access through your institution"
+    try:
+        page.set_content(f"<button>{label}</button>" * 25)
+        locator = page.locator("button")
+
+        class DisappearingControls:
+            def count(self):
+                count = locator.count()
+                page.evaluate(
+                    "document.querySelectorAll('button').forEach(el=>el.remove())"
+                )
+                return count
+
+            def nth(self, index):
+                return locator.nth(index)
+
+        monkeypatch.setattr(
+            browser_route, "_semantic_controls", lambda *args: DisappearingControls()
+        )
+        click = (
+            browser_route._click_semantic_pdf_control
+            if kind == "pdf"
+            else browser_route._click_semantic_institution_control
+        )
+        started = time.monotonic()
+        assert click(page) is False
+        assert time.monotonic() - started < 5
+    finally:
+        page.close()
+
+
 @pytest.mark.parametrize(
     "control",
     [
@@ -1082,3 +1140,152 @@ def test_real_session_recovers_retained_page_after_user_completion(
         assert not page.is_closed()
     finally:
         session.close()
+
+
+@pytest.mark.parametrize(
+    "admin_link",
+    [
+        '<a href="/action/institutionAccessEntitlements">Manage Your Institutional Subscription</a>',
+        '<a href="/action/ssostart?redirectUri=%2Faction%2FinstitutionAccessEntitlements">Institutional access</a>',
+        "<div onclick=\"document.body.dataset.clicked='admin'\">Log in to manage your institutional subscription</div>",
+    ],
+)
+@pytest.mark.parametrize("has_reader", [False, True])
+def test_institution_control_skips_librarian_routes(
+    control_browser, admin_link, has_reader
+):
+    page = control_browser.new_page()
+    reader = (
+        "<button onclick=\"document.body.dataset.clicked='reader'\">Access through your institution</button>"
+        if has_reader
+        else ""
+    )
+    page.route(
+        "**/*",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body=f"<title>Article</title><body><footer>{admin_link}</footer>{reader}</body>",
+        ),
+    )
+    try:
+        page.goto("https://www.science.org/doi/10.1126/example")
+        clicked = browser_route._click_semantic_institution_control(page)
+        assert clicked is has_reader
+        assert page.evaluate("document.body.dataset.clicked || ''") == (
+            "reader" if has_reader else ""
+        )
+        assert page.url == "https://www.science.org/doi/10.1126/example"
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("wait_for_user", [False, True])
+@pytest.mark.parametrize("delivery", ["inline", "attachment"])
+def test_pdf_endpoint_handoff_uses_visible_wait_then_native_delivery(
+    control_browser,
+    local_article_server,
+    tmp_path,
+    monkeypatch,
+    wait_for_user,
+    delivery,
+):
+    from aletheia_nexus.acquire.access.models import BrowserFileAttempt
+
+    context = control_browser.new_context()
+    responses = []
+    downloads = []
+    page = context.new_page()
+    doi = "10.1000/browser-integration"
+    endpoint = local_article_server + "/protected.pdf"
+    browser._install_context_event_capture(
+        context,
+        pdf_responses=responses,
+        downloads=downloads,
+        snapshot_pdf_responses=True,
+        max_bytes=100000,
+    )
+
+    def gate(route):
+        if "fixture_verified=yes" in route.request.all_headers().get("cookie", ""):
+            route.fulfill(
+                content_type="application/pdf",
+                body=_Handler.pdf_body,
+                headers={"Content-Disposition": f"{delivery}; filename=article.pdf"},
+            )
+        else:
+            route.fulfill(
+                content_type="text/html",
+                body="<title>Verify you are human</title><body>Verify you are human<button id='complete' onclick=\"document.cookie='fixture_verified=yes; path=/';location.reload()\">Complete fixture verification</button></body>",
+            )
+
+    context.route("**/protected.pdf", gate)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "_install_browser_request_guard", lambda p: [])
+    monkeypatch.setattr(browser_route, "derive_pdf_candidates", lambda **k: ())
+    wait_budgets = []
+    original_wait = browser_route._wait_until_challenge_changes
+
+    def bounded_fixture_wait(p, *, seconds, **kwargs):
+        wait_budgets.append(seconds)
+        return original_wait(p, seconds=8 if seconds is None else seconds, **kwargs)
+
+    monkeypatch.setattr(
+        browser_route, "_wait_until_challenge_changes", bounded_fixture_wait
+    )
+    api_calls = []
+
+    def api(context, *, candidate, **kwargs):
+        api_calls.append(candidate.url)
+        return BrowserFileAttempt(
+            candidate=candidate, error="HTTP-only challenge"
+        ), ChallengeReport(kind=ChallengeKind.CAPTCHA)
+
+    monkeypatch.setattr(browser_route, "_request_pdf_candidate", api)
+    notices = []
+
+    def complete(report, url):
+        notices.append((report.kind, url))
+        assert page.locator("#complete").is_visible()
+        page.locator("#complete").click()
+
+    try:
+        page.goto(local_article_server + "/article")
+        page.evaluate(
+            "() => {const b=document.createElement('button');b.textContent='Download PDF';b.onclick=()=>fetch('/protected.pdf');document.body.append(b);}"
+        )
+        result = browser_route.attempt_browser_route(
+            context,
+            page,
+            source=FullTextCandidate(
+                doi=doi, url=local_article_server + "/article", provenance=()
+            ),
+            output_dir=tmp_path,
+            expected_title="Authenticated Browser Integration Article",
+            config=BrowserAccessConfig(
+                interactive=wait_for_user,
+                wait_for_interaction=wait_for_user,
+                interaction_timeout=0,
+                auto_challenge_grace=0,
+                interaction_callback=complete,
+                request_timeout=2,
+            ),
+            session_blocked_urls=[],
+            session_pdf_responses=responses,
+            session_downloads=downloads,
+            _navigate_source=False,
+        )
+        assert api_calls == [endpoint]
+        if wait_for_user:
+            assert notices and notices[0][0] == ChallengeKind.CAPTCHA
+            assert result.status == BrowserAttemptStatus.VERIFIED, [
+                (a.method, a.error, a.result.status if a.result else None)
+                for a in result.file_attempts
+            ]
+            assert result.interaction_used
+            assert None in wait_budgets
+        else:
+            assert not notices
+            assert result.status == BrowserAttemptStatus.INTERACTION_REQUIRED
+            assert page.url == endpoint and not page.is_closed()
+    finally:
+        context.close()

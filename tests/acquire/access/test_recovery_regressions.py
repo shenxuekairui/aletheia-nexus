@@ -321,10 +321,38 @@ def test_post_click_endpoint_challenge_stops_replays(
     assert requests == (
         [] if native_only else ["https://onlinelibrary.wiley.com/0.pdf"]
     )
-    assert result.status == (
-        BrowserAttemptStatus.RETRIEVAL_FAILED
-        if native_only
-        else BrowserAttemptStatus.INTERACTION_REQUIRED
-    )
+    assert result.status == BrowserAttemptStatus.RETRIEVAL_FAILED
     if not native_only:
-        assert result.challenge_history[-1] == challenge
+        assert page.goto_calls == ["https://onlinelibrary.wiley.com/0.pdf"]
+        assert challenge in result.challenge_history
+        assert result.challenge_history[-1].kind == ChallengeKind.NONE
+
+
+@pytest.mark.parametrize(
+    ("label", "href", "expected"),
+    [
+        (
+            "Manage Your Institutional Subscription",
+            "/action/institutionAccessEntitlements",
+            False,
+        ),
+        (
+            "Institutional access",
+            "/action/ssostart?redirectUri=%2Faction%2FinstitutionAccessEntitlements",
+            False,
+        ),
+        ("Institutional login for librarians", "/librarian/login", False),
+        ("Log in to manage your subscription", "/subscriptions", False),
+        (
+            "Access through your institution",
+            "/action/ssostart?redirectUri=%2Fdoi%2F10.1126%2Fexample",
+            True,
+        ),
+        ("Access via OpenAthens", "/openathens", True),
+    ],
+)
+def test_institution_access_excludes_administration(label, href, expected):
+    item = SimpleNamespace(
+        get_attribute=lambda name, timeout=0: href if name == "href" else None
+    )
+    assert browser_route._is_reader_institution_control(item, label) is expected

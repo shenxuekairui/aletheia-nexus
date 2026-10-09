@@ -70,6 +70,12 @@ _SEMANTIC_INSTITUTION_CONTROL = re.compile(
     r"|carsi|shibboleth|openathens|中国科技云通行证|统一身份认证|机构(?:登录|认证|访问)",
     re.IGNORECASE,
 )
+_INSTITUTION_ADMIN_CONTROL = re.compile(
+    r"institutionAccessEntitlements|librarian|library[\s_-]*(?:admin|administrator)"
+    r"|(?:manage|administrat\w*).{0,60}(?:institution|subscription)"
+    r"|subscription.{0,40}management|request.{0,20}(?:a\s+)?quote",
+    re.IGNORECASE,
+)
 _INTERACTIVE_CONTROL_SELECTOR = "a, button, [role='button'], [role='link']"
 _PDF_LINK_CONTROL_SELECTOR = (
     "a[href*='pdf' i], "
@@ -190,10 +196,13 @@ def _wait_until_challenge_changes(
     seconds: float | None,
     poll_interval: float,
     history: list[ChallengeReport],
+    completion_check=None,
+    interaction_callback=None,
 ) -> ChallengeReport:
     report = initial
     last_challenge = initial
     clear_observations = 0
+    notified_kind = initial.kind
     if seconds is not None and seconds <= 0:
         return report
     deadline = None if seconds is None else time.monotonic() + seconds
@@ -208,6 +217,15 @@ def _wait_until_challenge_changes(
                     max(deadline - time.monotonic(), 0.01),
                 )
             page.wait_for_timeout(wait_seconds * 1000)
+            if completion_check is not None and completion_check():
+                report = ChallengeReport(
+                    kind=ChallengeKind.NONE,
+                    evidence=(
+                        "Verified target article delivered during access interaction",
+                    ),
+                )
+                _append_report(history, report)
+                return report
             report = _report_for_page(page)
         except Exception:
             # A user may close a stuck CAPTCHA/authentication tab or the browser
@@ -242,6 +260,11 @@ def _wait_until_challenge_changes(
             ChallengeKind.ACCESS_DENIED,
         }:
             return report
+        if interaction_callback is not None and report.kind != notified_kind:
+            # Verification can expose a second gate (e.g. CAPTCHA -> SSO).
+            # Keep the human-facing prompt in sync while continuing to wait.
+            interaction_callback(report, redact_url_for_record(page.url) or "")
+            notified_kind = report.kind
     return last_challenge if report.kind == ChallengeKind.NONE else report
 
 
@@ -249,10 +272,14 @@ def _resolve_page_challenge(
     page,
     *,
     config: BrowserAccessConfig,
+    completion_check=None,
 ) -> tuple[ChallengeReport, tuple[ChallengeReport, ...], bool]:
     """Allow normal browser JS first, then bounded human-in-the-loop recovery."""
 
     history: list[ChallengeReport] = []
+    wait_options = (
+        {"completion_check": completion_check} if completion_check is not None else {}
+    )
     report = _report_for_page(page)
     _append_report(history, report)
 
@@ -269,6 +296,7 @@ def _resolve_page_challenge(
         seconds=config.auto_challenge_grace,
         poll_interval=config.poll_interval,
         history=history,
+        **wait_options,
     )
     if report.kind == ChallengeKind.NONE:
         return report, tuple(history), False
@@ -288,12 +316,14 @@ def _resolve_page_challenge(
     if config.interaction_callback is not None:
         callback_url = redact_url_for_record(page.url) or ""
         config.interaction_callback(report, callback_url)
+        wait_options["interaction_callback"] = config.interaction_callback
     report = _wait_until_challenge_changes(
         page,
         initial=report,
         seconds=None if config.wait_for_interaction else config.interaction_timeout,
         poll_interval=config.poll_interval,
         history=history,
+        **wait_options,
     )
     return report, tuple(history), True
 
@@ -845,7 +875,7 @@ def _control_semantics(item) -> str:
 
     values: list[str] = []
     try:
-        values.append(item.inner_text())
+        values.append(item.inner_text(timeout=500))
     except Exception:
         pass
 
@@ -853,7 +883,7 @@ def _control_semantics(item) -> str:
     if callable(getter):
         for attribute in ("aria-label", "title", "href"):
             try:
-                value = getter(attribute)
+                value = getter(attribute, timeout=500)
             except Exception:
                 value = None
             if value:
@@ -866,7 +896,8 @@ def _control_is_inside_modal(item) -> bool:
     try:
         return bool(
             item.evaluate(
-                "el => Boolean(el.closest('dialog, [role=\"dialog\"], .js-react-modal'))"
+                "el => Boolean(el.closest('dialog, [role=\"dialog\"], .js-react-modal'))",
+                timeout=500,
             )
         )
     except Exception:
@@ -910,13 +941,25 @@ def _click_semantic_pdf_control_from_locator(locator) -> bool:
     except Exception:
         return False
 
+    deadline = time.monotonic() + 10.0
     choices: list[tuple[int, int, object]] = []
     for index in range(count):
+        if time.monotonic() >= deadline:
+            break
         item = locator.nth(index)
+        # Responsive menus duplicate hidden controls; dynamic pages can also
+        # remove a locator match after count(). Neither warrants an action wait.
+        try:
+            if not item.is_visible():
+                continue
+        except Exception:
+            continue
         text = _control_semantics(item)
         lowered = text.lower()
         try:
-            href_path = unquote(urlsplit(item.get_attribute("href") or "").path)
+            href_path = unquote(
+                urlsplit(item.get_attribute("href", timeout=500) or "").path
+            )
         except Exception:
             href_path = ""
         if (
@@ -946,9 +989,15 @@ def _click_semantic_pdf_control_from_locator(locator) -> bool:
             score += 10
         choices.append((score, index, item))
 
+    click_deadline = time.monotonic() + 10.0
     for _, _, item in sorted(choices, key=lambda value: (-value[0], value[1])):
+        remaining = click_deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            item.click(timeout=5000)
+            if not item.is_visible():
+                continue
+            item.click(timeout=min(5000, max(1, remaining * 1000)))
             return True
         except Exception:
             continue
@@ -958,6 +1007,7 @@ def _click_semantic_pdf_control_from_locator(locator) -> bool:
 def _dismiss_blocking_modal(page) -> bool:
     """Dismiss one visible modal only through an explicit, unambiguous control."""
 
+    deadline = time.monotonic() + 10.0
     for modal_selector in _MODAL_SELECTORS:
         try:
             modals = page.locator(modal_selector)
@@ -966,8 +1016,12 @@ def _dismiss_blocking_modal(page) -> bool:
             continue
 
         for modal_index in range(modal_count):
+            if time.monotonic() >= deadline:
+                return False
             modal = modals.nth(modal_index)
             try:
+                if not modal.is_visible():
+                    continue
                 try:
                     controls = _semantic_controls(
                         modal, _MODAL_DISMISS_PATTERN, _MODAL_DISMISS_SELECTOR
@@ -979,6 +1033,9 @@ def _dismiss_blocking_modal(page) -> bool:
                 continue
 
             for control_index in range(control_count):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
                 control = controls.nth(control_index)
                 try:
                     if not control.is_visible():
@@ -987,14 +1044,14 @@ def _dismiss_blocking_modal(page) -> bool:
                     pass
                 labels: list[str] = []
                 try:
-                    labels.append(control.inner_text())
+                    labels.append(control.inner_text(timeout=500))
                 except Exception:
                     pass
                 getter = getattr(control, "get_attribute", None)
                 if callable(getter):
                     for attribute in ("aria-label", "title"):
                         try:
-                            value = getter(attribute)
+                            value = getter(attribute, timeout=500)
                         except Exception:
                             value = None
                         if value:
@@ -1007,7 +1064,7 @@ def _dismiss_blocking_modal(page) -> bool:
                 if not normalized.intersection(_MODAL_DISMISS_LABELS):
                     continue
                 try:
-                    control.click(timeout=5000)
+                    control.click(timeout=min(5000, max(1, remaining * 1000)))
                     return True
                 except Exception:
                     continue
@@ -1026,6 +1083,19 @@ def _click_semantic_pdf_control(page) -> bool:
     except Exception:
         pass
     return _click_semantic_pdf_control_once(page)
+
+
+def _is_reader_institution_control(item, text: str) -> bool:
+    """Exclude subscription administration from a reader's access handoff."""
+    try:
+        href = unquote(item.get_attribute("href", timeout=500) or "")
+    except Exception:
+        href = ""
+    return bool(
+        text
+        and _SEMANTIC_INSTITUTION_CONTROL.search(text)
+        and not _INSTITUTION_ADMIN_CONTROL.search(f"{text} {href}")
+    )
 
 
 def _click_semantic_institution_control(page) -> bool:
@@ -1051,10 +1121,18 @@ def _click_semantic_institution_control(page) -> bool:
         locator = None
         count = 0
 
+    deadline = time.monotonic() + 10.0
     for index in range(count):
+        if time.monotonic() >= deadline:
+            break
         item = locator.nth(index)
+        try:
+            if not item.is_visible():
+                continue
+        except Exception:
+            continue
         text = _control_semantics(item)
-        if not text or not _SEMANTIC_INSTITUTION_CONTROL.search(text):
+        if not _is_reader_institution_control(item, text):
             continue
         try:
             item.click(timeout=5000)
@@ -1075,15 +1153,19 @@ def _click_semantic_institution_control(page) -> bool:
         return False
 
     for index in range(text_count):
+        if time.monotonic() >= deadline:
+            break
         item = text_locator.nth(index)
         try:
-            text = " ".join(item.inner_text().split())
+            if not item.is_visible():
+                continue
+            text = " ".join(item.inner_text(timeout=500).split())
         except Exception:
             text = ""
         if (
             not text
             or len(text) > 180
-            or not _SEMANTIC_INSTITUTION_CONTROL.search(text)
+            or not _is_reader_institution_control(item, text)
         ):
             continue
         try:
@@ -1548,6 +1630,8 @@ def attempt_browser_route(
     _allow_runtime_pdf_handoff: bool = True,
     _navigate_source: bool = True,
     _browser_native_only: bool = False,
+    _allow_endpoint_handoff: bool = True,
+    _native_download_capture=None,
 ) -> BrowserAccessAttempt:
     started_at = time.perf_counter()
     file_attempts: list[BrowserFileAttempt] = []
@@ -1556,6 +1640,7 @@ def attempt_browser_route(
     network_pdf_responses: list[object] = []
     network_pdf_response_ids: set[int] = set()
     seen_browser_response_ids: set[int] = set()
+    verified_during_wait: BrowserFileAttempt | None = None
     downloads: list[object] = []
     processed_downloads: set[int] = set()
     browser_response_attempt_count = 0
@@ -1594,6 +1679,48 @@ def attempt_browser_route(
     def new_blocked_urls() -> tuple[str, ...]:
         return tuple(blocked_unsafe_urls[blocked_start:])
 
+    def recover_pdf_endpoint(candidate: FullTextCandidate) -> BrowserAccessAttempt:
+        # HTTP clients can be challenged while the browser is already entitled.
+        # Navigate the observed endpoint once and use the normal visible
+        # challenge wait and native delivery, without another HTTP replay.
+        capture = _CdpDownloadCapture(context, output_dir)
+        try:
+            recovered = attempt_browser_route(
+                context,
+                page,
+                source=candidate,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                config=config,
+                session_blocked_urls=session_blocked_urls,
+                session_pdf_responses=session_pdf_responses,
+                session_downloads=session_downloads,
+                _navigate_source=True,
+                _browser_native_only=True,
+                _allow_runtime_pdf_handoff=False,
+                _allow_endpoint_handoff=False,
+                _native_download_capture=capture,
+            )
+        finally:
+            capture.close()
+        merged = list(challenge_history)
+        for report in recovered.challenge_history:
+            _append_report(merged, report)
+        combined = [*file_attempts, *recovered.file_attempts]
+        return replace(
+            recovered,
+            source_candidate=source,
+            challenge_history=tuple(merged),
+            file_attempts=tuple(combined),
+            candidates_considered=len(combined),
+            interaction_used=interaction_used or recovered.interaction_used,
+            evidence=(
+                "Observed PDF endpoint resumed through the visible browser",
+                *recovered.evidence,
+            ),
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
+
     def process_pending_downloads() -> BrowserFileAttempt | None:
         sync_session_events()
         for download in downloads:
@@ -1631,6 +1758,50 @@ def attempt_browser_route(
                 continue
             browser_response_attempt_count += 1
             yield response
+
+    def check_verified_delivery() -> bool:
+        nonlocal verified_during_wait
+        delivered = None
+        if _native_download_capture is not None and _native_download_capture.started:
+            saved = _native_download_capture.wait(page, config.request_timeout)
+            if saved is not None:
+                path, url = saved
+                captured = _download_to_file_attempt(
+                    _LocalBrowserDownload(path, url or source.url),
+                    parent=source,
+                    source_page_url=page.url,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    config=config,
+                )
+                captured = replace(captured, method="cdp_browser_download")
+                file_attempts.append(captured)
+                if (
+                    captured.result is not None
+                    and captured.result.status == AcquisitionStatus.VERIFIED
+                ):
+                    delivered = captured
+        if delivered is None:
+            delivered = process_pending_downloads()
+        if delivered is None:
+            for response in pending_browser_responses():
+                captured = _browser_response_to_file_attempt(
+                    response,
+                    parent=source,
+                    source_page_url=page.url,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    config=config,
+                )
+                file_attempts.append(captured)
+                if (
+                    captured.result is not None
+                    and captured.result.status == AcquisitionStatus.VERIFIED
+                ):
+                    delivered = captured
+                    break
+        verified_during_wait = delivered
+        return delivered is not None
 
     def run_institution_handoff_and_retry() -> BrowserAccessAttempt | None:
         nonlocal interaction_used
@@ -1718,6 +1889,8 @@ def attempt_browser_route(
             _allow_access_handoff=False,
             _navigate_source=False,
             _browser_native_only=_browser_native_only,
+            _allow_endpoint_handoff=_allow_endpoint_handoff,
+            _native_download_capture=_native_download_capture,
         )
 
         merged_history = list(challenge_history)
@@ -1816,7 +1989,9 @@ def attempt_browser_route(
     navigation_response = None
     if _navigate_source:
         navigation_error: Exception | None = None
-        native_download = _CdpDownloadCapture(context, output_dir)
+        native_download = _native_download_capture or _CdpDownloadCapture(
+            context, output_dir
+        )
         try:
             navigation_response = page.goto(
                 safe_source_url,
@@ -1866,7 +2041,8 @@ def attempt_browser_route(
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
         finally:
-            native_download.close()
+            if _native_download_capture is None:
+                native_download.close()
 
         if navigation_error is not None:
             blocked_now = new_blocked_urls()
@@ -1944,10 +2120,30 @@ def attempt_browser_route(
         if handoff_result is not None:
             return handoff_result
 
-    final_report, observed, used = _resolve_page_challenge(page, config=config)
+    if _allow_endpoint_handoff:
+        final_report, observed, used = _resolve_page_challenge(page, config=config)
+    else:
+        final_report, observed, used = _resolve_page_challenge(
+            page, config=config, completion_check=check_verified_delivery
+        )
     for report in observed:
         _append_report(challenge_history, report)
     interaction_used = interaction_used or used
+
+    if verified_during_wait is not None:
+        return BrowserAccessAttempt(
+            source_candidate=source,
+            final_url=page.url,
+            status=BrowserAttemptStatus.VERIFIED,
+            challenge_history=tuple(challenge_history),
+            file_attempts=tuple(file_attempts),
+            candidates_considered=len(file_attempts),
+            interaction_used=interaction_used,
+            evidence=(
+                "Verified target article delivered during visible endpoint handoff",
+            ),
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
 
     if final_report.kind != ChallengeKind.NONE:
         return BrowserAccessAttempt(
@@ -2347,6 +2543,8 @@ def attempt_browser_route(
                             config=config,
                         )
                         file_attempts.append(retry)
+                        if retry_challenge is not None and _allow_endpoint_handoff:
+                            return recover_pdf_endpoint(candidate)
                         if retry_challenge is not None:
                             _append_report(challenge_history, retry_challenge)
                         if (
@@ -2709,6 +2907,8 @@ def attempt_browser_route(
                     ChallengeKind.SSO,
                     ChallengeKind.MFA,
                 }:
+                    if _allow_endpoint_handoff:
+                        return recover_pdf_endpoint(candidate)
                     return BrowserAccessAttempt(
                         source_candidate=source,
                         final_url=page.url,

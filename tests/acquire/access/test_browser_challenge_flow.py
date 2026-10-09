@@ -147,6 +147,53 @@ def test_browser_native_challenge_can_clear_without_human_interaction(tmp_path):
     assert interaction_used is False
 
 
+def test_human_wait_updates_prompt_when_captcha_reveals_institution_login(tmp_path):
+    sso = (
+        "Institution login",
+        "https://publisher.example/institutional-login?state=private-ticket",
+        "Access through your institution",
+        "<button>Access through your institution</button>",
+    )
+    page = _Page(
+        [
+            (
+                "Verify you are human",
+                "https://publisher.example/challenge",
+                "Verify you are human",
+                '<div class="g-recaptcha"></div>',
+            ),
+            sso,
+            sso,
+            (
+                "Article",
+                "https://publisher.example/article",
+                "Article text",
+                "<main />",
+            ),
+        ]
+    )
+    notices = []
+    report, history, used = _resolve_page_challenge(
+        page,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            auto_challenge_grace=0,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+            interaction_callback=lambda report, url: notices.append((report.kind, url)),
+        ),
+    )
+    assert report.kind == ChallengeKind.NONE
+    assert used
+    assert [kind for kind, _ in notices] == [ChallengeKind.CAPTCHA, ChallengeKind.SSO]
+    assert "private-ticket" not in notices[-1][1]
+    assert [item.kind for item in history] == [
+        ChallengeKind.CAPTCHA,
+        ChallengeKind.SSO,
+        ChallengeKind.NONE,
+    ]
+
+
 def test_transient_blank_challenge_page_does_not_count_as_cleared():
     challenge = (
         "Verify you are human",
@@ -404,7 +451,15 @@ def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda value, *, config: (ChallengeReport(kind=ChallengeKind.NONE), (), True),
+        lambda value, *, config, completion_check=None: (
+            challenge
+            if value.goto_calls.count(pdf_url) >= 2
+            else ChallengeReport(kind=ChallengeKind.NONE),
+            (challenge,)
+            if value.goto_calls.count(pdf_url) >= 2
+            else (ChallengeReport(kind=ChallengeKind.NONE),),
+            True,
+        ),
     )
     monkeypatch.setattr(browser_route, "parse_html", lambda html: object())
     monkeypatch.setattr(
@@ -440,7 +495,7 @@ def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_
     )
 
     assert request_urls == [pdf_url, pdf_url]
-    assert page.goto_calls == [article_url, pdf_url]
+    assert page.goto_calls == [article_url, pdf_url, pdf_url]
     assert result.status == BrowserAttemptStatus.INTERACTION_REQUIRED
     assert result.challenge_history[-1].kind == ChallengeKind.CAPTCHA
 
@@ -556,10 +611,10 @@ class _InstitutionControl:
         }
         self.clicked = False
 
-    def inner_text(self):
+    def inner_text(self, timeout=0):
         return self.text
 
-    def get_attribute(self, name):
+    def get_attribute(self, name, timeout=0):
         return self.attributes.get(name)
 
     def click(self, timeout=0):
@@ -1071,7 +1126,7 @@ def test_pdf_control_closes_incidental_modal_and_ignores_its_recommendations():
             self.inside_modal = inside_modal
             self.closes = closes
 
-        def evaluate(self, expression):
+        def evaluate(self, expression, timeout=0):
             return self.inside_modal
 
         def click(self, timeout=0):
