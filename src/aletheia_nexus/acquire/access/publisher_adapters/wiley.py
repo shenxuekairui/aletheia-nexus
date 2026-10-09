@@ -1,6 +1,7 @@
 """Wiley's remembered institution activation on its PDF access panel."""
 
 import re
+import time
 
 from aletheia_nexus.acquire.access.models import ChallengeKind, ChallengeReport
 
@@ -29,13 +30,24 @@ class WileyAdapter(DoiPdfAdapter):
     def _remembered_control(self, page):
         # The actual label may be a span/div with a delegated click handler.
         # Only use one unambiguous visible remembered entry, not a random IdP.
-        matches = page.get_by_text(_REMEMBERED)
+        matches = page.get_by_text(_REMEMBERED).filter(visible=True)
         visible = []
+        deadline = time.monotonic() + 10.0
         for index in range(min(matches.count(), 40)):
+            if time.monotonic() >= deadline:
+                return None
             control = matches.nth(index)
-            text = control.inner_text(timeout=2000).strip()
-            if len(text) <= 180 and _REMEMBERED.match(text) and control.is_visible():
-                visible.append(control)
+            try:
+                if not control.is_visible():
+                    continue
+                text = control.inner_text(timeout=500).strip()
+                if len(text) <= 180 and _REMEMBERED.match(text):
+                    visible.append(control)
+                    if len(visible) > 1:
+                        return None
+            except Exception:
+                # An unreadable visible entry leaves institution choice ambiguous.
+                return None
         return visible[0] if len(visible) == 1 else None
 
     def remembered_institution(self, page, control_semantics) -> bool:

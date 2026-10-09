@@ -989,6 +989,87 @@ def test_wiley_remembered_entry_activates_and_reuses_session(
         context.close()
 
 
+@pytest.mark.parametrize("visible_entries", [1, 2])
+def test_wiley_remembered_entry_ignores_hidden_duplicates_and_ambiguity(
+    control_browser, visible_entries
+):
+    page = control_browser.new_page()
+    adapter = adapter_for_url("https://onlinelibrary.wiley.com")
+    try:
+        page.set_content(
+            '<span style="display:none">Access through Example University</span>' * 100
+            + '<span onclick="window.selected=true">Access through Example University</span>'
+            * visible_entries
+        )
+        started = time.monotonic()
+        assert adapter.click_institution_control(page, None) is (visible_entries == 1)
+        assert bool(page.evaluate("window.selected")) is (visible_entries == 1)
+        assert time.monotonic() - started < 5
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("click_control", [False, True])
+def test_wiley_controls_first_retains_observed_http_fallback(
+    control_browser, local_article_server, tmp_path, monkeypatch, click_control
+):
+    context = control_browser.new_context()
+    page = context.new_page()
+    source_url = "https://onlinelibrary.wiley.com/doi/10.1000/browser-integration"
+    pdf_url = local_article_server + "/article.pdf"
+    context.add_cookies(
+        [{"name": "an_session", "value": "ok", "url": local_article_server}]
+    )
+    page.route(
+        source_url,
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body=f"<title>Authenticated Browser Integration Article</title>"
+            '<meta name="citation_doi" content="10.1000/browser-integration">'
+            f'<meta name="citation_pdf_url" content="{pdf_url}">'
+            + (
+                '<button onclick="window.clicked=true">View PDF</button>'
+                if click_control
+                else ""
+            ),
+        ),
+    )
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+    request = browser_route._request_pdf_candidate
+    requests = []
+
+    def record(context_value, **kwargs):
+        assert bool(page.evaluate("window.clicked")) is click_control
+        # Keep this fixture offline and ensure observed metadata precedes the
+        # inferred publisher URL, which would otherwise stop at a new challenge.
+        assert kwargs["candidate"].url == pdf_url
+        requests.append(kwargs["candidate"].url)
+        return request(context_value, **kwargs)
+
+    monkeypatch.setattr(browser_route, "_request_pdf_candidate", record)
+    try:
+        result = browser_route.attempt_browser_route(
+            context,
+            page,
+            source=FullTextCandidate(
+                doi="10.1000/browser-integration", url=source_url, provenance=()
+            ),
+            output_dir=tmp_path,
+            expected_title="Authenticated Browser Integration Article",
+            config=BrowserAccessConfig(
+                interactive=False, auto_challenge_grace=0, request_timeout=2
+            ),
+            session_blocked_urls=[],
+            session_pdf_responses=[],
+            session_downloads=[],
+        )
+        assert result.status == BrowserAttemptStatus.VERIFIED
+        assert requests == [pdf_url]
+        assert _Handler.pdf_cookie_seen
+    finally:
+        context.close()
+
+
 @pytest.mark.parametrize("institution", ["Example University", "Another Academy"])
 @pytest.mark.parametrize(
     "link_doi,expected",

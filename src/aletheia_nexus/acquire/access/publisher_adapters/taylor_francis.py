@@ -45,7 +45,9 @@ class TaylorFrancisAdapter(DoiPdfAdapter):
                 link = links.nth(index)
                 if not link.is_visible():
                     continue
-                target = urlsplit(urljoin(page.url, link.get_attribute("href") or ""))
+                target = urlsplit(
+                    urljoin(page.url, link.get_attribute("href", timeout=500) or "")
+                )
                 target_doi = re.fullmatch(
                     r"/doi/(?:full|pdf|epdf)/(.+?)/?", target.path
                 )

@@ -418,7 +418,7 @@ def test_rsc_direct_pdf_navigates_before_any_extra_request(monkeypatch, tmp_path
     assert request_calls == [pdf_url]
 
 
-def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_path):
+def test_pdf_endpoint_challenge_handoff_does_not_replay_http(monkeypatch, tmp_path):
     article_url = "https://publisher.example/article"
     pdf_url = "https://publisher.example/article.pdf"
     page = _RoutePage(article_url)
@@ -453,10 +453,10 @@ def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_
         "_resolve_page_challenge",
         lambda value, *, config, completion_check=None: (
             challenge
-            if value.goto_calls.count(pdf_url) >= 2
+            if pdf_url in value.goto_calls
             else ChallengeReport(kind=ChallengeKind.NONE),
             (challenge,)
-            if value.goto_calls.count(pdf_url) >= 2
+            if pdf_url in value.goto_calls
             else (ChallengeReport(kind=ChallengeKind.NONE),),
             True,
         ),
@@ -494,10 +494,108 @@ def test_pdf_challenge_reappearing_after_one_retry_stops_route(monkeypatch, tmp_
         session_downloads=[],
     )
 
-    assert request_urls == [pdf_url, pdf_url]
-    assert page.goto_calls == [article_url, pdf_url, pdf_url]
+    assert request_urls == [pdf_url]
+    assert page.goto_calls == [article_url, pdf_url]
     assert result.status == BrowserAttemptStatus.INTERACTION_REQUIRED
     assert result.challenge_history[-1].kind == ChallengeKind.CAPTCHA
+
+
+@pytest.mark.parametrize(
+    "host,click_pdf,native_only",
+    [
+        ("onlinelibrary.wiley.com", False, False),
+        ("onlinelibrary.wiley.com", True, False),
+        ("publisher.example", True, False),
+        ("publisher.example", True, True),
+    ],
+)
+def test_pdf_fallback_order_and_budget_include_popups(
+    monkeypatch, tmp_path, host, click_pdf, native_only
+):
+    source = FullTextCandidate(
+        doi="10.1000/fallback-budget",
+        url=f"https://{host}/article",
+        provenance=(),
+    )
+    page = _RoutePage(source.url)
+    context = _RouteContext(page)
+    urls = [f"https://{host}/{name}.pdf" for name in ("first", "second", "third")]
+    candidates = [
+        FullTextCandidate(doi=source.doi, url=url, provenance=())
+        for url in [urls[0], urls[0] + "#duplicate", *urls[1:]]
+    ]
+    events = []
+    popup = _RoutePage(urls[0])
+    popup.closed = False
+    popup.wait_for_load_state = lambda *a, **k: None
+    popup.close = lambda: setattr(popup, "closed", True)
+    popup.is_closed = lambda: popup.closed
+
+    def click(value):
+        events.append("click")
+        if click_pdf:
+            context.pages.append(popup)
+        return click_pdf
+
+    def request(context_value, *, candidate, **kwargs):
+        events.append(candidate.url)
+        return BrowserFileAttempt(candidate=candidate, error="Unavailable"), None
+
+    monkeypatch.setattr(browser_route, "_request_pdf_candidate", request)
+    monkeypatch.setattr(browser_route, "_click_semantic_pdf_control", click)
+    monkeypatch.setattr(
+        browser_route, "_report_for_page", lambda p: ChallengeReport(ChallengeKind.NONE)
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "_resolve_page_challenge",
+        lambda p, **k: (ChallengeReport(ChallengeKind.NONE), (), False),
+    )
+    monkeypatch.setattr(browser_route, "parse_html", lambda html: object())
+    monkeypatch.setattr(
+        browser_route,
+        "validate_page_identity",
+        lambda **k: SimpleNamespace(status=SimpleNamespace(value="MATCH"), evidence=()),
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "derive_pdf_candidates",
+        lambda **k: tuple(SimpleNamespace(candidate=c) for c in candidates),
+    )
+    monkeypatch.setattr(
+        browser_route, "_runtime_publisher_pdf_candidate", lambda *a: None
+    )
+    monkeypatch.setattr(
+        browser_route, "_trigger_embedded_pdf_frame_fetch", lambda *a, **k: None
+    )
+    monkeypatch.setattr(browser_route, "_trigger_pdf_viewer_save", lambda *a, **k: None)
+    monkeypatch.setattr(
+        browser_route, "_trigger_pdf_viewer_same_origin_fetch", lambda *a, **k: False
+    )
+
+    result = browser_route.attempt_browser_route(
+        context,
+        page,
+        source=source,
+        output_dir=tmp_path,
+        expected_title="Target article",
+        config=BrowserAccessConfig(profile_root=tmp_path, max_pdf_candidates=2),
+        session_blocked_urls=[],
+        session_pdf_responses=[],
+        session_downloads=[],
+        _browser_native_only=native_only,
+    )
+
+    assert result.status != BrowserAttemptStatus.VERIFIED
+    assert [event for event in events if event != "click"] == (
+        [] if native_only else urls[:2]
+    )
+    assert events[0] == (
+        "click" if native_only or host == "onlinelibrary.wiley.com" else urls[0]
+    )
+    assert result.candidates_considered == len(result.file_attempts)
+    if click_pdf:
+        assert popup.closed
 
 
 def test_article_route_automatically_enters_institutional_sso(
@@ -1177,7 +1275,7 @@ def test_pdf_control_closes_incidental_modal_and_ignores_its_recommendations():
     assert page.article.clicked is True
 
 
-def test_popup_processing_can_defer_close_until_response_body_is_consumed(
+def test_popup_observation_leaves_target_alive_for_response_capture(
     monkeypatch,
     tmp_path,
 ):
@@ -1218,15 +1316,13 @@ def test_popup_processing_can_defer_close_until_response_body_is_consumed(
         url_type=CandidateUrlType.LANDING_PAGE,
     )
 
-    browser_route._process_new_popup_pages(
+    browser_route._observe_pdf_popups(
         context,
         original_page=original,
         existing_page_ids={id(original)},
         source=source,
-        output_dir=tmp_path,
         expected_title="Target article",
         config=BrowserAccessConfig(profile_root=tmp_path),
-        close_pages=False,
     )
 
     assert popup.closed is False

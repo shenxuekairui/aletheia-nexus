@@ -44,7 +44,7 @@ class PublisherAdapter:
         return False
 
     def prefer_visible_pdf_controls(self) -> bool:
-        """Try live article controls before duplicate HTTP PDF requests."""
+        """Order live controls before HTTP fallback; do not suppress fallback."""
         return False
 
     def refine_non_pdf_challenge(

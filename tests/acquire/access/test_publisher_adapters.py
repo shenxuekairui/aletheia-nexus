@@ -1,5 +1,7 @@
 """Publisher hooks stay narrow and never replace shared PDF verification."""
 
+from unittest.mock import Mock
+
 from aletheia_nexus.acquire.access.models import ChallengeKind, ChallengeReport
 from aletheia_nexus.acquire.access.publisher_adapters import (
     adapter_for_url,
@@ -71,3 +73,21 @@ def test_thieme_entitlement_hook_only_applies_to_its_abstract_page():
         ChallengeKind.ENTITLEMENT
     )
     assert adapter.refine_non_pdf_challenge(pdf, "Buy Article", report) == report
+
+
+def test_wiley_does_not_choose_institution_when_visible_entry_is_unreadable():
+    unreadable = Mock()
+    unreadable.is_visible.return_value = True
+    unreadable.inner_text.side_effect = TimeoutError("entry changed during scan")
+    readable = Mock()
+    readable.is_visible.return_value = True
+    readable.inner_text.return_value = "Access through Another University"
+    page = Mock()
+    matches = page.get_by_text.return_value.filter.return_value
+    matches.count.return_value = 2
+    matches.nth.side_effect = [unreadable, readable]
+
+    adapter = adapter_for_url("https://onlinelibrary.wiley.com")
+    assert adapter.click_institution_control(page, None) is False
+    unreadable.click.assert_not_called()
+    readable.click.assert_not_called()
