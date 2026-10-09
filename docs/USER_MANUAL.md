@@ -194,7 +194,7 @@ aletheia-nexus export downloads\paper.parsed.json --format chunks `
   --output downloads\paper.chunks.json --max-chars 6000
 ```
 
-每个 chunk 都带 source/parsed artifact ID、exporter 配置指纹以及 `block → anchor → page/bbox` 证据链。分块优先保留 section 边界，并隔离 heading、caption、equation 和 reference。导出文件也默认拒绝覆盖。
+每个 chunk 都带 source/parsed artifact ID、exporter 配置指纹以及 `block → anchor → page/bbox` 证据链。分块优先保留 section 边界，并隔离 heading、caption、equation 和 reference。导出文件也默认拒绝覆盖；即使指定 `--overwrite`，也不能覆盖解析输入及其本地定位记录指向的来源 PDF、获取记录。
 
 公开回归使用 `benchmarks/v07_fixtures/` 中项目自编、Apache-2.0 可再分发的小型 PDF；运行 `python scripts/evaluate_v07_parser.py` 可复核输入门、逐页 gold 文本、锚点、章节、双栏顺序和图表证据。`benchmarks/v07_public_oa/` 另定义三篇按哈希冻结、按需下载的 OA 资格集。二者都不代表对所有出版社版式或科学语义的泛化质量。
 
@@ -220,12 +220,13 @@ python -m compileall -q src scripts
 python scripts/verify_frozen_benchmark.py
 python scripts/evaluate_v07_parser.py
 python -m pytest -q
-python scripts/verify_v07_rc.py --ocr-smoke --public-oa `
+python scripts/verify_v07_rc.py --browser-smoke --ocr-smoke --public-oa `
   --report qualification-report.json
-.\scripts\verify_v06_rc.ps1 -Browser
 ```
 
 这些脚本与单元测试不替代实际机构环境中的授权验证，也不证明解析器适配所有真实论文版式。AN 0.7 将获取与核验衔接到带来源锚点的原生文本优先解析，并提供可选选择性 OCR；科学主张解释和科研知识组织仍属于后续能力。
+
+v0.7 检查脚本会优先导入当前仓库的 `src`，避免复用环境时测到其他 checkout。`--browser-smoke` 需要 browser extra 和 Chromium；`--ocr-smoke` 需要 ocr extra、Poppler 与 Tesseract。缺少组件时应补齐环境后重跑，不能把跳过或 `PARTIAL` 写成通过。私有语料资格脚本要求非空输入且每篇都完成 `PARSED`；缺文件、哈希改变或部分解析会使检查失败。
 
 ## 10. 合并 main 前的发布检查
 
@@ -238,8 +239,9 @@ v0.7.0 的最终 PR 必须直接面向 `main`；不要把功能分支直接推�
    测试。Python 3.11–3.14 都须通过；专用 job 还须运行真实 Chromium、
    Poppler + Tesseract 和 clean-wheel 安装验证。
 2. 对固定的 24 篇回归集和 14 篇获取验证集核对输入哈希、逐篇状态、
-   每页原生文本守恒、重复语义对象和未解析对象。私有 PDF 与输出留在
-   Git 忽略目录；“原生文本层零遗漏”不得写成“视觉内容或语义 100% 正确”。
+   正文、定位、结构和重复语义对象。CropBox 外隐藏文本等变化须结合可见页
+   解释，不以原生文本层逐字符守恒作为发布门。私有 PDF 与输出留在 Git
+   忽略目录；解析完成或回归一致不得写成“视觉内容或语义 100% 正确”。
 3. 对 PMC 云路径至少完成一个公开 DOI 烟测，确认候选来自官方桶、元数据
    DOI 一致、最终 PDF 为 `VERIFIED` 正文且 sidecar 哈希匹配。外部服务烟测
    不能替代确定性测试，也不能解释为通用获取成功率。

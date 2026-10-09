@@ -113,6 +113,37 @@ def test_browser_recovery_plan_adds_acs_canonical_pdf_route():
     assert routes[0].url_type == CandidateUrlType.PDF
 
 
+@pytest.mark.parametrize("pdf_host", [HostType.PUBLISHER, HostType.UNKNOWN])
+def test_recovery_plan_keeps_observed_pdf_before_inferred_route(pdf_host):
+    landing = _candidate("https://onlinelibrary.wiley.com/doi/10.1000/target")
+    observed = replace(
+        landing,
+        url="https://files.example/article.pdf",
+        url_type=CandidateUrlType.PDF,
+        host_type=pdf_host,
+        source_name="Observed article metadata",
+    )
+    base = _base(candidate=landing)
+    base = replace(
+        base, discovery=replace(base.discovery, candidates=(landing, observed))
+    )
+
+    routes = service.browser_recovery_routes(base, limit=1)
+    assert routes == (observed,)
+
+
+def test_recovery_plan_preserves_observed_canonical_url_provenance():
+    observed = replace(
+        _candidate(
+            "https://onlinelibrary.wiley.com/doi/pdf/10.1000/target",
+            url_type=CandidateUrlType.PDF,
+        ),
+        source_name="Observed article metadata",
+    )
+    routes = service.browser_recovery_routes(_base(candidate=observed), limit=1)
+    assert routes == (observed,)
+
+
 def test_browser_recovery_plan_adds_acs_pdf_route_from_doi():
     doi = "10.1021/jacs.6c03536"
     base = MultiRouteAcquisitionResult(

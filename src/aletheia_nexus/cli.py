@@ -686,6 +686,13 @@ def export_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         artifact = load_parsed_document(args.artifact)
+        protected = {args.artifact.resolve()}
+        for locator in artifact.document["source"].get("locators", {}).values():
+            protected.add((args.artifact.parent / locator).resolve())
+        if args.output.resolve() in protected:
+            raise ValueError(
+                "export output must not overwrite its input or source artifacts"
+            )
         config = ChunkConfig(max_characters=args.max_chars)
         serializers = {
             "markdown": export_markdown,

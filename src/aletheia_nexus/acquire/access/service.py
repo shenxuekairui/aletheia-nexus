@@ -79,6 +79,11 @@ def _canonical_publisher_pdf_candidate(
     )
 
 
+def _is_auxiliary_route(candidate: FullTextCandidate) -> bool:
+    path = urlsplit(candidate.url).path.casefold()
+    return any(marker in path for marker in ("_si_", "/supp", "supplement"))
+
+
 def _browser_route_score(
     candidate: FullTextCandidate,
     *,
@@ -109,8 +114,7 @@ def _browser_route_score(
         "Publisher canonical"
     ):
         score += 700
-    path = urlsplit(candidate.url).path.casefold()
-    if any(marker in path for marker in ("_si_", "/supp", "supplement")):
+    if _is_auxiliary_route(candidate):
         score -= 800
     return score
 
@@ -184,6 +188,15 @@ def browser_recovery_routes(
     for candidate in base_result.discovery.candidates:
         add(candidate, barrier=False)
 
+    # Concrete PDF evidence must survive route limits before inferred fallback
+    # URLs, including files on a CDN whose publisher type is not known yet.
+    observed_pdf_urls = {
+        key
+        for key, (_, _, candidate) in scored.items()
+        if candidate.url_type == CandidateUrlType.PDF
+        and not _is_auxiliary_route(candidate)
+    }
+
     # Supported publishers expose stable, official PDF paths even when their
     # rendered entitlement page omits the PDF anchor. These are legitimate
     # publisher endpoints, not access-control bypasses; any login, CAPTCHA, or
@@ -204,14 +217,18 @@ def browser_recovery_routes(
             continue
     for candidate in source_candidates:
         canonical_pdf = _canonical_publisher_pdf_candidate(candidate)
-        if canonical_pdf is not None:
+        if canonical_pdf is not None and _url_key(canonical_pdf.url) not in scored:
             add(canonical_pdf, barrier=False)
 
     add(_resolver_candidate(base_result.doi), barrier=False)
 
     ranked = sorted(
         scored.values(),
-        key=lambda item: (-item[0], item[1]),
+        key=lambda item: (
+            _url_key(item[2].url) not in observed_pdf_urls,
+            -item[0],
+            item[1],
+        ),
     )
     return tuple(item[2] for item in ranked[:limit])
 

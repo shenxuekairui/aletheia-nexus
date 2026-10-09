@@ -10,8 +10,10 @@ from pypdf import PdfWriter
 from aletheia_nexus.acquire.access import (
     BrowserAccessConfig,
     BrowserSession,
+    acquire_full_text_batch_maximized,
     browser,
     browser_route,
+    service,
 )
 from aletheia_nexus.acquire.access.browser_engine import viewer
 from aletheia_nexus.acquire.access.models import (
@@ -22,9 +24,15 @@ from aletheia_nexus.acquire.access.models import (
 from aletheia_nexus.acquire.access.publisher_adapters import adapter_for_url
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
+    DiscoveryResult,
     FullTextCandidate,
+    HostType,
 )
 from aletheia_nexus.acquire.fulltext.models import AcquisitionStatus
+from aletheia_nexus.acquire.fulltext.orchestration.models import (
+    FullTextAcquisitionStatus,
+    MultiRouteAcquisitionResult,
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("AN_RUN_BROWSER_SMOKE") != "1",
@@ -660,6 +668,74 @@ def test_real_browser_session_shares_cookie_with_authenticated_pdf_request(
     assert result.verified_result is not None
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
     assert result.verified_result.file_path is not None
+
+
+def test_maximized_batch_uses_observed_pdf_before_inferred_publisher_challenge(
+    control_browser, local_article_server, monkeypatch, tmp_path
+):
+    doi = "10.1000/browser-integration"
+    observed = FullTextCandidate(
+        doi=doi,
+        url=local_article_server + "/article.pdf",
+        provenance=(),
+        url_type=CandidateUrlType.PDF,
+        source_name="Observed publisher metadata",
+    )
+    landing = FullTextCandidate(
+        doi=doi,
+        url=f"https://onlinelibrary.wiley.com/doi/{doi}",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+        host_type=HostType.PUBLISHER,
+    )
+    base = MultiRouteAcquisitionResult(
+        doi=doi,
+        status=FullTextAcquisitionStatus.EXHAUSTED,
+        discovery=DiscoveryResult(
+            doi=doi, candidates=(landing, observed), providers=()
+        ),
+        expected_title="Authenticated Browser Integration Article",
+    )
+    monkeypatch.setattr(service, "acquire_full_text", lambda *a, **k: base)
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+    session = BrowserSession(
+        BrowserAccessConfig(
+            interactive=False,
+            max_source_routes=1,
+            auto_challenge_grace=0,
+            request_timeout=2,
+        )
+    )
+    context = control_browser.new_context()
+    session._context = context
+    context.add_cookies(
+        [{"name": "an_session", "value": "ok", "url": local_article_server}]
+    )
+    # Any accidental navigation to the inferred publisher route stays offline
+    # and exposes the challenge that used to stop this recovery plan.
+    context.route(
+        "https://onlinelibrary.wiley.com/**",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body="<title>Verify you are human</title><body>Verify you are human</body>",
+        ),
+    )
+    try:
+        batch = acquire_full_text_batch_maximized(
+            [doi],
+            output_dir=tmp_path,
+            browser_session=session,
+            auto_official_api=False,
+            checkpoint_path=tmp_path / "checkpoint.json",
+        )
+        assert batch.verified_count == 1
+        item = batch.items[0]
+        assert item.result.browser_attempts[0].source_candidate == observed
+        assert item.verified_path.read_bytes() == _Handler.pdf_body
+        assert _Handler.pdf_cookie_seen
+    finally:
+        session.close()
 
 
 def test_real_browser_recovers_pdf_opened_in_new_tab(

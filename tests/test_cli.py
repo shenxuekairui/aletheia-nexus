@@ -1,5 +1,7 @@
 """Installed CLI contract and first-run public-only path."""
 
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,6 +9,91 @@ import pytest
 
 from aletheia_nexus import cli
 from aletheia_nexus.acquire.fulltext import FullTextAcquisitionStatus
+
+
+@pytest.fixture
+def acquired_article(tmp_path, monkeypatch):
+    from aletheia_nexus.acquire.access import service
+    from aletheia_nexus.acquire.access.browser import BrowserSession
+
+    def forbid_network(*args, **kwargs):
+        raise AssertionError("Local import/resume must not acquire from network")
+
+    monkeypatch.setattr(service, "acquire_full_text", forbid_network)
+    monkeypatch.setattr(BrowserSession, "_ensure_started", forbid_network)
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/v07_fixtures/native_article.pdf"
+    )
+    original = source.read_bytes()
+    doi = "10.5555/an.v07.native"
+    output = tmp_path / "articles"
+    command = [
+        "acquire",
+        doi,
+        "--local-pdf",
+        f"{doi}={source}",
+        "--output-dir",
+        str(output),
+        "--non-interactive",
+    ]
+    assert cli.entrypoint(command) == 0
+    report = json.loads((output / "batch-report.json").read_text(encoding="utf-8"))
+    pdf = next(output.glob("*.pdf"))
+    assert report["items"][0]["status"] == "VERIFIED"
+    assert source.read_bytes() == original == pdf.read_bytes()
+    assert cli.entrypoint(command) == 0
+    report = json.loads((output / "batch-report.json").read_text(encoding="utf-8"))
+    assert report["items"][0]["resumed"]
+    assert cli.entrypoint(["parse", str(pdf), "--doi", doi, "--fail-on-partial"]) == 0
+    return pdf, pdf.with_suffix(".acquisition.json"), pdf.with_suffix(".parsed.json")
+
+
+def test_cli_acquire_resume_parse_search_and_export(acquired_article, capsys):
+    pdf, sidecar, parsed = acquired_article
+    before = {
+        path: hashlib.sha256(path.read_bytes()).hexdigest() for path in acquired_article
+    }
+    assert cli.entrypoint(["search", str(parsed), "Methods", "--verify-sources"]) == 0
+    assert "page 1" in capsys.readouterr().out
+    for format_name, suffix in (
+        ("markdown", ".ai.md"),
+        ("jsonl", ".ai.jsonl"),
+        ("chunks", ".chunks.json"),
+    ):
+        output = parsed.with_suffix(suffix)
+        args = ["export", str(parsed), "--format", format_name, "--output", str(output)]
+        assert cli.entrypoint(args) == 0
+        exported = output.read_bytes()
+        assert exported
+        assert cli.entrypoint(args) == 7
+        assert cli.entrypoint([*args, "--overwrite"]) == 0
+        assert output.read_bytes() == exported
+    assert before == {
+        path: hashlib.sha256(path.read_bytes()).hexdigest() for path in acquired_article
+    }
+
+
+@pytest.mark.parametrize("target_index", [0, 1, 2])
+def test_cli_export_cannot_overwrite_input_or_known_sources(
+    acquired_article, target_index
+):
+    originals = {path: path.read_bytes() for path in acquired_article}
+    assert (
+        cli.entrypoint(
+            [
+                "export",
+                str(acquired_article[2]),
+                "--format",
+                "markdown",
+                "--output",
+                str(acquired_article[target_index]),
+                "--overwrite",
+            ]
+        )
+        == 7
+    )
+    assert originals == {path: path.read_bytes() for path in acquired_article}
 
 
 def test_entrypoint_help_and_doctor(capsys):

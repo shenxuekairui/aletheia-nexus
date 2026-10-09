@@ -13,6 +13,13 @@ not add embeddings, model calls, scientific claim interpretation, or Agents.
   version isolation, and DOI/article/retraction/PDF checks.
 - Title normalization and browser profile-lock diagnostics were corrected without
   weakening acquisition identity or access-control boundaries.
+- Browser recovery preserves observed PDF routes ahead of inferred fallbacks,
+  including at the batch/service boundary. Publisher preferences control attempt
+  order, and PDF endpoint challenges use the shared visible wait and delivery path.
+- Reader access controls exclude institution administration links. Hidden/stale
+  controls, remembered institution activation, and explicit target entitlement
+  boundaries have focused regressions. PDF identity and article-role checks remain
+  shared across every delivery method.
 
 ## Canonical parsing contract
 
@@ -39,6 +46,8 @@ not add embeddings, model calls, scientific claim interpretation, or Agents.
 - `aletheia-nexus export` creates deterministic Markdown, JSONL, or
   structure-aware chunk JSON. Every chunk links through block/anchor/page/bbox to
   the source artifact and records exporter/configuration identity.
+- Export refuses to overwrite its parsed input or locally referenced source PDF
+  and acquisition record, including when `--overwrite` is specified.
 
 ## Qualification
 
@@ -53,13 +62,18 @@ not add embeddings, model calls, scientific claim interpretation, or Agents.
 - Private stress sets: 24/24 papers (436 pages) and 14/14 papers (219 pages)
   completed as `PARSED`. These figures demonstrate completion and diagnostics,
   not human-labelled semantic accuracy.
-- Final local deterministic suite on Windows/Python 3.14: **874 passed, 8
-  skipped**. The skipped group contains opt-in real browser/OCR integrations,
-  which are run separately and in dedicated CI jobs.
+- The earlier parser milestone on Windows/Python 3.14 had **874 passed, 8
+  skipped**. Current integration and final-check results are recorded separately
+  in [release history](RELEASE_HISTORY.md); historical publisher downloads are not
+  a fresh success rate for the final code.
 
 The release workflow now tests Python 3.11, 3.12, 3.13, and 3.14; real Chromium;
 real Poppler + Tesseract; distribution build/twine validation; and installation of
 the wheel in a clean environment. The final PR commit must be green before merge.
+The clean-wheel gate also runs the CLI acquisition/resume/parse/search/export
+contract. The local v0.7 runner selects this checkout's source and offers explicit
+`--browser-smoke`, `--ocr-smoke`, and `--public-oa` checks; private corpus qualification
+fails for empty, missing, changed, failed, or partially parsed inputs.
 
 ## Security, privacy, copyright, and boundaries
 
