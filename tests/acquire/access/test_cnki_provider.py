@@ -706,6 +706,46 @@ def test_title_only_ambiguous_results_stop_before_download(tmp_path):
     assert not attempt.download_started and not attempt.file_attempts
 
 
+@pytest.mark.parametrize("doi", [None, "10.1000/cnki-target"])
+def test_detail_title_preflight_keeps_doi_translations_but_rejects_similar_titles(doi):
+    from aletheia_nexus.acquire.access.cnki_metadata import conflicting_fields
+    from aletheia_nexus.core.paper_request import PaperRequest
+
+    target = PaperRequest(doi=doi, title="建筑工程施工质量管理研究")
+    observed = PaperRequest(doi=doi, title="建筑工程施工质量管理研究与实践")
+    assert ("title" in conflicting_fields(target, observed)) is (doi is None)
+    assert not conflicting_fields(
+        PaperRequest(title="银修饰铜纳米阵列用于电催化还原CO₂"),
+        PaperRequest(title="银修饰铜纳米阵列用于电催化还原 CO 2"),
+    )
+
+
+def test_title_only_known_detail_mismatch_never_clicks_pdf(tmp_path):
+    from aletheia_nexus.core.paper_request import PaperRequest
+
+    title = "建筑工程施工质量管理研究"
+
+    class Detail(_DetailPage):
+        def locator(self, selector):
+            if selector == "meta[name='citation_title']":
+                return _Element(content=title + "与实践")
+            return super().locator(selector)
+
+    detail = Detail()
+    detail.pdf._click = lambda: pytest.fail("Known title mismatch must not download")
+    attempt = CNKIProvider(request=PaperRequest(title=title)).fetch(
+        doi="",
+        context=_Context(detail),
+        page=_SearchPage(title),
+        output_dir=tmp_path,
+        config=BrowserAccessConfig(),
+        expected_title=title,
+    )
+    assert attempt.status == BrowserAttemptStatus.PAGE_MISMATCH
+    assert "CNKI detail bibliographic conflict: title" in attempt.evidence
+    assert not attempt.download_started and not attempt.file_attempts
+
+
 def test_doi_less_local_import_validates_and_never_mutates_original(tmp_path):
     from aletheia_nexus.acquire.access import (
         PaperRequest,

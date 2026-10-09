@@ -152,6 +152,14 @@ def detail_bibliography(page, *, fallback_title: str) -> PaperRequest:
 
 def conflicting_fields(target: PaperRequest, observed: PaperRequest) -> tuple[str, ...]:
     fields = []
+    # The DOI-less PDF gate requires the same exact bibliographic title. Reject
+    # an already-known mismatch here instead of spending an institutional
+    # download on a merely similar search result. DOI-backed translations still
+    # use the DOI-first path and the shared final PDF identity gate.
+    if not target.doi and compact_bibliography(
+        observed.title or ""
+    ) != compact_bibliography(target.title or ""):
+        fields.append("title")
     for field in ("doi", "journal", "year", "volume", "issue", "pages", "cnki_id"):
         wanted, actual = getattr(target, field), getattr(observed, field)
         if (
