@@ -203,6 +203,11 @@ class CNKIGate:
             self.config.interaction_callback(
                 report, redact_url_for_record(page.url) or ""
             )
+        elif not self.config.interactive:
+            _LOGGER.warning(
+                "CNKI requires manual %s; skipped in non-interactive mode.",
+                report.kind.value,
+            )
         else:
             _LOGGER.warning(
                 "CNKI requires manual %s. Complete verification in the browser; "

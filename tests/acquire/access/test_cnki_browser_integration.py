@@ -23,6 +23,18 @@ _TITLE = "银修饰铜纳米阵列用于电催化还原CO2"
 _DOI = "10.1000/cnki-browser-fixture"
 
 
+@pytest.fixture(autouse=True)
+def forbid_unmocked_api_transport(monkeypatch):
+    # BrowserContext.route does not intercept APIRequestContext. A fixture
+    # must explicitly replace that transport instead of hitting live CNKI.
+    from playwright.sync_api import APIRequestContext
+
+    def reject(*args, **kwargs):
+        pytest.fail("Unmocked API request escaped the CNKI browser fixture")
+
+    monkeypatch.setattr(APIRequestContext, "get", reject)
+
+
 def _pdf_bytes(title=_TITLE, doi=_DOI, text=""):
     from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
@@ -249,7 +261,11 @@ def test_cnki_title_menu_quoted_formula_and_bilingual_identity(
             route.fulfill(status=404)
 
     config = BrowserAccessConfig(
-        headless=True, interactive=False, navigation_timeout=5, keep_unverified=True
+        headless=True,
+        interactive=False,
+        navigation_timeout=5,
+        keep_unverified=True,
+        cnki_context_request=False,
     )
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)

@@ -4,7 +4,7 @@
 
 接入与验证规则详见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md)。v3 保留 DOI 排版修复与冲突保护，新增无 DOI 书目验证、保守分流和批量书目请求。默认将可解析但未验证的 PDF 和溯源隔离保存到 `_unverified/`，不计为成功。可用 `--no-cnki-keep-unverified` 禁用。
 
-默认同会话获取既支持页面上的 CNKI PDF 订单 URL，也支持明确的同源 `.pdf` 链接，以避免内嵌预览器兼容问题；不猜测地址，不绕过认证。需要原生下载时使用 `--no-cnki-context-request`。
+默认通过修复版浏览器原生点击 PDF 控件并捕获附件/响应，保留页面 JavaScript、TLS 和机构会话状态。`--cnki-context-request` 可显式选择复用 Cookie 的 HTTP 请求方式；`--no-cnki-context-request` 明确选择原生方式。两种方式都不猜测地址、不绕过认证。
 
 CNKI Provider 自动完成标题解析、检索、候选排序、详情页打开、PDF 获取、SHA-256、正文身份校验和溯源存储。验证码、机构登录和 MFA 交给用户在本地浏览器中完成；完成后程序继续原来的获取步骤。机构权限、PDF 是否存在和网站可用性仍决定实际下载结果。
 
@@ -39,7 +39,7 @@ Windows 可见模式未指定 `--channel` 时，优先使用已安装且 >=155 �
 
 沿用 AN 获取层的直连默认值；需要机构系统代理时显式使用 `--browser-use-system-proxy`。旧 CNKI 脚本的 `--direct-connection` 保留为兼容参数，不能与系统代理选项同时使用。这些参数只影响新启动的 AN 浏览器，不修改系统设置或已连接的 CDP 浏览器。
 
-先等待页面/机构会话初始化，再从明确的 PDF 按钮读取真实地址。针对已实地验证的 `bar.cnki.net/bar/download/order`，默认优先通过同一 BrowserContext 请求，复用机构 Cookie，避免本机原生下载链路的浏览器崩溃；其他按钮仍走原生点击。无认证信号的 JavaScript 壳页可回退原生流程，权限拒绝、CAJ、超限或上下文关闭不触发重放。需要明确测试原生路径时使用 `--no-cnki-context-request`（Python 配置为 `cnki_context_request=False`）。这不生成下载地址、不绕过登录或权限、不复制 Cookie 到另一个会话。
+先等待页面/机构会话初始化，再操作明确的 PDF 控件。原生下载崩溃由浏览器版本保护解决；不再默认依赖 HTTP 请求来规避运行时缺陷。同一 Cookie 并不等同于同一浏览器网络栈，真实测试中 HTTP 传输失败的部分文章能经原生方式获取。可显式启用 `cnki_context_request=True`；该路径仍只请求观察到的订单 URL 或同源 PDF，权限拒绝、CAJ、超限、网络错误和上下文关闭不触发第二次盲目下载。
 
 单篇交互 CLI 默认在返回结果后保持 AN 窗口，直到用户关闭窗口或按 Ctrl+C；此期间不会重新触发下载。需要自动退出时传 `--no-keep-browser-open`；非交互/headless 不等待，CDP 会话始终由原调用者管理。Python 的临时会话 API 仍会在返回时清理；需要保留认证现场时应传入调用者持有的 `BrowserSession`。
 
@@ -114,7 +114,7 @@ with BrowserSession(config) as session:
 
 下载兼容详情页附件、新标签页附件和浏览器直接返回的 PDF 响应。只捕获当前详情页及其子标签页，避免将其他浏览器标签页的文件混入此次获取。CAJ 下载按钮、CAJ URL 和 CAJ 文件名均不作为 PDF 晋升。
 
-针对实地观察到的 PDF 控件地址 `https://bar.cnki.net/bar/download/order`，优先通过原 `BrowserContext.request` 获取该控件原有 URL，复用机构会话并保留重定向安全检查。成功路线为 `cnki_pdf_control_request`，不再触发第二次原生下载；登录/验证码仍显示在浏览器中交给用户，权限不足、CAJ、超限都不通过重新点击规避。仅当返回无认证信号的 JavaScript 壳页、尚未取得 PDF 时，才回到原生控件流程。其他 PDF 控件继续使用原生下载/响应捕获。
+显式选择 `--cnki-context-request` 时，可通过 `BrowserContext.request` 获取已观察到的 `https://bar.cnki.net/bar/download/order` 或同源 PDF 链接，复用机构会话并保留重定向检查。成功路线为 `cnki_pdf_control_request`，不再触发第二次原生下载。仅返回无认证信号的 JavaScript 壳页、尚未取得 PDF 时允许原生控件回退；登录/验证码、权限不足、CAJ、超限和传输错误均保留边界。
 
 临时附件标签页正常关闭不再被直接视为整个浏览器断开。若下载事件已发生但保存失败，并且当前检索/详情页仍然存活，则最多使用同一个 `BrowserContext.request` 对该 PDF 控件产生的 URL 进行一次恢复（人工认证后允许再试一次）；复用同一 Cookie 会话、验证重定向 URL、检查文件大小和 CAJ 标记，并继续执行原有身份门槛。HTML 登录/验证码会显示在浏览器中交给用户；整个上下文已关闭时不会伪造成功或无限重试。恢复路线记录为 `cnki_pdf_context_request_recovery`。
 

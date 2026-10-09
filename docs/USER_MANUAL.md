@@ -132,7 +132,7 @@ BrowserAccessConfig(
 
 也可通过 `python scripts/download_cnki.py --doi "10.16560/j.cnki.gzhx.20230412"` 直接运行 CNKI，或用 `--title "论文标题" --author "作者"` 按标题获取。标题模式会从详情页或 PDF 首页解析真实 DOI；缺少唯一 DOI 时不生成假标识符。默认在可见浏览器中等待人工认证完成，再自动继续。API、批量参数、错误状态和离线验证说明见 [CNKI 自动化获取](CNKI_AUTOMATION.md)。
 
-CNKI 从页面 PDF 控件取得真实地址；对于已验证的 order 地址默认优先同一机构浏览器会话请求，避免本机原生下载崩溃，其他控件保留原生路径。`--no-cnki-context-request` 可显式测试原生策略。机构 IP 自动登录过渡页不会仅因“自动登录”标题要求个人登录。直接 CNKI CLI 可重复 `--doi` 批量获取，整批共用一个会话；在整批结果返回后默认保持窗口，关闭窗口或 Ctrl+C 后退出，期间不会重新下载；用 `--no-keep-browser-open` 恢复自动清理。非交互模式和临时 Python API 仍正常清理资源。
+CNKI 默认在修复版浏览器中原生点击真实 PDF 控件，捕获附件或 PDF 响应，保留页面脚本、网络栈与机构状态。`--cnki-context-request` 可显式选择同 Cookie 的 HTTP 请求；它不等同于浏览器原生网络栈，也不用于绕过认证。机构 IP 自动登录过渡页不会仅因标题而要求个人登录。直接 CNKI CLI 可重复 `--doi` 批量获取，共用一个会话；整批结果返回后交互模式默认保持窗口，关闭窗口或 Ctrl+C 后退出，其间不会重新下载。`--no-keep-browser-open` 恢复自动清理。非交互模式和临时 Python API 正常清理自己持有的资源。
 
 ## 5. 断点续跑与文件核验
 

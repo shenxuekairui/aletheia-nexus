@@ -25,6 +25,27 @@ def test_conflicting_browser_network_modes_rejected():
         )
 
 
+def test_unattended_gate_does_not_claim_to_be_waiting(monkeypatch, caplog):
+    from types import SimpleNamespace
+
+    from aletheia_nexus.acquire.access import cnki_runtime
+    from aletheia_nexus.acquire.access.models import ChallengeKind, ChallengeReport
+
+    monkeypatch.setattr(
+        cnki_runtime,
+        "challenge_for_page",
+        lambda p: ChallengeReport(kind=ChallengeKind.AUTHENTICATION),
+    )
+    page = SimpleNamespace(
+        is_closed=lambda: False, opener=lambda: None, url="https://kns.cnki.net/login"
+    )
+    gate = cnki_runtime.CNKIGate(BrowserAccessConfig(interactive=False))
+    with pytest.raises(cnki_runtime.CNKIInteractionRequired):
+        gate.check(page)
+    assert "skipped in non-interactive mode" in caplog.text
+    assert "will resume" not in caplog.text
+
+
 @pytest.mark.parametrize(
     "url,excluded",
     [

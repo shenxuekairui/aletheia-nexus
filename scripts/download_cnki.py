@@ -44,8 +44,8 @@ def main() -> int:
     parser.add_argument(
         "--cnki-context-request",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use the observed PDF order URL with the browser cookie jar (default).",
+        default=False,
+        help="Opt into cookie-jar HTTP delivery instead of native browser delivery.",
     )
     parser.add_argument(
         "--keep-browser-open",

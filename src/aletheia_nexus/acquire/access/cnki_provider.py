@@ -1066,9 +1066,18 @@ class CNKIProvider(BaseBrowserProvider):
                         controls[0].fill(submitted_query)
                         controls[1].click()
 
-                state = gate.wait(
-                    page, result_state, stage=stage, on_resume=resume_search
-                )
+                try:
+                    state = gate.wait(
+                        page, result_state, stage=stage, on_resume=resume_search
+                    )
+                except CNKIStageTimeout:
+                    # Retry a stalled read-only search once, never a download
+                    # or a search which already entered a human security gate.
+                    if search_retries or gate.history or gate.download_started:
+                        raise
+                    evidence.append("CNKI retried stalled search results once")
+                    resume_search()
+                    state = gate.wait(page, result_state, stage=stage)
                 results = (
                     ()
                     if state == "empty"
@@ -1370,14 +1379,17 @@ class CNKIProvider(BaseBrowserProvider):
                     except CNKIInteractionRequired as exc:
                         preserve_page = exc.page
                         raise
-                    except CNKIStageTimeout:
+                    except CNKIStageTimeout as exc:
                         failures.append(BrowserAttemptStatus.RETRIEVAL_FAILED)
-                        evidence.append(f"CNKI timed out at {stage}; trying next match")
+                        evidence.append(f"CNKI timed out at {exc}")
+                        if gate.download_started:
+                            return attempt(BrowserAttemptStatus.RETRIEVAL_FAILED)
                     except CNKIFileError as exc:
                         failures.append(BrowserAttemptStatus.RETRIEVAL_FAILED)
                         evidence.append(str(exc))
                         if page.is_closed() and detail_page.is_closed():
                             evidence.append("CNKI browser target closed")
+                        if gate.download_started:
                             return attempt(BrowserAttemptStatus.RETRIEVAL_FAILED)
                     except Exception as exc:
                         if isinstance(exc, CNKITargetClosed) or type(exc).__name__ == (
@@ -1388,6 +1400,8 @@ class CNKIProvider(BaseBrowserProvider):
                         evidence.append(
                             f"CNKI candidate failed at {stage}: {type(exc).__name__}"
                         )
+                        if gate.download_started:
+                            return attempt(BrowserAttemptStatus.RETRIEVAL_FAILED)
                     finally:
                         if (
                             detail_page is not None

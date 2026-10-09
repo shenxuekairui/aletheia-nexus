@@ -103,7 +103,7 @@ def test_cli_owns_session_and_preserves_interactive_window(
     def acquire(**kwargs):
         assert "config" not in kwargs
         config = kwargs["browser_session"].config
-        assert config.cnki_context_request and not config.direct_connection
+        assert not config.cnki_context_request and not config.direct_connection
         events.append("acquired")
         return BrowserAccessAttempt(
             source_candidate=_source_candidate("10.1000/target"),

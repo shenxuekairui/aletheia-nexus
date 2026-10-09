@@ -363,6 +363,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cnki-all-titles", action="store_true")
     parser.add_argument("--cnki-max-results", type=int, default=20)
     parser.add_argument("--no-cnki-keep-unverified", action="store_true")
+    parser.add_argument(
+        "--cnki-context-request",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Opt into cookie-jar HTTP delivery; CNKI uses native browser delivery by default.",
+    )
     parser.add_argument("--executable-path", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("downloads"))
     parser.add_argument(
@@ -587,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
         cnki_enabled=not args.no_cnki,
         cnki_search_all_titles=args.cnki_all_titles,
         cnki_max_results=args.cnki_max_results,
+        cnki_context_request=args.cnki_context_request,
         cnki_keep_unverified=not args.no_cnki_keep_unverified,
     )
     if (

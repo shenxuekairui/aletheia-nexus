@@ -901,12 +901,18 @@ def _citation_labels(value: str) -> list[str]:
     labels: list[str] = []
     for citation in _CITATION.findall(value):
         for part in re.split(r"\s*,\s*", citation):
-            if "-" in part:
-                start, end = (int(item.strip()) for item in part.split("-", 1))
+            # Extracted text can merge citations into malformed chains such
+            # as [10-12-11]. Retain that text, but do not invent reference links
+            # or let one malformed range abort an otherwise readable article.
+            match = re.fullmatch(r"\s*(\d{1,9})(?:\s*-\s*(\d{1,9}))?\s*", part)
+            if match is None:
+                continue
+            if match[2] is not None:
+                start, end = int(match[1]), int(match[2])
                 if 0 <= end - start <= 25:
                     labels.extend(str(item) for item in range(start, end + 1))
             else:
-                labels.append(part.strip())
+                labels.append(match[1])
     return labels
 
 

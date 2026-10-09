@@ -1195,16 +1195,17 @@ def test_observed_direct_pdf_url_never_invents_or_crosses_origins():
     )
 
 
-def test_cnki_search_control_cold_start_retries_once(monkeypatch, tmp_path):
+@pytest.mark.parametrize("stage", ["search controls", "search results"])
+def test_cnki_search_control_cold_start_retries_once(monkeypatch, tmp_path, stage):
     original = CNKIGate.wait
     waits = 0
 
     def wait(gate, page, predicate, **kwargs):
         nonlocal waits
-        if kwargs.get("stage") == "search controls":
+        if kwargs.get("stage") == stage:
             waits += 1
             if waits == 1:
-                raise cnki_provider.CNKIStageTimeout("search controls")
+                raise cnki_provider.CNKIStageTimeout(stage)
         return original(gate, page, predicate, **kwargs)
 
     monkeypatch.setattr(CNKIGate, "wait", wait)
@@ -1214,7 +1215,11 @@ def test_cnki_search_control_cold_start_retries_once(monkeypatch, tmp_path):
     attempt = _fetch(_SearchPage("中文论文标题"), detail, tmp_path, context=context)
     assert attempt.status == BrowserAttemptStatus.VERIFIED
     assert waits == 2
-    assert "CNKI retried initial search-page hydration once" in attempt.evidence
+    assert (
+        "CNKI retried initial search-page hydration once"
+        if stage == "search controls"
+        else "CNKI retried stalled search results once"
+    ) in attempt.evidence
 
 
 def test_cnki_search_control_retry_is_bounded(monkeypatch, tmp_path):

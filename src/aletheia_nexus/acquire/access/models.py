@@ -146,7 +146,9 @@ class BrowserAccessConfig:
     cnki_enabled: bool = True
     cnki_search_all_titles: bool = False
     cnki_max_results: int = 20
-    cnki_context_request: bool = True
+    # Native delivery retains page JS, TLS and institutional browser state.
+    # Direct cookie-jar requests are an explicit alternative, not a login bypass.
+    cnki_context_request: bool = False
     # Keep valid but unverified CNKI PDFs isolated for local review, not ingestion.
     cnki_keep_unverified: bool = True
 

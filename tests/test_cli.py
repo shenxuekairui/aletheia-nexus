@@ -128,7 +128,16 @@ def test_installed_browser_provisioner_dispatch_without_source_checkout(monkeypa
     assert calls == [True]
 
 
-@pytest.mark.parametrize("flags", [[], ["--cnki"], ["--no-cnki"]])
+@pytest.mark.parametrize(
+    "flags",
+    [
+        [],
+        ["--cnki"],
+        ["--no-cnki"],
+        ["--no-cnki-context-request"],
+        ["--cnki-context-request"],
+    ],
+)
 def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
     monkeypatch, tmp_path, flags
 ):
@@ -145,6 +154,7 @@ def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
         assert config.interactive is False and config.wait_for_interaction is False
         assert config.interaction_callback is None
         assert config.cnki_enabled == ("--no-cnki" not in flags)
+        assert config.cnki_context_request == ("--cnki-context-request" in flags)
         assert kwargs["stop_on_interaction"] is False
         return BatchAcquisitionResult(
             items=(
