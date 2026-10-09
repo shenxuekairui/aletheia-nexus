@@ -53,7 +53,11 @@ def redact_url_for_record(url: str | None) -> str | None:
         (
             parts.scheme,
             netloc,
-            parts.path,
+            re.sub(
+                r"(?i);(?:jsessionid|phpsessid|sessionid)=[^;/]*",
+                ";sessionid=[redacted]",
+                parts.path,
+            ),
             query,
             "",
         )

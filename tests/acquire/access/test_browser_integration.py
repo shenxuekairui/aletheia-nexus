@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 
@@ -12,6 +13,13 @@ from aletheia_nexus.acquire.access import (
     browser,
     browser_route,
 )
+from aletheia_nexus.acquire.access.browser_engine import viewer
+from aletheia_nexus.acquire.access.models import (
+    BrowserAttemptStatus,
+    ChallengeKind,
+    ChallengeReport,
+)
+from aletheia_nexus.acquire.access.publisher_adapters import adapter_for_url
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
     FullTextCandidate,
@@ -848,3 +856,229 @@ def test_real_browser_profile_persists_session_across_restarts(
     assert _Handler.persistent_cookie_seen is True
     assert result.verified_result is not None
     assert result.verified_result.status == AcquisitionStatus.VERIFIED
+
+
+@pytest.mark.parametrize(
+    "institution", ["Example University", "Another Research Library"]
+)
+def test_wiley_remembered_entry_activates_and_reuses_session(
+    control_browser, tmp_path, institution
+):
+    context = control_browser.new_context()
+    page = context.new_page()
+    base = "https://onlinelibrary.wiley.com"
+    calls = []
+    title = "Remembered Institution Article"
+    body = _pdf_bytes(title)
+
+    def serve(route):
+        url = route.request.url
+        calls.append(url)
+        if "/pdfdirect/" in url:
+            route.fulfill(content_type="application/pdf", body=body)
+        else:
+            doi = url.split("/doi/epdf/")[-1]
+            route.fulfill(
+                content_type="text/html",
+                body=f"""<title>{title}</title>
+            <meta name="citation_doi" content="{doi}">
+            <meta name="citation_title" content="{title}">
+            <script>function activate() {{localStorage.setItem('fixture_access','yes');
+              document.body.innerHTML='<iframe src="/doi/pdfdirect/{doi}"></iframe>';}}
+            </script><body>Institutional Login. You do not have access to this PDF.
+            <span onclick="localStorage.setItem('fixture_clicks', Number(localStorage.getItem('fixture_clicks') || 0)+1); activate()">Access through {institution}</span>
+            <script>if(localStorage.getItem('fixture_access')) activate();</script></body>""",
+            )
+
+    context.route("**/*", serve)
+    try:
+        for suffix in ("first", "second"):
+            doi = f"10.1002/{suffix}"
+            outcome = browser_route.attempt_browser_route(
+                context,
+                page,
+                source=FullTextCandidate(
+                    doi=doi,
+                    url=f"{base}/doi/epdf/{doi}",
+                    provenance=(),
+                    url_type=CandidateUrlType.PDF,
+                ),
+                output_dir=tmp_path,
+                expected_title=title,
+                config=BrowserAccessConfig(
+                    interactive=False, auto_challenge_grace=0, request_timeout=2
+                ),
+                session_blocked_urls=[],
+                session_pdf_responses=[],
+                session_downloads=[],
+            )
+            assert outcome.status == BrowserAttemptStatus.VERIFIED
+            assert any(
+                f.method
+                in {
+                    "embedded_browser_fetch",
+                    "browser_response",
+                    "browser_download",
+                    "cdp_browser_download",
+                }
+                and f.result is not None
+                and f.result.status == AcquisitionStatus.VERIFIED
+                for f in outcome.file_attempts
+            )
+        assert not any("/doi/pdf/" in url for url in calls)
+        assert page.evaluate("localStorage.getItem('fixture_clicks')") == "1"
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("institution", ["Example University", "Another Academy"])
+@pytest.mark.parametrize(
+    "link_doi,expected",
+    [
+        ("10.1080/test", ChallengeKind.ENTITLEMENT),
+        ("10.1080/other", ChallengeKind.NONE),
+    ],
+)
+def test_tf_target_denial_does_not_reselect_institution(
+    control_browser, institution, link_doi, expected
+):
+    page = control_browser.new_page()
+    page.route(
+        "**/*",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body=f"""
+    <title>Target Article</title><meta name="citation_doi" content="10.1080/test">
+    <body>Access provided by {institution}. Purchase options. Add to cart.
+    <a href="/doi/full/{link_doi}?needAccess=true">Full Article</a>
+    <button onclick="window.clicked=true">Access through your institution</button></body>""",
+        ),
+    )
+    try:
+        page.goto("https://www.tandfonline.com/doi/abs/10.1080/test")
+        report = browser_route._report_for_page(page)
+        assert report.kind == expected
+        if expected == ChallengeKind.ENTITLEMENT:
+            clicked, _, _, final = browser_route._run_institution_handoff(
+                page.context, page, config=BrowserAccessConfig()
+            )
+            assert clicked is False and final.kind == expected
+            assert page.evaluate("window.clicked || false") is False
+        captcha = ChallengeReport(kind=ChallengeKind.CAPTCHA)
+        assert adapter_for_url(page.url).refine_page_challenge(page, captcha) == captcha
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("mode", ["headers", "body", "oversize", "success"])
+def test_pdf_viewer_fetch_has_real_time_and_size_limits(control_browser, mode):
+    page = control_browser.new_page()
+    page.route(
+        "**/*",
+        lambda route: route.fulfill(
+            content_type="text/html", body="<title>Viewer</title>"
+        ),
+    )
+    try:
+        page.goto("https://publisher.example/doi/pdf/10.1000/test")
+        page.evaluate(
+            """mode => {
+            window.fetch = async () => {
+                if(mode === 'headers') return new Promise(() => {});
+                const stream = new ReadableStream({start(controller) {
+                    if(mode === 'body') return;
+                    controller.enqueue(new TextEncoder().encode(
+                        mode === 'oversize' ? '%PDF-' + 'x'.repeat(1000) : '%PDF-test'));
+                    controller.close();
+                }});
+                return new Response(stream, {status:200});
+            };
+        }""",
+            mode,
+        )
+        started = time.monotonic()
+        result = viewer.trigger_pdf_viewer_same_origin_fetch(
+            page, max_bytes=100, validate_url=lambda url: url, timeout=0.15
+        )
+        assert result is (mode == "success")
+        assert time.monotonic() - started < 2
+    finally:
+        page.close()
+
+
+def test_real_session_recovers_retained_page_after_user_completion(
+    control_browser, tmp_path, monkeypatch, local_article_server
+):
+    context = control_browser.new_context()
+    title = "Authenticated Browser Integration Article"
+
+    def challenge_route(route):
+        if "an_session=ok" in route.request.headers.get("cookie", ""):
+            route.fulfill(status=302, headers={"Location": "/article"})
+            return
+        route.fulfill(
+            content_type="text/html",
+            body="""
+        <title>Verify you are human</title><body>Verify you are human
+        <button id="complete" onclick="location.href='/article'">
+        Complete fixture verification</button></body>""",
+        )
+
+    context.route("**/fixture-challenge", challenge_route)
+    monkeypatch.setattr(browser, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(
+        browser_route, "_install_browser_request_guard", lambda page: []
+    )
+    session = BrowserSession(
+        BrowserAccessConfig(
+            interactive=True,
+            interaction_timeout=0,
+            auto_challenge_grace=0,
+            request_timeout=2,
+        )
+    )
+    session._context = context
+    browser._install_context_event_capture(
+        context,
+        pdf_responses=session._pdf_responses,
+        downloads=session._downloads,
+        snapshot_pdf_responses=True,
+        max_bytes=100000,
+    )
+    source = FullTextCandidate(
+        doi="10.1000/browser-integration",
+        url=local_article_server + "/fixture-challenge",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    try:
+        first = session.acquire(
+            doi=source.doi, routes=[source], output_dir=tmp_path, expected_title=title
+        )
+        assert first.attempts[-1].status == BrowserAttemptStatus.INTERACTION_REQUIRED
+        page = session._pending_pages[source.doi]
+        assert not page.is_closed()
+        page.locator("#complete").click()
+        page.wait_for_url("**/article")
+        page.evaluate("""() => {const a=document.createElement('a');
+            a.href='/article.pdf'; a.textContent='Download PDF'; document.body.append(a);}""")
+        assert session.interaction_ready(source.doi)
+        recovered = session.acquire(
+            doi=source.doi, routes=[source], output_dir=tmp_path, expected_title=title
+        )
+        assert recovered.verified_result is not None, [
+            (
+                a.status,
+                a.evidence,
+                [
+                    (f.method, f.error, f.result.status if f.result else None)
+                    for f in a.file_attempts
+                ],
+            )
+            for a in recovered.attempts
+        ]
+        assert recovered.verified_result.status == AcquisitionStatus.VERIFIED
+        assert not page.is_closed()
+    finally:
+        session.close()

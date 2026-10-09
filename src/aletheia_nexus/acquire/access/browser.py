@@ -6,13 +6,19 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from aletheia_nexus.acquire.access.browser_route import attempt_browser_route
+from aletheia_nexus.acquire.access.browser_engine.viewer import is_pdf_document_url
+from aletheia_nexus.acquire.access.browser_route import (
+    _report_for_page,
+    attempt_browser_route,
+)
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
     BrowserAttemptStatus,
     BrowserRecoveryResult,
+    ChallengeKind,
 )
+from aletheia_nexus.acquire.access.publisher_adapters import adapter_for_url
 from aletheia_nexus.acquire.access.security import (
     redact_url_for_record,
     validate_browser_network_url,
@@ -181,7 +187,7 @@ def _install_context_event_capture(
     if not hasattr(context, "on"):
         return
 
-    def on_response(response) -> None:
+    def on_response(response, *, finished: bool = False) -> None:
         try:
             headers = dict(response.headers)
             content_type = (headers.get("content-type") or "").lower()
@@ -208,6 +214,15 @@ def _install_context_event_capture(
                 except ValueError:
                     pass
 
+            # A response event fires when headers arrive. Reading its body here
+            # can block the event pump on an unfinished streaming response.
+            request = getattr(response, "request", None)
+            if (
+                not finished
+                and request is not None
+                and request.timing.get("responseEnd", -1) < 0
+            ):
+                return
             body = response.body()
             if max_bytes is not None and len(body) > max_bytes:
                 return
@@ -230,6 +245,17 @@ def _install_context_event_capture(
             return
 
     context.on("response", on_response)
+    if snapshot_pdf_responses:
+
+        def on_finished(request) -> None:
+            try:
+                response = request.response()
+                if response is not None:
+                    on_response(response, finished=True)
+            except Exception:
+                pass
+
+        context.on("requestfinished", on_finished)
     context.on("page", attach_page)
     for page in getattr(context, "pages", ()):
         attach_page(page)
@@ -242,10 +268,7 @@ def _normalized_page_title(value: str | None) -> str:
 
 
 def _attached_page_is_pdf(url: str) -> bool:
-    try:
-        return urlsplit(url).path.lower().endswith(".pdf")
-    except ValueError:
-        return False
+    return is_pdf_document_url(url)
 
 
 def _attached_page_has_expired_signature(url: str) -> bool:
@@ -426,6 +449,14 @@ def _normalize_routes(
 
         try:
             safe_url = validate_browser_network_url(route.url)
+            article_url = adapter_for_url(safe_url).article_route(urlsplit(safe_url))
+            if article_url is not None:
+                safe_url = validate_browser_network_url(article_url)
+                route = replace(
+                    route,
+                    source_name="Publisher official article route from observed PII",
+                    host_type=refine_host_type(safe_url, route.host_type),
+                )
         except (TypeError, ValueError) as exc:
             preflight_attempts.append(
                 BrowserAccessAttempt(
@@ -474,6 +505,22 @@ class BrowserSession:
         self._blocked_unsafe_urls: list[str] = []
         self._pdf_responses: list[object] = []
         self._downloads: list[object] = []
+        self._pending_pages: dict[str, object] = {}
+        self._pending_hosts: dict[str, str | None] = {}
+
+    def interaction_ready(self, doi: str) -> bool:
+        """True only when this session's retained challenge has visibly cleared."""
+        doi = normalize_doi(doi)
+        page = self._pending_pages.get(doi)
+        try:
+            return (
+                page is not None
+                and not page.is_closed()
+                and (_report_for_page(page).kind == ChallengeKind.NONE)
+                and urlsplit(page.url).hostname == self._pending_hosts.get(doi)
+            )
+        except Exception:
+            return False
 
     @property
     def active(self) -> bool:
@@ -595,6 +642,8 @@ class BrowserSession:
         self._blocked_unsafe_urls = []
         self._pdf_responses = []
         self._downloads = []
+        self._pending_pages = {}
+        self._pending_hosts = {}
 
         if context is not None and not attached_external:
             try:
@@ -638,8 +687,31 @@ class BrowserSession:
         context = self._ensure_started()
         verified: AcquisitionResult | None = None
 
-        attached_page = None
-        if self._attached_external:
+        def retain_interaction(attempt, original_page, source):
+            current_pages = getattr(context, "pages", ())
+            matching = [
+                p
+                for p in current_pages
+                if not p.is_closed() and getattr(p, "url", None) == attempt.final_url
+            ]
+            retained = matching[-1] if matching else original_page
+            # An HTTP-only endpoint challenge may leave the article tab clear.
+            # That is not an observed human handoff that subsequently cleared.
+            if _report_for_page(retained).kind == ChallengeKind.NONE:
+                return
+            self._pending_pages[normalized_doi] = retained
+            original_host = urlsplit(source.url).hostname
+            current_url = str(getattr(original_page, "url", "") or "")
+            self._pending_hosts[normalized_doi] = (
+                urlsplit(current_url).hostname
+                if adapter_for_url(current_url).name != "generic"
+                else original_host
+            )
+
+        attached_page = self._pending_pages.pop(normalized_doi, None)
+        if attached_page is not None and attached_page.is_closed():
+            attached_page = None
+        if self._attached_external and attached_page is None:
             attached_page = _select_attached_page(
                 context,
                 preferred_url=normalized_routes[0].url,
@@ -650,8 +722,10 @@ class BrowserSession:
                 minimum_score=(0 if self.config.cdp_resume_existing_page else 300),
             )
 
-        if self._attached_external and (
-            self.config.cdp_resume_existing_page or attached_page is not None
+        if (
+            attached_page is not None
+            or self._attached_external
+            and (self.config.cdp_resume_existing_page or attached_page is not None)
         ):
             page = attached_page
             if page is None:
@@ -715,13 +789,24 @@ class BrowserSession:
 
             self._pdf_responses.clear()
             self._downloads.clear()
-            return BrowserRecoveryResult(
-                doi=normalized_doi,
-                attempts=tuple(attempts),
-                verified_result=verified,
-                profile_dir=self.profile_dir,
-                elapsed_seconds=time.perf_counter() - started_at,
-            )
+            if attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED:
+                retain_interaction(attempt, page, normalized_routes[0])
+            if verified is not None or attempt.status in {
+                BrowserAttemptStatus.INTERACTION_REQUIRED,
+                BrowserAttemptStatus.ENTITLEMENT_REQUIRED,
+                BrowserAttemptStatus.ACCESS_DENIED,
+                BrowserAttemptStatus.UNSAFE_URL,
+                BrowserAttemptStatus.PAGE_MISMATCH,
+            }:
+                return BrowserRecoveryResult(
+                    doi=normalized_doi,
+                    attempts=tuple(attempts),
+                    verified_result=verified,
+                    profile_dir=self.profile_dir,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+            # Recover a stale viewer/capture failure through the supplied
+            # official routes in new owned tabs, without closing the user's tab.
 
         for source in normalized_routes:
             # Context-wide handlers append into these reusable lists. Clear them
@@ -744,13 +829,15 @@ class BrowserSession:
                     session_blocked_urls=self._blocked_unsafe_urls,
                     session_pdf_responses=self._pdf_responses,
                     session_downloads=self._downloads,
+                    _navigate_source=True,
                 )
             finally:
                 preserve_interaction_page = (
-                    self._attached_external
-                    and attempt is not None
+                    attempt is not None
                     and attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
                 )
+                if preserve_interaction_page:
+                    retain_interaction(attempt, page, source)
                 if not preserve_interaction_page and not page.is_closed():
                     page.close()
                 self._blocked_unsafe_urls.clear()

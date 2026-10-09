@@ -1184,10 +1184,11 @@ def test_pdf_viewer_shell_triggers_bounded_same_origin_fetch():
         def __init__(self):
             self.max_bytes = None
 
-        def evaluate(self, script, max_bytes):
-            assert "fetch(location.href" in script
-            assert "cache: 'no-store'" in script
-            self.max_bytes = max_bytes
+        def evaluate(self, script, args):
+            assert "AbortController" in script
+            assert "reader.read()" in script
+            assert args["cache"] == "no-store"
+            self.max_bytes = args["maxBytes"]
             return True
 
     page = ViewerPage()
@@ -1223,7 +1224,7 @@ def test_embedded_pdf_frame_triggers_bounded_same_origin_fetch():
 
         def evaluate(self, script, args):
             assert "fetch(url" in script
-            assert "cache: 'force-cache'" in script
+            assert args["cache"] == "force-cache"
             self.args = args
             return {
                 "url": "https://publisher.example/doi/pdfdirect/10.1000/target",
@@ -1240,10 +1241,10 @@ def test_embedded_pdf_frame_triggers_bounded_same_origin_fetch():
         "https://publisher.example/doi/pdfdirect/10.1000/target",
         b"%PDF-test",
     )
-    assert page.args == {
-        "url": "https://publisher.example/doi/pdfdirect/10.1000/target",
-        "maxBytes": 54_321,
-    }
+    assert page.args["url"] == "https://publisher.example/doi/pdfdirect/10.1000/target"
+    assert page.args["maxBytes"] == 54_321
+    assert 0 < page.args["timeoutMs"] <= 20_000
+    assert page.args["returnBody"] is True
 
 
 def test_pdfdirect_response_is_captured_with_generic_content_type():

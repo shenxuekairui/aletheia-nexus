@@ -259,6 +259,9 @@ def _resolve_page_challenge(
     if report.kind == ChallengeKind.NONE:
         return report, tuple(history), False
 
+    if report.kind in {ChallengeKind.ENTITLEMENT, ChallengeKind.ACCESS_DENIED}:
+        return report, tuple(history), False
+
     # Browser-native challenges frequently disappear after JavaScript/cookies run.
     report = _wait_until_challenge_changes(
         page,
@@ -613,6 +616,14 @@ def _browser_response_to_file_attempt(
             except ValueError:
                 pass
 
+        request = getattr(response, "request", None)
+        if request is not None and request.timing.get("responseEnd", -1) < 0:
+            return BrowserFileAttempt(
+                candidate=candidate,
+                source_page_url=source_page_url,
+                method="browser_response",
+                error="PDF response body is still loading; waiting for completion",
+            )
         body = response.body()
         if len(body) > config.max_bytes:
             return BrowserFileAttempt(
@@ -772,17 +783,25 @@ def _download_to_file_attempt(
         )
 
 
-def _trigger_pdf_viewer_same_origin_fetch(page, *, max_bytes: int) -> bool:
+def _trigger_pdf_viewer_same_origin_fetch(
+    page, *, max_bytes: int, timeout: float = 20.0
+) -> bool:
     return trigger_pdf_viewer_same_origin_fetch(
-        page, max_bytes=max_bytes, validate_url=validate_browser_network_url
+        page,
+        max_bytes=max_bytes,
+        validate_url=validate_browser_network_url,
+        timeout=timeout,
     )
 
 
 def _trigger_embedded_pdf_frame_fetch(
-    page, *, max_bytes: int
+    page, *, max_bytes: int, timeout: float = 20.0
 ) -> tuple[str, bytes] | None:
     return trigger_embedded_pdf_frame_fetch(
-        page, max_bytes=max_bytes, validate_url=validate_browser_network_url
+        page,
+        max_bytes=max_bytes,
+        validate_url=validate_browser_network_url,
+        timeout=timeout,
     )
 
 
@@ -1214,6 +1233,10 @@ def _run_institution_handoff(
 ) -> tuple[bool, tuple[ChallengeReport, ...], bool, ChallengeReport]:
     """Use one explicit institution-access control, then observe legitimate auth."""
 
+    boundary = _report_for_page(page)
+    if boundary.kind in {ChallengeKind.ENTITLEMENT, ChallengeKind.ACCESS_DENIED}:
+        return False, (boundary,), False, boundary
+
     try:
         source_host = (urlsplit(page.url).hostname or "").lower()
     except Exception:
@@ -1447,6 +1470,7 @@ def _process_new_popup_pages(
             _trigger_pdf_viewer_same_origin_fetch(
                 popup,
                 max_bytes=config.max_bytes,
+                timeout=config.request_timeout,
             )
 
             try:
@@ -1531,6 +1555,7 @@ def attempt_browser_route(
     network_pdf_urls: list[str] = []
     network_pdf_responses: list[object] = []
     network_pdf_response_ids: set[int] = set()
+    seen_browser_response_ids: set[int] = set()
     downloads: list[object] = []
     processed_downloads: set[int] = set()
     browser_response_attempt_count = 0
@@ -1640,6 +1665,43 @@ def attempt_browser_route(
                 candidates_considered=len(file_attempts),
                 interaction_used=interaction_used,
                 evidence=access_final.evidence,
+                elapsed_seconds=time.perf_counter() - started_at,
+            )
+
+        # Activation may have delivered the PDF while this route was observing
+        # SSO. Consume those bytes before starting a recursive recovery pass,
+        # whose local response cursor would otherwise miss the completed event.
+        delivered = process_pending_downloads()
+        if delivered is None:
+            sync_session_events()
+            for response in pending_browser_responses():
+                captured = _browser_response_to_file_attempt(
+                    response,
+                    parent=source,
+                    source_page_url=page.url,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    config=config,
+                )
+                file_attempts.append(captured)
+                if (
+                    captured.result is not None
+                    and captured.result.status == AcquisitionStatus.VERIFIED
+                ):
+                    delivered = captured
+                    break
+        if delivered is not None:
+            return BrowserAccessAttempt(
+                source_candidate=source,
+                final_url=page.url,
+                status=BrowserAttemptStatus.VERIFIED,
+                challenge_history=tuple(challenge_history),
+                file_attempts=tuple(file_attempts),
+                candidates_considered=len(file_attempts),
+                interaction_used=interaction_used,
+                evidence=(
+                    "Institutional activation delivered verified browser PDF bytes",
+                ),
                 elapsed_seconds=time.perf_counter() - started_at,
             )
 
@@ -1851,6 +1913,13 @@ def attempt_browser_route(
 
     try:
         validate_browser_network_url(page.url)
+        article_route = adapter_for_url(page.url).article_route(urlsplit(page.url))
+        if article_route is not None:
+            navigation_response = page.goto(
+                validate_browser_network_url(article_route),
+                wait_until="domcontentloaded",
+                timeout=config.navigation_timeout * 1000,
+            )
     except (TypeError, ValueError) as exc:
         safe_final = redact_url_for_record(getattr(page, "url", None))
         return BrowserAccessAttempt(
@@ -1929,47 +1998,6 @@ def attempt_browser_route(
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
-    # A DOI resolver can be blocked before v0.5 records its final publisher
-    # URL. Once the real browser reaches that page, promote the documented
-    # publisher PDF route and navigate it in the same authenticated context.
-    runtime_pdf = _runtime_publisher_pdf_candidate(source, page.url)
-    if (
-        _allow_runtime_pdf_handoff
-        and runtime_pdf is not None
-        and runtime_pdf.url.split("#", 1)[0] != source.url.split("#", 1)[0]
-    ):
-        runtime_attempt = attempt_browser_route(
-            context,
-            page,
-            source=runtime_pdf,
-            output_dir=output_dir,
-            expected_title=expected_title,
-            config=config,
-            session_blocked_urls=session_blocked_urls,
-            session_pdf_responses=session_pdf_responses,
-            session_downloads=session_downloads,
-            _allow_access_handoff=_allow_access_handoff,
-            _allow_runtime_pdf_handoff=False,
-            _navigate_source=True,
-        )
-        merged_history = list(challenge_history)
-        for report in runtime_attempt.challenge_history:
-            _append_report(merged_history, report)
-        merged_file_attempts = [*file_attempts, *runtime_attempt.file_attempts]
-        return replace(
-            runtime_attempt,
-            source_candidate=source,
-            challenge_history=tuple(merged_history),
-            file_attempts=tuple(merged_file_attempts),
-            candidates_considered=len(merged_file_attempts),
-            interaction_used=interaction_used or runtime_attempt.interaction_used,
-            evidence=(
-                "Promoted publisher PDF route after live DOI resolution",
-                *runtime_attempt.evidence,
-            ),
-            elapsed_seconds=time.perf_counter() - started_at,
-        )
-
     # Some publisher viewers (notably Wiley) embed an entitled PDF in a nested
     # same-origin frame while rejecting BrowserContext.request with HTTP 403.
     # Trigger one bounded same-origin cache fetch so the browser-session bytes
@@ -1977,6 +2005,7 @@ def attempt_browser_route(
     embedded_pdf = _trigger_embedded_pdf_frame_fetch(
         page,
         max_bytes=config.max_bytes,
+        timeout=config.request_timeout,
     )
     if embedded_pdf is None and (
         source.url_type == CandidateUrlType.PDF
@@ -1992,6 +2021,7 @@ def attempt_browser_route(
         embedded_pdf = _trigger_embedded_pdf_frame_fetch(
             page,
             max_bytes=config.max_bytes,
+            timeout=config.request_timeout,
         )
     if embedded_pdf is not None:
         embedded_resource: RetrievedResource | None = None
@@ -2059,6 +2089,12 @@ def attempt_browser_route(
             pass
         sync_session_events()
 
+    if embedded_pdf is None:
+        _trigger_pdf_viewer_same_origin_fetch(
+            page, max_bytes=config.max_bytes, timeout=config.request_timeout
+        )
+        sync_session_events()
+
     # Chromium's built-in PDF webview keeps its Save control outside the normal
     # page/frame DOM. In an attached real browser, invoke that native control
     # through its isolated DevTools target and validate the resulting file.
@@ -2108,7 +2144,6 @@ def attempt_browser_route(
             except OSError:
                 pass
 
-    seen_browser_response_ids: set[int] = set()
     for response in pending_browser_responses():
         attempt = _browser_response_to_file_attempt(
             response,
@@ -2181,7 +2216,10 @@ def attempt_browser_route(
 
     candidates = list(_dedupe_candidates(candidates, limit=config.max_pdf_candidates))
 
-    if not _browser_native_only:
+    if (
+        not _browser_native_only
+        and not adapter_for_url(str(page.url)).prefer_visible_pdf_controls()
+    ):
         retried_auth_urls: set[str] = set()
         for candidate in candidates:
             attempt, challenge = _request_pdf_candidate(
@@ -2374,6 +2412,7 @@ def attempt_browser_route(
         clicked_embedded_pdf = _trigger_embedded_pdf_frame_fetch(
             page,
             max_bytes=config.max_bytes,
+            timeout=config.request_timeout,
         )
         if clicked_embedded_pdf is None:
             try:
@@ -2383,6 +2422,7 @@ def attempt_browser_route(
             clicked_embedded_pdf = _trigger_embedded_pdf_frame_fetch(
                 page,
                 max_bytes=config.max_bytes,
+                timeout=config.request_timeout,
             )
         if clicked_embedded_pdf is not None:
             clicked_resource: RetrievedResource | None = None
@@ -2520,7 +2560,10 @@ def attempt_browser_route(
         finally:
             for popup in popup_pages:
                 try:
-                    if not popup.is_closed():
+                    if (
+                        not popup.is_closed()
+                        and _report_for_page(popup).kind == ChallengeKind.NONE
+                    ):
                         popup.close()
                 except Exception:
                     pass
@@ -2549,6 +2592,24 @@ def attempt_browser_route(
                 evidence=("New browser tab yielded a verified article PDF",),
                 elapsed_seconds=time.perf_counter() - started_at,
             )
+
+        for popup in popup_pages:
+            if popup.is_closed():
+                continue
+            popup_report = _report_for_page(popup)
+            if popup_report.kind != ChallengeKind.NONE:
+                _append_report(challenge_history, popup_report)
+                return BrowserAccessAttempt(
+                    source_candidate=source,
+                    final_url=popup.url,
+                    status=_status_from_challenge(popup_report),
+                    challenge_history=tuple(challenge_history),
+                    file_attempts=tuple(file_attempts),
+                    candidates_considered=len(file_attempts),
+                    interaction_used=interaction_used,
+                    evidence=popup_report.evidence,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
 
         final, observed, used = _resolve_page_challenge(page, config=config)
         for report in observed:
@@ -2602,7 +2663,7 @@ def attempt_browser_route(
                 except ValueError:
                     continue
             for candidate in _dedupe_candidates(
-                post_click,
+                [] if _browser_native_only else post_click,
                 limit=config.max_pdf_candidates,
             ):
                 # A Chromium PDF popup may emit a response/download event whose
@@ -2637,6 +2698,79 @@ def attempt_browser_route(
                         ),
                         elapsed_seconds=time.perf_counter() - started_at,
                     )
+
+                # The article page can be clear while its PDF endpoint still
+                # returns a WAF/login challenge. Preserve that actionable state
+                # instead of probing more URLs and reporting a generic failure.
+                if challenge is not None and challenge.kind in {
+                    ChallengeKind.BOT_CHALLENGE,
+                    ChallengeKind.CAPTCHA,
+                    ChallengeKind.AUTHENTICATION,
+                    ChallengeKind.SSO,
+                    ChallengeKind.MFA,
+                }:
+                    return BrowserAccessAttempt(
+                        source_candidate=source,
+                        final_url=page.url,
+                        status=_status_from_challenge(challenge),
+                        challenge_history=tuple(challenge_history),
+                        file_attempts=tuple(file_attempts),
+                        candidates_considered=len(file_attempts),
+                        interaction_used=interaction_used,
+                        evidence=(
+                            "Observed PDF endpoint still requires access interaction",
+                            *challenge.evidence,
+                        ),
+                        elapsed_seconds=time.perf_counter() - started_at,
+                    )
+
+    # Activate a remembered entry on a post-click viewer before leaving it.
+    if _ieee_selected_institution_available(page):
+        handoff_result = run_institution_handoff_and_retry()
+        if handoff_result is not None:
+            return handoff_result
+
+    # A DOI resolver can be blocked before v0.5 records its final publisher
+    # URL. Once the real browser reaches that page, promote the documented
+    # publisher PDF route and navigate it in the same authenticated context.
+    runtime_pdf = _runtime_publisher_pdf_candidate(source, page.url)
+    if (
+        _allow_runtime_pdf_handoff
+        and runtime_pdf is not None
+        and runtime_pdf.url.split("#", 1)[0] != source.url.split("#", 1)[0]
+    ):
+        runtime_attempt = attempt_browser_route(
+            context,
+            page,
+            source=runtime_pdf,
+            output_dir=output_dir,
+            expected_title=expected_title,
+            config=config,
+            session_blocked_urls=session_blocked_urls,
+            session_pdf_responses=session_pdf_responses,
+            session_downloads=session_downloads,
+            _allow_access_handoff=_allow_access_handoff,
+            _allow_runtime_pdf_handoff=False,
+            _navigate_source=True,
+            _browser_native_only=_browser_native_only,
+        )
+        merged_history = list(challenge_history)
+        for report in runtime_attempt.challenge_history:
+            _append_report(merged_history, report)
+        merged_file_attempts = [*file_attempts, *runtime_attempt.file_attempts]
+        return replace(
+            runtime_attempt,
+            source_candidate=source,
+            challenge_history=tuple(merged_history),
+            file_attempts=tuple(merged_file_attempts),
+            candidates_considered=len(merged_file_attempts),
+            interaction_used=interaction_used or runtime_attempt.interaction_used,
+            evidence=(
+                "Promoted publisher PDF route after live DOI resolution",
+                *runtime_attempt.evidence,
+            ),
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
 
     handoff_result = run_institution_handoff_and_retry()
     if handoff_result is not None:
