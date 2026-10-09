@@ -1,5 +1,7 @@
 # CNKI 验证与 AN 接入优化报告
 
+历史 v2 阶段记录：最新分流、交付默认值、集成与推送状态见 [最终集成验收](CNKI_FINAL_INTEGRATION_REPORT.md)。
+
 日期：2026-10-09。实现与设计见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md)。本报告区分代码验证、真实浏览器 fixture 与机构网络实测，不将三者混为同一成功率。
 
 ## 完成的修改

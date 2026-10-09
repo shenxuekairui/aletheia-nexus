@@ -2,7 +2,7 @@
 
 本文描述 `integration/cnki-acquisition-final` 集成分支，不代表同版本号的 PyPI 包已经包含这些新增功能。验证该版本请检出该分支后安装 `python -m pip install -e ".[dev,browser]"`；本次不发布 PyPI、不修改 `main`。
 
-接入与验证规则详见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md)。v3 保留 DOI 排版修复与冲突保护，新增无 DOI 书目验证、保守分流和批量书目请求。默认将可解析但未验证的 PDF 和溯源隔离保存到 `_unverified/`，不计为成功。可用 `--no-cnki-keep-unverified` 禁用。
+接入与验证规则详见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [最终集成验收](CNKI_FINAL_INTEGRATION_REPORT.md)；[v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md) 保留历史阶段证据。v3 保留 DOI 排版修复与冲突保护，新增无 DOI 书目验证、保守分流和批量书目请求。默认将可解析但未验证的 PDF 和溯源隔离保存到 `_unverified/`，不计为成功。可用 `--no-cnki-keep-unverified` 禁用。
 
 默认通过修复版浏览器原生点击 PDF 控件并捕获附件/响应，保留页面 JavaScript、TLS 和机构会话状态。`--cnki-context-request` 可显式选择复用 Cookie 的 HTTP 请求方式；`--no-cnki-context-request` 明确选择原生方式。两种方式都不猜测地址、不绕过认证。
 
