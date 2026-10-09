@@ -4,12 +4,16 @@ import json
 import pytest
 
 import aletheia_nexus.acquire.access.batch as batch_module
+from aletheia_nexus.acquire.access import PaperRequest
 from aletheia_nexus.acquire.access.batch import (
     BatchItemStatus,
     acquire_full_text_batch_maximized,
 )
 from aletheia_nexus.acquire.access.browser import BrowserSession
+from aletheia_nexus.acquire.access.cnki_provider import _source_candidate
 from aletheia_nexus.acquire.access.models import (
+    BrowserAccessAttempt,
+    BrowserAttemptStatus,
     MaximizedAcquisitionStatus,
 )
 
@@ -20,6 +24,100 @@ class _Result:
         self.status = status
         self.verified_path = verified_path
         self.verified_result = None
+        self.browser_attempts = ()
+
+
+def test_structured_batches_separate_same_title_authors_and_resume_by_request(
+    monkeypatch, tmp_path
+):
+    from dataclasses import replace
+
+    request = PaperRequest(
+        title="相同题名但不是相同论文", authors=("张三",), journal="测试学报", year=2024
+    )
+    other = replace(request, authors=("李四",))
+    pdf = tmp_path / "fixture.pdf"
+    pdf.write_bytes(b"verified fixture")
+    calls = []
+    monkeypatch.setattr(
+        batch_module,
+        "acquire_full_text_maximized",
+        lambda req, **kw: (
+            calls.append(req)
+            or _Result(req.doi, MaximizedAcquisitionStatus.VERIFIED, pdf)
+        ),
+    )
+    checkpoint = tmp_path / "checkpoint.json"
+    first = acquire_full_text_batch_maximized(
+        [request, request, other], output_dir=tmp_path, checkpoint_path=checkpoint
+    )
+    assert len(first.items) == 2 and len(calls) == 2
+    assert first.items[0].doi is None
+    assert set(json.loads(checkpoint.read_text())["records"]) == {
+        request.key,
+        other.key,
+    }
+    resumed = acquire_full_text_batch_maximized(
+        [request, other], output_dir=tmp_path, checkpoint_path=checkpoint
+    )
+    assert all(item.resumed for item in resumed.items) and len(calls) == 2
+    pdf.write_bytes(b"changed")
+    acquire_full_text_batch_maximized(
+        [request], output_dir=tmp_path, checkpoint_path=checkpoint
+    )
+    assert len(calls) == 3
+
+
+def test_ambiguity_and_unverified_are_item_outcomes_not_batch_crashes(
+    monkeypatch, tmp_path
+):
+    statuses = iter(
+        (
+            MaximizedAcquisitionStatus.AMBIGUOUS,
+            MaximizedAcquisitionStatus.RETRIEVED_UNVERIFIED,
+        )
+    )
+    monkeypatch.setattr(
+        batch_module,
+        "acquire_full_text_maximized",
+        lambda req, **kw: _Result(req.doi, next(statuses)),
+    )
+    result = acquire_full_text_batch_maximized(
+        [PaperRequest(title="第一个题名"), PaperRequest(title="第二个题名")],
+        output_dir=tmp_path,
+    )
+    assert [item.status for item in result.items] == [
+        BatchItemStatus.AMBIGUOUS,
+        BatchItemStatus.RETRIEVED_UNVERIFIED,
+    ]
+    assert not result.halted_for_interaction
+
+
+def test_batch_never_replays_an_error_after_download_started(monkeypatch, tmp_path):
+    calls = []
+
+    def acquire(doi, **kwargs):
+        calls.append(doi)
+        result = _Result(doi, MaximizedAcquisitionStatus.ERROR)
+        result.browser_attempts = (
+            BrowserAccessAttempt(
+                source_candidate=_source_candidate(doi),
+                final_url=None,
+                status=BrowserAttemptStatus.ERROR,
+                download_started=True,
+            ),
+        )
+        return result
+
+    monkeypatch.setattr(batch_module, "acquire_full_text_maximized", acquire)
+    result = acquire_full_text_batch_maximized(
+        ["10.1000/test"],
+        output_dir=tmp_path,
+        max_item_attempts=3,
+        retry_backoff=0,
+    )
+    assert calls == ["10.1000/test"]
+    assert result.items[0].attempts == 1
 
 
 def test_batch_reuses_one_session_and_preserves_order(monkeypatch, tmp_path):
@@ -77,7 +175,6 @@ def test_batch_stops_after_interaction_and_defers_remaining(monkeypatch, tmp_pat
     result = acquire_full_text_batch_maximized(
         ["10.1000/one", "10.1000/two"],
         output_dir=tmp_path,
-        stop_on_interaction=True,
     )
 
     assert calls == ["10.1000/one"]
@@ -88,7 +185,7 @@ def test_batch_stops_after_interaction_and_defers_remaining(monkeypatch, tmp_pat
     assert result.halted_for_interaction is True
 
 
-def test_batch_continues_after_item_level_interaction_by_default(
+def test_batch_continues_after_item_level_interaction_only_when_requested(
     monkeypatch,
     tmp_path,
 ):
@@ -108,6 +205,7 @@ def test_batch_continues_after_item_level_interaction_by_default(
     result = acquire_full_text_batch_maximized(
         ["10.1000/one", "10.1000/two"],
         output_dir=tmp_path,
+        stop_on_interaction=False,
     )
 
     assert calls == ["10.1000/one", "10.1000/two"]

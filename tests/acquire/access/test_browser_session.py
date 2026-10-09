@@ -105,6 +105,34 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert result.verified_result is None
     assert context.closed is True
     assert manager.playwright.chromium.kwargs["service_workers"] == "allow"
+    assert "args" not in manager.playwright.chromium.kwargs
+
+
+def test_headed_session_prefers_installed_channel_without_forcing_network(
+    monkeypatch, tmp_path
+):
+    manager = _Manager(_Context())
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(BrowserAccessConfig(profile_root=tmp_path)) as session:
+        session._ensure_started()
+    kwargs = manager.playwright.chromium.kwargs
+    assert kwargs["channel"] == "msedge"
+    assert kwargs["user_data_dir"] == tmp_path / "default"
+    assert "args" not in kwargs
+
+
+def test_explicit_channel_and_direct_connection_are_respected(monkeypatch, tmp_path):
+    manager = _Manager(_Context())
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(
+        BrowserAccessConfig(
+            profile_root=tmp_path, channel="chromium", direct_connection=True
+        )
+    ) as session:
+        session._ensure_started()
+    assert manager.playwright.chromium.kwargs["channel"] == "chromium"
     assert manager.playwright.chromium.kwargs["args"] == ["--no-proxy-server"]
 
 
@@ -119,6 +147,109 @@ def test_browser_session_can_opt_into_system_proxy(monkeypatch, tmp_path):
         session._ensure_started()
 
     assert manager.playwright.chromium.kwargs["args"] == []
+
+
+def test_headless_session_does_not_switch_test_engine(monkeypatch, tmp_path):
+    manager = _Manager(_Context())
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path, headless=True, interactive=False)
+    ) as session:
+        session._ensure_started()
+    assert "channel" not in manager.playwright.chromium.kwargs
+
+
+def test_fixed_portable_runtime_is_selected_without_install_or_profile_cleanup(
+    monkeypatch, tmp_path
+):
+    manager = _Manager(_Context())
+    runtime = tmp_path / "chrome.exe"
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: None)
+    monkeypatch.setattr(browser, "fixed_portable_browser", lambda: runtime)
+    config = BrowserAccessConfig(profile_root=tmp_path / "profiles")
+    history = browser.browser_profile_dir(config) / "Default/History"
+    history.parent.mkdir(parents=True)
+    history.write_bytes(b"preserve-download-history")
+    with browser.BrowserSession(config) as session:
+        session._ensure_started()
+    assert manager.playwright.chromium.kwargs["executable_path"] == str(runtime)
+    assert history.read_bytes() == b"preserve-download-history"
+
+
+def test_explicit_executable_overrides_auto_channel(monkeypatch, tmp_path):
+    manager = _Manager(_Context())
+    runtime = tmp_path / "chrome.exe"
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path, executable_path=runtime)
+    ) as session:
+        session._ensure_started()
+    assert manager.playwright.chromium.kwargs["executable_path"] == str(runtime)
+    assert "channel" not in manager.playwright.chromium.kwargs
+
+
+def test_affected_runtime_is_closed_before_any_acquisition(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import pytest
+
+    context = _Context()
+    context.browser = SimpleNamespace(version="154.0.4258.48")
+    manager = _Manager(context)
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    with browser.BrowserSession(BrowserAccessConfig(profile_root=tmp_path)) as session:
+        with pytest.raises(browser.BrowserCapabilityUnavailable, match="556160935"):
+            session._ensure_started()
+        assert not session.active
+    assert context.closed
+
+
+def test_affected_external_browser_is_not_closed(monkeypatch, tmp_path):
+    import pytest
+
+    context = _AttachedContext(_AttachedPage("https://publisher.example/article"))
+    manager = _AttachedManager(context)
+    manager.playwright.chromium.browser.version = "153.0.1"
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    with browser.BrowserSession(
+        BrowserAccessConfig(profile_root=tmp_path, cdp_endpoint="http://127.0.0.1:9222")
+    ) as session:
+        with pytest.raises(browser.BrowserCapabilityUnavailable, match="556160935"):
+            session._ensure_started()
+    assert not context.closed
+
+
+def test_keep_open_survives_a_page_closing_while_other_pages_remain(tmp_path):
+    class TargetClosedError(Exception):
+        pass
+
+    first, second = _Page(), _Page()
+    context = _AttachedContext(first, second)
+
+    def close_first(_):
+        first.close()
+        raise TargetClosedError()
+
+    first.wait_for_timeout = close_first
+    second.wait_for_timeout = lambda _: second.close()
+    session = browser.BrowserSession(BrowserAccessConfig(profile_root=tmp_path))
+    session._context = context
+    session.wait_until_closed()
+    assert first.closed and second.closed
+    assert not context.closed
+
+
+def test_keep_open_returns_on_context_close(tmp_path):
+    page = _Page()
+    context = _AttachedContext(page)
+    session = browser.BrowserSession(BrowserAccessConfig(profile_root=tmp_path))
+    session._context = context
+    page.wait_for_timeout = lambda _: session._on_context_closed()
+    session.wait_until_closed()
+    assert session._context_closed
 
 
 def test_browser_session_stops_after_interaction_required(monkeypatch, tmp_path):

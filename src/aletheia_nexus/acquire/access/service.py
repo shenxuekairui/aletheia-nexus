@@ -9,6 +9,8 @@ from aletheia_nexus.acquire.access.browser import (
     acquire_with_browser,
     acquire_with_browser_provider,
 )
+from aletheia_nexus.acquire.access.cnki_provider import CNKIProvider
+from aletheia_nexus.acquire.access.cnki_routing import cnki_route_reason
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
 from aletheia_nexus.acquire.access.manual import resolve_user_operated_access
 from aletheia_nexus.acquire.access.models import (
@@ -27,6 +29,7 @@ from aletheia_nexus.acquire.access.publisher_routes import (
 )
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
+    DiscoveryResult,
     FullTextCandidate,
     HostType,
 )
@@ -45,6 +48,7 @@ from aletheia_nexus.acquire.fulltext.orchestration.service import (
 )
 from aletheia_nexus.acquire.fulltext.resolution.models import ResolutionStatus
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.paper_request import PaperRequest
 
 
 def _url_key(url: str) -> str:
@@ -270,6 +274,17 @@ def _final_status_from_browser(
 ) -> tuple[MaximizedAcquisitionStatus, str]:
     statuses = {attempt.status for attempt in attempts}
 
+    if BrowserAttemptStatus.AMBIGUOUS in statuses:
+        return (
+            MaximizedAcquisitionStatus.AMBIGUOUS,
+            "Several candidates remain plausible; provide author/publication fields or a CNKI record ID.",
+        )
+    if BrowserAttemptStatus.RETRIEVED_UNVERIFIED in statuses:
+        return (
+            MaximizedAcquisitionStatus.RETRIEVED_UNVERIFIED,
+            "A PDF was retrieved but its requested identity was not verified; inspect the retained evidence.",
+        )
+
     if BrowserAttemptStatus.INTERACTION_REQUIRED in statuses:
         return (
             MaximizedAcquisitionStatus.INTERACTION_REQUIRED,
@@ -332,7 +347,7 @@ def _final_status_from_browser(
 
 
 def acquire_full_text_maximized(
-    doi: str,
+    doi: str | PaperRequest,
     *,
     output_dir: str | Path,
     browser_config: BrowserAccessConfig | None = None,
@@ -358,6 +373,7 @@ def acquire_full_text_maximized(
     keep_unverified: bool = False,
     skip_supplement_hints: bool = True,
     use_doi_resolver_fallback: bool = True,
+    source_preference: str = "auto",
 ) -> MaximizedAcquisitionResult:
     """Maximize legitimate full-text acquisition across all supported access layers.
 
@@ -384,7 +400,13 @@ def acquire_full_text_maximized(
     if browser_session is not None and browser_config is not None:
         raise ValueError("browser_config and browser_session are mutually exclusive")
 
-    normalized_doi = normalize_doi(doi)
+    if source_preference not in {"auto", "cnki", "exclude_cnki"}:
+        raise ValueError("source_preference must be auto, cnki or exclude_cnki")
+    request = doi if isinstance(doi, PaperRequest) else None
+    normalized_doi = (request.doi or "") if request else normalize_doi(doi)
+    if request and expected_title and request.title and expected_title != request.title:
+        raise ValueError("Conflicting expected_title and PaperRequest.title")
+    expected_title = expected_title or (request.title if request else None)
     started_at = time.perf_counter()
     config = (
         browser_session.config
@@ -396,13 +418,82 @@ def acquire_full_text_maximized(
     if local_pdf_path is not None:
         return replace(
             resolve_user_operated_access(
-                normalized_doi,
+                request or normalized_doi,
                 output_dir=output_dir,
                 expected_title=expected_title,
                 local_pdf_path=local_pdf_path,
                 max_bytes=config.max_bytes,
                 keep_unverified=keep_unverified,
             ),
+            elapsed_seconds=time.perf_counter() - started_at,
+        )
+    if not normalized_doi or source_preference == "cnki":
+        direct_request = request or PaperRequest(
+            doi=normalized_doi, title=expected_title
+        )
+        base = MultiRouteAcquisitionResult(
+            doi=normalized_doi,
+            status=FullTextAcquisitionStatus.NO_CANDIDATES,
+            discovery=DiscoveryResult(doi=normalized_doi, candidates=(), providers=()),
+            expected_title=expected_title,
+        )
+        provider = CNKIProvider(request=direct_request, authors=direct_request.authors)
+        applicable = source_preference == "cnki" or provider.is_applicable(
+            doi=normalized_doi,
+            metadata=None,
+            expected_title=expected_title,
+            config=config,
+        )
+        if (
+            source_preference == "exclude_cnki"
+            or not config.cnki_enabled
+            or not applicable
+        ):
+            return MaximizedAcquisitionResult(
+                doi=normalized_doi,
+                status=MaximizedAcquisitionStatus.EXHAUSTED,
+                base_result=base,
+                message='CNKI is disabled/excluded or lacks routing evidence; use source_preference="cnki" only for a known CNKI article with the provider enabled.',
+            )
+        try:
+            if browser_session:
+                direct_attempt = browser_session.acquire_provider(
+                    provider,
+                    doi=normalized_doi,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    metadata_mailto=metadata_mailto,
+                )
+            else:
+                direct_attempt = acquire_with_browser_provider(
+                    provider,
+                    doi=normalized_doi,
+                    output_dir=output_dir,
+                    expected_title=expected_title,
+                    metadata_mailto=metadata_mailto,
+                    config=config,
+                )
+        except BrowserCapabilityUnavailable as exc:
+            return MaximizedAcquisitionResult(
+                doi=normalized_doi,
+                status=MaximizedAcquisitionStatus.BROWSER_UNAVAILABLE,
+                base_result=base,
+                message=str(exc),
+            )
+        verified = (
+            direct_attempt.result
+            if direct_attempt.status == BrowserAttemptStatus.VERIFIED
+            else None
+        )
+        statuses = {status.value: status for status in MaximizedAcquisitionStatus}
+        return MaximizedAcquisitionResult(
+            doi=direct_attempt.source_candidate.doi or normalized_doi,
+            status=statuses.get(
+                direct_attempt.status.value, MaximizedAcquisitionStatus.EXHAUSTED
+            ),
+            base_result=base,
+            browser_attempts=(direct_attempt,),
+            verified_result=verified,
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
@@ -475,32 +566,64 @@ def acquire_full_text_maximized(
     # Chinese-title predicate by default, so ordinary foreign literature keeps
     # the existing route plan unless the caller explicitly opts into all titles.
     provider_attempts = []
-    for provider in applicable_browser_providers(
+    source_urls = tuple(candidate.url for candidate in base.discovery.candidates)
+    source_urls += tuple(
+        attempt.result.page.final_url
+        for attempt in base.route_attempts
+        if attempt.result.page is not None and attempt.result.page.final_url
+    )
+    if base.metadata is not None and getattr(base.metadata, "url", None):
+        source_urls += (base.metadata.url,)
+    providers = applicable_browser_providers(
+        doi=normalized_doi,
+        metadata=base.metadata,
+        expected_title=base.expected_title,
+        config=replace(config, cnki_enabled=False)
+        if source_preference == "exclude_cnki"
+        else config,
+        source_urls=source_urls,
+        request=request,
+    )
+    route_reason = cnki_route_reason(
         doi=normalized_doi,
         metadata=base.metadata,
         expected_title=base.expected_title,
         config=config,
-    ):
+        source_urls=source_urls,
+        request=request,
+    )
+    deferred_providers = tuple(
+        p
+        for p in providers
+        if p.name == "cnki" and route_reason == "chinese_title_fallback"
+    )
+
+    def run_provider(provider):
+        if request and provider.name == "cnki":
+            provider = CNKIProvider(request=request, authors=request.authors)
+        options = dict(
+            doi=normalized_doi,
+            output_dir=output_dir,
+            metadata=base.metadata,
+            expected_title=base.expected_title,
+            metadata_mailto=metadata_mailto,
+        )
+        if browser_session is not None:
+            attempt = browser_session.acquire_provider(provider, **options)
+        else:
+            attempt = acquire_with_browser_provider(provider, config=config, **options)
+        if provider.name == "cnki" and route_reason:
+            attempt = replace(
+                attempt,
+                evidence=(*attempt.evidence, f"CNKI routing decision: {route_reason}"),
+            )
+        return attempt
+
+    for provider in providers:
+        if provider in deferred_providers:
+            continue
         try:
-            if browser_session is not None:
-                provider_attempt = browser_session.acquire_provider(
-                    provider,
-                    doi=normalized_doi,
-                    output_dir=output_dir,
-                    metadata=base.metadata,
-                    expected_title=base.expected_title,
-                    metadata_mailto=metadata_mailto,
-                )
-            else:
-                provider_attempt = acquire_with_browser_provider(
-                    provider,
-                    doi=normalized_doi,
-                    output_dir=output_dir,
-                    metadata=base.metadata,
-                    expected_title=base.expected_title,
-                    metadata_mailto=metadata_mailto,
-                    config=config,
-                )
+            provider_attempt = run_provider(provider)
         except BrowserCapabilityUnavailable as exc:
             return MaximizedAcquisitionResult(
                 doi=normalized_doi,
@@ -529,7 +652,14 @@ def acquire_full_text_maximized(
                     "main article."
                 ),
             )
-        if provider_attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED:
+        if provider_attempt.status in {
+            BrowserAttemptStatus.INTERACTION_REQUIRED,
+            BrowserAttemptStatus.AMBIGUOUS,
+            BrowserAttemptStatus.RETRIEVED_UNVERIFIED,
+        } or (
+            provider_attempt.download_started
+            and "CNKI browser target closed" in provider_attempt.evidence
+        ):
             status, message = _final_status_from_browser(
                 base,
                 provider_attempts,
@@ -599,16 +729,48 @@ def acquire_full_text_maximized(
             message="Browser-backed recovery acquired a verified main article.",
         )
 
+    # A user-supplied Chinese title alone is weak routing evidence. Preserve
+    # all original publisher routes first, and never abandon a manual gate.
+    deferred_attempts = []
+    if not any(
+        a.status == BrowserAttemptStatus.INTERACTION_REQUIRED or a.download_started
+        for a in recovery.attempts
+    ):
+        for provider in deferred_providers:
+            try:
+                attempt = run_provider(provider)
+            except BrowserCapabilityUnavailable:
+                break
+            deferred_attempts.append(attempt)
+            if (
+                attempt.status == BrowserAttemptStatus.VERIFIED
+                and attempt.result is not None
+            ):
+                return MaximizedAcquisitionResult(
+                    doi=normalized_doi,
+                    status=MaximizedAcquisitionStatus.VERIFIED,
+                    base_result=base,
+                    browser_attempts=(
+                        *provider_attempts,
+                        *recovery.attempts,
+                        *deferred_attempts,
+                    ),
+                    elsevier_attempt=elsevier_attempt,
+                    verified_result=attempt.result,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                    message="CNKI title fallback verified the article after existing publisher routes.",
+                )
+    all_attempts = (*provider_attempts, *recovery.attempts, *deferred_attempts)
     status, message = _final_status_from_browser(
         base,
-        (*provider_attempts, *recovery.attempts),
+        all_attempts,
         elsevier_attempt=elsevier_attempt,
     )
     return MaximizedAcquisitionResult(
         doi=normalized_doi,
         status=status,
         base_result=base,
-        browser_attempts=(*provider_attempts, *recovery.attempts),
+        browser_attempts=all_attempts,
         elsevier_attempt=elsevier_attempt,
         elapsed_seconds=time.perf_counter() - started_at,
         message=message,

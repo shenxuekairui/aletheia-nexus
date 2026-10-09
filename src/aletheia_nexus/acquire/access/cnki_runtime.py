@@ -87,6 +87,8 @@ def captcha_visible(page) -> bool:
 
 
 def challenge_for_page(page) -> ChallengeReport:
+    if page.is_closed():
+        raise CNKITargetClosed()
     if captcha_visible(page):
         return ChallengeReport(
             kind=ChallengeKind.CAPTCHA,
@@ -95,6 +97,8 @@ def challenge_for_page(page) -> ChallengeReport:
     try:
         text = page.locator("body").inner_text(timeout=500)[:100_000]
     except Exception:
+        if page.is_closed():
+            raise CNKITargetClosed() from None
         text = ""
     try:
         title = page.title()
@@ -103,7 +107,10 @@ def challenge_for_page(page) -> ChallengeReport:
     report = classify_access_challenge(
         title=title, url=str(page.url or ""), visible_text=text
     )
-    login_form = first_visible(page, ("input[type='password']", ".login-box input"))
+    login_form = first_visible(
+        page,
+        ("input[type='password']", ".login-box input"),
+    )
     if login_form is None:
         for frame in getattr(page, "frames", ()):
             if frame is getattr(page, "main_frame", None):
@@ -124,6 +131,10 @@ def challenge_for_page(page) -> ChallengeReport:
     # login as a gate when the actual form/dialog is visible or this IS a login
     # destination, rather than stopping at an article's persistent navbar.
     if report.kind in {ChallengeKind.AUTHENTICATION, ChallengeKind.SSO}:
+        if login_form is None and first_visible(page, ("h1:has-text('自动登录')",)):
+            # CNKI may be establishing IP authentication without asking for a
+            # personal account. Wait for this transition; don't prompt login.
+            return ChallengeReport(kind=ChallengeKind.NONE)
         login_form = login_form or first_visible(
             page,
             (
@@ -141,6 +152,29 @@ def challenge_for_page(page) -> ChallengeReport:
     return report
 
 
+def _resume_ready(page) -> bool:
+    """Require rendered content after human verification, not just no widget."""
+    content_control = first_visible(
+        page, ("a#pdfDown", "a:has-text('PDF下载')", "#txt_SearchText", "#txt_search")
+    )
+    if (
+        first_visible(page, ("h1:has-text('自动登录')",)) is not None
+        and content_control is None
+    ):
+        return False
+    if content_control is not None:
+        return True
+    try:
+        return bool(
+            page.evaluate(
+                "() => document.readyState !== 'loading' && "
+                "Boolean(document.body && document.body.innerText.trim())"
+            )
+        )
+    except Exception:
+        return False
+
+
 class CNKIGate:
     """Observe manual login/CAPTCHA completion; never fill or solve challenges."""
 
@@ -148,6 +182,8 @@ class CNKIGate:
         self.config = config
         self.history: list[ChallengeReport] = []
         self.interaction_used = False
+        # A PDF click is a side effect, even if no usable file is saved yet.
+        self.download_started = False
 
     def check(self, page) -> bool:
         if page.is_closed():
@@ -159,6 +195,10 @@ class CNKIGate:
             self.history.append(report)
         if report.kind in {ChallengeKind.ENTITLEMENT, ChallengeKind.ACCESS_DENIED}:
             raise CNKIInteractionRequired(page, report)
+        try:
+            resume_page = page.opener()
+        except Exception:
+            resume_page = None
         if self.config.interaction_callback is not None:
             self.config.interaction_callback(
                 report, redact_url_for_record(page.url) or ""
@@ -177,13 +217,24 @@ class CNKIGate:
             if self.config.wait_for_interaction
             else time.monotonic() + self.config.interaction_timeout
         )
+        clear_polls = 0
         while True:
+            target = page
             if page.is_closed():
-                raise CNKIInteractionRequired(page, report)
-            current = challenge_for_page(page)
-            if current.kind == ChallengeKind.NONE:
+                # SSO/CAPTCHA popups may close themselves after completion.
+                # Only resume on a live, ready opener, never on an empty tab.
+                if resume_page is None or resume_page.is_closed():
+                    raise CNKIInteractionRequired(page, report)
+                target = resume_page
+            try:
+                current = challenge_for_page(target)
+            except CNKITargetClosed:
+                raise CNKIInteractionRequired(target, report) from None
+            ready = current.kind == ChallengeKind.NONE and _resume_ready(target)
+            clear_polls = clear_polls + 1 if ready else 0
+            if clear_polls >= 2:
                 return True
-            if current != report:
+            if current.kind != ChallengeKind.NONE and current != report:
                 self.history.append(current)
                 report = current
             if current.kind in {ChallengeKind.ENTITLEMENT, ChallengeKind.ACCESS_DENIED}:
@@ -191,8 +242,10 @@ class CNKIGate:
             if deadline is not None and time.monotonic() >= deadline:
                 raise CNKIInteractionRequired(page, report)
             try:
-                page.wait_for_timeout(self.config.poll_interval * 1000)
+                target.wait_for_timeout(self.config.poll_interval * 1000)
             except Exception as exc:
+                if target is page and page.is_closed() and resume_page is not None:
+                    continue
                 raise CNKIInteractionRequired(page, report) from exc
 
     def wait(
@@ -223,6 +276,17 @@ class CNKIGate:
                 * 1000
             )
 
+    def wait_ready(self, page, *, stage: str) -> None:
+        """Allow IP redirects/form hydration before treating a page as ready."""
+        clear_polls = 0
+
+        def rendered_twice():
+            nonlocal clear_polls
+            clear_polls = clear_polls + 1 if _resume_ready(page) else 0
+            return clear_polls >= 2
+
+        self.wait(page, rendered_twice, stage=stage)
+
 
 @dataclass(frozen=True)
 class CapturedPDF:
@@ -242,10 +306,28 @@ class CNKIFileCapture:
         self.downloads: list[object] = []
         self.responses: list[object] = []
         self._seen_responses: set[int] = set()
+        self._pending_requests: set[int] = set()
+        self._finished_requests: set[int] = set()
+        self._failed_requests: set[int] = set()
+        self.context_closed = False
         self._subscriptions: list[tuple[object, str, object]] = []
         self._listen(page, "download", self._on_download)
         self._listen(context, "page", self._on_page)
         self._listen(context, "response", self._on_response)
+        self._listen(context, "requestfinished", self._on_request_finished)
+        self._listen(context, "requestfailed", self._on_request_failed)
+        self._listen(context, "close", self._on_context_close)
+
+    def _on_context_close(self, *_):
+        self.context_closed = True
+
+    def _on_request_finished(self, request):
+        if id(request) in self._pending_requests:
+            self._finished_requests.add(id(request))
+
+    def _on_request_failed(self, request):
+        if id(request) in self._pending_requests:
+            self._failed_requests.add(id(request))
 
     def _listen(self, emitter, event, handler):
         emitter.on(event, handler)
@@ -280,6 +362,9 @@ class CNKIFileCapture:
                 or path.endswith(".pdf")
             ):
                 self.responses.append(response)
+                request = getattr(response, "request", None)
+                if request is not None:
+                    self._pending_requests.add(id(request))
         except Exception:
             pass
 
@@ -289,7 +374,17 @@ class CNKIFileCapture:
         for response in self.responses:
             if id(response) in self._seen_responses:
                 continue
-            self._seen_responses.add(id(response))
+            request = getattr(response, "request", None)
+            if request is not None:
+                if id(request) in self._failed_requests:
+                    self._seen_responses.add(id(response))
+                    continue
+                if id(request) not in self._finished_requests:
+                    # response fires at headers, not at transfer completion.
+                    # Keep pumping the page (and watching manual gates) until
+                    # the browser has received the body; body() may otherwise
+                    # block the synchronous provider throughout the transfer.
+                    continue
             try:
                 length = response.headers.get("content-length")
                 if length and int(length) > self.max_bytes:
@@ -298,6 +393,7 @@ class CNKIFileCapture:
                 if len(body) > self.max_bytes:
                     raise CNKIFileError("CNKI PDF exceeds max_bytes")
                 if response.status == 200 and body.lstrip().startswith(b"%PDF-"):
+                    self._seen_responses.add(id(response))
                     return CapturedPDF(
                         url=response.url,
                         body=body,
@@ -306,13 +402,30 @@ class CNKIFileCapture:
                             "content-type", "application/pdf"
                         ),
                     )
+                self._seen_responses.add(id(response))
             except ValueError:
                 raise
             except Exception:
                 continue
         return None
 
+    @property
+    def transfer_pending(self):
+        return any(
+            id(response) not in self._seen_responses
+            and id(getattr(response, "request", None)) not in self._failed_requests
+            for response in self.responses
+        )
+
     def close(self, *, preserve=None):
+        protected = []
+        ancestor = preserve
+        while ancestor is not None and ancestor not in protected:
+            protected.append(ancestor)
+            try:
+                ancestor = ancestor.opener()
+            except Exception:
+                break
         for emitter, event, handler in reversed(self._subscriptions):
             try:
                 emitter.remove_listener(event, handler)
@@ -320,7 +433,7 @@ class CNKIFileCapture:
                 pass
         for popup in self.pages[1:]:
             try:
-                if popup is not preserve and not popup.is_closed():
+                if popup not in protected and not popup.is_closed():
                     popup.close()
             except Exception:
                 pass

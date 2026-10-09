@@ -23,6 +23,7 @@ from aletheia_nexus.acquire.access.models import (
 from aletheia_nexus.acquire.access.publisher_routes import is_ieee_doi
 from aletheia_nexus.acquire.access.service import acquire_full_text_maximized
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.paper_request import PaperRequest
 
 _CHECKPOINT_SCHEMA = "aletheia-nexus/access-batch-checkpoint/v1"
 
@@ -31,6 +32,8 @@ class BatchItemStatus(StrEnum):
     """Stable outcome for one input in a maximized-acquisition batch."""
 
     VERIFIED = "VERIFIED"
+    AMBIGUOUS = "AMBIGUOUS"
+    RETRIEVED_UNVERIFIED = "RETRIEVED_UNVERIFIED"
     AUTH_REQUIRED = "AUTH_REQUIRED"
     INTERACTION_REQUIRED = "INTERACTION_REQUIRED"
     ENTITLEMENT_REQUIRED = "ENTITLEMENT_REQUIRED"
@@ -57,6 +60,7 @@ class BatchAcquisitionItem:
     attempts: int = 0
     error: str | None = None
     elapsed_seconds: float = 0.0
+    request_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,8 +131,9 @@ def _write_checkpoint(
 
 def _verified_checkpoint_item(
     input_value: object,
-    doi: str,
+    doi: str | None,
     record: Mapping[str, object] | None,
+    request_key: str | None = None,
 ) -> BatchAcquisitionItem | None:
     if not record or record.get("status") != BatchItemStatus.VERIFIED.value:
         return None
@@ -150,6 +155,7 @@ def _verified_checkpoint_item(
         status=BatchItemStatus.VERIFIED,
         verified_path=path,
         resumed=True,
+        request_key=request_key,
     )
 
 
@@ -157,6 +163,7 @@ def _checkpoint_record(
     item: BatchAcquisitionItem, previous: Mapping[str, object] | None = None
 ) -> dict[str, object]:
     record: dict[str, object] = {
+        "doi": item.doi,
         "status": item.status.value,
         "attempts": item.attempts,
         "elapsed_seconds": item.elapsed_seconds,
@@ -166,7 +173,11 @@ def _checkpoint_record(
     if item.status == BatchItemStatus.VERIFIED and item.verified_path is not None:
         path = item.verified_path.resolve()
         record["verified_path"] = str(path)
-        resource = item.result.verified_result.retrieved if item.result else None
+        resource = (
+            item.result.verified_result.retrieved
+            if item.result and item.result.verified_result
+            else None
+        )
         record["sha256"] = (
             resource.sha256 if resource is not None else _sha256_file(path)
         )
@@ -209,21 +220,21 @@ def acquire_full_text_batch_maximized(
     checkpoint_path: str | Path | None = None,
     resume: bool = True,
     deduplicate: bool = True,
-    stop_on_interaction: bool = False,
+    stop_on_interaction: bool = True,
     max_item_attempts: int = 1,
     retry_backoff: float = 1.0,
     progress_callback: Callable[[BatchAcquisitionItem, int, int], None] | None = None,
     **acquisition_options: object,
 ) -> BatchAcquisitionResult:
-    """Acquire a DOI collection with one reusable authenticated browser session.
+    """Acquire DOI strings or PaperRequests with one reusable browser session.
 
     Work is deliberately sequential because publisher login/challenge state is shared.
     A checkpoint records no credentials, cookies, URLs, or exception messages. Resume
     trusts only VERIFIED files that still exist and match their recorded SHA-256.
     Non-success outcomes are attempted again on the next run so a newly completed
     login, refreshed institutional session, or corrected entitlement can recover them.
-    An unresolved interactive challenge ends only its current item by default;
-    ``stop_on_interaction=True`` defers the remaining items instead.
+    An unresolved interactive challenge defers the remaining items by default;
+    callers can explicitly use ``stop_on_interaction=False`` to continue.
     """
 
     if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
@@ -272,25 +283,39 @@ def acquire_full_text_batch_maximized(
 
     titles = _normalize_titles(expected_titles)
     local_files = {
-        normalize_doi(doi): Path(path) for doi, path in (local_pdfs or {}).items()
+        (
+            doi
+            if isinstance(doi, str) and doi.startswith("citation:")
+            else normalize_doi(doi)
+        ): Path(path)
+        for doi, path in (local_pdfs or {}).items()
     }
     checkpoint = Path(checkpoint_path) if checkpoint_path is not None else None
     checkpoint_records = (
         _load_checkpoint(checkpoint) if checkpoint is not None and resume else {}
     )
     raw_values = list(values)
-    prepared: list[tuple[object, str | None, str | None]] = []
+    prepared: list[tuple[object, str | None, str | None, str | None]] = []
     seen: set[str] = set()
     for value in raw_values:
         try:
-            doi = normalize_doi(value)
+            doi = value.doi if isinstance(value, PaperRequest) else normalize_doi(value)
+            key = (
+                value.key
+                if isinstance(value, PaperRequest)
+                else (
+                    PaperRequest(doi=doi, title=titles[doi]).key
+                    if doi in titles
+                    else doi
+                )
+            )
         except (TypeError, ValueError) as exc:
-            prepared.append((value, None, str(exc)))
+            prepared.append((value, None, None, str(exc)))
             continue
-        if deduplicate and doi in seen:
+        if deduplicate and key in seen:
             continue
-        seen.add(doi)
-        prepared.append((value, doi, None))
+        seen.add(key)
+        prepared.append((value, doi, key, None))
 
     started_at = time.perf_counter()
     items: list[BatchAcquisitionItem] = []
@@ -300,7 +325,7 @@ def acquire_full_text_batch_maximized(
     session_scope = session if owned_session else nullcontext(session)
 
     with session_scope:
-        for index, (input_value, doi, input_error) in enumerate(prepared, start=1):
+        for index, (input_value, doi, key, input_error) in enumerate(prepared, start=1):
             if halted:
                 item = BatchAcquisitionItem(
                     input_value=input_value,
@@ -314,7 +339,7 @@ def acquire_full_text_batch_maximized(
                 continue
 
             item_started_at = time.perf_counter()
-            if doi is None:
+            if input_error is not None:
                 item = BatchAcquisitionItem(
                     input_value=input_value,
                     doi=None,
@@ -329,8 +354,9 @@ def acquire_full_text_batch_maximized(
 
             resumed_item = _verified_checkpoint_item(
                 input_value,
-                doi,
-                checkpoint_records.get(doi),
+                doi or checkpoint_records.get(key, {}).get("doi"),
+                checkpoint_records.get(key),
+                request_key=key,
             )
             if resumed_item is not None:
                 items.append(resumed_item)
@@ -345,15 +371,16 @@ def acquire_full_text_batch_maximized(
                 attempts = attempt_number
                 try:
                     result = acquire_full_text_maximized(
-                        doi,
+                        input_value if isinstance(input_value, PaperRequest) else doi,
                         output_dir=output_dir,
                         browser_session=session,
                         expected_title=titles.get(doi),
-                        local_pdf_path=local_files.get(doi),
+                        local_pdf_path=local_files.get(key) or local_files.get(doi),
                         **acquisition_options,
                     )
                     if (
                         result.status == MaximizedAcquisitionStatus.INTERACTION_REQUIRED
+                        and doi is not None
                         and is_ieee_doi(doi)
                         and doi not in local_files
                         and manual_file_callback is not None
@@ -376,6 +403,10 @@ def acquire_full_text_batch_maximized(
                 retryable = (
                     result is None or result.status == MaximizedAcquisitionStatus.ERROR
                 )
+                if result is not None and any(
+                    attempt.download_started for attempt in result.browser_attempts
+                ):
+                    retryable = False
                 if not retryable or attempt_number == max_item_attempts:
                     break
                 if retry_backoff:
@@ -393,8 +424,9 @@ def acquire_full_text_batch_maximized(
             else:
                 item = BatchAcquisitionItem(
                     input_value=input_value,
-                    doi=doi,
+                    doi=result.doi or doi,
                     status=BatchItemStatus(result.status.value),
+                    request_key=key,
                     result=result,
                     verified_path=result.verified_path,
                     attempts=attempts,
@@ -402,8 +434,8 @@ def acquire_full_text_batch_maximized(
                 )
 
             items.append(item)
-            checkpoint_records[doi] = _checkpoint_record(
-                item, checkpoint_records.get(doi)
+            checkpoint_records[key] = _checkpoint_record(
+                item, checkpoint_records.get(key)
             )
             if checkpoint is not None:
                 _write_checkpoint(checkpoint, checkpoint_records)

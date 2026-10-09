@@ -13,6 +13,11 @@ def test_browser_profile_uses_dedicated_root(tmp_path):
     assert browser_profile_dir(config) == tmp_path / "cas-institution"
 
 
+def test_cnki_review_retention_must_be_boolean():
+    with pytest.raises(TypeError, match="cnki_keep_unverified"):
+        browser_profile_dir(BrowserAccessConfig(cnki_keep_unverified="yes"))
+
+
 @pytest.mark.parametrize("name", ["../escape", ".", "..", "bad/name", ""])
 def test_browser_profile_name_rejects_unsafe_paths(tmp_path, name):
     config = BrowserAccessConfig(
@@ -68,6 +73,8 @@ def test_headless_browser_rejects_interactive_handoff(tmp_path):
         ("interactive", "yes"),
         ("wait_for_interaction", "yes"),
         ("keep_unverified", 0),
+        ("direct_connection", 1),
+        ("cnki_context_request", "yes"),
     ],
 )
 def test_browser_boolean_options_require_real_bools(tmp_path, field, value):

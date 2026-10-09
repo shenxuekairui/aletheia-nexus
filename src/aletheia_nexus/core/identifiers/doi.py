@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from collections.abc import Iterable
 from urllib.parse import unquote, urlsplit
 
@@ -172,3 +173,32 @@ def extract_dois(
         result = list(dict.fromkeys(result))
 
     return result
+
+
+def extract_pdf_dois(text: str) -> list[str]:
+    """Extract DOI evidence from PDF typography without relaxing input syntax.
+
+    Fold full-width glyphs, typographic dashes and whitespace adjacent to DOI
+    punctuation only (including a separator at the end of an extracted line).
+    Never join arbitrary words or remove whitespace from the whole document.
+    Callers must still enforce front-page and document-role identity checks.
+    """
+    if not isinstance(text, str):
+        raise TypeError("Text must be a string")
+    searchable = unicodedata.normalize("NFKC", text)
+    searchable = searchable.translate(str.maketrans({char: "-" for char in "‐‑‒–—−⁃"}))
+    # Chinese journal suffixes have a documented j.cnki.<journal> hierarchy.
+    # Do not join arbitrary prose after a sentence-ending period.
+    searchable = re.sub(
+        r"\bj\s*\.\s*(cnki|issn)\s*\.\s*", r"j.\1.", searchable, flags=re.IGNORECASE
+    )
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9_/])10\s*\.\s*\d{4,9}\s*/\s*"
+        r"[-._;()/:<>#?A-Z0-9]+"
+        r"(?:\s*[-./]\s*[-._;()/:<>#?A-Z0-9]+"
+        r"|(?<=[./-])\s+(?!10\s*\.\s*\d{4,9}\s*/)(?=[0-9])[-._;()/:<>#?A-Z0-9]+)*",
+        re.IGNORECASE,
+    )
+    # Repair only individually identified DOI spans, preserving text boundaries.
+    searchable = pattern.sub(lambda match: re.sub(r"\s+", "", match[0]), searchable)
+    return extract_dois(searchable)

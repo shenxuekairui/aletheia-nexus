@@ -136,6 +136,8 @@ def _record_payload(
             "warning": pdf_validation.warning,
         },
         "identity_validation": {
+            "policy": identity_validation.policy,
+            "declared_dois": list(identity_validation.declared_dois),
             "status": identity_validation.status.value,
             "document_role": identity_validation.document_role.value,
             "doi_match": identity_validation.doi_match,

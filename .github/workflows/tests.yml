@@ -148,6 +148,8 @@ jobs:
         run: python -m pip check
       - name: Install Chromium runtime
         run: python -m playwright install --with-deps chromium
+      - name: Provision fixed persistent-download browser
+        run: python scripts/install_an_browser.py
       - name: Run local real-Chromium integration tests
         env:
           AN_RUN_BROWSER_SMOKE: "1"

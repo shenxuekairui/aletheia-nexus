@@ -62,7 +62,7 @@ aletheia-nexus acquire 10.1039/D6TA02244H `
 
 AN 会在该本机端口未被占用时启动独立 Edge，不修改日常 Edge；若端口已有浏览器，则会附加到现有会话，运行前务必确认那是你期望的 AN 浏览器。调试端口只应绑定本机，使用完毕关闭该专用浏览器。这个方式不会绕过验证码或保证出版社放行。
 
-未指定 `--cdp-endpoint` 时，AN 使用安装的 Playwright Chromium 与专用持久配置；指定端点时才可能自动启动本机 Edge/Chrome。默认配置名为 `human-handoff`，目录在用户主目录的 `.aletheia-nexus/browser-profiles/` 下。若需隔离不同机构或账号，分别使用 `--profile NAME`；需要自定保存位置时用 `--profile-root DIR`。若 CDP 端点已经有浏览器在运行，AN 会附加到那个现有会话，**单改 `--profile` 不会切换它的实际配置**；机构隔离还应使用各自的浏览器进程与端口。不要把专用配置目录当作普通报告共享或上传。已自行启动并附加的 CDP 浏览器保持其原有网络设置；AN 不会修改该浏览器的代理。
+持久下载需要 Chromium/Edge/Chrome >=155：152–154 有历史下载对象的上游崩溃缺陷，AN 会拒绝用这些版本开始下载，而不清理配置或下载历史。Windows 运行 `python scripts/install_an_browser.py` 可部署官方 Chrome for Testing 到 AN 独立目录；可见模式默认优先 >=155 的已安装稳定版 Edge/Chrome，否则选择该独立运行时，headless 也支持。`--executable-path PATH` 可指定修复版二进制，不与 `--channel` 或 CDP 混用。批量默认配置名为 `human-handoff`，目录在用户主目录的 `.aletheia-nexus/browser-profiles/` 下。隔离不同机构、账号或浏览器引擎时，分别使用 `--profile NAME`；自定保存位置用 `--profile-root DIR`。若 CDP 端点已有浏览器，AN 附加到那个现有会话，**单改 `--profile` 不会切换其实际配置**。不要共享或上传专用配置。新会话保留系统网络设置；直连须显式选择 `--direct-connection`，不修改系统代理或已连接 CDP 的网络设置。
 
 如需无人值守运行（不等待人工登录或验证码）：
 
@@ -97,7 +97,8 @@ aletheia-nexus acquire dois.txt `
 | `--unpaywall-email EMAIL` | 为适用的开放获取发现服务提供联系邮箱。 |
 | `--cnki` / `--no-cnki` | 启用或关闭 CNKI 浏览器 Provider；默认启用。 |
 | `--cnki-all-titles` | 对所有未获取文献尝试 CNKI，包括登记元数据仅有英文标题的论文。 |
-| `--cnki-max-results N` | CNKI 标题/作者匹配时检查的最大结果数；默认 5。 |
+| `--cnki-max-results N` | CNKI 标题/作者匹配时检查的最大结果数；默认 20。 |
+| `--source auto/cnki/exclude_cnki` | 自动分流、CNKI-only 或排除 CNKI Provider；默认 auto。 |
 
 所有参数可运行 `aletheia-nexus acquire --help` 查看；旧 `scripts/batch_v06_download.py` 保留兼容入口。遇到慢站点可以适度增大 `--base-timeout`、`--request-timeout`、`--max-source-routes` 和 `--max-pdf-candidates`；预算增加会延长批次运行时间，不能创造未获得的订阅权限。
 
@@ -130,6 +131,8 @@ BrowserAccessConfig(
 若出现知网滑块或验证码，AN 不代答、不模拟拖动；可见浏览器会等待用户操作，并通过 `interaction_callback` 报告 `CAPTCHA`。超时或禁用交互时结果为 `INTERACTION_REQUIRED`。是否能够下载 PDF 仍取决于当前校园网、机构 VPN、登录会话与订阅范围；只有 CAJ 或无 PDF 权限时不会伪装成成功。
 
 也可通过 `python scripts/download_cnki.py --doi "10.16560/j.cnki.gzhx.20230412"` 直接运行 CNKI，或用 `--title "论文标题" --author "作者"` 按标题获取。标题模式会从详情页或 PDF 首页解析真实 DOI；缺少唯一 DOI 时不生成假标识符。默认在可见浏览器中等待人工认证完成，再自动继续。API、批量参数、错误状态和离线验证说明见 [CNKI 自动化获取](CNKI_AUTOMATION.md)。
+
+CNKI 从页面 PDF 控件取得真实地址；对于已验证的 order 地址默认优先同一机构浏览器会话请求，避免本机原生下载崩溃，其他控件保留原生路径。`--no-cnki-context-request` 可显式测试原生策略。机构 IP 自动登录过渡页不会仅因“自动登录”标题要求个人登录。直接 CNKI CLI 可重复 `--doi` 批量获取，整批共用一个会话；在整批结果返回后默认保持窗口，关闭窗口或 Ctrl+C 后退出，期间不会重新下载；用 `--no-keep-browser-open` 恢复自动清理。非交互模式和临时 Python API 仍正常清理资源。
 
 ## 5. 断点续跑与文件核验
 
@@ -248,6 +251,8 @@ python scripts/verify_v07_rc.py --browser-smoke --ocr-smoke --public-oa `
 这些脚本与单元测试不替代实际机构环境中的授权验证，也不证明解析器适配所有真实论文版式。AN 0.7 将获取与核验衔接到带来源锚点的原生文本优先解析，并提供可选选择性 OCR；科学主张解释和科研知识组织仍属于后续能力。
 
 v0.7 检查脚本会优先导入当前仓库的 `src`，避免复用环境时测到其他 checkout。`--browser-smoke` 需要 browser extra 和 Chromium；`--ocr-smoke` 需要 ocr extra、Poppler 与 Tesseract。缺少组件时应补齐环境后重跑，不能把跳过或 `PARTIAL` 写成通过。私有语料资格脚本要求非空输入且每篇都完成 `PARSED`；缺文件、哈希改变或部分解析会使检查失败。
+
+CNKI 的验证 v3、准确分流、无 DOI 的 `PaperRequest` 与批量输入说明见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md)。原 DOI 路径兼容；无 DOI 使用 CNKI ID/书目身份，候选歧义不自动选第一条。未验证 PDF 默认隔离保存，不计为成功；可通过 `--no-cnki-keep-unverified` 关闭。
 
 ## 10. 合并 main 前的发布检查
 

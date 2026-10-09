@@ -7,6 +7,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
+from aletheia_nexus.acquire.access.browser_engine.runtime import (
+    affected_download_version,
+    fixed_installed_browser,
+    fixed_portable_browser,
+)
 from aletheia_nexus.acquire.access.browser_engine.viewer import is_pdf_document_url
 from aletheia_nexus.acquire.access.browser_route import (
     _report_for_page,
@@ -83,6 +88,9 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         "use_system_proxy",
         "cnki_enabled",
         "cnki_search_all_titles",
+        "direct_connection",
+        "cnki_context_request",
+        "cnki_keep_unverified",
     ):
         if not isinstance(getattr(config, name), bool):
             raise TypeError(f"{name} must be a bool")
@@ -91,6 +99,13 @@ def _validate_config(config: BrowserAccessConfig) -> None:
             raise TypeError("channel must be a string or None")
         if not config.channel.strip():
             raise ValueError("channel must not be blank")
+    if config.executable_path is not None:
+        if not isinstance(config.executable_path, (str, Path)):
+            raise TypeError("executable_path must be a path or None")
+        if not str(config.executable_path).strip():
+            raise ValueError("executable_path must not be blank")
+        if config.channel is not None or config.cdp_endpoint is not None:
+            raise ValueError("executable_path cannot be combined with channel or CDP")
     if config.cdp_endpoint is not None:
         if not isinstance(config.cdp_endpoint, str):
             raise TypeError("cdp_endpoint must be a string or None")
@@ -491,6 +506,22 @@ def _normalize_routes(
     return normalized_doi, normalized_routes, preflight_attempts
 
 
+def _default_browser_channel() -> str | None:
+    selected = fixed_installed_browser()
+    return selected[0] if selected else None
+
+
+def _require_safe_download_browser(browser) -> None:
+    version = getattr(browser, "version", None)
+    if isinstance(version, str) and affected_download_version(version):
+        raise BrowserCapabilityUnavailable(
+            f"Chromium-family browser {version} has the persistent-download "
+            "history crash (Chromium issue 556160935). Use Edge/Chrome >=155 "
+            "or a fixed Chrome for Testing via executable_path/--executable-path. "
+            "AN will not clear your profile or retry a potentially started download."
+        )
+
+
 class BrowserSession:
     """Reusable persistent browser context for one sequential acquisition batch.
 
@@ -512,6 +543,7 @@ class BrowserSession:
         self._blocked_unsafe_urls: list[str] = []
         self._pdf_responses: list[object] = []
         self._downloads: list[object] = []
+        self._context_closed = False
         self._pending_pages: dict[str, object] = {}
         self._pending_hosts: dict[str, str | None] = {}
 
@@ -566,10 +598,14 @@ class BrowserSession:
                     self.config.cdp_endpoint.strip(),
                     timeout=self.config.navigation_timeout * 1000,
                 )
+                _require_safe_download_browser(browser)
                 contexts = list(browser.contexts)
                 if not contexts:
                     raise RuntimeError("attached browser exposed no BrowserContext")
                 context = contexts[0]
+            except BrowserCapabilityUnavailable as exc:
+                manager.__exit__(type(exc), exc, exc.__traceback__)
+                raise
             except Exception as exc:
                 manager.__exit__(type(exc), exc, exc.__traceback__)
                 raise BrowserCapabilityUnavailable(
@@ -600,8 +636,18 @@ class BrowserSession:
             # not change OS settings or the user's everyday browser profile.
             "args": [] if self.config.use_system_proxy else ["--no-proxy-server"],
         }
-        if self.config.channel:
-            launch_kwargs["channel"] = self.config.channel
+        if self.config.direct_connection:
+            launch_kwargs["args"] = ["--no-proxy-server"]
+        channel = self.config.channel or (
+            None if self.config.headless else _default_browser_channel()
+        )
+        executable = self.config.executable_path or (
+            None if channel else fixed_portable_browser()
+        )
+        if executable:
+            launch_kwargs["executable_path"] = str(executable)
+        elif channel:
+            launch_kwargs["channel"] = channel
 
         try:
             context = playwright.chromium.launch_persistent_context(
@@ -626,6 +672,15 @@ class BrowserSession:
                 )
             raise BrowserCapabilityUnavailable(message) from exc
 
+        try:
+            _require_safe_download_browser(getattr(context, "browser", None))
+        except BrowserCapabilityUnavailable as exc:
+            try:
+                context.close()
+            finally:
+                manager.__exit__(type(exc), exc, exc.__traceback__)
+            raise
+
         context.set_default_timeout(self.config.navigation_timeout * 1000)
         self._blocked_unsafe_urls = _install_context_request_guard(context)
         _install_context_event_capture(
@@ -636,7 +691,34 @@ class BrowserSession:
         )
         self._manager = manager
         self._context = context
+        self._context_closed = False
+        if hasattr(context, "on"):
+            context.on("close", self._on_context_closed)
         return context
+
+    def _on_context_closed(self, *_):
+        self._context_closed = True
+
+    def wait_until_closed(self) -> None:
+        """Keep a caller-owned visible session alive without retrying downloads.
+
+        Used by the interactive CNKI CLI after an unresolved handoff. A popup
+        closing must not terminate the remaining browser or release its profile.
+        """
+        if self._context is None or self._attached_external:
+            return
+        while not self._context_closed:
+            pages = [page for page in self._context.pages if not page.is_closed()]
+            if not pages:
+                return
+            try:
+                pages[0].wait_for_timeout(self.config.poll_interval * 1000)
+            except Exception as exc:
+                if self._context_closed:
+                    return
+                if type(exc).__name__ == "TargetClosedError" and pages[0].is_closed():
+                    continue
+                raise
 
     def close(self) -> None:
         context = self._context
@@ -912,6 +994,7 @@ class BrowserSession:
                     and "CNKI browser target closed" in attempt.evidence
                     and not attempt.challenge_history
                     and not attempt.file_attempts
+                    and not attempt.download_started
                 )
                 if not target_closed or retry:
                     if retry:

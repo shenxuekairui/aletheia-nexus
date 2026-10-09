@@ -92,6 +92,8 @@ class IdentityValidationReport:
     doi_match: bool
     title_similarity: float | None = None
     evidence: tuple[str, ...] = ()
+    policy: str = "pdf_front_matter/v2"
+    declared_dois: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

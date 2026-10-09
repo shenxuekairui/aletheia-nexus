@@ -37,6 +37,7 @@ from aletheia_nexus.acquire.access.service import (
     acquire_full_text_maximized,
     browser_recovery_routes,
 )
+from aletheia_nexus.core.paper_request import PaperRequest
 
 __all__ = [
     "BatchAcquisitionItem",
@@ -58,6 +59,7 @@ __all__ = [
     "ElsevierAccessStatus",
     "MaximizedAcquisitionResult",
     "MaximizedAcquisitionStatus",
+    "PaperRequest",
     "acquire_elsevier_pdf",
     "acquire_cnki_pdf",
     "acquire_full_text_batch_maximized",

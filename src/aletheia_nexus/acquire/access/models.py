@@ -39,6 +39,7 @@ class BrowserAttemptStatus(StrEnum):
     BROWSER_UNAVAILABLE = "BROWSER_UNAVAILABLE"
     NAVIGATION_ERROR = "NAVIGATION_ERROR"
     ERROR = "ERROR"
+    AMBIGUOUS = "AMBIGUOUS"
 
 
 class ElsevierAccessStatus(StrEnum):
@@ -68,6 +69,8 @@ class MaximizedAcquisitionStatus(StrEnum):
     UNSAFE_URL = "UNSAFE_URL"
     EXHAUSTED = "EXHAUSTED"
     ERROR = "ERROR"
+    AMBIGUOUS = "AMBIGUOUS"
+    RETRIEVED_UNVERIFIED = "RETRIEVED_UNVERIFIED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +125,10 @@ class BrowserAccessConfig:
     headless: bool = False
     channel: str | None = None
     use_system_proxy: bool = False
+
+
+    executable_path: Path | str | None = None
+    direct_connection: bool = False
     cdp_endpoint: str | None = None
     cdp_resume_existing_page: bool = True
     interactive: bool = True
@@ -139,7 +146,10 @@ class BrowserAccessConfig:
     keep_unverified: bool = False
     cnki_enabled: bool = True
     cnki_search_all_titles: bool = False
-    cnki_max_results: int = 5
+    cnki_max_results: int = 20
+    cnki_context_request: bool = True
+    # Keep valid but unverified CNKI PDFs isolated for local review, not ingestion.
+    cnki_keep_unverified: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +189,7 @@ class BrowserAccessAttempt:
     evidence: tuple[str, ...] = ()
     error: str | None = None
     elapsed_seconds: float = 0.0
+    download_started: bool = False
 
     @property
     def source_url(self) -> str:
@@ -186,9 +197,23 @@ class BrowserAccessAttempt:
 
     @property
     def result(self) -> AcquisitionResult | None:
-        for attempt in reversed(self.file_attempts):
-            if attempt.result is not None:
-                return attempt.result
+        # A late, loosely matching candidate must not hide the strongest earlier
+        # PDF evidence. Prefer VERIFIED, then a first-page title match.
+        results = [
+            item.result for item in self.file_attempts if item.result is not None
+        ]
+        for result in results:
+            if result.status.value == "VERIFIED":
+                return result
+        if results:
+            return max(
+                results,
+                key=lambda result: (
+                    result.identity_validation.title_similarity or 0.0
+                    if result.identity_validation
+                    else 0.0
+                ),
+            )
         return None
 
 

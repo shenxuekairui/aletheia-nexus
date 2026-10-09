@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from aletheia_nexus.acquire.access import service
+from aletheia_nexus.acquire.access import PaperRequest, service
 from aletheia_nexus.acquire.access.browser import (
     BrowserCapabilityUnavailable,
     BrowserSession,
@@ -75,6 +75,174 @@ def _base(status=FullTextAcquisitionStatus.EXHAUSTED, *, candidate=None):
         discovery=discovery,
         verified_result=verified,
         expected_title="Target Article",
+    )
+
+
+@pytest.mark.parametrize(
+    "preference,enabled,called",
+    [
+        ("cnki", True, True),
+        ("cnki", False, False),
+        ("exclude_cnki", True, False),
+        ("auto", True, True),
+    ],
+)
+def test_doi_less_routing_controls_do_not_invoke_old_doi_pipeline(
+    monkeypatch, tmp_path, preference, enabled, called
+):
+    monkeypatch.setattr(
+        service,
+        "acquire_full_text",
+        lambda *a, **k: pytest.fail("DOI-less must not use DOI resolver"),
+    )
+    calls = []
+
+    def provider(*args, **kwargs):
+        calls.append(args[0].request)
+        return BrowserAccessAttempt(_candidate(), None, BrowserAttemptStatus.AMBIGUOUS)
+
+    monkeypatch.setattr(service, "acquire_with_browser_provider", provider)
+    request = PaperRequest(title="中文研究论文测试题名", authors=("张三",))
+    result = service.acquire_full_text_maximized(
+        request,
+        output_dir=tmp_path,
+        source_preference=preference,
+        browser_config=BrowserAccessConfig(cnki_enabled=enabled),
+    )
+    assert bool(calls) is called
+    assert result.status == (
+        MaximizedAcquisitionStatus.AMBIGUOUS
+        if called
+        else MaximizedAcquisitionStatus.EXHAUSTED
+    )
+
+
+def test_explicit_cnki_skips_public_but_local_file_still_takes_precedence(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        service,
+        "acquire_full_text",
+        lambda *a, **k: pytest.fail("CNKI-only cannot use public DOI pipeline"),
+    )
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "acquire_with_browser_provider",
+        lambda *a, **k: (
+            calls.append("cnki")
+            or BrowserAccessAttempt(
+                _candidate(), None, BrowserAttemptStatus.NO_FILE_CANDIDATES
+            )
+        ),
+    )
+    service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+        expected_title="English title",
+        source_preference="cnki",
+    )
+    assert calls == ["cnki"]
+    from aletheia_nexus.acquire.access.models import MaximizedAcquisitionResult
+
+    monkeypatch.setattr(
+        service,
+        "resolve_user_operated_access",
+        lambda *a, **k: (
+            calls.append("local")
+            or MaximizedAcquisitionResult(
+                "10.1000/target", MaximizedAcquisitionStatus.VERIFIED, _base()
+            )
+        ),
+    )
+    service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+        local_pdf_path=tmp_path / "chosen.pdf",
+        source_preference="cnki",
+    )
+    assert calls == ["cnki", "local"]
+
+
+def test_foreign_metadata_with_translated_title_retains_browser_routes(
+    monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+
+    base = replace(
+        _base(),
+        expected_title="用户提供的中文翻译题名",
+        metadata=SimpleNamespace(
+            title="Original English article", journal="Nature", publisher="Nature"
+        ),
+    )
+    monkeypatch.setattr(service, "acquire_full_text", lambda *a, **k: base)
+    monkeypatch.setattr(
+        service,
+        "acquire_with_browser_provider",
+        lambda *a, **k: pytest.fail("Foreign metadata must not start CNKI"),
+    )
+    routes = []
+
+    def browser(**kwargs):
+        routes.extend(kwargs["routes"])
+        return BrowserRecoveryResult(doi=base.doi, attempts=())
+
+    monkeypatch.setattr(service, "acquire_with_browser", browser)
+    service.acquire_full_text_maximized(
+        base.doi, output_dir=tmp_path, auto_official_api=False
+    )
+    assert any("doi.org" in candidate.url for candidate in routes)
+
+
+@pytest.mark.parametrize(
+    "publisher_outcome", ["verified", "exhausted", "interaction", "started"]
+)
+def test_weak_chinese_title_respects_original_publisher_flow(
+    monkeypatch, tmp_path, publisher_outcome
+):
+    base = replace(_base(), expected_title="缺少可靠来源的中文题名")
+    calls = []
+    monkeypatch.setattr(
+        service, "acquire_full_text", lambda *a, **k: calls.append("public") or base
+    )
+
+    def browser(**kwargs):
+        calls.append("publisher")
+        attempt = BrowserAccessAttempt(
+            _candidate(),
+            None,
+            BrowserAttemptStatus.INTERACTION_REQUIRED
+            if publisher_outcome == "interaction"
+            else BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            download_started=publisher_outcome == "started",
+        )
+        return BrowserRecoveryResult(
+            doi=base.doi,
+            attempts=(attempt,),
+            verified_result=_base(FullTextAcquisitionStatus.VERIFIED).verified_result
+            if publisher_outcome == "verified"
+            else None,
+        )
+
+    monkeypatch.setattr(service, "acquire_with_browser", browser)
+    monkeypatch.setattr(
+        service,
+        "acquire_with_browser_provider",
+        lambda *a, **k: (
+            calls.append("cnki")
+            or BrowserAccessAttempt(
+                _candidate(), None, BrowserAttemptStatus.NO_FILE_CANDIDATES
+            )
+        ),
+    )
+    service.acquire_full_text_maximized(
+        base.doi, output_dir=tmp_path, auto_official_api=False
+    )
+    assert calls == (
+        ["public", "publisher", "cnki"]
+        if publisher_outcome == "exhausted"
+        else ["public", "publisher"]
     )
 
 

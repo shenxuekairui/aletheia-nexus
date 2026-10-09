@@ -1,10 +1,13 @@
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from aletheia_nexus.acquire.access.security import redact_url_for_record
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
+from aletheia_nexus.acquire.fulltext.bibliographic import (
+    validate_bibliographic_identity,
+)
 from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionResult,
@@ -16,6 +19,7 @@ from aletheia_nexus.acquire.fulltext.models import (
 from aletheia_nexus.acquire.fulltext.storage import promote_resource, write_json_sidecar
 from aletheia_nexus.acquire.fulltext.validation import inspect_pdf
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.paper_request import PaperRequest
 
 _SENSITIVE_ACCESS_KEY_MARKERS = (
     "api_key",
@@ -90,6 +94,8 @@ def finalize_access_resource(
     transport: str,
     access_details: dict[str, object],
     access_evidence: tuple[str, ...] = (),
+    target_identity: PaperRequest | None = None,
+    observed_identity: PaperRequest | None = None,
 ) -> AcquisitionResult:
     """Apply the scientific validation gates to any authenticated-access artifact.
 
@@ -106,7 +112,11 @@ def finalize_access_resource(
     safe_access_details = _sanitize_access_details(access_details)
 
     started_at = time.perf_counter()
-    normalized_doi = normalize_doi(candidate.doi)
+    normalized_doi = normalize_doi(candidate.doi) if candidate.doi else ""
+    if not normalized_doi and (target_identity is None or not candidate.article_id):
+        raise ValueError(
+            "DOI-less artifacts require a bibliographic target and article_id"
+        )
     file_path: Path | None = None
     promoted_new = False
 
@@ -134,7 +144,16 @@ def finalize_access_resource(
             source_url=resource.final_url,
             inspection=inspection,
             expected_title=expected_title,
+            allow_missing_doi=target_identity is not None,
         )
+        if target_identity is not None:
+            identity = validate_bibliographic_identity(
+                target=target_identity,
+                observed=observed_identity,
+                resolved_doi=normalized_doi,
+                inspection=inspection,
+                source_url=resource.final_url,
+            )
         status = _classify(identity.status, identity.document_role)
         should_persist = status == AcquisitionStatus.VERIFIED or keep_unverified
 
@@ -145,7 +164,7 @@ def finalize_access_resource(
             )
             file_path, promoted_new = promote_resource(
                 resource,
-                doi=normalized_doi,
+                doi=normalized_doi or candidate.article_id,
                 output_dir=output_dir,
                 subdirectory=subdirectory,
             )
@@ -157,10 +176,15 @@ def finalize_access_resource(
                 "status": status.value,
                 "transport": transport,
                 "target": {
-                    "doi": normalized_doi,
+                    "doi": normalized_doi or None,
+                    "article_id": candidate.article_id or ("doi:" + normalized_doi),
+                    "bibliography": asdict(target_identity)
+                    if target_identity
+                    else None,
                     "expected_title": expected_title,
                 },
                 "candidate": {
+                    "article_id": candidate.article_id,
                     "url": redact_url_for_record(candidate.url),
                     "url_type": candidate.url_type.value,
                     "access_type": candidate.access_type.value,
@@ -202,6 +226,8 @@ def finalize_access_resource(
                     "warning": pdf_validation.warning,
                 },
                 "identity_validation": {
+                    "policy": identity.policy,
+                    "declared_dois": list(identity.declared_dois),
                     "status": identity.status.value,
                     "document_role": identity.document_role.value,
                     "doi_match": identity.doi_match,

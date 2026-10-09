@@ -27,10 +27,11 @@ from aletheia_nexus.acquire.fulltext.orchestration.models import (
     TitleSource,
 )
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.paper_request import PaperRequest
 
 
 def import_local_pdf(
-    doi: str,
+    doi: str | PaperRequest,
     path: str | Path,
     *,
     output_dir: str | Path,
@@ -45,7 +46,9 @@ def import_local_pdf(
     used for browser and official-API bytes.
     """
 
-    normalized_doi = normalize_doi(doi)
+    request = doi if isinstance(doi, PaperRequest) else None
+    normalized_doi = (request.doi or "") if request else normalize_doi(doi)
+    expected_title = expected_title or (request.title if request else None)
     if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1:
         raise ValueError("max_bytes must be a positive integer")
     if not isinstance(keep_unverified, bool):
@@ -60,13 +63,18 @@ def import_local_pdf(
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
     temporary = destination / f".an-local-import-{uuid4().hex}.part"
-    doi_url = f"https://doi.org/{quote(normalized_doi, safe='/')}"
+    doi_url = (
+        f"https://doi.org/{quote(normalized_doi, safe='/')}"
+        if normalized_doi
+        else source.resolve().as_uri()
+    )
     candidate = FullTextCandidate(
         doi=normalized_doi,
         url=doi_url,
         provenance=(),
         url_type=CandidateUrlType.PDF,
         source_name="User-selected local PDF",
+        article_id=request.article_id if request else None,
     )
     try:
         shutil.copyfile(source, temporary)
@@ -95,13 +103,14 @@ def import_local_pdf(
             transport="user_selected_local_file",
             access_details={"user_selected": True},
             access_evidence=("The user explicitly selected the local PDF",),
+            target_identity=request,
         )
     finally:
         temporary.unlink(missing_ok=True)
 
 
 def resolve_user_operated_access(
-    doi: str,
+    doi: str | PaperRequest,
     *,
     output_dir: str | Path,
     expected_title: str | None,
@@ -111,7 +120,8 @@ def resolve_user_operated_access(
 ) -> MaximizedAcquisitionResult:
     """Represent a no-network handoff or validate the explicitly chosen file."""
 
-    normalized_doi = normalize_doi(doi)
+    request = doi if isinstance(doi, PaperRequest) else None
+    normalized_doi = (request.doi or "") if request else normalize_doi(doi)
     base = MultiRouteAcquisitionResult(
         doi=normalized_doi,
         status=FullTextAcquisitionStatus.NO_CANDIDATES,
@@ -134,7 +144,7 @@ def resolve_user_operated_access(
 
     try:
         imported = import_local_pdf(
-            normalized_doi,
+            doi,
             local_pdf_path,
             output_dir=output_dir,
             expected_title=expected_title,

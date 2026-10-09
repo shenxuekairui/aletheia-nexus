@@ -263,6 +263,55 @@ def _pdf_bytes(title: str = "Authenticated Browser Integration Article") -> byte
     return output.getvalue()
 
 
+def test_native_download_survives_persistent_profile_relaunch(tmp_path):
+    """Regression 556160935 needs history + relaunch, not a fresh-profile smoke."""
+    body = _pdf_bytes("Native Download History Regression")
+    config = BrowserAccessConfig(
+        profile_name="native-history",
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+    )
+
+    def respond(route):
+        route.fulfill(
+            status=200,
+            content_type="application/pdf",
+            headers={"Content-Disposition": 'attachment; filename="fixture.pdf"'},
+            body=body,
+        )
+
+    for launch in range(3):
+        with BrowserSession(config) as session:
+            context = session._ensure_started()
+            context.route("**/*", respond)
+            page = context.pages[0]
+            # Authentication state must persist along with the download history.
+            if launch == 0:
+                context.add_cookies(
+                    [
+                        {
+                            "name": "fixture-auth",
+                            "value": "local-test-only",
+                            "url": "https://publisher.example",
+                            "expires": 2000000000,
+                        }
+                    ]
+                )
+            else:
+                assert any(c["name"] == "fixture-auth" for c in context.cookies())
+            for download_index in range(2):
+                page.set_content(
+                    '<a href="https://publisher.example/fixture.pdf">PDF</a>'
+                )
+                with page.expect_download(timeout=15000) as event:
+                    page.locator("a").click()
+                path = tmp_path / f"{launch}-{download_index}.pdf"
+                event.value.save_as(path)
+                assert path.read_bytes() == body
+                assert not page.is_closed()
+
+
 class _Handler(BaseHTTPRequestHandler):
     pdf_body = _pdf_bytes()
     popup_pdf_body = _pdf_bytes("Popup Browser Integration Article")

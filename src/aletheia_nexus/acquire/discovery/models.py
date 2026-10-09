@@ -80,6 +80,7 @@ class FullTextCandidate:
     license: str | None = None
     source_name: str | None = None
     is_best: bool = False
+    article_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

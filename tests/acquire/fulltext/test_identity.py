@@ -61,6 +61,36 @@ def test_short_generic_spaced_chinese_heading_cannot_verify():
     assert result.status == IdentityStatus.UNKNOWN
 
 
+def test_pdf_fullwidth_doi_and_chemical_subscript_title_verify():
+    result = validate_paper_identity(
+        target_doi="10.13822/j.cnki.hxsj.2023.0002",
+        source_url="https://kns.cnki.net/paper.pdf",
+        expected_title="银修饰铜纳米阵列用于电催化还原CO_2",
+        inspection=_inspection(
+            text=(
+                "银修饰铜纳米阵列用于电催化还原 CO\n2 作者 摘要\n"
+                "DOI: 10．13822 / j．cnki．hxsj．2023．0002"
+            )
+        ),
+    )
+    assert result.status == IdentityStatus.MATCH
+    assert result.doi_match is True
+    assert result.title_similarity == 1.0
+
+
+def test_fullwidth_doi_on_later_page_does_not_verify_reference():
+    result = validate_paper_identity(
+        target_doi="10.13822/j.cnki.hxsj.2023.0002",
+        source_url="https://kns.cnki.net/other.pdf",
+        inspection=_inspection(
+            text="参考文献 DOI: 10．13822 / j．cnki．hxsj．2023．0002",
+            first_page_text="另一篇论文",
+        ),
+    )
+    assert result.doi_match is True
+    assert result.status == IdentityStatus.UNKNOWN
+
+
 def test_spaced_chinese_title_on_later_page_cannot_verify_a_reference():
     title = "银修饰铜纳米阵列用于电催化还原CO2"
     result = validate_paper_identity(
@@ -161,6 +191,82 @@ def test_metadata_title_can_verify_when_doi_is_absent():
     assert result.status == IdentityStatus.MATCH
     assert result.document_role == DocumentRole.ARTICLE
     assert result.title_similarity == 1.0
+
+
+def test_explicit_conflicting_article_doi_blocks_even_a_matching_title():
+    title = "银修饰铜纳米阵列用于电催化还原CO_2"
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        source_url="https://kns.cnki.net/article.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            title=title, text=f"{title}\nDOI：10．9999 / wrong\n摘要"
+        ),
+    )
+    assert result.status == IdentityStatus.MISMATCH
+    assert result.document_role != DocumentRole.ARTICLE
+
+
+def test_cnki_repaired_doi_is_recorded_not_treated_as_conflict():
+    result = validate_paper_identity(
+        target_doi="10.19343/j.cnki.11-1302/c.2025.07.009",
+        source_url="https://kns.cnki.net/article.pdf",
+        inspection=_inspection(text="DOI: 10.19343/j.cnki.11 –1302/c.2025.07.009"),
+    )
+    assert result.status == IdentityStatus.MATCH
+    assert result.declared_dois == ("10.19343/j.cnki.11-1302/c.2025.07.009",)
+    assert result.policy == "pdf_front_matter/v2"
+
+
+def test_multiple_declared_dois_are_not_verified_by_title_alone():
+    title = "银修饰铜纳米阵列用于电催化还原CO_2"
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        source_url="https://kns.cnki.net/article.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            text=f"{title}\nDOI: 10.1000/target\nDOI: 10.1000/other"
+        ),
+    )
+    assert result.status == IdentityStatus.UNKNOWN
+    assert len(result.declared_dois) == 2
+
+
+def test_conflicting_doi_label_without_colon_remains_a_hard_boundary():
+    title = "银修饰铜纳米阵列用于电催化还原CO_2"
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        source_url="https://kns.cnki.net/article.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            text=f"{title}\ndoi\n10. 16112 / j. cnki. 53 － 1160 / c. 2025. 05. 211"
+        ),
+    )
+    assert result.status == IdentityStatus.MISMATCH
+
+
+def test_first_page_reference_doi_does_not_override_article_title():
+    title = "银修饰铜纳米阵列用于电催化还原CO_2"
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        source_url="https://kns.cnki.net/article.pdf",
+        expected_title=title,
+        inspection=_inspection(text=f"{title}\n摘要\n参考文献\nDOI: 10.9999/reference"),
+    )
+    assert result.status == IdentityStatus.MATCH
+
+
+def test_fullwidth_chemical_underscore_is_normalized_before_compacting():
+    title = "银修饰铜纳米阵列用于电催化还原ＣＯ＿２"
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        source_url="https://kns.cnki.net/article.pdf",
+        expected_title=title,
+        inspection=_inspection(
+            text="银 修 饰 铜 纳 米 阵 列 用 于 电 催 化 还 原 CO\n2"
+        ),
+    )
+    assert result.status == IdentityStatus.MATCH
 
 
 def test_title_lead_matching_tolerates_split_chemical_formula_typography():

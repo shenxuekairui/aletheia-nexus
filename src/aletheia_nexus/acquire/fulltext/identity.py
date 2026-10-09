@@ -11,7 +11,7 @@ from aletheia_nexus.acquire.fulltext.models import (
     IdentityValidationReport,
 )
 from aletheia_nexus.acquire.fulltext.validation import PdfInspection
-from aletheia_nexus.core.identifiers.doi import extract_dois, normalize_doi
+from aletheia_nexus.core.identifiers.doi import extract_pdf_dois, normalize_doi
 
 _SUPPLEMENT_TERMS = (
     "supporting information",
@@ -70,6 +70,10 @@ def _normalize_title(value: str) -> str:
 
 
 def _compact_title(value: str) -> str:
+    # Treat chemical subscript notation (CO_2 / CO₂ / CO 2) as typography.
+    # Keep other underscores, which can be meaningful identifier characters.
+    value = unicodedata.normalize("NFKC", value)
+    value = re.sub(r"(?<=[A-Za-z])_(?=\d)", "", value)
     return _normalize_title(value).replace(" ", "")
 
 
@@ -225,20 +229,43 @@ def _correction_to_target_evidence(
     return None
 
 
+def declared_pdf_dois(first_page_text: str) -> tuple[str, ...]:
+    """Only labelled front-matter DOIs, never identifiers in references."""
+    front_matter = re.split(
+        r"(?im)^\s*(?:references\b|参考文献)",
+        unicodedata.normalize("NFKC", first_page_text),
+        maxsplit=1,
+    )[0]
+    values = set()
+    for label in re.finditer(
+        r"(?im)(?:\bdoi\s*:\s*|^\s*doi\s+(?=10\s*\.))", front_matter
+    ):
+        dois = extract_pdf_dois(front_matter[label.end() : label.end() + 200])
+        if dois:
+            values.add(dois[0])
+    return tuple(sorted(values))
+
+
 def validate_paper_identity(
     *,
     target_doi: str,
     source_url: str,
     inspection: PdfInspection,
     expected_title: str | None = None,
+    allow_missing_doi: bool = False,
 ) -> IdentityValidationReport:
     """Conservatively validate scholarly identity and document role."""
 
-    normalized_doi = normalize_doi(target_doi)
+    normalized_doi = (
+        normalize_doi(target_doi) if target_doi or not allow_missing_doi else ""
+    )
     evidence: list[str] = []
-    extracted_dois = tuple(extract_dois(inspection.extracted_text))
+    extracted_dois = tuple(extract_pdf_dois(inspection.extracted_text))
     doi_match = normalized_doi in extracted_dois
-    first_page_doi_match = normalized_doi in extract_dois(inspection.first_page_text)
+    first_page_doi_match = normalized_doi in extract_pdf_dois(
+        inspection.first_page_text
+    )
+    declared_dois = declared_pdf_dois(inspection.first_page_text)
     locked_encrypted = (
         inspection.report.encrypted and inspection.report.page_count is None
     )
@@ -278,6 +305,12 @@ def validate_paper_identity(
             "Encrypted PDF could not be opened; metadata alone is insufficient "
             "for scholarly identity verification"
         )
+    elif normalized_doi and declared_dois and normalized_doi not in declared_dois:
+        identity_status = IdentityStatus.MISMATCH
+        evidence.append("Explicit article DOI on PDF first page conflicts with target")
+    elif len(declared_dois) > 1:
+        identity_status = IdentityStatus.UNKNOWN
+        evidence.append("Multiple declared article DOIs require review")
     elif first_page_doi_match or title_match:
         identity_status = IdentityStatus.MATCH
     else:
@@ -318,4 +351,5 @@ def validate_paper_identity(
         doi_match=doi_match,
         title_similarity=title_similarity,
         evidence=tuple(evidence),
+        declared_dois=tuple(sorted(declared_dois)),
     )
