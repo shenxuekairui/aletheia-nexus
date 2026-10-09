@@ -1222,6 +1222,30 @@ def test_cnki_search_control_cold_start_retries_once(monkeypatch, tmp_path, stag
     ) in attempt.evidence
 
 
+@pytest.mark.parametrize("always", [False, True])
+def test_title_field_hydration_retry_is_bounded(monkeypatch, tmp_path, always):
+    calls = []
+
+    def select(*args, **kwargs):
+        calls.append(True)
+        if always or len(calls) == 1:
+            raise cnki_provider.CNKIStageTimeout("title search field")
+        return False
+
+    monkeypatch.setattr(cnki_provider, "_select_search_field", select)
+    detail = _DetailPage()
+    context = _Context(detail)
+    detail.pdf._click = lambda: context.emit("response", _response(detail))
+    attempt = _fetch(_SearchPage("中文论文标题"), detail, tmp_path, context=context)
+    assert len(calls) == 2
+    assert attempt.status == (
+        BrowserAttemptStatus.NAVIGATION_ERROR
+        if always
+        else BrowserAttemptStatus.VERIFIED
+    )
+    assert attempt.download_started is not always
+
+
 def test_cnki_search_control_retry_is_bounded(monkeypatch, tmp_path):
     waits = 0
 

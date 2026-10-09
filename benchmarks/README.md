@@ -1,5 +1,19 @@
 # Benchmark corpus provenance
 
+`cnki_multidiscipline_20.json` contains only the DOI, title and author constraints
+from the 2026-10-09 CNKI live test corpus, retained for the 2026-10-10 integration
+acceptance. It contains no PDF, authentication state, signed download URL or
+private profile. Run the installed acquisition pipeline with, for example:
+
+```powershell
+aletheia-nexus acquire benchmarks/cnki_multidiscipline_20.json --source cnki --non-interactive --no-resume --output-dir downloads/cnki-check
+```
+
+Use `--source auto` to test full public/publisher/CNKI routing instead. Report
+these as separate runs, retain failures, and do not count a CAPTCHA skip as a
+successful download. `--non-interactive` reuses existing entitlement but never
+waits for or solves human authentication.
+
 The `v07_fixtures/` directory is a separate, fully self-authored parser
 regression set with frozen PDF/sidecar hashes and gold annotations. See its
 README for rights, scope, regeneration, and evaluation instructions. It does

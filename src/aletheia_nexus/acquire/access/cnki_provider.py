@@ -1019,10 +1019,12 @@ class CNKIProvider(BaseBrowserProvider):
                         "CNKI retried a punctuation-free Chinese title phrase"
                     )
                 stage = "search controls"
+                field_name = "TI" if _contains_chinese(title) else "SU"
                 try:
                     search_input, search_button = gate.wait(
                         page, search_controls, stage=stage
                     )
+                    field_selected = _select_search_field(page, gate, name=field_name)
                 except CNKIStageTimeout:
                     # One cold-start hydration retry is safe only before any
                     # entitlement-consuming action and outside manual gates.
@@ -1038,8 +1040,7 @@ class CNKIProvider(BaseBrowserProvider):
                     search_input, search_button = gate.wait(
                         page, search_controls, stage=stage
                     )
-                field_name = "TI" if _contains_chinese(title) else "SU"
-                field_selected = _select_search_field(page, gate, name=field_name)
+                    field_selected = _select_search_field(page, gate, name=field_name)
                 actual_field = None
                 field_control = page.locator("#selectfield")
                 if field_control.count():
