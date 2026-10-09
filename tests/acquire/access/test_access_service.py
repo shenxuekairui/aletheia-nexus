@@ -117,6 +117,33 @@ def test_doi_less_routing_controls_do_not_invoke_old_doi_pipeline(
     )
 
 
+def test_cnki_started_download_cannot_replay_or_be_masked_by_generic_auth(
+    monkeypatch, tmp_path
+):
+    candidate = _candidate("https://kns.cnki.net/kcms2/article/abstract")
+    base = _base(candidate=candidate)
+    monkeypatch.setattr(service, "acquire_full_text", lambda *a, **k: base)
+    attempt = BrowserAccessAttempt(
+        candidate,
+        candidate.url,
+        BrowserAttemptStatus.RETRIEVAL_FAILED,
+        download_started=True,
+        evidence=("CNKI transport failure",),
+    )
+    monkeypatch.setattr(
+        service, "acquire_with_browser_provider", lambda *a, **k: attempt
+    )
+    monkeypatch.setattr(
+        service,
+        "acquire_with_browser",
+        lambda **k: pytest.fail("Started CNKI download must not be replayed"),
+    )
+    result = service.acquire_full_text_maximized("10.1000/target", output_dir=tmp_path)
+    assert result.browser_attempts[0].status == BrowserAttemptStatus.RETRIEVAL_FAILED
+    assert len(result.browser_attempts) == 1
+    assert result.status != MaximizedAcquisitionStatus.INTERACTION_REQUIRED
+
+
 def test_explicit_cnki_skips_public_but_local_file_still_takes_precedence(
     monkeypatch, tmp_path
 ):

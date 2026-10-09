@@ -221,7 +221,7 @@ def _correction_to_target_evidence(
             return None
 
     for match in _ORIGINAL_ARTICLE_DOI_LABEL.finditer(inspection.first_page_text):
-        labeled_dois = extract_dois(
+        labeled_dois = extract_pdf_dois(
             inspection.first_page_text[match.end() : match.end() + 200]
         )
         if labeled_dois and target_doi == labeled_dois[0]:

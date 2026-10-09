@@ -105,10 +105,10 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert result.verified_result is None
     assert context.closed is True
     assert manager.playwright.chromium.kwargs["service_workers"] == "allow"
-    assert "args" not in manager.playwright.chromium.kwargs
+    assert manager.playwright.chromium.kwargs["args"] == ["--no-proxy-server"]
 
 
-def test_headed_session_prefers_installed_channel_without_forcing_network(
+def test_headed_session_prefers_safe_channel_with_historical_network_default(
     monkeypatch, tmp_path
 ):
     manager = _Manager(_Context())
@@ -119,7 +119,7 @@ def test_headed_session_prefers_installed_channel_without_forcing_network(
     kwargs = manager.playwright.chromium.kwargs
     assert kwargs["channel"] == "msedge"
     assert kwargs["user_data_dir"] == tmp_path / "default"
-    assert "args" not in kwargs
+    assert kwargs["args"] == ["--no-proxy-server"]
 
 
 def test_explicit_channel_and_direct_connection_are_respected(monkeypatch, tmp_path):

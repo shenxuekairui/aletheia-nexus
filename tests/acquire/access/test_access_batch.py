@@ -175,6 +175,7 @@ def test_batch_stops_after_interaction_and_defers_remaining(monkeypatch, tmp_pat
     result = acquire_full_text_batch_maximized(
         ["10.1000/one", "10.1000/two"],
         output_dir=tmp_path,
+        stop_on_interaction=True,
     )
 
     assert calls == ["10.1000/one"]

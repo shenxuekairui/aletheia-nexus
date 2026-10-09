@@ -2,6 +2,7 @@
 
 import hashlib
 import shutil
+from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
@@ -101,9 +102,14 @@ def import_local_pdf(
             expected_title=expected_title,
             keep_unverified=keep_unverified,
             transport="user_selected_local_file",
-            access_details={"user_selected": True},
+            access_details={
+                "user_selected": True,
+                "requested_bibliography": asdict(request) if request else None,
+            },
             access_evidence=("The user explicitly selected the local PDF",),
-            target_identity=request,
+            # A structured input alone must not select the CNKI policy. Known
+            # DOI imports retain the original shared PDF identity channel.
+            target_identity=request if not normalized_doi else None,
         )
     finally:
         temporary.unlink(missing_ok=True)

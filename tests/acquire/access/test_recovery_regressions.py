@@ -146,10 +146,12 @@ def test_loaded_viewer_failure_falls_back_without_closing_user_tab(
     assert page.closed is False and calls[1][0].closed is True
 
 
+@pytest.mark.parametrize("structured", [False, True])
 def test_batch_revisits_only_a_cleared_challenge_and_keeps_history(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, structured
 ):
     import aletheia_nexus.acquire.access.batch as module
+    from aletheia_nexus.core.paper_request import PaperRequest
 
     calls = []
     session = browser.BrowserSession()
@@ -157,8 +159,11 @@ def test_batch_revisits_only_a_cleared_challenge_and_keeps_history(
 
     def acquire(doi, **kwargs):
         calls.append(doi)
-        waiting = doi == "10.1000/one" and calls.count(doi) == 1
+        normalized = doi.doi if isinstance(doi, PaperRequest) else doi
+        waiting = normalized == "10.1000/one" and calls.count(doi) == 1
         return SimpleNamespace(
+            doi=normalized,
+            browser_attempts=(),
             status=MaximizedAcquisitionStatus.INTERACTION_REQUIRED
             if waiting
             else MaximizedAcquisitionStatus.EXHAUSTED,
@@ -169,15 +174,22 @@ def test_batch_revisits_only_a_cleared_challenge_and_keeps_history(
 
     monkeypatch.setattr(module, "acquire_full_text_maximized", acquire)
     checkpoint = tmp_path / "checkpoint.json"
+    first = (
+        PaperRequest(doi="10.1000/one", title="Constraint retained", authors=("Lee",))
+        if structured
+        else "10.1000/one"
+    )
     result = acquire_full_text_batch_maximized(
-        ["10.1000/one", "10.1000/two"],
+        [first, "10.1000/two"],
         output_dir=tmp_path,
         browser_session=session,
         checkpoint_path=checkpoint,
     )
-    assert calls == ["10.1000/one", "10.1000/two", "10.1000/one"]
+    assert calls == [first, "10.1000/two", first]
     assert result.items[0].attempts == 2
-    record = json.loads(checkpoint.read_text())["records"]["10.1000/one"]
+    record = json.loads(checkpoint.read_text())["records"][
+        first.key if structured else first
+    ]
     assert [x["status"] for x in record["attempt_history"]] == [
         "INTERACTION_REQUIRED",
         "EXHAUSTED",

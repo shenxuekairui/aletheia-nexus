@@ -16,7 +16,11 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
     DerivedFullTextCandidate,
 )
 from aletheia_nexus.acquire.fulltext.resolution.parser import HtmlLink, ParsedHtml
-from aletheia_nexus.acquire.fulltext.urls import derive_https_url, normalize_derived_url
+from aletheia_nexus.acquire.fulltext.urls import (
+    derive_https_url,
+    is_known_non_article_asset,
+    normalize_derived_url,
+)
 
 _CITATION_PDF_META = {
     "citation_pdf_url",
@@ -260,6 +264,8 @@ def _dedupe_and_rank(
 
     for item in candidates:
         key = item.candidate.url
+        if is_known_non_article_asset(key):
+            continue
         existing = merged.get(key)
         if existing is None:
             merged[key] = item

@@ -38,7 +38,9 @@ def main() -> int:
     parser.add_argument("--profile-root", type=Path)
     parser.add_argument("--channel")
     parser.add_argument("--executable-path", type=Path)
-    parser.add_argument("--direct-connection", action="store_true")
+    network = parser.add_mutually_exclusive_group()
+    network.add_argument("--direct-connection", action="store_true")
+    network.add_argument("--browser-use-system-proxy", action="store_true")
     parser.add_argument(
         "--cnki-context-request",
         action=argparse.BooleanOptionalAction,
@@ -92,6 +94,7 @@ def main() -> int:
         channel=args.channel,
         executable_path=args.executable_path,
         direct_connection=args.direct_connection,
+        use_system_proxy=args.browser_use_system_proxy,
         cnki_context_request=args.cnki_context_request,
         cdp_endpoint=args.cdp_endpoint,
         headless=args.headless,
@@ -102,7 +105,7 @@ def main() -> int:
         interaction_timeout=(
             180.0 if args.interaction_timeout is None else args.interaction_timeout
         ),
-        interaction_callback=_interaction_notice,
+        interaction_callback=None if args.non_interactive else _interaction_notice,
         navigation_timeout=args.navigation_timeout,
         cnki_max_results=args.max_results,
         keep_unverified=args.keep_unverified,
@@ -130,7 +133,8 @@ def main() -> int:
             _print_attempt(attempt)
             if attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED:
                 exit_code = 2
-                break
+                if not args.non_interactive:
+                    break
             if attempt.status != BrowserAttemptStatus.VERIFIED:
                 exit_code = max(exit_code, 1)
             if "CNKI browser target closed" in attempt.evidence:

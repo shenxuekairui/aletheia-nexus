@@ -785,6 +785,22 @@ def _finalize_cnki_download(
         temporary.unlink(missing_ok=True)
 
 
+def _transport_failure_code(exc: Exception) -> str:
+    """Keep actionable transport causes, never raw messages or signed URLs."""
+    message = str(exc).casefold()
+    for markers, code in (
+        (("has been closed", "target closed", "browser closed"), "browser_closed"),
+        (("timeout", "timed out", "etimedout"), "timeout"),
+        (("econnreset", "connection reset", "socket hang up"), "connection_reset"),
+        (("enotfound", "name_not_resolved", "eai_again"), "dns_error"),
+        (("certificate", "err_ssl", "tls"), "tls_error"),
+        (("econnrefused", "connection_refused"), "connection_refused"),
+    ):
+        if any(marker in message for marker in markers):
+            return code
+    return "transport_error"
+
+
 def _recover_pdf_request(context, page, *, url, detail_url, gate, config):
     """Recover one cancelled browser transfer using its existing cookie jar.
 
@@ -810,7 +826,8 @@ def _recover_pdf_request(context, page, *, url, detail_url, gate, config):
             )
         except Exception as exc:
             raise CNKIFileError(
-                "CNKI browser-session download recovery failed: " + type(exc).__name__
+                "CNKI browser-session download recovery failed: "
+                + _transport_failure_code(exc)
             ) from exc
         try:
             length = response.headers.get("content-length", "")
@@ -1402,10 +1419,10 @@ class CNKIProvider(BaseBrowserProvider):
                 ChallengeKind.ACCESS_DENIED: BrowserAttemptStatus.ACCESS_DENIED,
             }.get(exc.report.kind, BrowserAttemptStatus.INTERACTION_REQUIRED)
             return attempt(status, target=exc.page)
-        except CNKIStageTimeout:
+        except CNKIStageTimeout as exc:
             return attempt(
                 BrowserAttemptStatus.NAVIGATION_ERROR,
-                error=f"CNKI timed out at {stage}",
+                error=f"CNKI timed out at {exc}",
             )
         except Exception as exc:
             if isinstance(exc, CNKITargetClosed) or type(exc).__name__ == (

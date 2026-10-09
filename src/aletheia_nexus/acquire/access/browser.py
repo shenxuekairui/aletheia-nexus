@@ -99,6 +99,8 @@ def _validate_config(config: BrowserAccessConfig) -> None:
             raise TypeError("channel must be a string or None")
         if not config.channel.strip():
             raise ValueError("channel must not be blank")
+    if config.direct_connection and config.use_system_proxy:
+        raise ValueError("direct_connection cannot be combined with use_system_proxy")
     if config.executable_path is not None:
         if not isinstance(config.executable_path, (str, Path)):
             raise TypeError("executable_path must be a path or None")

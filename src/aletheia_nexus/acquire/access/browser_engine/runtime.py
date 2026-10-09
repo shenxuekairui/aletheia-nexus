@@ -88,17 +88,21 @@ def fixed_portable_browser() -> Path | None:
     candidates = []
     suffix = "chrome-win64/chrome.exe" if os.name == "nt" else "chrome-linux64/chrome"
     for path in root.glob(f"chrome-*/{suffix}"):
+        try:
+            version = tuple(
+                int(part)
+                for part in path.parents[1].name.removeprefix("chrome-").split(".")
+            )
+        except ValueError:
+            continue
         if os.name == "nt":
             major = windows_browser_major(path)
         else:
             # Provisioning validated the binary; launch checks its actual version
             # again before navigation. Folder names are only selection hints.
-            try:
-                major = int(path.parents[1].name.removeprefix("chrome-").split(".")[0])
-            except ValueError:
-                major = None
+            major = version[0]
         if major is not None and major >= 155:
-            candidates.append((major, path))
+            candidates.append(((major, *version[1:]), path))
     return (
         max(candidates, key=lambda item: (item[0], str(item[1])))[1]
         if candidates

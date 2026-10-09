@@ -17,16 +17,13 @@ def test_batch_cli_accepts_mixed_bibliographic_inputs_and_serializes_report(tmp_
     import json
     from types import SimpleNamespace
 
+    from aletheia_nexus import cli
     from aletheia_nexus.acquire.access import (
         BatchAcquisitionItem,
         BatchItemStatus,
         PaperRequest,
     )
 
-    script = Path(__file__).parents[3] / "scripts/batch_v06_download.py"
-    spec = importlib.util.spec_from_file_location("batch_cli_bibliographic", script)
-    cli = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cli)
     path = tmp_path / "inputs.json"
     path.write_text(
         json.dumps(
@@ -44,8 +41,11 @@ def test_batch_cli_accepts_mixed_bibliographic_inputs_and_serializes_report(tmp_
         encoding="utf-8",
     )
     values, titles = cli._load_inputs(path)
-    assert values[:2] == ["10.1000/old", "10.1000/title"]
-    assert titles == {"10.1000/title": "Old DOI title"}
+    assert values[:2] == [
+        "10.1000/old",
+        PaperRequest(doi="10.1000/title", title="Old DOI title"),
+    ]
+    assert titles == {}
     assert isinstance(values[2], PaperRequest) and values[2].doi is None
     item = BatchAcquisitionItem(
         input_value=values[2],
@@ -224,14 +224,12 @@ def test_cli_multiple_dois_share_one_session_and_stop_only_on_handoff_or_closure
     assert all(call["browser_session"] is sessions[0] for call in calls)
 
 
-@pytest.mark.parametrize("direct", [False, True])
-def test_batch_cdp_launcher_only_forces_direct_network_when_requested(
-    monkeypatch, tmp_path, direct
+@pytest.mark.parametrize("use_proxy", [False, True])
+def test_batch_cdp_launcher_preserves_publisher_network_configuration(
+    monkeypatch, tmp_path, use_proxy
 ):
-    script = Path(__file__).parents[3] / "scripts/batch_v06_download.py"
-    spec = importlib.util.spec_from_file_location("batch_network_fixture", script)
-    cli = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cli)
+    from aletheia_nexus import cli
+
     commands = []
     monkeypatch.setattr(cli, "_find_browser", lambda: Path("C:/fixture/msedge.exe"))
     monkeypatch.setattr(cli, "_cdp_ready", lambda endpoint: True)
@@ -239,6 +237,66 @@ def test_batch_cdp_launcher_only_forces_direct_network_when_requested(
         cli.subprocess, "Popen", lambda args, **kwargs: commands.append(args)
     )
     cli._start_cdp_browser(
-        "http://127.0.0.1:9222", tmp_path / "profile", direct_connection=direct
+        "http://127.0.0.1:9222", tmp_path / "profile", use_system_proxy=use_proxy
     )
-    assert ("--no-proxy-server" in commands[0]) == direct
+    assert ("--no-proxy-server" in commands[0]) == (not use_proxy)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("authors", {"name": "Lee"}),
+        ("authors", 10),
+        ("authors", [1]),
+        ("year", 2024.5),
+        ("year", True),
+        ("year", "2024.5"),
+        ("year", "24"),
+    ],
+)
+def test_batch_cli_rejects_lossy_bibliographic_conversion(tmp_path, field, value):
+    import json
+
+    from aletheia_nexus import cli
+
+    source = tmp_path / "inputs.json"
+    source.write_text(
+        json.dumps([{"title": "Article", field: value}]), encoding="utf-8"
+    )
+    with pytest.raises(ValueError):
+        cli._load_inputs(source)
+
+
+def test_batch_cli_preserves_different_titles_for_the_same_doi(tmp_path):
+    import json
+
+    from aletheia_nexus import cli
+
+    source = tmp_path / "inputs.json"
+    source.write_text(
+        json.dumps(
+            [
+                {"doi": "10.1000/one", "title": "First requested title"},
+                {"doi": "10.1000/one", "title": "Second requested title"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    values, titles = cli._load_inputs(source)
+    assert titles == {}
+    assert values[0].key != values[1].key
+    assert [v.title for v in values] == [
+        "First requested title",
+        "Second requested title",
+    ]
+
+
+def test_csv_bibliography_normalizes_explicit_types(tmp_path):
+    from aletheia_nexus import cli
+
+    source = tmp_path / "inputs.csv"
+    source.write_text(
+        "doi,title,authors,year\n,Example article,Lee;Zhang,2024\n", encoding="utf-8"
+    )
+    values, _ = cli._load_inputs(source)
+    assert values[0].authors == ("Lee", "Zhang") and values[0].year == 2024

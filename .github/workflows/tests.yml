@@ -216,6 +216,8 @@ jobs:
         run: python -m pytest -q
       - name: Install Chromium runtime
         run: python -m playwright install chromium
+      - name: Provision fixed persistent-download browser
+        run: python scripts/install_an_browser.py
       - name: Run real-Chromium integration tests on Windows
         env:
           AN_RUN_BROWSER_SMOKE: "1"

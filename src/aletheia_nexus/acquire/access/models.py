@@ -126,7 +126,6 @@ class BrowserAccessConfig:
     channel: str | None = None
     use_system_proxy: bool = False
 
-
     executable_path: Path | str | None = None
     direct_connection: bool = False
     cdp_endpoint: str | None = None

@@ -1,4 +1,3 @@
-import importlib.util
 import json
 from io import BytesIO
 from pathlib import Path
@@ -6,10 +5,7 @@ from zipfile import ZipFile
 
 import pytest
 
-_SCRIPT = Path(__file__).resolve().parents[3] / "scripts/install_an_browser.py"
-_SPEC = importlib.util.spec_from_file_location("an_runtime_installer", _SCRIPT)
-installer = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(installer)
+from aletheia_nexus.acquire.access.browser_engine import installer
 
 
 @pytest.mark.parametrize(

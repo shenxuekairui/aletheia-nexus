@@ -21,8 +21,8 @@ aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir d
 批量命令支持以下三种输入：
 
 - `.txt`：每行一个 DOI；空行与 `#` 开头的注释行跳过。
-- `.json`：字符串或包含 `doi`、可选 `title` 的对象组成的列表。
-- `.csv`：`doi` 列，可选 `title` 列。
+- `.json`：DOI 字符串或书目对象组成的列表；对象至少提供 `doi` 或 `title`。
+- `.csv`：`doi` / `title` 列；同样可增加 `authors`、`journal`、`year`、`volume`、`issue`、`pages`、`cnki_id`。JSON 作者是列表，CSV 作者用英文分号分隔。
 
 推荐为困难论文提供准确标题。标题可帮助 AN 区分正文、补充材料以及网页指向的错误论文；特别是 PDF 内未印 DOI、标题文字提取错乱、或需要导入已有文件时。
 
@@ -33,7 +33,7 @@ aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir d
 ]
 ```
 
-真实 DOI-only 输入可参考仓库里的 [`benchmarks/user_20260923_20_with_titles.json`](../benchmarks/user_20260923_20_with_titles.json)（仅 2 篇附显式标题）；如需可重复的获取层测试，请用全部 20 篇都固定 DOI、准确标题、出版社和年份的 [`benchmarks/user_20260923_20_frozen.json`](../benchmarks/user_20260923_20_frozen.json)。`publisher` 和 `year` 是基准集的记录字段，当前批量 CLI 使用 DOI 与 `title`，不会把它们当作访问凭据。两份输入的 DOI 会标准化并去重；若要保留重复项，使用 `--keep-duplicates`。详情见 [`benchmarks/README.md`](../benchmarks/README.md)。
+真实 DOI-only 输入可参考仓库里的 [`benchmarks/user_20260923_20_with_titles.json`](../benchmarks/user_20260923_20_with_titles.json)（仅 2 篇附显式标题）；如需可重复的获取层测试，请用 [`benchmarks/user_20260923_20_frozen.json`](../benchmarks/user_20260923_20_frozen.json)。`publisher` 是基准记录字段，`year` 会保留为书目约束，均不作为访问凭据。DOI 会标准化；书目请求按全部约束去重及恢复，不会把同 DOI 不同题名合并。保留完全重复项用 `--keep-duplicates`。详情见 [`benchmarks/README.md`](../benchmarks/README.md)。
 
 ## 3. 最常用的批量运行方式
 
@@ -62,7 +62,7 @@ aletheia-nexus acquire 10.1039/D6TA02244H `
 
 AN 会在该本机端口未被占用时启动独立 Edge，不修改日常 Edge；若端口已有浏览器，则会附加到现有会话，运行前务必确认那是你期望的 AN 浏览器。调试端口只应绑定本机，使用完毕关闭该专用浏览器。这个方式不会绕过验证码或保证出版社放行。
 
-持久下载需要 Chromium/Edge/Chrome >=155：152–154 有历史下载对象的上游崩溃缺陷，AN 会拒绝用这些版本开始下载，而不清理配置或下载历史。Windows 运行 `python scripts/install_an_browser.py` 可部署官方 Chrome for Testing 到 AN 独立目录；可见模式默认优先 >=155 的已安装稳定版 Edge/Chrome，否则选择该独立运行时，headless 也支持。`--executable-path PATH` 可指定修复版二进制，不与 `--channel` 或 CDP 混用。批量默认配置名为 `human-handoff`，目录在用户主目录的 `.aletheia-nexus/browser-profiles/` 下。隔离不同机构、账号或浏览器引擎时，分别使用 `--profile NAME`；自定保存位置用 `--profile-root DIR`。若 CDP 端点已有浏览器，AN 附加到那个现有会话，**单改 `--profile` 不会切换其实际配置**。不要共享或上传专用配置。新会话保留系统网络设置；直连须显式选择 `--direct-connection`，不修改系统代理或已连接 CDP 的网络设置。
+持久下载应使用 Chromium/Edge/Chrome >=155：152–154 有历史下载对象的上游崩溃缺陷，AN 会拒绝开始下载，不清理配置或历史。Windows / Linux x64 可运行 `aletheia-nexus browser-install` 部署官方 Chrome for Testing 到 AN 独立目录，安装版无需源码仓库；旧脚本仍兼容。Windows 默认优先 >=155 的稳定版 Edge/Chrome，否则选择独立运行时，headless 也支持。`--executable-path PATH` 可指定修复版，不与 `--channel` 或 CDP 混用。批量默认配置名 `human-handoff`，目录为用户主目录的 `.aletheia-nexus/browser-profiles/`。隔离不同机构、账号或浏览器引擎时使用不同 `--profile NAME`，自定位置用 `--profile-root DIR`。CDP 已有浏览器时，**单改 `--profile` 不会切换实际配置**。不要上传专用配置。新启动会话默认直连；显式 `--browser-use-system-proxy` 可复用系统代理，但不改变已有 CDP 会话网络。
 
 如需无人值守运行（不等待人工登录或验证码）：
 
@@ -93,7 +93,7 @@ aletheia-nexus acquire dois.txt `
 | `--local-pdf DOI=PATH` | 导入已有 PDF，并重新执行完整验证。可重复传入。 |
 | `--manual-ieee-fallback` | 交互式终端中 IEEE 自动获取失败时，才提示输入用户自行保存的本地 PDF 路径。 |
 | `--keep-unverified` | 保留未通过正文身份验证的 PDF，便于诊断。 |
-| `--fail-on-unverified` | 任意有效 DOI 未 `VERIFIED` 时以非零状态退出。 |
+| `--fail-on-unverified` | 任意输入条目未 `VERIFIED` 时以非零状态退出，包括无 DOI 和无效输入。 |
 | `--unpaywall-email EMAIL` | 为适用的开放获取发现服务提供联系邮箱。 |
 | `--cnki` / `--no-cnki` | 启用或关闭 CNKI 浏览器 Provider；默认启用。 |
 | `--cnki-all-titles` | 对所有未获取文献尝试 CNKI，包括登记元数据仅有英文标题的论文。 |

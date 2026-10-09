@@ -30,6 +30,7 @@ class TitleSource(StrEnum):
 
     USER = "USER"
     METADATA = "METADATA"
+    PAGE_METADATA = "PAGE_METADATA"
     NONE = "NONE"
 
 
@@ -99,3 +100,4 @@ class MultiRouteAcquisitionResult:
     max_route_depth_reached: int = 0
     elapsed_seconds: float = 0.0
     message: str | None = None
+    requested_title: str | None = None

@@ -87,6 +87,15 @@ Explicit non-success states include:
 
 These are meaningful workflow outcomes, not errors to hide.
 
+The CNKI integration accepts DOI or structured title/author requests, reuses a
+dedicated institutional browser session, and records bibliographic evidence
+without changing the ordinary publisher validation policy. `acquire --source
+auto` routes conservatively; `--non-interactive` skips human authentication.
+See [CNKI automation](docs/CNKI_AUTOMATION.md). On Windows/Linux x64,
+`aletheia-nexus browser-install` provisions an AN-owned fixed browser runtime
+without changing system browsers or profiles. DOI-less acquisition is supported;
+the existing v0.7 parsing command still requires a real DOI.
+
 ### Parsing trust boundary
 
 The v0.7 parser accepts only an unchanged `VERIFIED` artifact whose DOI, document role, PDF hash, acquisition-sidecar hash, readability, and page count still match.

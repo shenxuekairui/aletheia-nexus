@@ -220,7 +220,7 @@ def acquire_full_text_batch_maximized(
     checkpoint_path: str | Path | None = None,
     resume: bool = True,
     deduplicate: bool = True,
-    stop_on_interaction: bool = True,
+    stop_on_interaction: bool = False,
     max_item_attempts: int = 1,
     retry_backoff: float = 1.0,
     progress_callback: Callable[[BatchAcquisitionItem, int, int], None] | None = None,
@@ -233,8 +233,8 @@ def acquire_full_text_batch_maximized(
     trusts only VERIFIED files that still exist and match their recorded SHA-256.
     Non-success outcomes are attempted again on the next run so a newly completed
     login, refreshed institutional session, or corrected entitlement can recover them.
-    An unresolved interactive challenge defers the remaining items by default;
-    callers can explicitly use ``stop_on_interaction=False`` to continue.
+    An unresolved interactive challenge ends that item, as in the installed CLI;
+    callers can use ``stop_on_interaction=True`` to defer remaining items.
     """
 
     if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
@@ -388,7 +388,9 @@ def acquire_full_text_batch_maximized(
                         chosen = manual_file_callback(doi)
                         if chosen:
                             result = acquire_full_text_maximized(
-                                doi,
+                                input_value
+                                if isinstance(input_value, PaperRequest)
+                                else doi,
                                 output_dir=output_dir,
                                 browser_session=session,
                                 expected_title=titles.get(doi),
@@ -417,6 +419,7 @@ def acquire_full_text_batch_maximized(
                     input_value=input_value,
                     doi=doi,
                     status=BatchItemStatus.RUNNER_ERROR,
+                    request_key=key,
                     attempts=attempts,
                     error=runner_error,
                     elapsed_seconds=time.perf_counter() - item_started_at,
@@ -462,11 +465,14 @@ def acquire_full_text_batch_maximized(
                     continue
                 try:
                     recovered = acquire_full_text_maximized(
-                        item.doi,
+                        item.input_value
+                        if isinstance(item.input_value, PaperRequest)
+                        else item.doi,
                         output_dir=output_dir,
                         browser_session=session,
                         expected_title=titles.get(item.doi),
-                        local_pdf_path=local_files.get(item.doi),
+                        local_pdf_path=local_files.get(item.request_key)
+                        or local_files.get(item.doi),
                         **acquisition_options,
                     )
                 except Exception:
@@ -474,7 +480,8 @@ def acquire_full_text_batch_maximized(
                     continue
                 fresh = BatchAcquisitionItem(
                     input_value=item.input_value,
-                    doi=item.doi,
+                    doi=recovered.doi or item.doi,
+                    request_key=item.request_key,
                     status=BatchItemStatus(recovered.status.value),
                     result=recovered,
                     verified_path=recovered.verified_path,
@@ -482,8 +489,9 @@ def acquire_full_text_batch_maximized(
                     elapsed_seconds=item.elapsed_seconds + recovered.elapsed_seconds,
                 )
                 items[index] = fresh
-                checkpoint_records[item.doi] = _checkpoint_record(
-                    fresh, checkpoint_records.get(item.doi)
+                key = item.request_key or item.doi
+                checkpoint_records[key] = _checkpoint_record(
+                    fresh, checkpoint_records.get(key)
                 )
                 if checkpoint is not None:
                     _write_checkpoint(checkpoint, checkpoint_records)

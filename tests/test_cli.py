@@ -119,6 +119,70 @@ def test_entrypoint_dispatches_acquire(monkeypatch):
     assert seen == [["10.1000/example"]]
 
 
+def test_installed_browser_provisioner_dispatch_without_source_checkout(monkeypatch):
+    from aletheia_nexus.acquire.access.browser_engine import installer
+
+    calls = []
+    monkeypatch.setattr(installer, "main", lambda: calls.append(True) or 0)
+    assert cli.entrypoint(["browser-install"]) == 0
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("flags", [[], ["--cnki"], ["--no-cnki"]])
+def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
+    monkeypatch, tmp_path, flags
+):
+    from aletheia_nexus.acquire.access import (
+        BatchAcquisitionItem,
+        BatchAcquisitionResult,
+        BatchItemStatus,
+        PaperRequest,
+    )
+
+    def acquire(values, **kwargs):
+        assert values == [PaperRequest(title="明确的中文题名", authors=("张三",))]
+        config = kwargs["browser_config"]
+        assert config.interactive is False and config.wait_for_interaction is False
+        assert config.interaction_callback is None
+        assert config.cnki_enabled == ("--no-cnki" not in flags)
+        assert kwargs["stop_on_interaction"] is False
+        return BatchAcquisitionResult(
+            items=(
+                BatchAcquisitionItem(
+                    input_value=values[0],
+                    doi=None,
+                    status=BatchItemStatus.EXHAUSTED,
+                    request_key=values[0].key,
+                ),
+            ),
+            checkpoint_path=None,
+            halted_for_interaction=False,
+            elapsed_seconds=0,
+        )
+
+    monkeypatch.setattr(cli, "acquire_full_text_batch_maximized", acquire)
+    assert (
+        cli.entrypoint(
+            [
+                "acquire",
+                "--title",
+                "明确的中文题名",
+                "--author",
+                "张三",
+                "--non-interactive",
+                "--fail-on-unverified",
+                "--output-dir",
+                str(tmp_path),
+                *flags,
+            ]
+        )
+        == 4
+    )
+    report = json.loads((tmp_path / "batch-report.json").read_text(encoding="utf-8"))
+    assert report["items"][0]["doi"] is None
+    assert report["items"][0]["input"]["authors"] == ["张三"]
+
+
 def test_entrypoint_dispatches_parse(monkeypatch):
     seen = []
     monkeypatch.setattr(cli, "parse_main", lambda argv: seen.append(argv) or 8)

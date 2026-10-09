@@ -51,7 +51,11 @@ from aletheia_nexus.acquire.fulltext.models import (
 from aletheia_nexus.acquire.fulltext.resolution.derivation import derive_pdf_candidates
 from aletheia_nexus.acquire.fulltext.resolution.identity import validate_page_identity
 from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
-from aletheia_nexus.acquire.fulltext.urls import normalize_derived_url
+from aletheia_nexus.acquire.fulltext.urls import (
+    is_known_non_article_asset,
+    normalize_derived_url,
+)
+from aletheia_nexus.acquire.metadata.titles import page_validation_title
 
 _BROWSER_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _SEMANTIC_PDF_CONTROL = re.compile(
@@ -350,6 +354,8 @@ def _dedupe_candidates(
     output: list[FullTextCandidate] = []
     for candidate in candidates:
         key = candidate.url.split("#", 1)[0]
+        if is_known_non_article_asset(key):
+            continue
         if key in seen:
             continue
         seen.add(key)
@@ -1730,6 +1736,8 @@ def attempt_browser_route(
         nonlocal browser_response_attempt_count
         for response in list(network_pdf_responses):
             response_url = getattr(response, "url", "")
+            if is_known_non_article_asset(response_url):
+                continue
             response_id = id(response)
             if not response_url or response_id in seen_browser_response_ids:
                 continue
@@ -2108,6 +2116,8 @@ def attempt_browser_route(
             final_url=page.url,
             evidence=identity.evidence,
         )
+
+    expected_title = page_validation_title(source.doi, expected_title, identity)
 
     # Some publisher viewers (notably Wiley) embed an entitled PDF in a nested
     # same-origin frame while rejecting BrowserContext.request with HTTP 403.

@@ -1,5 +1,7 @@
 # CNKI 自动化获取
 
+本文描述 `integration/cnki-acquisition-final` 集成分支，不代表同版本号的 PyPI 包已经包含这些新增功能。验证该版本请检出该分支后安装 `python -m pip install -e ".[dev,browser]"`；本次不发布 PyPI、不修改 `main`。
+
 接入与验证规则详见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md)。v3 保留 DOI 排版修复与冲突保护，新增无 DOI 书目验证、保守分流和批量书目请求。默认将可解析但未验证的 PDF 和溯源隔离保存到 `_unverified/`，不计为成功。可用 `--no-cnki-keep-unverified` 禁用。
 
 默认同会话获取既支持页面上的 CNKI PDF 订单 URL，也支持明确的同源 `.pdf` 链接，以避免内嵌预览器兼容问题；不猜测地址，不绕过认证。需要原生下载时使用 `--no-cnki-context-request`。
@@ -11,7 +13,7 @@ CNKI Provider 自动完成标题解析、检索、候选排序、详情页打开
 先按主使用说明安装 `.[browser]`。持久下载要求修复版 Chromium/Edge/Chrome >=155；Playwright 1.63 自带的 Chromium 153 受上游缺陷影响，不能用于正式下载。Windows 可将官方稳定版 Chrome for Testing 解压到 AN 独立目录（不安装系统浏览器、不清理机构会话）：
 
 ```powershell
-python scripts/install_an_browser.py
+aletheia-nexus browser-install
 ```
 
 然后从仓库根目录运行：
@@ -35,7 +37,7 @@ Windows 可见模式未指定 `--channel` 时，优先使用已安装且 >=155 �
 
 根因是 [Chromium 556160935](https://issues.chromium.org/issues/556160935)：DevTools 下载代理遗漏历史加载能力，复用带下载历史的配置时可能访问已释放的下载对象。[Edge 团队确认在 155 修复](https://github.com/MicrosoftEdge/DevTools/issues/461)。换新配置首次成功、切换 CDP 端口或使用同会话 HTTP 请求，不单独作为根因消除证据；回归测试必须包含下载后关闭、复用配置再次原生下载。
 
-默认保留系统网络设置，不再强制绕过代理；仅明确需要直连时使用 `--direct-connection`。该参数只影响新启动的 AN 浏览器，不修改系统设置或已连接的 CDP 浏览器。
+沿用 AN 获取层的直连默认值；需要机构系统代理时显式使用 `--browser-use-system-proxy`。旧 CNKI 脚本的 `--direct-connection` 保留为兼容参数，不能与系统代理选项同时使用。这些参数只影响新启动的 AN 浏览器，不修改系统设置或已连接的 CDP 浏览器。
 
 先等待页面/机构会话初始化，再从明确的 PDF 按钮读取真实地址。针对已实地验证的 `bar.cnki.net/bar/download/order`，默认优先通过同一 BrowserContext 请求，复用机构 Cookie，避免本机原生下载链路的浏览器崩溃；其他按钮仍走原生点击。无认证信号的 JavaScript 壳页可回退原生流程，权限拒绝、CAJ、超限或上下文关闭不触发重放。需要明确测试原生路径时使用 `--no-cnki-context-request`（Python 配置为 `cnki_context_request=False`）。这不生成下载地址、不绕过登录或权限、不复制 Cookie 到另一个会话。
 
@@ -47,7 +49,7 @@ Windows 可见模式未指定 `--channel` 时，优先使用已安装且 >=155 �
 python scripts/download_cnki.py --doi "10.7503/cjcu20250333" --doi "10.13822/j.cnki.hxsj.2024.0476" --profile cnki
 ```
 
-同一进程依次完成全部 DOI，最后才保持窗口；已验证结果不因后续失败丢失。普通单篇无 PDF/身份失败允许继续下一篇，未解决认证或浏览器关闭则停止，不重放已开始的下载。多 DOI 不允许共用一个 `--title`。返回码：全部 VERIFIED 为 0，有失败为 1，未解决认证为 2。
+同一进程依次完成全部 DOI，最后才保持窗口；已验证结果不因后续失败丢失。普通单篇无 PDF/身份失败允许继续下一篇；交互模式未解决认证或浏览器关闭则停止，不重放已开始的下载。`--non-interactive` 遇到认证会记录并继续后续 DOI。多 DOI 不允许共用一个 `--title`。返回码：全部 VERIFIED 为 0，有失败为 1，未解决认证为 2。
 
 “自动登录”过渡页本身不再视为个人账号登录：等待其完成机构 IP 初始化或出现真正的登录表单。程序请求返回登录 URL、但页面已自动跳转且无可见认证时，不再直接返回 `INTERACTION_REQUIRED`；最多尝试一次已初始化的同会话请求。反复返回访问页但无可见认证会报告获取失败，不会反复要求用户登录。真实验证码、MFA、登录表单及权限拒绝仍保留人工/终止边界。
 
@@ -59,21 +61,28 @@ python scripts/download_cnki.py --doi "10.7503/cjcu20250333" --doi "10.13822/j.c
 
 `--interaction-timeout 180` 将等待上限设为 180 秒。`--non-interactive` 立即返回待人工处理状态；无界面模式需要同时传 `--headless --non-interactive`。进程可用 Ctrl+C 取消。
 
-待认证页面可能出现在搜索页、详情页、下载后的新标签页或 iframe。Provider 会捕获这些阶段的认证并将状态返回为 `INTERACTION_REQUIRED`。独立 CLI 在超时返回后关闭自己创建的浏览器会话；希望返回后保留现场时，应使用调用者持有的 `BrowserSession` 或连接外部浏览器。
+待认证页面可能出现在搜索页、详情页、下载后的新标签页或 iframe。Provider 会捕获这些阶段的认证并将状态返回为 `INTERACTION_REQUIRED`。独立 CNKI CLI 默认在交互结果返回后保持自己创建的窗口；`--no-keep-browser-open` 或非交互模式结束时会清理该窗口。Python 调用方需要保留现场时，应持有 `BrowserSession` 或连接外部浏览器。
 
 若浏览器意外关闭且此前尚无人工认证、PDF 请求或下载触发记录，复用同一配置重建连接/上下文并重试一次。`download_started` 在 PDF 请求/点击时记录，不依赖保存成功；已开始的下载不会被会话重连、通用来源回退或批次内部重试重复执行。认证页面及其父页面在人工等待期间不作清理；整个会话关闭时报告失败，不伪造认证完成。
 
 ## 批量模式
 
-原来的 `batch_v06_download.py` 仍优先尝试公开来源，未获取的适用论文再进入 CNKI：
+正式安装版 CLI 优先尝试公开来源，未获取的适用论文再进入 CNKI；`batch_v06_download.py` 只是同一实现的兼容入口：
 
 ```powershell
-python scripts/batch_v06_download.py dois.txt --cnki --stop-on-interaction --output-dir downloads/my-batch
+aletheia-nexus acquire dois.json --output-dir downloads/my-batch --non-interactive
+aletheia-nexus acquire --title "论文的完整标题" --author "第一作者" --source cnki --output-dir downloads/cnki
 ```
 
-`--source auto` 默认保守分流，`--source cnki` 指定 CNKI-only，`--source exclude_cnki` 排除 CNKI Provider；`--no-cnki` 是总开关。普通英文论文不自动进 CNKI，用户提供的中文译名不覆盖英文登记元数据。只有中文题名的弱线索要等原有出版社浏览器路线结束才尝试。`--cnki-all-titles` 是显式扩大范围；`--cnki-max-results` 默认 20。批次共用浏览器 profile、成功断点和 SHA-256 检查。未解决认证默认停止；仅显式 `--continue-after-interaction` 或 `stop_on_interaction=False` 才继续。
+`--source auto` 默认保守分流，`--source cnki` 指定 CNKI-only，`--source exclude_cnki` 排除 CNKI Provider；`--no-cnki` 是总开关。普通英文论文不自动进 CNKI，用户提供的中文译名不覆盖英文登记元数据。只有中文题名的弱线索要等原有出版社浏览器路线结束才尝试。`--cnki-all-titles` 是显式扩大范围；`--cnki-max-results` 默认 20。批次共用浏览器 profile、成功断点和 SHA-256 检查。沿用原获取层行为：当前条目未解决认证时默认继续后续条目；需要整批停止时显式 `--stop-on-interaction`。交互模式仍先等待人工完成当前认证，无人值守请明确 `--non-interactive`。
 
 JSON/CSV 输入还支持无 DOI 的 `title`、`authors`、`journal`、`year`、`volume`、`issue`、`pages`、`cnki_id`；JSON 作者为列表，CSV 作者用英文分号分隔。原 DOI 字符串列表及 DOI/title 行继续兼容。
+
+每条书目请求的断点键包含全部约束。同一 DOI 配不同题名/作者不会互相覆盖；改变约束后不会误用旧成功结果。`--fail-on-unverified` 同样检查无 DOI 条目。
+
+外文仍走原有 `pdf_front_matter/v2`：中文译名可以由同 DOI 登记元数据或唯一 DOI 匹配的落地页补全原题名，再验证真实 PDF，不把页面访问成功当作身份通过。知网使用共享 PDF 校验器再追加 `cnki_bibliographic/v3` 的严格书目约束。
+
+无 DOI 下载与溯源已支持；现有 v0.7 `parse --doi` 仍要求真实 DOI，不能用伪造 DOI 接入解析。仅为没有 DOI 的 CNKI 文件下载成功，不代表后续解析入口已接受该文件。
 
 ## Python API
 

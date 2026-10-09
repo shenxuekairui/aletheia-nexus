@@ -319,6 +319,7 @@ aletheia-nexus acquire 10.1371/journal.pone.0310216 \
 ```bash
 python -m pip install "aletheia-nexus[browser]"
 python -m playwright install chromium
+aletheia-nexus browser-install
 
 aletheia-nexus acquire papers.json \
   --output-dir downloads/papers \
@@ -326,6 +327,8 @@ aletheia-nexus acquire papers.json \
 ```
 
 浏览器能力用于复用用户**已有的合法访问条件**，不是绕过访问控制。
+
+知网支持 DOI 或完整题名，复用专用机构会话；验证码需要人工操作，无人值守可用 `--non-interactive` 跳过。默认保守分流，不因外文路线失败就转入知网。详见 [CNKI 自动化获取](docs/CNKI_AUTOMATION.md)。`browser-install` 为 Windows / Linux x64 部署独立修复版运行时，不修改系统浏览器或认证配置。
 
 ### 解析 VERIFIED 论文
 

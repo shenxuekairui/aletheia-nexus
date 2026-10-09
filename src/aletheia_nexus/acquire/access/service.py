@@ -605,7 +605,9 @@ def acquire_full_text_maximized(
             doi=normalized_doi,
             output_dir=output_dir,
             metadata=base.metadata,
-            expected_title=base.expected_title,
+            expected_title=(expected_title or base.expected_title)
+            if provider.name == "cnki"
+            else base.expected_title,
             metadata_mailto=metadata_mailto,
         )
         if browser_session is not None:
@@ -652,14 +654,18 @@ def acquire_full_text_maximized(
                     "main article."
                 ),
             )
-        if provider_attempt.status in {
-            BrowserAttemptStatus.INTERACTION_REQUIRED,
-            BrowserAttemptStatus.AMBIGUOUS,
-            BrowserAttemptStatus.RETRIEVED_UNVERIFIED,
-        } or (
-            provider_attempt.download_started
-            and "CNKI browser target closed" in provider_attempt.evidence
+        if (
+            provider_attempt.status
+            in {
+                BrowserAttemptStatus.INTERACTION_REQUIRED,
+                BrowserAttemptStatus.AMBIGUOUS,
+                BrowserAttemptStatus.RETRIEVED_UNVERIFIED,
+            }
+            or provider_attempt.download_started
         ):
+            # Once a site-specific provider issued a download, do not re-enter
+            # that transaction through generic routes or hide its transport
+            # failure behind an unrelated later login page.
             status, message = _final_status_from_browser(
                 base,
                 provider_attempts,
