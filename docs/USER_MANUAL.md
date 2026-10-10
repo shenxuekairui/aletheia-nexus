@@ -238,6 +238,7 @@ aletheia-nexus export downloads\paper.parsed.json --format chunks `
 
 - **浏览器连接超时：** 先确认 `http://127.0.0.1:9222/json/version` 可访问。即使端点响应，浏览器内部调试连接也可能卡住；关闭仅用于 AN 的浏览器后重跑，持久配置目录中的登录状态通常仍在。不要关闭日常浏览器或删除整个用户配置目录。
 - **`TargetClosedError` 且配置目录有锁：** 通常表示同一 AN 浏览器配置已被另一个 Edge/Chrome 进程占用。连接现有进程时传入它的 `--cdp-endpoint`；否则只关闭专用 AN 浏览器，或为新运行指定不同的 `--profile`。不要让两个浏览器进程同时写同一配置目录。
+- **Linux 普通启动未能建立连接：** 除配置占用外，还需检查是否有图形会话、浏览器依赖以及系统沙箱支持。Ubuntu 的 AppArmor 策略可能限制单独下载的浏览器；优先选择系统安装且版本受支持的 Chrome（`--channel chrome`），或由管理员按 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md) 配置沙箱支持。不要用关闭沙箱的方式访问出版社或机构账户。
 - **登录完成却未继续：** 确认返回到同一 AN 浏览器会话；若站点在新标签完成认证，AN 会检查新旧出版社标签和仍留空白的身份验证标签。若仍卡住，可安全中断并从检查点重跑，保留现场与报告用于复现。
 - **ScienceDirect / RSC 验证页反复出现：** 等待期间 AN 不主动刷新网页；站点自身可能重定向或重建验证组件。检查页面是否仍显示验证码、是否已返回目标论文，以及当前机构是否有授权。AN 不会把短暂空白当作验证成功；重复验证或超时应记为需人工处理，避免连续对同一 PDF 地址发请求。不要通过增大重试次数来应对站点风控。
 - **普通 Edge 能打开、AN Edge 却循环验证：** 核对两者是否走相同的代理/网络出口。AN 默认强制直连，即使 Windows 系统代理已启用；关闭 TUN 不会自动取消系统代理，也不会改变 AN 的启动参数。信任该代理时，可显式选择 `--browser-use-system-proxy`，并用单篇 DOI 验证；这不保证站点一定接受受控浏览器。

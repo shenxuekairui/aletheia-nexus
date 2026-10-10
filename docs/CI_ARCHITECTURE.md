@@ -32,6 +32,15 @@ Every integration fixture uses a fresh test-owned profile, never the user's
 institutional browser. The local v0.7 verifier exposes `--browser-smoke` (shared
 engine + CNKI) and `--visible-browser-smoke` (ordinary launch) separately.
 
+The Linux runner gives the separately downloaded browser access to the existing
+root-owned Chrome SUID sandbox helper through `CHROME_DEVEL_SANDBOX`. A startup
+probe checks the helper's ownership/mode and launches a fresh headless profile
+before the visible integration tests. This follows [Chromium's Linux sandbox
+guidance](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md):
+Ubuntu may restrict user namespaces for downloaded browsers. CI does not add
+`--no-sandbox` to ordinary launch or disable AppArmor globally. The runner-only
+setting does not change application defaults or users' operating-system policy.
+
 This is a **cost policy**, not a reduced release standard. A draft PR cannot be
 merged. GitHub still records ordinary draft PR events, but jobs are skipped
 before runner allocation; a skipped check is **not** proof that tests passed.
