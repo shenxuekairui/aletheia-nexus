@@ -54,6 +54,10 @@ def test_gate_accepts_both_current_sidecar_variants(tmp_path, schema):
             ParserInputErrorCode.UNKNOWN_SIDECAR_SCHEMA,
         ),
         (
+            lambda item: item.update(schema=[]),
+            ParserInputErrorCode.UNKNOWN_SIDECAR_SCHEMA,
+        ),
+        (
             lambda item: item.update(status="EXHAUSTED"),
             ParserInputErrorCode.STATUS_NOT_VERIFIED,
         ),

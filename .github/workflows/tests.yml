@@ -118,10 +118,11 @@ jobs:
           python -m build
           python -m twine check dist/*
           python -m venv smoke-venv
-          smoke-venv/bin/python -m pip install dist/*.whl
+          smoke-venv/bin/python -m pip install pytest dist/*.whl
           smoke-venv/bin/python -m pip check
           smoke-venv/bin/aletheia-nexus --version
           smoke-venv/bin/aletheia-nexus doctor
+          smoke-venv/bin/python -m pytest -q tests/test_cli.py tests/test_library.py tests/content
 
   browser-extra:
     name: browser-extra
@@ -147,10 +148,36 @@ jobs:
         run: python -m pip check
       - name: Install Chromium runtime
         run: python -m playwright install --with-deps chromium
+      - name: Provision fixed persistent-download browser
+        run: python scripts/install_an_browser.py
+      - name: Verify sandboxed Linux browser startup
+        env:
+          CHROME_DEVEL_SANDBOX: /usr/local/libexec/an-chrome-sandbox
+        run: |
+          sudo install -D -o root -g root -m 4755 /opt/google/chrome/chrome-sandbox /usr/local/libexec/an-chrome-sandbox
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import stat
+          import subprocess
+          import tempfile
+          from aletheia_nexus.acquire.access.browser_engine.runtime import fixed_portable_browser
+
+          helper = Path(os.environ['CHROME_DEVEL_SANDBOX']).stat()
+          assert helper.st_uid == 0 and helper.st_mode & stat.S_ISUID, 'A root-owned Chrome sandbox helper is required'
+          executable = fixed_portable_browser()
+          assert executable is not None, 'The fixed browser must be installed first'
+          with tempfile.TemporaryDirectory(prefix='an-sandbox-check-') as profile:
+              subprocess.run([str(executable), '--headless=new', '--no-first-run',
+                              f'--user-data-dir={profile}', '--dump-dom', 'about:blank'],
+                             check=True, timeout=30)
+          PY
       - name: Run local real-Chromium integration tests
         env:
           AN_RUN_BROWSER_SMOKE: "1"
-        run: python -m pytest -q tests/acquire/access/test_browser_integration.py
+          AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
+          CHROME_DEVEL_SANDBOX: /usr/local/libexec/an-chrome-sandbox
+        run: xvfb-run -a python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py
 
   ocr-extra:
     name: ocr-extra (Poppler + Tesseract)
@@ -213,7 +240,10 @@ jobs:
         run: python -m pytest -q
       - name: Install Chromium runtime
         run: python -m playwright install chromium
+      - name: Provision fixed persistent-download browser
+        run: python scripts/install_an_browser.py
       - name: Run real-Chromium integration tests on Windows
         env:
           AN_RUN_BROWSER_SMOKE: "1"
-        run: python -m pytest -q tests/acquire/access/test_browser_integration.py
+          AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
+        run: python -m pytest -vv -o faulthandler_timeout=120 tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py

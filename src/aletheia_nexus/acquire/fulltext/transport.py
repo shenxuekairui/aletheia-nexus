@@ -19,6 +19,7 @@ from aletheia_nexus.acquire.fulltext.http import (
 )
 from aletheia_nexus.acquire.fulltext.models import RedirectHop, RetrievedResource
 from aletheia_nexus.acquire.fulltext.safety import validate_safe_url
+from aletheia_nexus.core.urls import redact_url_for_record
 
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
@@ -155,11 +156,11 @@ def retrieve_to_temp(
                     )
             except httpx.TimeoutException as exc:
                 raise AcquisitionNetworkError(
-                    f"Timed out while requesting {current_url}"
+                    f"Timed out while requesting {redact_url_for_record(current_url)}"
                 ) from exc
             except httpx.RequestError as exc:
                 raise AcquisitionNetworkError(
-                    f"Network error while requesting {current_url}"
+                    f"Network error while requesting {redact_url_for_record(current_url)}"
                 ) from exc
     finally:
         if owns_client:

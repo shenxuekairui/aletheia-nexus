@@ -46,9 +46,15 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
 from aletheia_nexus.acquire.fulltext.resolution.service import resolve_full_text_route
 from aletheia_nexus.acquire.fulltext.retry import validate_retry_config
 from aletheia_nexus.acquire.fulltext.service import acquire_direct_pdf
+from aletheia_nexus.acquire.fulltext.storage import output_metadata
 from aletheia_nexus.acquire.fulltext.urls import derive_https_url
 from aletheia_nexus.acquire.metadata.exceptions import MetadataError
 from aletheia_nexus.acquire.metadata.retry import get_metadata_with_retry
+from aletheia_nexus.acquire.metadata.titles import (
+    contains_cjk,
+    page_validation_title,
+    validation_title,
+)
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.models import PaperMetadata
 
@@ -350,6 +356,8 @@ def acquire_from_discovery(
     validate_retry_config(max_attempts_per_file, backoff_base)
     if expected_title is not None:
         expected_title = expected_title.strip() or None
+    title_source = TitleSource.USER if expected_title else TitleSource.NONE
+    requested_title = expected_title
 
     started_at = time.perf_counter()
     doi = normalize_doi(discovery.doi)
@@ -585,6 +593,11 @@ def acquire_from_discovery(
         if resolution.page is not None:
             seen_route_urls.add(_url_key(resolution.page.final_url))
 
+        original_title = page_validation_title(doi, expected_title, resolution.identity)
+        if original_title != expected_title:
+            expected_title = original_title
+            title_source = TitleSource.PAGE_METADATA
+
         if (
             entry.origin == RouteCandidateOrigin.URL_TRANSFORM
             and entry.parent_url is not None
@@ -673,7 +686,8 @@ def acquire_from_discovery(
         file_attempts=tuple(file_attempts),
         verified_result=verified_result,
         expected_title=expected_title,
-        title_source=TitleSource.USER if expected_title else TitleSource.NONE,
+        title_source=title_source,
+        requested_title=requested_title,
         duplicate_file_candidates_skipped=duplicate_file_candidates_skipped,
         duplicate_route_candidates_skipped=duplicate_route_candidates_skipped,
         supplement_candidates_skipped=supplement_candidates_skipped,
@@ -724,7 +738,7 @@ def acquire_full_text(
     effective_title = expected_title.strip() if expected_title else None
     title_source = TitleSource.USER if effective_title else TitleSource.NONE
 
-    if effective_title is None and auto_metadata:
+    if auto_metadata and (effective_title is None or contains_cjk(effective_title)):
         with ThreadPoolExecutor(
             max_workers=2,
             thread_name_prefix="an-fulltext-bootstrap",
@@ -747,9 +761,11 @@ def acquire_full_text(
             discovery = discovery_future.result()
             metadata, metadata_error = metadata_future.result()
 
-        if metadata is not None and metadata.title and metadata.title.strip():
-            effective_title = metadata.title.strip()
-            title_source = TitleSource.METADATA
+        if metadata is not None and metadata.doi == normalized_doi:
+            original_title = validation_title(effective_title, metadata.title)
+            if original_title != effective_title:
+                effective_title = original_title
+                title_source = TitleSource.METADATA
     else:
         discovery = discover_full_text(
             normalized_doi,
@@ -759,28 +775,34 @@ def acquire_full_text(
             backoff_base=backoff_base,
         )
 
-    result = acquire_from_discovery(
-        discovery,
-        output_dir=output_dir,
-        expected_title=effective_title,
-        max_route_attempts=max_route_attempts,
-        max_file_attempts=max_file_attempts,
-        max_route_depth=max_route_depth,
-        max_route_expansions_per_page=max_route_expansions_per_page,
-        max_attempts_per_route=max_attempts_per_route,
-        max_attempts_per_file=max_attempts_per_file,
-        backoff_base=backoff_base,
-        timeout=timeout,
-        keep_unverified=keep_unverified,
-        skip_supplement_hints=skip_supplement_hints,
-        use_doi_resolver_fallback=use_doi_resolver_fallback,
-    )
+    with output_metadata(metadata):
+        result = acquire_from_discovery(
+            discovery,
+            output_dir=output_dir,
+            expected_title=effective_title,
+            max_route_attempts=max_route_attempts,
+            max_file_attempts=max_file_attempts,
+            max_route_depth=max_route_depth,
+            max_route_expansions_per_page=max_route_expansions_per_page,
+            max_attempts_per_route=max_attempts_per_route,
+            max_attempts_per_file=max_attempts_per_file,
+            backoff_base=backoff_base,
+            timeout=timeout,
+            keep_unverified=keep_unverified,
+            skip_supplement_hints=skip_supplement_hints,
+            use_doi_resolver_fallback=use_doi_resolver_fallback,
+        )
 
     return replace(
         result,
         metadata=metadata,
         metadata_error=metadata_error,
-        expected_title=effective_title,
-        title_source=title_source,
+        expected_title=result.expected_title or effective_title,
+        title_source=(
+            result.title_source
+            if result.title_source == TitleSource.PAGE_METADATA
+            else title_source
+        ),
+        requested_title=expected_title,
         elapsed_seconds=time.perf_counter() - started_at,
     )

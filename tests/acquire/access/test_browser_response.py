@@ -1,4 +1,5 @@
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 from pypdf import PdfWriter
@@ -112,6 +113,103 @@ def test_cdp_download_capture_uses_completed_browser_domain_file(tmp_path):
     assert not staging_dir.exists()
 
 
+@pytest.mark.parametrize(
+    "failure", ["incomplete", "canceled", "empty", "partial", "outside", "missing"]
+)
+def test_native_capture_rejects_unfinished_or_unowned_files(tmp_path, failure):
+    context = _CdpContext()
+    capture = _CdpDownloadCapture(context, tmp_path / "out")
+    session = context.browser.session
+    path = capture.staging_dir / "guid"
+    if failure == "outside":
+        path = tmp_path / "unrelated.pdf"
+    if failure == "partial":
+        path = path.with_suffix(".crdownload")
+    if failure != "missing":
+        path.write_bytes(b"" if failure == "empty" else _pdf_bytes())
+    # A lone unrelated file is not a substitute for the GUID's missing file.
+    if failure == "missing":
+        (capture.staging_dir / "unrelated.pdf").write_bytes(_pdf_bytes())
+    session.handlers["Browser.downloadWillBegin"](
+        {"guid": "guid", "url": _WaitPage.url}
+    )
+    if failure != "incomplete":
+        session.handlers["Browser.downloadProgress"](
+            {
+                "guid": "guid",
+                "state": "canceled" if failure == "canceled" else "completed",
+                "filePath": str(path),
+            }
+        )
+    assert capture.wait(_WaitPage(), 0, expected_url=_WaitPage.url) is None
+    capture.close()
+    if failure == "outside":
+        assert path.exists()
+
+
+def test_native_capture_matches_owned_download_after_unrelated_tab(tmp_path):
+    context = _CdpContext()
+    capture = _CdpDownloadCapture(context, tmp_path)
+    session = context.browser.session
+    for guid, url in [
+        ("foreign", "https://other.example/file"),
+        ("owned", _WaitPage.url),
+    ]:
+        path = capture.staging_dir / guid
+        path.write_bytes(_pdf_bytes())
+        session.handlers["Browser.downloadWillBegin"]({"guid": guid, "url": url})
+        session.handlers["Browser.downloadProgress"](
+            {"guid": guid, "state": "completed", "filePath": str(path)}
+        )
+    assert capture.wait(_WaitPage(), 0, expected_url=_WaitPage.url) == (
+        capture.staging_dir / "owned",
+        _WaitPage.url,
+    )
+    assert capture.wait(_WaitPage(), 0, expected_url="https://unknown.example") is None
+    capture.close()
+
+
+def test_unavailable_cdp_session_is_optional_and_leaves_no_staging(tmp_path):
+    def unavailable():
+        raise RuntimeError("CDP is unavailable")
+
+    capture = _CdpDownloadCapture(
+        SimpleNamespace(browser=SimpleNamespace(new_browser_cdp_session=unavailable)),
+        tmp_path,
+    )
+    assert not capture.active
+    assert capture.wait(_WaitPage(), 0) is None
+    capture.close()
+    assert not list(tmp_path.rglob("*"))
+
+
+def test_native_download_behavior_and_cleanup_are_context_scoped(tmp_path):
+    context = _CdpContext()
+    session = context.browser.session
+    original_send = session.send
+
+    def send(method, params=None):
+        if method == "Target.getBrowserContexts":
+            return {"browserContextIds": ["owned-context", "other-context"]}
+        return original_send(method, params)
+
+    target_session = SimpleNamespace(
+        send=lambda method: {"targetInfo": {"browserContextId": "owned-context"}},
+        detach=lambda: None,
+    )
+    session.send = send
+    context.pages = [_WaitPage()]
+    context.new_cdp_session = lambda page: target_session
+    capture = _CdpDownloadCapture(context, tmp_path)
+    assert capture.active
+    assert session.commands[0][1]["browserContextId"] == "owned-context"
+    capture.close()
+    assert session.commands[-1] == (
+        "Browser.setDownloadBehavior",
+        {"behavior": "default", "browserContextId": "owned-context"},
+    )
+
+
 def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
     parent = FullTextCandidate(
         doi="10.1000/captured-response",
@@ -132,6 +230,25 @@ def test_captured_browser_response_is_validated_without_rerequest(tmp_path):
     assert attempt.result is not None
     assert attempt.result.status == AcquisitionStatus.VERIFIED
     assert attempt.result.file_path is not None
+
+
+def test_empty_browser_response_is_transport_failure_not_identity_failure(tmp_path):
+    parent = FullTextCandidate(
+        doi="10.1000/empty-response",
+        url="https://publisher.example/article",
+        provenance=(),
+    )
+    attempt = _browser_response_to_file_attempt(
+        _Response(b""),
+        parent=parent,
+        source_page_url=parent.url,
+        output_dir=tmp_path,
+        expected_title=None,
+        config=BrowserAccessConfig(profile_root=tmp_path),
+    )
+    assert attempt.result is None
+    assert attempt.error == "EmptyBrowserResponse"
+    assert not list(tmp_path.rglob("*"))
 
 
 class _BlobDownload:
@@ -200,6 +317,51 @@ def test_browser_download_prefers_save_as_over_ephemeral_path(tmp_path):
 
     assert attempt.result is not None
     assert attempt.result.status == AcquisitionStatus.VERIFIED
+
+
+@pytest.mark.parametrize(
+    "native_state", ["timeout", "mismatch", "empty", "unavailable"]
+)
+def test_native_failure_never_uses_empty_playwright_placeholder(tmp_path, native_state):
+    source = tmp_path / "native.pdf"
+    source.write_bytes(b"")
+    download = _SaveAsDownload(source)
+    if native_state != "unavailable":
+        download.save_as = lambda path: pytest.fail("must not use placeholder")
+    saved = (
+        None
+        if native_state == "timeout"
+        else (
+            source,
+            download.url if native_state == "empty" else "https://other.example",
+        )
+    )
+    capture = SimpleNamespace(
+        active=native_state != "unavailable",
+        wait=lambda page, timeout, **kwargs: saved,
+    )
+    parent = FullTextCandidate(
+        doi="10.1000/captured-response",
+        url="https://publisher.example/article",
+        provenance=(),
+    )
+    attempt = _download_to_file_attempt(
+        download,
+        parent=parent,
+        source_page_url=parent.url,
+        output_dir=tmp_path / "out",
+        expected_title="Captured Browser Response",
+        config=BrowserAccessConfig(profile_root=tmp_path),
+        native_capture=capture,
+        page=_WaitPage(),
+    )
+    assert attempt.result is None
+    assert attempt.error == (
+        "EmptyBrowserDownload"
+        if native_state in {"empty", "unavailable"}
+        else "NativeDownloadIncomplete"
+    )
+    assert not list((tmp_path / "out").rglob("*"))
 
 
 class _RedirectResponse:

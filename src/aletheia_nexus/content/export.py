@@ -7,6 +7,7 @@ import json
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from aletheia_nexus.content.artifact import ParsedArtifact
 from aletheia_nexus.content.schema import PARSED_DOCUMENT_SCHEMA
@@ -319,9 +320,10 @@ def write_ai_export(path: str | Path, payload: str, *, overwrite: bool = False) 
                 "source PDF, or acquisition sidecar"
             )
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(target.suffix + ".part")
+    temporary = target.with_name(f".{target.name}.{uuid4().hex}.part")
     try:
-        temporary.write_text(payload, encoding="utf-8")
+        with temporary.open("x", encoding="utf-8") as handle:
+            handle.write(payload)
         os.replace(temporary, target)
     except Exception:
         temporary.unlink(missing_ok=True)

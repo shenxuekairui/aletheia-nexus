@@ -39,6 +39,7 @@ from aletheia_nexus.acquire.fulltext.transport import (
 )
 from aletheia_nexus.acquire.fulltext.validation import inspect_pdf
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.urls import redact_url_for_record
 
 
 def _status_for_error(error: AcquisitionError) -> AcquisitionStatus:
@@ -100,7 +101,7 @@ def _record_payload(
             "expected_title": expected_title,
         },
         "candidate": {
-            "url": candidate.url,
+            "url": redact_url_for_record(candidate.url),
             "url_type": candidate.url_type.value,
             "access_type": candidate.access_type.value,
             "version": candidate.version.value,
@@ -111,18 +112,18 @@ def _record_payload(
             "provenance": [provider.value for provider in candidate.provenance],
         },
         "retrieval": {
-            "requested_url": resource.requested_url,
-            "final_url": resource.final_url,
+            "requested_url": redact_url_for_record(resource.requested_url),
+            "final_url": redact_url_for_record(resource.final_url),
             "http_status": resource.http_status,
             "content_type": resource.content_type,
             "size_bytes": resource.size_bytes,
             "sha256": resource.sha256,
             "redirects": [
                 {
-                    "from_url": hop.from_url,
+                    "from_url": redact_url_for_record(hop.from_url),
                     "status_code": hop.status_code,
-                    "location": hop.location,
-                    "to_url": hop.to_url,
+                    "location": redact_url_for_record(hop.location),
+                    "to_url": redact_url_for_record(hop.to_url),
                 }
                 for hop in resource.redirects
             ],
@@ -136,6 +137,8 @@ def _record_payload(
             "warning": pdf_validation.warning,
         },
         "identity_validation": {
+            "policy": identity_validation.policy,
+            "declared_dois": list(identity_validation.declared_dois),
             "status": identity_validation.status.value,
             "document_role": identity_validation.document_role.value,
             "doi_match": identity_validation.doi_match,
@@ -241,6 +244,7 @@ def acquire_direct_pdf(
                 doi=normalized_doi,
                 output_dir=output_dir,
                 subdirectory=subdirectory,
+                title=expected_title,
             )
             resource = replace(resource, local_path=file_path)
             elapsed_seconds = time.perf_counter() - started_at
@@ -257,6 +261,7 @@ def acquire_direct_pdf(
                     attempts=attempts,
                     elapsed_seconds=elapsed_seconds,
                 ),
+                preserve_existing=status == AcquisitionStatus.VERIFIED,
             )
         else:
             resource = _delete_retained_path(resource)

@@ -1,0 +1,10 @@
+include README.md README.en.md CONTRIBUTING.md SECURITY.md
+recursive-include docs *.md
+recursive-include examples *.json
+recursive-include tests *.py *.json
+recursive-include scripts *.py *.ps1
+include benchmarks/README.md
+include benchmarks/user_20260923_20_frozen.json
+recursive-include benchmarks/v07_fixtures *.json *.pdf *.md
+include benchmarks/v07_public_oa/manifest.json
+global-exclude *.pyc *.pyo

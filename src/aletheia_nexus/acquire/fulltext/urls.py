@@ -1,6 +1,17 @@
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 
+def is_known_non_article_asset(url: str) -> bool:
+    """Exclude an observed CNKI advertising endpoint, not arbitrary PDF hosts."""
+    try:
+        parts = urlsplit(url)
+    except (TypeError, ValueError):
+        return False
+    return (parts.hostname or "").lower().rstrip(".") == "a.cnki.net" and (
+        parts.path.casefold().startswith("/gw/api/get/pdf/ads/")
+    )
+
+
 def _netloc(hostname: str, port: int | None) -> str:
     host = hostname.lower().rstrip(".")
     if ":" in host:

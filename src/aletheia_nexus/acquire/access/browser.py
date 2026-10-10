@@ -6,13 +6,30 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from aletheia_nexus.acquire.access.browser_route import attempt_browser_route
+from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
+from aletheia_nexus.acquire.access.browser_engine.launcher import (
+    NormalBrowserError,
+    ProfileLease,
+    normal_browser_endpoint,
+)
+from aletheia_nexus.acquire.access.browser_engine.runtime import (
+    affected_download_version,
+    fixed_installed_browser,
+    fixed_portable_browser,
+)
+from aletheia_nexus.acquire.access.browser_engine.viewer import is_pdf_document_url
+from aletheia_nexus.acquire.access.browser_route import (
+    _report_for_page,
+    attempt_browser_route,
+)
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
     BrowserAttemptStatus,
     BrowserRecoveryResult,
+    ChallengeKind,
 )
+from aletheia_nexus.acquire.access.publisher_adapters import adapter_for_url
 from aletheia_nexus.acquire.access.security import (
     redact_url_for_record,
     validate_browser_network_url,
@@ -21,6 +38,7 @@ from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import CandidateUrlType, FullTextCandidate
 from aletheia_nexus.acquire.fulltext.models import AcquisitionResult, AcquisitionStatus
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.models import PaperMetadata
 
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _PROFILE_LOCK_MARKERS = (
@@ -57,6 +75,12 @@ class _CapturedBrowserResponse:
 def _validate_config(config: BrowserAccessConfig) -> None:
     if not isinstance(config, BrowserAccessConfig):
         raise TypeError("config must be a BrowserAccessConfig")
+    if config.launch_mode not in ("auto", "normal", "managed"):
+        raise ValueError("launch_mode must be auto, normal or managed")
+    if config.headless and config.launch_mode == "normal":
+        raise ValueError(
+            "normal launch requires a visible browser; use auto or managed"
+        )
     if not isinstance(config.profile_name, str):
         raise TypeError("profile_name must be a string")
     if not _PROFILE_RE.fullmatch(config.profile_name) or config.profile_name in {
@@ -72,7 +96,13 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         "wait_for_interaction",
         "keep_unverified",
         "cdp_resume_existing_page",
+        "cnki_refresh_retry",
         "use_system_proxy",
+        "cnki_enabled",
+        "cnki_search_all_titles",
+        "direct_connection",
+        "cnki_context_request",
+        "cnki_keep_unverified",
     ):
         if not isinstance(getattr(config, name), bool):
             raise TypeError(f"{name} must be a bool")
@@ -81,6 +111,15 @@ def _validate_config(config: BrowserAccessConfig) -> None:
             raise TypeError("channel must be a string or None")
         if not config.channel.strip():
             raise ValueError("channel must not be blank")
+    if config.direct_connection and config.use_system_proxy:
+        raise ValueError("direct_connection cannot be combined with use_system_proxy")
+    if config.executable_path is not None:
+        if not isinstance(config.executable_path, (str, Path)):
+            raise TypeError("executable_path must be a path or None")
+        if not str(config.executable_path).strip():
+            raise ValueError("executable_path must not be blank")
+        if config.channel is not None or config.cdp_endpoint is not None:
+            raise ValueError("executable_path cannot be combined with channel or CDP")
     if config.cdp_endpoint is not None:
         if not isinstance(config.cdp_endpoint, str):
             raise TypeError("cdp_endpoint must be a string or None")
@@ -112,7 +151,7 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         value = getattr(config, name)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
             raise ValueError(f"{name} must be a non-negative number")
-    for name in ("max_source_routes", "max_pdf_candidates"):
+    for name in ("max_source_routes", "max_pdf_candidates", "cnki_max_results"):
         value = getattr(config, name)
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise ValueError(f"{name} must be a positive integer")
@@ -181,7 +220,7 @@ def _install_context_event_capture(
     if not hasattr(context, "on"):
         return
 
-    def on_response(response) -> None:
+    def on_response(response, *, finished: bool = False) -> None:
         try:
             headers = dict(response.headers)
             content_type = (headers.get("content-type") or "").lower()
@@ -208,6 +247,15 @@ def _install_context_event_capture(
                 except ValueError:
                     pass
 
+            # A response event fires when headers arrive. Reading its body here
+            # can block the event pump on an unfinished streaming response.
+            request = getattr(response, "request", None)
+            if (
+                not finished
+                and request is not None
+                and request.timing.get("responseEnd", -1) < 0
+            ):
+                return
             body = response.body()
             if max_bytes is not None and len(body) > max_bytes:
                 return
@@ -223,13 +271,27 @@ def _install_context_event_capture(
         except Exception:
             return
 
+    def on_download(download) -> None:
+        downloads.append(download)
+
     def attach_page(page) -> None:
         try:
-            page.on("download", downloads.append)
+            page.on("download", on_download)
         except Exception:
             return
 
     context.on("response", on_response)
+    if snapshot_pdf_responses:
+
+        def on_finished(request) -> None:
+            try:
+                response = request.response()
+                if response is not None:
+                    on_response(response, finished=True)
+            except Exception:
+                pass
+
+        context.on("requestfinished", on_finished)
     context.on("page", attach_page)
     for page in getattr(context, "pages", ()):
         attach_page(page)
@@ -242,10 +304,7 @@ def _normalized_page_title(value: str | None) -> str:
 
 
 def _attached_page_is_pdf(url: str) -> bool:
-    try:
-        return urlsplit(url).path.lower().endswith(".pdf")
-    except ValueError:
-        return False
+    return is_pdf_document_url(url)
 
 
 def _attached_page_has_expired_signature(url: str) -> bool:
@@ -426,6 +485,14 @@ def _normalize_routes(
 
         try:
             safe_url = validate_browser_network_url(route.url)
+            article_url = adapter_for_url(safe_url).article_route(urlsplit(safe_url))
+            if article_url is not None:
+                safe_url = validate_browser_network_url(article_url)
+                route = replace(
+                    route,
+                    source_name="Publisher official article route from observed PII",
+                    host_type=refine_host_type(safe_url, route.host_type),
+                )
         except (TypeError, ValueError) as exc:
             preflight_attempts.append(
                 BrowserAccessAttempt(
@@ -453,6 +520,22 @@ def _normalize_routes(
     return normalized_doi, normalized_routes, preflight_attempts
 
 
+def _default_browser_channel() -> str | None:
+    selected = fixed_installed_browser()
+    return selected[0] if selected else None
+
+
+def _require_safe_download_browser(browser) -> None:
+    version = getattr(browser, "version", None)
+    if isinstance(version, str) and affected_download_version(version):
+        raise BrowserCapabilityUnavailable(
+            f"Chromium-family browser {version} has the persistent-download "
+            "history crash (Chromium issue 556160935). Use Edge/Chrome >=155 "
+            "or a fixed Chrome for Testing via executable_path/--executable-path. "
+            "AN will not clear your profile or retry a potentially started download."
+        )
+
+
 class BrowserSession:
     """Reusable persistent browser context for one sequential acquisition batch.
 
@@ -471,9 +554,27 @@ class BrowserSession:
         self._context = None
         self._attached_browser = None
         self._attached_external = False
+        self._normal_lease = None
         self._blocked_unsafe_urls: list[str] = []
         self._pdf_responses: list[object] = []
         self._downloads: list[object] = []
+        self._context_closed = False
+        self._pending_pages: dict[str, object] = {}
+        self._pending_hosts: dict[str, str | None] = {}
+
+    def interaction_ready(self, doi: str) -> bool:
+        """True only when this session's retained challenge has visibly cleared."""
+        doi = normalize_doi(doi)
+        page = self._pending_pages.get(doi)
+        try:
+            return (
+                page is not None
+                and not page.is_closed()
+                and (_report_for_page(page).kind == ChallengeKind.NONE)
+                and urlsplit(page.url).hostname == self._pending_hosts.get(doi)
+            )
+        except Exception:
+            return False
 
     @property
     def active(self) -> bool:
@@ -506,31 +607,72 @@ class BrowserSession:
                 f"Playwright could not start: {type(exc).__name__}"
             ) from exc
 
-        if self.config.cdp_endpoint is not None:
+        endpoint = self.config.cdp_endpoint
+        normal_launch = (
+            endpoint is None
+            and not self.config.headless
+            and self.config.launch_mode != "managed"
+        )
+        if normal_launch:
+            try:
+                self._normal_lease = ProfileLease(self.profile_dir)
+                endpoint = normal_browser_endpoint(
+                    playwright.chromium,
+                    self.profile_dir,
+                    channel=self.config.channel,
+                    executable_path=self.config.executable_path,
+                    use_system_proxy=self.config.use_system_proxy,
+                    timeout=min(20.0, self.config.navigation_timeout),
+                )
+            except Exception as exc:
+                if self._normal_lease is not None:
+                    self._normal_lease.close()
+                    self._normal_lease = None
+                manager.__exit__(type(exc), exc, exc.__traceback__)
+                message = (
+                    str(exc)
+                    if isinstance(exc, NormalBrowserError)
+                    else (f"Normal browser could not start: {type(exc).__name__}")
+                )
+                raise BrowserCapabilityUnavailable(message) from exc
+
+        if endpoint is not None:
             try:
                 browser = playwright.chromium.connect_over_cdp(
-                    self.config.cdp_endpoint.strip(),
+                    endpoint.strip(),
                     timeout=self.config.navigation_timeout * 1000,
                 )
+                _require_safe_download_browser(browser)
                 contexts = list(browser.contexts)
                 if not contexts:
                     raise RuntimeError("attached browser exposed no BrowserContext")
                 context = contexts[0]
+                context.set_default_timeout(self.config.navigation_timeout * 1000)
+                if normal_launch:
+                    # Keep URL safety on the AN-owned context; ordinary launch
+                    # is not permission to disable request guards.
+                    self._blocked_unsafe_urls = _install_context_request_guard(context)
+                _install_context_event_capture(
+                    context,
+                    pdf_responses=self._pdf_responses,
+                    downloads=self._downloads,
+                    snapshot_pdf_responses=True,
+                    max_bytes=self.config.max_bytes,
+                )
             except Exception as exc:
-                manager.__exit__(type(exc), exc, exc.__traceback__)
+                try:
+                    manager.__exit__(type(exc), exc, exc.__traceback__)
+                finally:
+                    if self._normal_lease is not None:
+                        self._normal_lease.close()
+                        self._normal_lease = None
+                if isinstance(exc, BrowserCapabilityUnavailable):
+                    raise
                 raise BrowserCapabilityUnavailable(
                     "Could not attach to the external browser CDP endpoint. "
                     f"Error type: {type(exc).__name__}"
                 ) from exc
 
-            context.set_default_timeout(self.config.navigation_timeout * 1000)
-            _install_context_event_capture(
-                context,
-                pdf_responses=self._pdf_responses,
-                downloads=self._downloads,
-                snapshot_pdf_responses=True,
-                max_bytes=self.config.max_bytes,
-            )
             self._manager = manager
             self._context = context
             self._attached_browser = browser
@@ -546,8 +688,18 @@ class BrowserSession:
             # not change OS settings or the user's everyday browser profile.
             "args": [] if self.config.use_system_proxy else ["--no-proxy-server"],
         }
-        if self.config.channel:
-            launch_kwargs["channel"] = self.config.channel
+        if self.config.direct_connection:
+            launch_kwargs["args"] = ["--no-proxy-server"]
+        channel = self.config.channel or (
+            None if self.config.headless else _default_browser_channel()
+        )
+        executable = self.config.executable_path or (
+            None if channel else fixed_portable_browser()
+        )
+        if executable:
+            launch_kwargs["executable_path"] = str(executable)
+        elif channel:
+            launch_kwargs["channel"] = channel
 
         try:
             context = playwright.chromium.launch_persistent_context(
@@ -572,6 +724,15 @@ class BrowserSession:
                 )
             raise BrowserCapabilityUnavailable(message) from exc
 
+        try:
+            _require_safe_download_browser(getattr(context, "browser", None))
+        except BrowserCapabilityUnavailable as exc:
+            try:
+                context.close()
+            finally:
+                manager.__exit__(type(exc), exc, exc.__traceback__)
+            raise
+
         context.set_default_timeout(self.config.navigation_timeout * 1000)
         self._blocked_unsafe_urls = _install_context_request_guard(context)
         _install_context_event_capture(
@@ -582,12 +743,40 @@ class BrowserSession:
         )
         self._manager = manager
         self._context = context
+        self._context_closed = False
+        if hasattr(context, "on"):
+            context.on("close", self._on_context_closed)
         return context
+
+    def _on_context_closed(self, *_):
+        self._context_closed = True
+
+    def wait_until_closed(self) -> None:
+        """Keep a caller-owned visible session alive without retrying downloads.
+
+        Used by the interactive CNKI CLI after an unresolved handoff. A popup
+        closing must not terminate the remaining browser or release its profile.
+        """
+        if self._context is None or self._attached_external:
+            return
+        while not self._context_closed:
+            pages = [page for page in self._context.pages if not page.is_closed()]
+            if not pages:
+                return
+            try:
+                pages[0].wait_for_timeout(self.config.poll_interval * 1000)
+            except Exception as exc:
+                if self._context_closed:
+                    return
+                if type(exc).__name__ == "TargetClosedError" and pages[0].is_closed():
+                    continue
+                raise
 
     def close(self) -> None:
         context = self._context
         manager = self._manager
         attached_external = self._attached_external
+        normal_lease, self._normal_lease = self._normal_lease, None
         self._context = None
         self._manager = None
         self._attached_browser = None
@@ -595,17 +784,22 @@ class BrowserSession:
         self._blocked_unsafe_urls = []
         self._pdf_responses = []
         self._downloads = []
+        self._pending_pages = {}
+        self._pending_hosts = {}
 
-        if context is not None and not attached_external:
-            try:
-                context.close()
-            finally:
-                if manager is not None:
-                    manager.__exit__(None, None, None)
-        elif manager is not None:
-            # In CDP attach mode, disconnect Playwright without closing the
-            # user-controlled external browser or its tabs.
-            manager.__exit__(None, None, None)
+        try:
+            if context is not None and not attached_external:
+                try:
+                    context.close()
+                finally:
+                    if manager is not None:
+                        manager.__exit__(None, None, None)
+            elif manager is not None:
+                # Ordinary and explicit CDP browsers retain their windows/login.
+                manager.__exit__(None, None, None)
+        finally:
+            if normal_lease is not None:
+                normal_lease.close()
 
     def acquire(
         self,
@@ -638,8 +832,35 @@ class BrowserSession:
         context = self._ensure_started()
         verified: AcquisitionResult | None = None
 
-        attached_page = None
-        if self._attached_external:
+        def retain_interaction(attempt, original_page, source):
+            current_pages = getattr(context, "pages", ())
+            matching = [
+                p
+                for p in current_pages
+                if not p.is_closed() and getattr(p, "url", None) == attempt.final_url
+            ]
+            retained = matching[-1] if matching else original_page
+            # An HTTP-only endpoint challenge may leave the article tab clear.
+            # That is not an observed human handoff that subsequently cleared.
+            if _report_for_page(retained).kind == ChallengeKind.NONE:
+                return
+            self._pending_pages[normalized_doi] = retained
+            original_host = urlsplit(source.url).hostname
+            current_url = str(getattr(original_page, "url", "") or "")
+            self._pending_hosts[normalized_doi] = (
+                urlsplit(current_url).hostname
+                if adapter_for_url(current_url).name != "generic"
+                else original_host
+            )
+
+        attached_page = self._pending_pages.pop(normalized_doi, None)
+        resume_existing = (
+            self.config.cdp_endpoint is not None
+            and self.config.cdp_resume_existing_page
+        )
+        if attached_page is not None and attached_page.is_closed():
+            attached_page = None
+        if self._attached_external and attached_page is None:
             attached_page = _select_attached_page(
                 context,
                 preferred_url=normalized_routes[0].url,
@@ -647,11 +868,13 @@ class BrowserSession:
                 # Automatic batch navigation may leave a challenge tab open.
                 # Resume it only when its title strongly matches this paper;
                 # never fall back to an arbitrary browser tab.
-                minimum_score=(0 if self.config.cdp_resume_existing_page else 300),
+                minimum_score=(0 if resume_existing else 300),
             )
 
-        if self._attached_external and (
-            self.config.cdp_resume_existing_page or attached_page is not None
+        if (
+            attached_page is not None
+            or self._attached_external
+            and (resume_existing or attached_page is not None)
         ):
             page = attached_page
             if page is None:
@@ -715,13 +938,24 @@ class BrowserSession:
 
             self._pdf_responses.clear()
             self._downloads.clear()
-            return BrowserRecoveryResult(
-                doi=normalized_doi,
-                attempts=tuple(attempts),
-                verified_result=verified,
-                profile_dir=self.profile_dir,
-                elapsed_seconds=time.perf_counter() - started_at,
-            )
+            if attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED:
+                retain_interaction(attempt, page, normalized_routes[0])
+            if verified is not None or attempt.status in {
+                BrowserAttemptStatus.INTERACTION_REQUIRED,
+                BrowserAttemptStatus.ENTITLEMENT_REQUIRED,
+                BrowserAttemptStatus.ACCESS_DENIED,
+                BrowserAttemptStatus.UNSAFE_URL,
+                BrowserAttemptStatus.PAGE_MISMATCH,
+            }:
+                return BrowserRecoveryResult(
+                    doi=normalized_doi,
+                    attempts=tuple(attempts),
+                    verified_result=verified,
+                    profile_dir=self.profile_dir,
+                    elapsed_seconds=time.perf_counter() - started_at,
+                )
+            # Recover a stale viewer/capture failure through the supplied
+            # official routes in new owned tabs, without closing the user's tab.
 
         for source in normalized_routes:
             # Context-wide handlers append into these reusable lists. Clear them
@@ -744,13 +978,15 @@ class BrowserSession:
                     session_blocked_urls=self._blocked_unsafe_urls,
                     session_pdf_responses=self._pdf_responses,
                     session_downloads=self._downloads,
+                    _navigate_source=True,
                 )
             finally:
                 preserve_interaction_page = (
-                    self._attached_external
-                    and attempt is not None
+                    attempt is not None
                     and attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
                 )
+                if preserve_interaction_page:
+                    retain_interaction(attempt, page, source)
                 if not preserve_interaction_page and not page.is_closed():
                     page.close()
                 self._blocked_unsafe_urls.clear()
@@ -780,6 +1016,79 @@ class BrowserSession:
             elapsed_seconds=time.perf_counter() - started_at,
         )
 
+    def acquire_provider(
+        self,
+        provider: BaseBrowserProvider,
+        *,
+        doi: str,
+        output_dir: str | Path,
+        metadata: PaperMetadata | None = None,
+        expected_title: str | None = None,
+        metadata_mailto: str | None = None,
+    ) -> BrowserAccessAttempt:
+        """Run one registered provider in this reusable authenticated context."""
+
+        if not isinstance(provider, BaseBrowserProvider):
+            raise TypeError("provider must be a BaseBrowserProvider")
+        for retry in range(2):
+            page = None
+            attempt = None
+            target_closed = False
+            try:
+                context = self._ensure_started()
+                self._pdf_responses.clear()
+                self._downloads.clear()
+                page = context.new_page()
+                attempt = provider.fetch(
+                    doi=doi,
+                    context=context,
+                    page=page,
+                    output_dir=output_dir,
+                    config=self.config,
+                    metadata=metadata,
+                    expected_title=expected_title,
+                    metadata_mailto=metadata_mailto,
+                )
+                target_closed = (
+                    attempt.status == BrowserAttemptStatus.ERROR
+                    and "CNKI browser target closed" in attempt.evidence
+                    and not attempt.challenge_history
+                    and not attempt.file_attempts
+                    and not attempt.download_started
+                )
+                if not target_closed or retry:
+                    if retry:
+                        attempt = replace(
+                            attempt,
+                            evidence=(
+                                "Browser context reconnected once after target closure",
+                                *attempt.evidence,
+                            ),
+                        )
+                    return attempt
+            except Exception as exc:
+                if type(exc).__name__ != "TargetClosedError" or retry:
+                    raise
+                target_closed = True
+            finally:
+                self._pdf_responses.clear()
+                self._downloads.clear()
+                preserve_interaction_page = (
+                    attempt is not None
+                    and attempt.status == BrowserAttemptStatus.INTERACTION_REQUIRED
+                )
+                if page is not None and not preserve_interaction_page:
+                    try:
+                        if not page.is_closed():
+                            page.close()
+                    except Exception:
+                        pass
+            if target_closed:
+                # A fresh connection/context uses the same local profile. Never
+                # restart after a manual handoff or repeat an acquired download.
+                self.close()
+        raise RuntimeError("Unreachable provider retry state")
+
 
 def acquire_with_browser(
     *,
@@ -801,4 +1110,27 @@ def acquire_with_browser(
             routes=routes,
             output_dir=output_dir,
             expected_title=expected_title,
+        )
+
+
+def acquire_with_browser_provider(
+    provider: BaseBrowserProvider,
+    *,
+    doi: str,
+    output_dir: str | Path,
+    metadata: PaperMetadata | None = None,
+    expected_title: str | None = None,
+    metadata_mailto: str | None = None,
+    config: BrowserAccessConfig | None = None,
+) -> BrowserAccessAttempt:
+    """Run a site-specific provider with a temporary persistent browser session."""
+
+    with BrowserSession(config) as session:
+        return session.acquire_provider(
+            provider,
+            doi=doi,
+            output_dir=output_dir,
+            metadata=metadata,
+            expected_title=expected_title,
+            metadata_mailto=metadata_mailto,
         )

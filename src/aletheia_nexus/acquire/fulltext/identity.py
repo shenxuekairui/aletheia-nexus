@@ -11,7 +11,7 @@ from aletheia_nexus.acquire.fulltext.models import (
     IdentityValidationReport,
 )
 from aletheia_nexus.acquire.fulltext.validation import PdfInspection
-from aletheia_nexus.core.identifiers.doi import extract_dois, normalize_doi
+from aletheia_nexus.core.identifiers.doi import extract_pdf_dois, normalize_doi
 
 _SUPPLEMENT_TERMS = (
     "supporting information",
@@ -70,6 +70,10 @@ def _normalize_title(value: str) -> str:
 
 
 def _compact_title(value: str) -> str:
+    # Treat chemical subscript notation (CO_2 / CO₂ / CO 2) as typography.
+    # Keep other underscores, which can be meaningful identifier characters.
+    value = unicodedata.normalize("NFKC", value)
+    value = re.sub(r"(?<=[A-Za-z])_(?=\d)", "", value)
     return _normalize_title(value).replace(" ", "")
 
 
@@ -111,7 +115,15 @@ def _title_score(
     # A long exact compact match on page one is still strong front-matter
     # evidence, unlike loose token overlap elsewhere in the document.
     compact_expected = _compact_title(expected_title)
-    if len(compact_expected) >= 40 and compact_expected in _compact_title(
+    # CJK PDFs often insert a space between EACH ideograph. Eight or more CJK
+    # characters in a title of at least twelve characters are sufficiently
+    # specific for an exact compact first-page match; short generic headings
+    # still cannot verify a document. No fuzzy matching is added here.
+    cjk_characters = len(re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]", compact_expected))
+    specific_compact_title = len(compact_expected) >= 40 or (
+        len(compact_expected) >= 12 and cjk_characters >= 8
+    )
+    if specific_compact_title and compact_expected in _compact_title(
         inspection.first_page_text
     ):
         return 1.0, "Expected title found on PDF first page", True
@@ -209,12 +221,33 @@ def _correction_to_target_evidence(
             return None
 
     for match in _ORIGINAL_ARTICLE_DOI_LABEL.finditer(inspection.first_page_text):
-        labeled_dois = extract_dois(
+        labeled_dois = extract_pdf_dois(
             inspection.first_page_text[match.end() : match.end() + 200]
         )
         if labeled_dois and target_doi == labeled_dois[0]:
             return "PDF is a correction to the requested original article"
     return None
+
+
+def declared_pdf_dois(first_page_text: str) -> tuple[str, ...]:
+    """Only labelled front-matter DOIs, never identifiers in references."""
+    front_matter = re.split(
+        r"(?im)^\s*(?:references\b|参考文献)",
+        unicodedata.normalize("NFKC", first_page_text),
+        maxsplit=1,
+    )[0]
+    values = set()
+    for label in re.finditer(
+        # Publisher links such as /lookup/suppl/doi:10.../-/DCSupplemental
+        # contain a URL path component, not an article DOI declaration. Do not
+        # strip arbitrary suffixes from legitimate DOIs to accommodate them.
+        r"(?im)(?:(?<![\w/])doi\s*:\s*|^\s*doi\s+(?=10\s*\.))",
+        front_matter,
+    ):
+        dois = extract_pdf_dois(front_matter[label.end() : label.end() + 200])
+        if dois:
+            values.add(dois[0])
+    return tuple(sorted(values))
 
 
 def validate_paper_identity(
@@ -223,14 +256,20 @@ def validate_paper_identity(
     source_url: str,
     inspection: PdfInspection,
     expected_title: str | None = None,
+    allow_missing_doi: bool = False,
 ) -> IdentityValidationReport:
     """Conservatively validate scholarly identity and document role."""
 
-    normalized_doi = normalize_doi(target_doi)
+    normalized_doi = (
+        normalize_doi(target_doi) if target_doi or not allow_missing_doi else ""
+    )
     evidence: list[str] = []
-    extracted_dois = tuple(extract_dois(inspection.extracted_text))
+    extracted_dois = tuple(extract_pdf_dois(inspection.extracted_text))
     doi_match = normalized_doi in extracted_dois
-    first_page_doi_match = normalized_doi in extract_dois(inspection.first_page_text)
+    first_page_doi_match = normalized_doi in extract_pdf_dois(
+        inspection.first_page_text
+    )
+    declared_dois = declared_pdf_dois(inspection.first_page_text)
     locked_encrypted = (
         inspection.report.encrypted and inspection.report.page_count is None
     )
@@ -270,6 +309,12 @@ def validate_paper_identity(
             "Encrypted PDF could not be opened; metadata alone is insufficient "
             "for scholarly identity verification"
         )
+    elif normalized_doi and declared_dois and normalized_doi not in declared_dois:
+        identity_status = IdentityStatus.MISMATCH
+        evidence.append("Explicit article DOI on PDF first page conflicts with target")
+    elif len(declared_dois) > 1:
+        identity_status = IdentityStatus.UNKNOWN
+        evidence.append("Multiple declared article DOIs require review")
     elif first_page_doi_match or title_match:
         identity_status = IdentityStatus.MATCH
     else:
@@ -310,4 +355,5 @@ def validate_paper_identity(
         doi_match=doi_match,
         title_similarity=title_similarity,
         evidence=tuple(evidence),
+        declared_dois=tuple(sorted(declared_dois)),
     )

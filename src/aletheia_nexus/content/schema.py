@@ -9,6 +9,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from uuid import uuid4
 
 from aletheia_nexus.content.geometry import CANONICAL_COORDINATE_SYSTEM
 
@@ -691,9 +692,10 @@ def write_parsed_document(
     if target.exists() and not overwrite:
         raise FileExistsError(f"parsed artifact already exists: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(target.suffix + ".part")
+    temporary = target.with_name(f".{target.name}.{uuid4().hex}.part")
     try:
-        temporary.write_text(serialize_parsed_document(document), encoding="utf-8")
+        with temporary.open("x", encoding="utf-8") as handle:
+            handle.write(serialize_parsed_document(document))
         os.replace(temporary, target)
     except Exception:
         temporary.unlink(missing_ok=True)

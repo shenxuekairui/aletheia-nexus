@@ -15,7 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _run(name: str, command: list[str], *, env: dict[str, str] | None = None) -> dict:
     started = time.perf_counter()
-    result = subprocess.run(command, cwd=ROOT, env=env, check=False)
+    environment = dict(os.environ if env is None else env)
+    # An editable install can point at a different checkout. Release checks
+    # must import this checkout's src tree even in a reused developer venv.
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(ROOT / "src"), environment.get("PYTHONPATH")) if part
+    )
+    result = subprocess.run(command, cwd=ROOT, env=environment, check=False)
     return {
         "name": name,
         "command": ["<python>", *command[1:]] if command else [],
@@ -28,6 +34,8 @@ def _run(name: str, command: list[str], *, env: dict[str, str] | None = None) ->
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--browser-smoke", action="store_true")
+    parser.add_argument("--visible-browser-smoke", action="store_true")
     parser.add_argument("--ocr-smoke", action="store_true")
     parser.add_argument("--public-oa", action="store_true")
     args = parser.parse_args(argv)
@@ -50,6 +58,39 @@ def main(argv: list[str] | None = None) -> int:
         ("parser-evaluation", [python, "scripts/evaluate_v07_parser.py"], None),
         ("deterministic-suite", [python, "-m", "pytest", "-q"], None),
     ]
+    if args.browser_smoke:
+        environment = dict(os.environ)
+        environment["AN_RUN_BROWSER_SMOKE"] = "1"
+        checks.append(
+            (
+                "real-browser-smoke",
+                [
+                    python,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/acquire/access/test_browser_integration.py",
+                    "tests/acquire/access/test_cnki_browser_integration.py",
+                ],
+                environment,
+            )
+        )
+    if args.visible_browser_smoke:
+        environment = dict(os.environ)
+        environment["AN_RUN_VISIBLE_BROWSER_SMOKE"] = "1"
+        checks.append(
+            (
+                "normal-browser-smoke",
+                [
+                    python,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/acquire/access/test_normal_browser_integration.py",
+                ],
+                environment,
+            )
+        )
     if args.ocr_smoke:
         environment = dict(os.environ)
         environment["AN_RUN_OCR_SMOKE"] = "1"

@@ -45,6 +45,8 @@ _CAPTCHA_WIDGET_TERMS = (
     "class='h-captcha",
     'class="cf-turnstile',
     "class='cf-turnstile",
+    'class="geetest_',
+    "class='geetest_",
 )
 _CAPTCHA_DOM_TERMS = (
     "recaptcha/api2/anchor",
@@ -52,6 +54,8 @@ _CAPTCHA_DOM_TERMS = (
     "turnstile/v0/",
     "challenges.cloudflare.com/cdn-cgi/challenge-platform",
     "/turnstile/",
+    "geetest_slider_button",
+    "geetest_panel",
 )
 _MFA_TERMS = (
     "enter the verification code",

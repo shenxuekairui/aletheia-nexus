@@ -1,13 +1,16 @@
 import json
 
+import pytest
 from pypdf import PdfWriter
 
 from aletheia_nexus.acquire.access import import_local_pdf, service
 from aletheia_nexus.acquire.access.models import MaximizedAcquisitionStatus
 from aletheia_nexus.acquire.fulltext.models import AcquisitionStatus
+from aletheia_nexus.core.paper_request import PaperRequest
 
 
-def test_user_selected_pdf_is_verified_without_modifying_original(tmp_path):
+@pytest.mark.parametrize("structured", [False, True])
+def test_user_selected_pdf_is_verified_without_modifying_original(tmp_path, structured):
     source = tmp_path / "user-selected.pdf"
     writer = PdfWriter()
     writer.add_blank_page(width=612, height=792)
@@ -17,7 +20,9 @@ def test_user_selected_pdf_is_verified_without_modifying_original(tmp_path):
     original = source.read_bytes()
 
     result = import_local_pdf(
-        "10.1109/example.123",
+        PaperRequest(doi="10.1109/example.123", title="Expected IEEE Article")
+        if structured
+        else "10.1109/example.123",
         source,
         output_dir=tmp_path / "out",
         expected_title="Expected IEEE Article",
@@ -29,6 +34,11 @@ def test_user_selected_pdf_is_verified_without_modifying_original(tmp_path):
     sidecar = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
     assert sidecar["transport"] == "user_selected_local_file"
     assert sidecar["retrieval"]["http_status"] == 0
+    assert sidecar["identity_validation"]["policy"] == "pdf_front_matter/v2"
+    if structured:
+        assert (
+            sidecar["access"]["requested_bibliography"]["doi"] == "10.1109/example.123"
+        )
     assert str(source) not in json.dumps(sidecar)
 
 

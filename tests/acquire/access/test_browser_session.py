@@ -12,6 +12,12 @@ from aletheia_nexus.acquire.discovery.models import (
 )
 
 
+# These legacy tests exercise managed launch and explicit CDP attachment.
+# Default ordinary launch is covered separately in test_normal_browser.py.
+def _managed_config(**kwargs):
+    return BrowserAccessConfig(launch_mode="managed", **kwargs)
+
+
 class _Page:
     def __init__(self):
         self.closed = False
@@ -91,7 +97,7 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
         doi="10.1000/session-limit",
         routes=[_candidate(1), _candidate(2), _candidate(3)],
         output_dir=tmp_path / "downloads",
-        config=BrowserAccessConfig(
+        config=_managed_config(
             profile_root=tmp_path / "profiles",
             max_source_routes=2,
         ),
@@ -108,17 +114,148 @@ def test_browser_session_enforces_source_route_budget(monkeypatch, tmp_path):
     assert manager.playwright.chromium.kwargs["args"] == ["--no-proxy-server"]
 
 
+def test_headed_session_prefers_safe_channel_with_historical_network_default(
+    monkeypatch, tmp_path
+):
+    manager = _Manager(_Context())
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(_managed_config(profile_root=tmp_path)) as session:
+        session._ensure_started()
+    kwargs = manager.playwright.chromium.kwargs
+    assert kwargs["channel"] == "msedge"
+    assert kwargs["user_data_dir"] == tmp_path / "default"
+    assert kwargs["args"] == ["--no-proxy-server"]
+
+
+def test_explicit_channel_and_direct_connection_are_respected(monkeypatch, tmp_path):
+    manager = _Manager(_Context())
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(
+        _managed_config(
+            profile_root=tmp_path, channel="chromium", direct_connection=True
+        )
+    ) as session:
+        session._ensure_started()
+    assert manager.playwright.chromium.kwargs["channel"] == "chromium"
+    assert manager.playwright.chromium.kwargs["args"] == ["--no-proxy-server"]
+
+
 def test_browser_session_can_opt_into_system_proxy(monkeypatch, tmp_path):
     context = _Context()
     manager = _Manager(context)
     monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(profile_root=tmp_path, use_system_proxy=True)
+        _managed_config(profile_root=tmp_path, use_system_proxy=True)
     ) as session:
         session._ensure_started()
 
     assert manager.playwright.chromium.kwargs["args"] == []
+
+
+def test_headless_session_does_not_switch_test_engine(monkeypatch, tmp_path):
+    manager = _Manager(_Context())
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(
+        _managed_config(profile_root=tmp_path, headless=True, interactive=False)
+    ) as session:
+        session._ensure_started()
+    assert "channel" not in manager.playwright.chromium.kwargs
+
+
+def test_fixed_portable_runtime_is_selected_without_install_or_profile_cleanup(
+    monkeypatch, tmp_path
+):
+    manager = _Manager(_Context())
+    runtime = tmp_path / "chrome.exe"
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: None)
+    monkeypatch.setattr(browser, "fixed_portable_browser", lambda: runtime)
+    config = _managed_config(profile_root=tmp_path / "profiles")
+    history = browser.browser_profile_dir(config) / "Default/History"
+    history.parent.mkdir(parents=True)
+    history.write_bytes(b"preserve-download-history")
+    with browser.BrowserSession(config) as session:
+        session._ensure_started()
+    assert manager.playwright.chromium.kwargs["executable_path"] == str(runtime)
+    assert history.read_bytes() == b"preserve-download-history"
+
+
+def test_explicit_executable_overrides_auto_channel(monkeypatch, tmp_path):
+    manager = _Manager(_Context())
+    runtime = tmp_path / "chrome.exe"
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    monkeypatch.setattr(browser, "_default_browser_channel", lambda: "msedge")
+    with browser.BrowserSession(
+        _managed_config(profile_root=tmp_path, executable_path=runtime)
+    ) as session:
+        session._ensure_started()
+    assert manager.playwright.chromium.kwargs["executable_path"] == str(runtime)
+    assert "channel" not in manager.playwright.chromium.kwargs
+
+
+def test_affected_runtime_is_closed_before_any_acquisition(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import pytest
+
+    context = _Context()
+    context.browser = SimpleNamespace(version="154.0.4258.48")
+    manager = _Manager(context)
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    with browser.BrowserSession(_managed_config(profile_root=tmp_path)) as session:
+        with pytest.raises(browser.BrowserCapabilityUnavailable, match="556160935"):
+            session._ensure_started()
+        assert not session.active
+    assert context.closed
+
+
+def test_affected_external_browser_is_not_closed(monkeypatch, tmp_path):
+    import pytest
+
+    context = _AttachedContext(_AttachedPage("https://publisher.example/article"))
+    manager = _AttachedManager(context)
+    manager.playwright.chromium.browser.version = "153.0.1"
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    with browser.BrowserSession(
+        _managed_config(profile_root=tmp_path, cdp_endpoint="http://127.0.0.1:9222")
+    ) as session:
+        with pytest.raises(browser.BrowserCapabilityUnavailable, match="556160935"):
+            session._ensure_started()
+    assert not context.closed
+
+
+def test_keep_open_survives_a_page_closing_while_other_pages_remain(tmp_path):
+    class TargetClosedError(Exception):
+        pass
+
+    first, second = _Page(), _Page()
+    context = _AttachedContext(first, second)
+
+    def close_first(_):
+        first.close()
+        raise TargetClosedError()
+
+    first.wait_for_timeout = close_first
+    second.wait_for_timeout = lambda _: second.close()
+    session = browser.BrowserSession(_managed_config(profile_root=tmp_path))
+    session._context = context
+    session.wait_until_closed()
+    assert first.closed and second.closed
+    assert not context.closed
+
+
+def test_keep_open_returns_on_context_close(tmp_path):
+    page = _Page()
+    context = _AttachedContext(page)
+    session = browser.BrowserSession(_managed_config(profile_root=tmp_path))
+    session._context = context
+    page.wait_for_timeout = lambda _: session._on_context_closed()
+    session.wait_until_closed()
+    assert session._context_closed
 
 
 def test_browser_session_stops_after_interaction_required(monkeypatch, tmp_path):
@@ -142,7 +279,7 @@ def test_browser_session_stops_after_interaction_required(monkeypatch, tmp_path)
         doi="10.1000/session-limit",
         routes=[_candidate(1), _candidate(2)],
         output_dir=tmp_path / "downloads",
-        config=BrowserAccessConfig(profile_root=tmp_path / "profiles"),
+        config=_managed_config(profile_root=tmp_path / "profiles"),
     )
 
     assert calls == ["https://publisher.example/article/1"]
@@ -158,7 +295,7 @@ def test_all_unsafe_routes_do_not_start_browser(monkeypatch, tmp_path):
     monkeypatch.setattr(browser, "_load_playwright", should_not_load_playwright)
 
     session = browser.BrowserSession(
-        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+        _managed_config(profile_root=tmp_path / "profiles")
     )
     result = session.acquire(
         doi="10.1000/session-limit",
@@ -203,7 +340,7 @@ def test_browser_session_reuses_one_live_context_across_dois(monkeypatch, tmp_pa
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+        _managed_config(profile_root=tmp_path / "profiles")
     ) as session:
         session.acquire(
             doi="10.1000/first",
@@ -245,7 +382,7 @@ def test_all_unsafe_routes_return_without_starting_browser(monkeypatch, tmp_path
         doi="10.1000/session-limit",
         routes=[unsafe],
         output_dir=tmp_path / "downloads",
-        config=BrowserAccessConfig(profile_root=tmp_path / "profiles"),
+        config=_managed_config(profile_root=tmp_path / "profiles"),
     )
 
     assert started is False
@@ -272,7 +409,7 @@ def test_unsafe_routes_also_consume_source_route_budget(monkeypatch, tmp_path):
         doi="10.1000/session-limit",
         routes=routes,
         output_dir=tmp_path / "downloads",
-        config=BrowserAccessConfig(
+        config=_managed_config(
             profile_root=tmp_path / "profiles",
             max_source_routes=2,
         ),
@@ -309,7 +446,7 @@ def test_browser_session_clears_route_event_buffers(monkeypatch, tmp_path):
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+        _managed_config(profile_root=tmp_path / "profiles")
     ) as session:
         session.acquire(
             doi="10.1000/session-limit",
@@ -344,7 +481,7 @@ def test_browser_startup_error_does_not_persist_raw_exception_text(
     )
 
     session = browser.BrowserSession(
-        BrowserAccessConfig(profile_root=tmp_path / "profiles")
+        _managed_config(profile_root=tmp_path / "profiles")
     )
 
     try:
@@ -378,7 +515,7 @@ def test_browser_launch_reports_profile_lock_hint(monkeypatch, tmp_path, lock_ma
     profile_dir.mkdir(parents=True)
     (profile_dir / lock_marker).touch()
 
-    session = browser.BrowserSession(BrowserAccessConfig(profile_root=profile_root))
+    session = browser.BrowserSession(_managed_config(profile_root=profile_root))
 
     try:
         session.acquire(
@@ -458,13 +595,13 @@ def test_cdp_attach_reuses_existing_page_without_navigating_or_closing(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
         )
@@ -516,7 +653,7 @@ def test_cdp_batch_navigation_opens_and_closes_temporary_pages(
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
             cdp_resume_existing_page=False,
@@ -566,7 +703,7 @@ def test_cdp_batch_navigation_preserves_page_needing_interaction(
     )
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
             cdp_resume_existing_page=False,
@@ -604,13 +741,13 @@ def test_cdp_batch_navigation_resumes_strong_title_match(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
             cdp_resume_existing_page=False,
@@ -648,13 +785,13 @@ def test_cdp_batch_navigation_resumes_exact_pdf_url_without_title_match(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
             cdp_resume_existing_page=False,
@@ -703,13 +840,13 @@ def test_cdp_attach_prefers_title_matching_pdf_tab(monkeypatch, tmp_path):
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
         )
@@ -749,13 +886,13 @@ def test_cdp_attach_matches_acs_article_code_when_pdf_title_is_blank(
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
         )
@@ -803,13 +940,13 @@ def test_cdp_attach_avoids_expired_signed_pdf_tab(monkeypatch, tmp_path):
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=page_value.url,
-            status=BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            status=BrowserAttemptStatus.INTERACTION_REQUIRED,
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
 
     with browser.BrowserSession(
-        BrowserAccessConfig(
+        _managed_config(
             profile_root=tmp_path / "profiles",
             cdp_endpoint="http://127.0.0.1:9222",
         )

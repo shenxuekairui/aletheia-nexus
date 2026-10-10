@@ -1,5 +1,6 @@
 import hashlib
 import json
+from dataclasses import replace
 
 import pytest
 from pypdf import PdfWriter
@@ -13,6 +14,7 @@ from aletheia_nexus.acquire.fulltext import service
 from aletheia_nexus.acquire.fulltext.exceptions import AcquisitionAuthRequiredError
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionStatus,
+    RedirectHop,
     RetrievedResource,
 )
 
@@ -71,6 +73,36 @@ def test_verified_pdf_is_promoted_and_sidecar_written(tmp_path, monkeypatch):
     record = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
     assert record["status"] == "VERIFIED"
     assert record["retrieval"]["sha256"] == result.retrieved.sha256
+
+
+def test_public_provenance_redacts_signed_urls_and_reuses_original_record(
+    tmp_path, monkeypatch
+):
+    title = "A Traceable Article"
+    temp = tmp_path / "download.part"
+    _write_pdf(temp, title=title)
+    body = temp.read_bytes()
+    secret_url = "https://example.org/paper.pdf?token=private-secret#private-fragment"
+    resource = replace(
+        _resource(temp),
+        requested_url=secret_url,
+        final_url=secret_url,
+        redirects=(RedirectHop(secret_url, 302, "?token=redirect-secret", secret_url),),
+    )
+    monkeypatch.setattr(service, "retrieve_to_temp", lambda *a, **kw: resource)
+    candidate = replace(_candidate(), url=secret_url)
+    first = service.acquire_direct_pdf(
+        candidate, output_dir=tmp_path / "out", expected_title=title
+    )
+    original = first.sidecar_path.read_bytes()
+    assert b"private-secret" not in original and b"redirect-secret" not in original
+    assert b"private-fragment" not in original
+    temp.write_bytes(body)
+    second = service.acquire_direct_pdf(
+        candidate, output_dir=tmp_path / "out", expected_title=title
+    )
+    assert second.file_path == first.file_path
+    assert second.sidecar_path.read_bytes() == original
 
 
 def test_auxiliary_pdf_is_not_promoted_as_verified(tmp_path, monkeypatch):

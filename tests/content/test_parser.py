@@ -14,6 +14,7 @@ from aletheia_nexus.content.evaluation import _text_edit_counts, evaluate_manife
 from aletheia_nexus.content.models import LayoutLine, PageLayout, PipelineContext
 from aletheia_nexus.content.parser import (
     _caption_match,
+    _citation_labels,
     _deduplicate_caption_blocks,
     _kind,
     _mark_bibliography_blocks,
@@ -27,6 +28,21 @@ from aletheia_nexus.content.schema import (
 )
 
 FIXTURES = Path(__file__).resolve().parents[2] / "benchmarks" / "v07_fixtures"
+
+
+@pytest.mark.parametrize(
+    "text,labels",
+    [
+        ("Citation [1, 3-5]", ["1", "3", "4", "5"]),
+        ("Corrupted [10-12-11] and [7]", ["7"]),
+        ("Mixed [1,10-12-11,4-5]", ["1", "4", "5"]),
+        ("Reversed [12-10]", []),
+        ("Unbounded [1-999999999]", []),
+        ("Huge [" + "1" * 5000 + "]", []),
+    ],
+)
+def test_malformed_citation_ranges_do_not_abort_article(text, labels):
+    assert _citation_labels(text) == labels
 
 
 def _parse(name, doi, tmp_path):

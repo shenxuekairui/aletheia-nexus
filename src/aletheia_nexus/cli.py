@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
+from dataclasses import asdict
 from importlib import metadata, util
 from pathlib import Path
 from urllib.error import URLError
@@ -20,8 +21,13 @@ from aletheia_nexus.acquire.access import (
     BatchAcquisitionItem,
     BatchItemStatus,
     BrowserAccessConfig,
+    PaperRequest,
     acquire_full_text_batch_maximized,
     browser_profile_dir,
+)
+from aletheia_nexus.acquire.access.browser_engine.runtime import (
+    fixed_installed_browser,
+    fixed_portable_browser,
 )
 from aletheia_nexus.acquire.fulltext import (
     FullTextAcquisitionStatus,
@@ -70,17 +76,69 @@ def _load_inputs(path: Path) -> tuple[list[object], dict[str, str]]:
         if isinstance(row, str):
             values.append(row)
             continue
-        if not isinstance(row, dict) or "doi" not in row:
-            raise ValueError("Each JSON/CSV row must contain a doi field")
+        if not isinstance(row, dict) or not ("doi" in row or "title" in row):
+            raise ValueError("Each JSON/CSV row must contain a doi or title field")
+        if not row.get("doi") or any(
+            row.get(key) not in (None, "")
+            for key in (
+                "title",
+                "authors",
+                "journal",
+                "year",
+                "volume",
+                "issue",
+                "pages",
+                "cnki_id",
+                "folder",
+                "filename",
+                "tags",
+            )
+        ):
+            authors = row.get("authors")
+            if authors is None or authors == "":
+                authors = ()
+            if isinstance(authors, str):
+                authors = tuple(a.strip() for a in authors.split(";") if a.strip())
+            elif not isinstance(authors, (list, tuple)):
+                raise ValueError("authors must be a list or semicolon-separated string")
+            year = row.get("year")
+            tags = row.get("tags")
+            if tags is None or tags == "":
+                tags = ()
+            if isinstance(tags, str):
+                tags = tuple(t.strip() for t in tags.split(";") if t.strip())
+            elif not isinstance(tags, (list, tuple)):
+                raise ValueError("tags must be a list or semicolon-separated string")
+            if isinstance(year, str):
+                year = year.strip()
+                if year and (len(year) != 4 or not year.isdigit()):
+                    raise ValueError("year must be a four-digit integer")
+                year = int(year) if year else None
+            fields = {
+                key: None if row.get(key) == "" else row.get(key)
+                for key in (
+                    "doi",
+                    "title",
+                    "journal",
+                    "volume",
+                    "issue",
+                    "pages",
+                    "cnki_id",
+                    "folder",
+                    "filename",
+                )
+            }
+            values.append(
+                PaperRequest(
+                    **fields,
+                    authors=tuple(authors),
+                    year=year,
+                    tags=tuple(tags),
+                )
+            )
+            continue
         doi_value = row["doi"]
         values.append(doi_value)
-        title = row.get("title")
-        if isinstance(title, str) and title.strip():
-            try:
-                normalized_doi = normalize_doi(doi_value)
-            except (TypeError, ValueError):
-                continue
-            titles[normalized_doi] = title.strip()
     return values, titles
 
 
@@ -93,6 +151,12 @@ def _cdp_ready(endpoint: str) -> bool:
 
 
 def _find_browser() -> Path:
+    installed = fixed_installed_browser()
+    portable = fixed_portable_browser()
+    if installed:
+        return installed[1]
+    if portable:
+        return portable
     candidates = [
         Path.home() / "AppData/Local/Microsoft/Edge/Application/msedge.exe",
         Path("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"),
@@ -186,6 +250,9 @@ def _safe_diagnostics(item: BatchAcquisitionItem) -> dict | None:
     return {
         "message": result.message,
         "base_status": result.base_result.status.value,
+        "requested_title": result.base_result.requested_title,
+        "validation_title": result.base_result.expected_title,
+        "title_source": result.base_result.title_source.value,
         "browser_attempts": [
             {
                 "status": attempt.status.value,
@@ -210,6 +277,7 @@ def _safe_diagnostics(item: BatchAcquisitionItem) -> dict | None:
                         ),
                         "identity": (
                             {
+                                "policy": file_attempt.result.identity_validation.policy,
                                 "status": (
                                     file_attempt.result.identity_validation.status.value
                                 ),
@@ -247,7 +315,10 @@ def _write_report(path: Path, result) -> None:
         "status_counts": result.status_counts,
         "items": [
             {
-                "input": item.input_value,
+                "input": asdict(item.input_value)
+                if isinstance(item.input_value, PaperRequest)
+                else item.input_value,
+                "request_key": item.request_key,
                 "doi": item.doi,
                 "status": item.status.value,
                 "verified_path": (
@@ -275,16 +346,68 @@ def _write_report(path: Path, result) -> None:
         raise
 
 
+def _acquire_public_organized(doi, *, request, output_dir, **kwargs):
+    from aletheia_nexus.acquire.fulltext.storage import organized_output
+    from aletheia_nexus.core.organization import destination
+
+    organization = request
+    directory = (
+        destination(output_dir, organization.folder) if organization else output_dir
+    )
+    with organized_output(organization):
+        return acquire_full_text(doi, output_dir=directory, **kwargs)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus acquire",
         description=(
-            "Sequential, resumable v0.6 literature acquisition. Input may be "
-            "newline text, JSON, or CSV; JSON/CSV rows use doi and optional title."
+            "Sequential, resumable literature acquisition. Input may be "
+            "newline DOI text, JSON, or CSV; citation rows support doi, title, "
+            "authors, journal, year, volume, issue, pages and cnki_id."
         ),
     )
-    parser.add_argument("input", help="One DOI, or a DOI list in TXT, JSON, or CSV")
+    parser.add_argument(
+        "input", nargs="?", help="One DOI, or a TXT/JSON/CSV citation list"
+    )
+    parser.add_argument("--title", help="Exact title; DOI optional for CNKI citations")
+    parser.add_argument("--author", action="append", default=[])
+    parser.add_argument("--journal")
+    parser.add_argument("--year", type=int)
+    parser.add_argument("--volume")
+    parser.add_argument("--issue")
+    parser.add_argument("--pages")
+    parser.add_argument("--cnki-id")
+    parser.add_argument(
+        "--source", choices=("auto", "cnki", "exclude_cnki"), default="auto"
+    )
+    cnki_switch = parser.add_mutually_exclusive_group()
+    cnki_switch.add_argument("--cnki", dest="no_cnki", action="store_false")
+    cnki_switch.add_argument("--no-cnki", action="store_true")
+    parser.set_defaults(no_cnki=False)
+    parser.add_argument("--cnki-all-titles", action="store_true")
+    parser.add_argument("--cnki-max-results", type=int, default=20)
+    parser.add_argument(
+        "--cnki-refresh-retry", action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument("--no-cnki-keep-unverified", action="store_true")
+    parser.add_argument(
+        "--cnki-context-request",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Opt into cookie-jar HTTP delivery; CNKI uses native browser delivery by default.",
+    )
+    parser.add_argument("--executable-path", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("downloads"))
+    parser.add_argument(
+        "--folder", help="Relative category folder; enables readable PDF names."
+    )
+    parser.add_argument(
+        "--filename", help="Optional readable filename label (not a path)."
+    )
+    parser.add_argument(
+        "--tag", action="append", default=[], help="Repeat for classification tags."
+    )
     parser.add_argument(
         "--public-only",
         action="store_true",
@@ -295,6 +418,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile", default="human-handoff")
     parser.add_argument("--profile-root", type=Path, default=None)
     parser.add_argument("--channel", default=None)
+    parser.add_argument(
+        "--browser-launch-mode",
+        choices=("auto", "normal", "managed"),
+        default="auto",
+        help="Default auto uses ordinary visible launch and keeps the browser open; "
+        "headless stays managed. Use managed for the previous launch behavior.",
+    )
     parser.add_argument(
         "--browser-use-system-proxy",
         action="store_true",
@@ -390,34 +520,68 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--fail-on-unverified",
         action="store_true",
-        help="Return a non-zero exit code unless every valid DOI is VERIFIED.",
+        help="Return a non-zero exit code unless every requested citation is VERIFIED.",
     )
     args = parser.parse_args(argv)
 
     if args.headless and not args.non_interactive:
         parser.error("--headless requires --non-interactive")
-    input_path = Path(args.input)
-    if input_path.is_file():
+    citation_fields = dict(
+        title=args.title,
+        authors=tuple(args.author),
+        journal=args.journal,
+        year=args.year,
+        volume=args.volume,
+        issue=args.issue,
+        pages=args.pages,
+        cnki_id=args.cnki_id,
+        folder=args.folder,
+        filename=args.filename,
+        tags=tuple(args.tag),
+    )
+    input_path = Path(args.input) if args.input else None
+    if input_path is not None and input_path.is_file():
+        if any(citation_fields.values()):
+            parser.error(
+                "For batch input, put bibliographic fields in each JSON/CSV row"
+            )
         try:
             values, titles = _load_inputs(input_path)
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             parser.error(f"Could not read DOI input: {exc}")
     else:
         try:
-            values, titles = [normalize_doi(args.input)], {}
+            values, titles = (
+                (
+                    [PaperRequest(doi=args.input, **citation_fields)]
+                    if any(citation_fields.values())
+                    else [normalize_doi(args.input)]
+                ),
+                {},
+            )
         except (TypeError, ValueError):
-            parser.error("Input must be an existing file or a valid DOI")
+            parser.error("Provide a DOI, an existing input file, or --title")
+    if args.no_cnki and args.source == "cnki":
+        parser.error("--no-cnki conflicts with --source cnki")
     if args.public_only:
         if len(values) != 1:
             parser.error("--public-only currently accepts one DOI at a time")
         if args.local_pdf:
             parser.error("--public-only cannot be combined with --local-pdf")
         args.output_dir.mkdir(parents=True, exist_ok=True)
-        doi = normalize_doi(values[0])
-        result = acquire_full_text(
+        citation = values[0] if isinstance(values[0], PaperRequest) else None
+        if citation is not None and not citation.doi:
+            parser.error(
+                "--public-only requires a DOI; title-only CNKI uses browser access"
+            )
+        if args.source == "cnki":
+            parser.error("--public-only cannot use --source cnki")
+        doi = citation.doi if citation else normalize_doi(values[0])
+        result = _acquire_public_organized(
             doi,
+            request=citation,
             output_dir=args.output_dir,
-            expected_title=titles.get(doi),
+            expected_title=citation.title if citation else titles.get(doi),
             unpaywall_email=args.unpaywall_email,
             openalex_api_key=args.openalex_api_key,
             metadata_mailto=args.metadata_mailto,
@@ -456,6 +620,8 @@ def main(argv: list[str] | None = None) -> int:
         profile_name=args.profile,
         profile_root=args.profile_root,
         channel=args.channel,
+        launch_mode=args.browser_launch_mode,
+        executable_path=args.executable_path,
         use_system_proxy=args.browser_use_system_proxy,
         cdp_endpoint=args.cdp_endpoint,
         cdp_resume_existing_page=not args.cdp_navigate,
@@ -473,6 +639,12 @@ def main(argv: list[str] | None = None) -> int:
         max_source_routes=args.max_source_routes,
         max_pdf_candidates=args.max_pdf_candidates,
         keep_unverified=args.keep_unverified,
+        cnki_enabled=not args.no_cnki,
+        cnki_search_all_titles=args.cnki_all_titles,
+        cnki_max_results=args.cnki_max_results,
+        cnki_context_request=args.cnki_context_request,
+        cnki_keep_unverified=not args.no_cnki_keep_unverified,
+        cnki_refresh_retry=args.cnki_refresh_retry,
     )
     if (
         args.start_browser_if_needed
@@ -498,6 +670,7 @@ def main(argv: list[str] | None = None) -> int:
             else None
         ),
         browser_config=config,
+        source_preference=args.source,
         checkpoint_path=checkpoint,
         resume=not args.no_resume,
         deduplicate=not args.keep_duplicates,
@@ -534,8 +707,7 @@ def main(argv: list[str] | None = None) -> int:
     if result.halted_for_interaction:
         return 3
     if args.fail_on_unverified and any(
-        item.doi is not None and item.status != BatchItemStatus.VERIFIED
-        for item in result.items
+        item.status != BatchItemStatus.VERIFIED for item in result.items
     ):
         return 4
     return 0
@@ -701,6 +873,54 @@ def export_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def library_main(argv: list[str] | None = None) -> int:
+    from aletheia_nexus.library import scan_library, update_tags
+
+    if argv and argv[0] == "tag":
+        parser = argparse.ArgumentParser(prog="aletheia-nexus library tag")
+        parser.add_argument("pdf", type=Path)
+        parser.add_argument("--add", action="append", default=[])
+        parser.add_argument("--remove", action="append", default=[])
+        args = parser.parse_args(argv[1:])
+        if not args.add and not args.remove:
+            parser.error("Provide --add or --remove")
+        try:
+            tags = update_tags(args.pdf, add=args.add, remove=args.remove)
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            parser.error(str(exc))
+        print(json.dumps({"tags": tags}, ensure_ascii=False))
+        return 0
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus library",
+        epilog="Edit labels: aletheia-nexus library tag PAPER.pdf --add LABEL --remove LABEL",
+    )
+    parser.add_argument("root", type=Path, nargs="?", default=Path("downloads"))
+    parser.add_argument("--folder", help="Filter a folder and its subfolders.")
+    parser.add_argument("--tag", help="Filter by exact tag.")
+    parser.add_argument("--query", help="Search titles, DOI, filenames and tags.")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        catalog = scan_library(
+            args.root, folder=args.folder, tag=args.tag, query=args.query
+        )
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
+    if args.json:
+        print(json.dumps(catalog, ensure_ascii=False, indent=2))
+    else:
+        for item in catalog["items"]:
+            print(
+                f"[{item['integrity']}] {item['folder'] or '.'} | {item['title'] or item['doi']}"
+            )
+            print(f"  {item['pdf_path']}  Tags: {', '.join(item['tags'])}")
+        print(
+            f"{len(catalog['items'])} papers; {len(catalog['warnings'])} unreadable records"
+        )
+    return 0
+
+
 def entrypoint(argv: list[str] | None = None) -> int:
     """Dispatch the stable installed CLI without importing optional Playwright."""
 
@@ -711,10 +931,13 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "Usage:\n"
             "  aletheia-nexus acquire DOI [options]\n"
             "  aletheia-nexus acquire INPUT.txt [options]\n"
+            "  aletheia-nexus acquire --title TITLE [options]\n"
             "  aletheia-nexus parse PAPER.pdf --doi DOI [options]\n"
             "  aletheia-nexus search PAPER.parsed.json QUERY [options]\n"
             "  aletheia-nexus export PAPER.parsed.json --format FORMAT --output PATH\n"
             "  aletheia-nexus doctor\n"
+            "  aletheia-nexus browser-install\n"
+            "  aletheia-nexus library [DIRECTORY] [--folder NAME] [--tag TAG]\n"
             "  aletheia-nexus --version\n\n"
             "Use 'aletheia-nexus COMMAND --help' for command options."
         )
@@ -748,7 +971,9 @@ def entrypoint(argv: list[str] | None = None) -> int:
                     has_chromium = Path(driver.chromium.executable_path).is_file()
             except Exception:
                 pass
-            print(f"Chromium runtime: {'ready' if has_chromium else 'missing'}")
+            print(
+                f"Playwright Chromium binary: {'present' if has_chromium else 'missing'}"
+            )
         if not has_playwright or not has_chromium:
             print(
                 "Public HTTP acquisition is available. For interactive browser "
@@ -756,6 +981,16 @@ def entrypoint(argv: list[str] | None = None) -> int:
                 '  python -m pip install "aletheia-nexus[browser]"\n'
                 "  python -m playwright install chromium"
             )
+        safe_runtime = fixed_installed_browser() or fixed_portable_browser()
+        print(
+            f"Fixed AN/installed runtime: {'available' if safe_runtime else 'not detected'}"
+        )
+        print(
+            "Persistent download safety is checked at launch; Chromium 152-154 "
+            "is blocked. Provision a private fixed runtime on Windows/Linux x64:\n"
+            "  aletheia-nexus browser-install\n"
+            "Or select an updated browser with acquire --executable-path PATH."
+        )
         poppler = shutil.which("pdftoppm")
         tesseract = shutil.which("tesseract")
         print(f"Poppler OCR renderer: {'ready' if poppler else 'missing'}")
@@ -766,6 +1001,28 @@ def entrypoint(argv: list[str] | None = None) -> int:
                 "and ensure pdftoppm/tesseract are on PATH to use parse --ocr."
             )
         return 0
+    if args[0] == "browser-install":
+        parser = argparse.ArgumentParser(
+            prog="aletheia-nexus browser-install",
+            description="Provision official stable Chrome for Testing in AN's private directory; no profiles or system browsers are modified.",
+        )
+        parser.parse_args(args[1:])
+        from aletheia_nexus.acquire.access.browser_engine.installer import (
+            main as install,
+        )
+
+        try:
+            return install()
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            KeyError,
+            StopIteration,
+            subprocess.SubprocessError,
+        ) as exc:
+            print(f"Browser provisioning failed: {type(exc).__name__}", file=sys.stderr)
+            return 2
     if args[0] == "acquire":
         return main(args[1:])
     if args[0] == "parse":
@@ -774,6 +1031,8 @@ def entrypoint(argv: list[str] | None = None) -> int:
         return search_main(args[1:])
     if args[0] == "export":
         return export_main(args[1:])
+    if args[0] == "library":
+        return library_main(args[1:])
     print(f"Unknown command: {args[0]!r}. Use --help.", file=sys.stderr)
     return 2
 

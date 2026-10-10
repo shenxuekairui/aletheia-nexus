@@ -440,10 +440,10 @@ def test_acquire_full_text_uses_metadata_title_when_user_title_missing(
         doi="10.1000/target",
         title="Metadata supplied title",
         authors=(),
-        journal=None,
+        journal="Test Journal",
         issn=(),
         published_date=None,
-        year=None,
+        year=2024,
         publisher=None,
         work_type=None,
         volume=None,
@@ -463,6 +463,9 @@ def test_acquire_full_text_uses_metadata_title_when_user_title_missing(
     )
 
     def orchestrate(value, **kwargs):
+        from aletheia_nexus.acquire.fulltext.storage import _publication_fields
+
+        assert _publication_fields(value.doi) == (2024, "Test Journal")
         captured["title"] = kwargs["expected_title"]
         captured["doi_fallback"] = kwargs["use_doi_resolver_fallback"]
         return service.MultiRouteAcquisitionResult(

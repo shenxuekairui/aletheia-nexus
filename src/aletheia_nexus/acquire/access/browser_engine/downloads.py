@@ -3,23 +3,50 @@
 from __future__ import annotations
 
 import shutil
-import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
 
+class EmptyBrowserDownload(ValueError):
+    """The transport exposed an empty placeholder, not a downloaded document."""
+
+
+def save_browser_download(download, destination: Path) -> None:
+    """Copy a completed transfer; never send a zero-byte placeholder to identity QA."""
+    save_as = getattr(download, "save_as", None)
+    if callable(save_as):
+        save_as(str(destination))
+    else:
+        shutil.copyfile(Path(download.path()), destination)
+    if destination.stat().st_size == 0:
+        destination.unlink(missing_ok=True)
+        raise EmptyBrowserDownload("Browser download contained zero bytes")
+
+
+@dataclass
+class _NativeTransfer:
+    url: str
+    state: str = "inProgress"
+    path: Path | None = None
+
+
 class LocalBrowserDownload:
-    def __init__(self, path: Path, url: str) -> None:
+    def __init__(self, path: Path, url: str, suggested_filename: str = "") -> None:
         self._path = path
         self.url = url
+        self.suggested_filename = suggested_filename
 
     def path(self) -> str:
         return str(self._path)
 
+    def save_as(self, path: str | Path) -> None:
+        shutil.copyfile(self._path, path)
+
 
 class CdpDownloadCapture:
-    """Route one native Chromium download into an AN-owned staging directory.
+    """Route native Chromium downloads into a context-scoped AN staging directory.
 
     Playwright download objects are not reliable for every browser attached over
     CDP. In particular, an attachment response can be saved by Edge while
@@ -30,19 +57,32 @@ class CdpDownloadCapture:
     def __init__(self, context, output_dir: str | Path) -> None:
         self._session = None
         self._staging_dir: Path | None = None
-        self._guid: str | None = None
-        self._url: str | None = None
-        self._file_path: Path | None = None
-        self._completed = threading.Event()
-        self._canceled = False
+        self._transfers: dict[str, _NativeTransfer] = {}
+        self._context_params: dict[str, str] = {}
 
         browser = getattr(context, "browser", None)
         if browser is None or not hasattr(browser, "new_browser_cdp_session"):
             return
 
         staging_dir = Path(output_dir) / "_browser-downloads" / uuid4().hex
-        session = browser.new_browser_cdp_session()
+        session = None
         try:
+            session = browser.new_browser_cdp_session()
+            pages = list(getattr(context, "pages", ()))
+            if pages and hasattr(context, "new_cdp_session"):
+                contexts = session.send("Target.getBrowserContexts")
+                # Omitted browserContextId means the *default* context, not
+                # whichever incognito context owns this page. Otherwise the
+                # completed file can remain in Playwright's separate directory.
+                if contexts.get("browserContextIds"):
+                    target_session = context.new_cdp_session(pages[0])
+                    try:
+                        target = target_session.send("Target.getTargetInfo")
+                    finally:
+                        target_session.detach()
+                    context_id = target.get("targetInfo", {}).get("browserContextId")
+                    if context_id in contexts["browserContextIds"]:
+                        self._context_params["browserContextId"] = context_id
             staging_dir.mkdir(parents=True, exist_ok=False)
             session.on("Browser.downloadWillBegin", self._on_begin)
             session.on("Browser.downloadProgress", self._on_progress)
@@ -52,6 +92,7 @@ class CdpDownloadCapture:
                     "behavior": "allowAndName",
                     "downloadPath": str(staging_dir.resolve()),
                     "eventsEnabled": True,
+                    **self._context_params,
                 },
             )
         except Exception:
@@ -79,53 +120,78 @@ class CdpDownloadCapture:
 
     @property
     def started(self) -> bool:
-        return self._guid is not None
+        return bool(self._transfers)
+
+    def pending_for(self, url: str) -> bool:
+        transfers = [t for t in self._transfers.values() if t.url == url]
+        # No correlated native event yet is uncertain, not evidence of failure.
+        return not transfers or any(t.state == "inProgress" for t in transfers)
 
     def _on_begin(self, event) -> None:
-        if self._guid is not None:
-            return
-        self._guid = str(event.get("guid") or "") or None
-        self._url = str(event.get("url") or "") or None
+        guid = str(event.get("guid") or "")
+        if guid and guid not in self._transfers:
+            self._transfers[guid] = _NativeTransfer(str(event.get("url") or ""))
 
     def _on_progress(self, event) -> None:
         guid = str(event.get("guid") or "")
-        if self._guid is None or guid != self._guid:
+        transfer = self._transfers.get(guid)
+        if transfer is None:
             return
         state = event.get("state")
         if state == "completed":
             file_path = event.get("filePath")
             if file_path:
-                self._file_path = Path(str(file_path))
-            self._completed.set()
+                transfer.path = Path(str(file_path))
+            transfer.state = "completed"
         elif state == "canceled":
-            self._canceled = True
-            self._completed.set()
+            transfer.state = "canceled"
 
-    def wait(self, page, timeout: float) -> tuple[Path, str] | None:
+    def wait(
+        self, page, timeout: float, *, expected_url: str | None = None
+    ) -> tuple[Path, str] | None:
         if not self.active or not self.started:
             return None
         deadline = time.monotonic() + max(0.0, timeout)
-        while not self._completed.is_set() and time.monotonic() < deadline:
-            page.wait_for_timeout(100)
-        if not self._completed.is_set() or self._canceled or self._staging_dir is None:
-            return None
-
-        path = self._file_path
-        if path is None and self._guid is not None:
-            path = self._staging_dir / self._guid
-        if path is None or not path.is_file():
-            files = [item for item in self._staging_dir.iterdir() if item.is_file()]
-            if len(files) != 1:
+        while True:
+            selected = [
+                (guid, transfer)
+                for guid, transfer in self._transfers.items()
+                if expected_url is None or transfer.url == expected_url
+            ]
+            for guid, transfer in selected:
+                if transfer.state != "completed" or self._staging_dir is None:
+                    continue
+                path = transfer.path or self._staging_dir / guid
+                # A completed event is necessary but not sufficient. Do not
+                # guess from an unrelated file or accept partial/outside paths.
+                try:
+                    if (
+                        not path.resolve().is_relative_to(self._staging_dir.resolve())
+                        or path.suffix.casefold() in {".crdownload", ".part", ".tmp"}
+                        or not path.is_file()
+                        or path.stat().st_size == 0
+                    ):
+                        continue
+                except OSError:
+                    continue
+                return path, transfer.url or str(getattr(page, "url", "") or "")
+            if (
+                time.monotonic() >= deadline
+                or selected
+                and all(t.state != "inProgress" for _, t in selected)
+            ):
                 return None
-            path = files[0]
-        return path, self._url or str(getattr(page, "url", "") or "")
+            page.wait_for_timeout(100)
 
     def close(self, *, remove_files: bool = True) -> None:
         session = self._session
         self._session = None
         if session is not None:
             try:
-                session.send("Browser.setDownloadBehavior", {"behavior": "default"})
+                session.send(
+                    "Browser.setDownloadBehavior",
+                    {"behavior": "default", **self._context_params},
+                )
             except Exception:
                 pass
             try:

@@ -46,9 +46,11 @@ jobs:
           python -m build
           python -m twine check dist/*
           python -m venv smoke-venv
-          smoke-venv/bin/python -m pip install dist/*.whl
+          smoke-venv/bin/python -m pip install pytest dist/*.whl
+          smoke-venv/bin/python -m pip check
           smoke-venv/bin/aletheia-nexus --version
           smoke-venv/bin/aletheia-nexus doctor
+          smoke-venv/bin/python -m pytest -q tests/test_cli.py tests/test_library.py tests/content
       - uses: actions/upload-artifact@v4
         with:
           name: python-distributions
