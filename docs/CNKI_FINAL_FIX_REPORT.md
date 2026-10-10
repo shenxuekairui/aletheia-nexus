@@ -55,7 +55,7 @@
 3. 这证明新的获取路径能够把本次登录要求交给用户，但尚不能证明认证后 #1 文件能成功取得。同会话控件请求成功的文件路径目前有离线测试证据，真实在线验收待用户认证。
 4. 本次没有继续 #3/#6 或其余 DOI。先前 #2/#7/#9 的历史成功和 #8 独立复测成功保持原样，不与本批次拼成 7/7。
 
-现场使用此前专用 Chromium profile `cnki-live-recovery-chromium`。输出目录为 `F:\AI4S\github\aletheia-nexus-local-tests\cnki-final-functional-20261009\results`，不重用旧 PDF，不进行公开来源兜底，不输入账号、不操作验证码或机构权限。
+现场使用此前专用 Chromium profile `cnki-live-recovery-chromium`。输出保存在本地测试目录下的 `cnki-final-functional-20261009/results`，不重用旧 PDF，不进行公开来源兜底，不输入账号、不操作验证码或机构权限。
 
 ## 使用与边界
 
@@ -92,7 +92,7 @@ python scripts/batch_v06_download.py dois.txt --cnki --output-dir downloads/cnki
 - 最新全量回归：`842 passed, 17 skipped`；针对配置、会话、Provider、单篇 CLI 的早期回归为 `121 passed`，扩展后的 CLI 测试为 `10 passed`。
 - 最终启用完全网络拦截的真实浏览器测试：`17 passed`；修改文件 Ruff 检查及 `git diff --check` 通过。
 - 增加完全网络拦截的真实浏览器场景：原生 order 点击执行页面 JavaScript，以及机构 IP 自动登录过渡页不误报人工登录。模拟页面并不等于真实机构权限验收。
-- 在线通过正式 CLI 重测 #1，新 profile 为 `cnki-an-stable-edge`，结果目录为 `F:\AI4S\github\aletheia-nexus-local-tests\cnki-stable-fix-20261009\results`。初次现场遇到 `CAPTCHA`，程序仍存活等待用户，没有立即返回。认证完成后自动继续，通过原生控件下载得到 `VERIFIED`：24 页、2,356,951 字节，DOI 匹配、标题相似度 1.0，SHA-256 为 `a664dd741bb6282bc2a23996ff5eb48d745ed8d5ba176e77d61f2248223cc89a`。文件重新计算哈希与 sidecar 一致。该现场证明新路径可完成 #1，并不证明浏览器崩溃根因已消除。
+- 在线通过正式 CLI 重测 #1，新 profile 为 `cnki-an-stable-edge`，结果保存在本地测试目录下的 `cnki-stable-fix-20261009/results`。初次现场遇到 `CAPTCHA`，程序仍存活等待用户，没有立即返回。认证完成后自动继续，通过原生控件下载得到 `VERIFIED`：24 页、2,356,951 字节，DOI 匹配、标题相似度 1.0，SHA-256 为 `a664dd741bb6282bc2a23996ff5eb48d745ed8d5ba176e77d61f2248223cc89a`。文件重新计算哈希与 sidecar 一致。该现场证明新路径可完成 #1，并不证明浏览器崩溃根因已消除。
 - 用户要求继续后，将直接 CNKI CLI 扩展为可重复 `--doi`，整批共用一个 BrowserSession，仅最后保持窗口；不会在第一篇成功后停止。在同一专用配置上继续剩余六篇，遇到真实未解决认证仍停下等待。
 - 本次修改仍在本地工作树，未提交或推送。历史验收数据保留；本节取代上文关于默认 Chromium、order 预取优先及单篇 CLI 立即清理的旧行为说明。
 
@@ -139,7 +139,7 @@ python scripts/batch_v06_download.py dois.txt --cnki --output-dir downloads/cnki
 - 新增二进制版本选择与运行时版本保护：实际启动/连接的 152–154 在下载前报告 BROWSER_UNAVAILABLE；显式旧 channel 同样拒绝，不静默重放下载。外部 CDP 浏览器不被关闭。
 - Windows 可见模式优先 >=155 的已安装稳定版，否则选择 AN 私有固定运行时；headless 也支持私有运行时。预览版不自动选用。未改动日常浏览器、系统代理、输入法、杀毒、SmartScreen 或其他安全设置。
 - 新增 `scripts/install_an_browser.py`：通过 Google 官方稳定版清单和 HTTPS 下载 Chrome for Testing，限制来源、体积和解压路径，仅写 AN runtime；不覆盖已有运行时，不改 profile。支持 Windows / Linux x64，Linux CI 已配置该安装步骤，但本机未执行 Linux 运行时验收。
-- 本机部署的是 `C:\Users\carey\.aletheia-nexus\browser-runtimes\chrome-155.0.8059.39\chrome-win64\chrome.exe`；没有系统安装或替换 Edge。正式 CLI 当前会自动选择它。
+- 本机部署在用户目录下的 `.aletheia-nexus/browser-runtimes/chrome-155.0.8059.39/chrome-win64/chrome.exe`；没有系统安装或替换 Edge。正式 CLI 当前会自动选择它。
 - 单篇和批量 CLI / Python 配置增加 `--executable-path` / `executable_path`，可指定修复版；不与 channel/CDP 混用。保留原来的本地机构认证、人工关卡、PDF 身份和溯源行为。
 - 新增跨 profile 重启的真实浏览器回归，防止以后只测新配置而漏掉历史触发条件；增加旧版本拒绝、外部会话保留、认证状态保留、运行时来源/解压安全及不覆盖安装的测试。
 
@@ -151,4 +151,4 @@ python scripts/batch_v06_download.py dois.txt --cnki --output-dir downloads/cnki
 2. 真正修复版 155 经正式 CLI、`--no-cnki-context-request`、新配置 `cnki-fixed-cft155` 在线复测 #3。此次经过 CAPTCHA 后，检索控件等待超时，返回 NAVIGATION_ERROR，`download_started=false`、无 PDF；窗口仍按设置保留，没有崩溃或重放下载。不能把它算作修复版 CNKI 下载成功，也不撤销前一轮七篇已验证文件。
 3. 本轮根因修复已由上述原生重启回归验证。修复版的 CNKI 端到端在线下载验收仍需在有效认证页面继续；机构权限与网站检索可用性是另一层条件。
 
-诊断目录为 `F:\AI4S\github\aletheia-nexus-local-tests\cnki-crash-root-20261009`，仅本地保存。包含浏览器测试 profile 和 dump，不应上传或提交；正式程序没有新增完整生命周期取证系统。
+诊断保存在本地测试目录下的 `cnki-crash-root-20261009`。包含浏览器测试 profile 和 dump，不应上传或提交；正式程序没有新增完整生命周期取证系统。
