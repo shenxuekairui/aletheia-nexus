@@ -72,6 +72,92 @@ def test_hidden_duplicate_controls_do_not_delay_visible_entry(control_browser, k
         page.close()
 
 
+def test_same_tab_institution_choice_waits_for_late_idp_return(control_browser):
+    """Local HTML fixture: no real IdP, credentials, or CAPTCHA interaction."""
+    context = control_browser.new_context()
+    page = context.new_page()
+    visited = []
+
+    def respond(route):
+        url = route.request.url
+        visited.append(url)
+        if url.endswith("/article"):
+            html = '<title>Article</title><a href="/action/ssostart">Access through your institution</a>'
+        elif url.endswith("/action/ssostart"):
+            html = """<title>Institutional Login</title><main>Choose your institution</main>
+            <script>setTimeout(() => location.href='https://idp.example/account', 1600)</script>"""
+        elif url == "https://idp.example/account":
+            html = """<title>Account</title><main>Continue</main>
+            <script>setTimeout(() => location.href='https://publisher.example/complete', 1500)</script>"""
+        else:
+            assert url == "https://publisher.example/complete"
+            html = "<title>Article</title><main>Article abstract</main>"
+        route.fulfill(content_type="text/html", body=html)
+
+    context.route("**/*", respond)
+    try:
+        page.goto("https://publisher.example/article")
+        clicked, _, used, report = browser_route._run_institution_handoff(
+            context,
+            page,
+            config=BrowserAccessConfig(interaction_timeout=10, poll_interval=0.05),
+        )
+        assert clicked and used
+        assert report.kind == ChallengeKind.NONE
+        assert page.url == "https://publisher.example/complete"
+        assert visited == [
+            "https://publisher.example/article",
+            "https://publisher.example/action/ssostart",
+            "https://idp.example/account",
+            "https://publisher.example/complete",
+        ]
+    finally:
+        context.close()
+
+
+def test_pdf_auth_wait_does_not_release_a_plain_external_form(control_browser):
+    context = control_browser.new_context()
+    page = context.new_page()
+
+    def respond(route):
+        url = route.request.url
+        if url == "https://publisher.example/doi/pdf/test":
+            html = (
+                "<title>Institutional Login</title><main>Choose your institution</main>"
+            )
+        elif url == "https://idp.example/account":
+            html = """<title>Account</title><main>Continue</main>
+            <script>setTimeout(() => location.href='https://publisher.example/complete', 1200)</script>"""
+        else:
+            assert url == "https://publisher.example/complete"
+            html = "<title>Article</title><main>Article abstract</main>"
+        route.fulfill(content_type="text/html", body=html)
+
+    def simulated_institution_choice(report, url):
+        # Local fixture only; stand in for a human choosing a test institution.
+        assert report.kind == ChallengeKind.SSO
+        page.goto("https://idp.example/account")
+
+    context.route("**/*", respond)
+    try:
+        page.goto("https://publisher.example/doi/pdf/test")
+        report, _, used = browser_route._resolve_page_challenge(
+            page,
+            return_host="publisher.example",
+            config=BrowserAccessConfig(
+                auto_challenge_grace=0,
+                interaction_timeout=10,
+                poll_interval=0.05,
+                interaction_callback=simulated_institution_choice,
+            ),
+        )
+        assert used and report.kind == ChallengeKind.NONE
+        assert page.url == "https://publisher.example/complete"
+        assert not page.is_closed()
+    finally:
+        context.close()
+
+
 @pytest.mark.parametrize("kind", ["pdf", "institution"])
 def test_removed_controls_do_not_wait_for_stale_count(
     control_browser, monkeypatch, kind
@@ -310,6 +396,72 @@ def test_native_download_survives_persistent_profile_relaunch(tmp_path):
                 event.value.save_as(path)
                 assert path.read_bytes() == body
                 assert not page.is_closed()
+
+
+def test_native_control_download_after_generic_capture_reset(monkeypatch, tmp_path):
+    from aletheia_nexus.acquire.access.models import BrowserFileAttempt
+
+    title = "Native Control Download Completion Regression"
+    body = _pdf_bytes(title)
+    candidate = FullTextCandidate(
+        doi="10.1000/native-control",
+        url="https://publisher.example/article",
+        provenance=(),
+        url_type=CandidateUrlType.LANDING_PAGE,
+    )
+    config = BrowserAccessConfig(
+        profile_root=tmp_path / "profiles",
+        headless=True,
+        interactive=False,
+        navigation_timeout=5,
+        request_timeout=5,
+        auto_challenge_grace=0,
+    )
+
+    def respond(route):
+        if route.request.url.endswith("/download"):
+            route.fulfill(
+                content_type="application/pdf",
+                body=body,
+                headers={"Content-Disposition": 'attachment; filename="article.pdf"'},
+            )
+        else:
+            route.fulfill(
+                content_type="text/html",
+                body=f'''
+            <title>{title}</title><meta name="citation_doi" content="{candidate.doi}">
+            <button onclick="location.href='/download'">Download PDF</button>''',
+            )
+
+    monkeypatch.setattr(
+        browser_route,
+        "_browser_response_to_file_attempt",
+        lambda *args, **kwargs: BrowserFileAttempt(
+            candidate=kwargs["parent"], error="Fixture excludes response capture"
+        ),
+    )
+    monkeypatch.setattr(
+        browser_route, "_trigger_embedded_pdf_frame_fetch", lambda *args, **kwargs: None
+    )
+    with BrowserSession(config) as session:
+        session._ensure_started().route("**/*", respond)
+        for index in range(2):
+            result = session.acquire(
+                doi=candidate.doi,
+                routes=[candidate],
+                output_dir=tmp_path / str(index),
+                expected_title=title,
+            )
+            assert result.verified_result is not None, result
+            assert result.verified_result.file_path.read_bytes() == body
+            assert any(
+                f.method == "browser_download"
+                and f.result is not None
+                and f.result.status == AcquisitionStatus.VERIFIED
+                for attempt in result.attempts
+                for f in attempt.file_attempts
+            )
+    assert not list(tmp_path.rglob("*.part"))
 
 
 class _Handler(BaseHTTPRequestHandler):

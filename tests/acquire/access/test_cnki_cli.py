@@ -71,7 +71,10 @@ def test_batch_cli_accepts_mixed_bibliographic_inputs_and_serializes_report(tmp_
 @pytest.mark.parametrize(
     "options,keeps_open",
     [
-        ([], True),
+        ([], False),
+        (["--browser-launch-mode", "normal"], False),
+        (["--browser-launch-mode", "managed"], True),
+        (["--browser-launch-mode", "managed", "--no-keep-browser-open"], False),
         (["--no-keep-browser-open"], False),
         (["--non-interactive"], False),
         (["--cdp-endpoint", "http://127.0.0.1:9222"], False),
@@ -104,6 +107,12 @@ def test_cli_owns_session_and_preserves_interactive_window(
         assert "config" not in kwargs
         config = kwargs["browser_session"].config
         assert not config.cnki_context_request and not config.direct_connection
+        expected_mode = (
+            options[options.index("--browser-launch-mode") + 1]
+            if "--browser-launch-mode" in options
+            else "auto"
+        )
+        assert config.launch_mode == expected_mode
         events.append("acquired")
         return BrowserAccessAttempt(
             source_candidate=_source_candidate("10.1000/target"),

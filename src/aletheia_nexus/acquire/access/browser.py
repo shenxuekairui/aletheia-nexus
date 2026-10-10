@@ -7,6 +7,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
+from aletheia_nexus.acquire.access.browser_engine.launcher import (
+    NormalBrowserError,
+    ProfileLease,
+    normal_browser_endpoint,
+)
 from aletheia_nexus.acquire.access.browser_engine.runtime import (
     affected_download_version,
     fixed_installed_browser,
@@ -70,6 +75,12 @@ class _CapturedBrowserResponse:
 def _validate_config(config: BrowserAccessConfig) -> None:
     if not isinstance(config, BrowserAccessConfig):
         raise TypeError("config must be a BrowserAccessConfig")
+    if config.launch_mode not in ("auto", "normal", "managed"):
+        raise ValueError("launch_mode must be auto, normal or managed")
+    if config.headless and config.launch_mode == "normal":
+        raise ValueError(
+            "normal launch requires a visible browser; use auto or managed"
+        )
     if not isinstance(config.profile_name, str):
         raise TypeError("profile_name must be a string")
     if not _PROFILE_RE.fullmatch(config.profile_name) or config.profile_name in {
@@ -85,6 +96,7 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         "wait_for_interaction",
         "keep_unverified",
         "cdp_resume_existing_page",
+        "cnki_refresh_retry",
         "use_system_proxy",
         "cnki_enabled",
         "cnki_search_all_titles",
@@ -542,6 +554,7 @@ class BrowserSession:
         self._context = None
         self._attached_browser = None
         self._attached_external = False
+        self._normal_lease = None
         self._blocked_unsafe_urls: list[str] = []
         self._pdf_responses: list[object] = []
         self._downloads: list[object] = []
@@ -594,10 +607,39 @@ class BrowserSession:
                 f"Playwright could not start: {type(exc).__name__}"
             ) from exc
 
-        if self.config.cdp_endpoint is not None:
+        endpoint = self.config.cdp_endpoint
+        normal_launch = (
+            endpoint is None
+            and not self.config.headless
+            and self.config.launch_mode != "managed"
+        )
+        if normal_launch:
+            try:
+                self._normal_lease = ProfileLease(self.profile_dir)
+                endpoint = normal_browser_endpoint(
+                    playwright.chromium,
+                    self.profile_dir,
+                    channel=self.config.channel,
+                    executable_path=self.config.executable_path,
+                    use_system_proxy=self.config.use_system_proxy,
+                    timeout=min(20.0, self.config.navigation_timeout),
+                )
+            except Exception as exc:
+                if self._normal_lease is not None:
+                    self._normal_lease.close()
+                    self._normal_lease = None
+                manager.__exit__(type(exc), exc, exc.__traceback__)
+                message = (
+                    str(exc)
+                    if isinstance(exc, NormalBrowserError)
+                    else (f"Normal browser could not start: {type(exc).__name__}")
+                )
+                raise BrowserCapabilityUnavailable(message) from exc
+
+        if endpoint is not None:
             try:
                 browser = playwright.chromium.connect_over_cdp(
-                    self.config.cdp_endpoint.strip(),
+                    endpoint.strip(),
                     timeout=self.config.navigation_timeout * 1000,
                 )
                 _require_safe_download_browser(browser)
@@ -605,24 +647,32 @@ class BrowserSession:
                 if not contexts:
                     raise RuntimeError("attached browser exposed no BrowserContext")
                 context = contexts[0]
-            except BrowserCapabilityUnavailable as exc:
-                manager.__exit__(type(exc), exc, exc.__traceback__)
-                raise
+                context.set_default_timeout(self.config.navigation_timeout * 1000)
+                if normal_launch:
+                    # Keep URL safety on the AN-owned context; ordinary launch
+                    # is not permission to disable request guards.
+                    self._blocked_unsafe_urls = _install_context_request_guard(context)
+                _install_context_event_capture(
+                    context,
+                    pdf_responses=self._pdf_responses,
+                    downloads=self._downloads,
+                    snapshot_pdf_responses=True,
+                    max_bytes=self.config.max_bytes,
+                )
             except Exception as exc:
-                manager.__exit__(type(exc), exc, exc.__traceback__)
+                try:
+                    manager.__exit__(type(exc), exc, exc.__traceback__)
+                finally:
+                    if self._normal_lease is not None:
+                        self._normal_lease.close()
+                        self._normal_lease = None
+                if isinstance(exc, BrowserCapabilityUnavailable):
+                    raise
                 raise BrowserCapabilityUnavailable(
                     "Could not attach to the external browser CDP endpoint. "
                     f"Error type: {type(exc).__name__}"
                 ) from exc
 
-            context.set_default_timeout(self.config.navigation_timeout * 1000)
-            _install_context_event_capture(
-                context,
-                pdf_responses=self._pdf_responses,
-                downloads=self._downloads,
-                snapshot_pdf_responses=True,
-                max_bytes=self.config.max_bytes,
-            )
             self._manager = manager
             self._context = context
             self._attached_browser = browser
@@ -726,6 +776,7 @@ class BrowserSession:
         context = self._context
         manager = self._manager
         attached_external = self._attached_external
+        normal_lease, self._normal_lease = self._normal_lease, None
         self._context = None
         self._manager = None
         self._attached_browser = None
@@ -736,16 +787,19 @@ class BrowserSession:
         self._pending_pages = {}
         self._pending_hosts = {}
 
-        if context is not None and not attached_external:
-            try:
-                context.close()
-            finally:
-                if manager is not None:
-                    manager.__exit__(None, None, None)
-        elif manager is not None:
-            # In CDP attach mode, disconnect Playwright without closing the
-            # user-controlled external browser or its tabs.
-            manager.__exit__(None, None, None)
+        try:
+            if context is not None and not attached_external:
+                try:
+                    context.close()
+                finally:
+                    if manager is not None:
+                        manager.__exit__(None, None, None)
+            elif manager is not None:
+                # Ordinary and explicit CDP browsers retain their windows/login.
+                manager.__exit__(None, None, None)
+        finally:
+            if normal_lease is not None:
+                normal_lease.close()
 
     def acquire(
         self,
@@ -800,6 +854,10 @@ class BrowserSession:
             )
 
         attached_page = self._pending_pages.pop(normalized_doi, None)
+        resume_existing = (
+            self.config.cdp_endpoint is not None
+            and self.config.cdp_resume_existing_page
+        )
         if attached_page is not None and attached_page.is_closed():
             attached_page = None
         if self._attached_external and attached_page is None:
@@ -810,13 +868,13 @@ class BrowserSession:
                 # Automatic batch navigation may leave a challenge tab open.
                 # Resume it only when its title strongly matches this paper;
                 # never fall back to an arbitrary browser tab.
-                minimum_score=(0 if self.config.cdp_resume_existing_page else 300),
+                minimum_score=(0 if resume_existing else 300),
             )
 
         if (
             attached_page is not None
             or self._attached_external
-            and (self.config.cdp_resume_existing_page or attached_page is not None)
+            and (resume_existing or attached_page is not None)
         ):
             page = attached_page
             if page is None:

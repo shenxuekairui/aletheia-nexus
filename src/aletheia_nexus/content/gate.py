@@ -96,7 +96,7 @@ def validate_parser_input(
         )
 
     schema = payload.get("schema")
-    if schema not in ACQUISITION_SCHEMAS:
+    if not isinstance(schema, str) or schema not in ACQUISITION_SCHEMAS:
         raise _error(
             ParserInputErrorCode.UNKNOWN_SIDECAR_SCHEMA,
             f"unsupported acquisition schema: {schema!r}",

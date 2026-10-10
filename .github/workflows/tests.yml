@@ -122,7 +122,7 @@ jobs:
           smoke-venv/bin/python -m pip check
           smoke-venv/bin/aletheia-nexus --version
           smoke-venv/bin/aletheia-nexus doctor
-          smoke-venv/bin/python -m pytest -q tests/test_cli.py
+          smoke-venv/bin/python -m pytest -q tests/test_cli.py tests/test_library.py tests/content
 
   browser-extra:
     name: browser-extra
@@ -153,7 +153,8 @@ jobs:
       - name: Run local real-Chromium integration tests
         env:
           AN_RUN_BROWSER_SMOKE: "1"
-        run: python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py
+          AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
+        run: xvfb-run -a python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py
 
   ocr-extra:
     name: ocr-extra (Poppler + Tesseract)
@@ -221,4 +222,5 @@ jobs:
       - name: Run real-Chromium integration tests on Windows
         env:
           AN_RUN_BROWSER_SMOKE: "1"
-        run: python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py
+          AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
+        run: python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py

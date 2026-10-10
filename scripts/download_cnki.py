@@ -34,9 +34,18 @@ def main() -> int:
     parser.add_argument("--pages")
     parser.add_argument("--cnki-id")
     parser.add_argument("--output-dir", type=Path, default=Path("downloads/cnki"))
+    parser.add_argument("--folder")
+    parser.add_argument("--filename")
+    parser.add_argument("--tag", action="append", default=[])
     parser.add_argument("--profile", default="default")
     parser.add_argument("--profile-root", type=Path)
     parser.add_argument("--channel")
+    parser.add_argument(
+        "--browser-launch-mode",
+        choices=("auto", "normal", "managed"),
+        default="auto",
+        help="auto: ordinary visible browser; headless uses managed launch.",
+    )
     parser.add_argument("--executable-path", type=Path)
     network = parser.add_mutually_exclusive_group()
     network.add_argument("--direct-connection", action="store_true")
@@ -51,7 +60,8 @@ def main() -> int:
         "--keep-browser-open",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Keep the interactive AN browser until you close it (default).",
+        help="Managed mode only: wait before closing its interactive browser. "
+        "Normal/CDP browsers always remain open after AN exits.",
     )
     parser.add_argument("--cdp-endpoint")
     parser.add_argument("--headless", action="store_true")
@@ -59,6 +69,9 @@ def main() -> int:
     parser.add_argument("--interaction-timeout", type=float)
     parser.add_argument("--navigation-timeout", type=float, default=45.0)
     parser.add_argument("--max-results", type=int, default=20)
+    parser.add_argument(
+        "--cnki-refresh-retry", action=argparse.BooleanOptionalAction, default=True
+    )
     parser.add_argument("--keep-unverified", action="store_true")
     parser.add_argument(
         "--cnki-keep-unverified",
@@ -92,6 +105,7 @@ def main() -> int:
         profile_name=args.profile,
         profile_root=args.profile_root,
         channel=args.channel,
+        launch_mode=args.browser_launch_mode,
         executable_path=args.executable_path,
         direct_connection=args.direct_connection,
         use_system_proxy=args.browser_use_system_proxy,
@@ -110,6 +124,7 @@ def main() -> int:
         cnki_max_results=args.max_results,
         keep_unverified=args.keep_unverified,
         cnki_keep_unverified=args.cnki_keep_unverified,
+        cnki_refresh_retry=args.cnki_refresh_retry,
     )
     with BrowserSession(config) as session:
         exit_code = 0
@@ -128,6 +143,9 @@ def main() -> int:
                 pages=args.pages,
                 cnki_id=args.cnki_id,
                 output_dir=args.output_dir,
+                folder=args.folder,
+                filename=args.filename,
+                tags=tuple(args.tag),
                 browser_session=session,
             )
             _print_attempt(attempt)
@@ -139,7 +157,12 @@ def main() -> int:
                 exit_code = max(exit_code, 1)
             if "CNKI browser target closed" in attempt.evidence:
                 break
-        if args.keep_browser_open and config.interactive and not config.cdp_endpoint:
+        if (
+            args.keep_browser_open
+            and config.interactive
+            and not config.cdp_endpoint
+            and config.launch_mode == "managed"
+        ):
             print(
                 "AN 浏览器将保持打开，直到你关闭窗口或按 Ctrl+C；不会自动重试下载。",
                 flush=True,

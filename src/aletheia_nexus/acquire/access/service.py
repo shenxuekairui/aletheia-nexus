@@ -47,6 +47,7 @@ from aletheia_nexus.acquire.fulltext.orchestration.service import (
     acquire_full_text,
 )
 from aletheia_nexus.acquire.fulltext.resolution.models import ResolutionStatus
+from aletheia_nexus.acquire.fulltext.storage import output_metadata
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.paper_request import PaperRequest
 
@@ -541,12 +542,13 @@ def acquire_full_text_maximized(
 
     elsevier_attempt = None
     if elsevier_config is not None and _should_try_elsevier_api(base):
-        elsevier_attempt = acquire_elsevier_pdf(
-            normalized_doi,
-            config=elsevier_config,
-            output_dir=output_dir,
-            expected_title=base.expected_title,
-        )
+        with output_metadata(base.metadata):
+            elsevier_attempt = acquire_elsevier_pdf(
+                normalized_doi,
+                config=elsevier_config,
+                output_dir=output_dir,
+                expected_title=base.expected_title,
+            )
         if (
             elsevier_attempt.status == ElsevierAccessStatus.VERIFIED
             and elsevier_attempt.result is not None
@@ -610,10 +612,13 @@ def acquire_full_text_maximized(
             else base.expected_title,
             metadata_mailto=metadata_mailto,
         )
-        if browser_session is not None:
-            attempt = browser_session.acquire_provider(provider, **options)
-        else:
-            attempt = acquire_with_browser_provider(provider, config=config, **options)
+        with output_metadata(base.metadata):
+            if browser_session is not None:
+                attempt = browser_session.acquire_provider(provider, **options)
+            else:
+                attempt = acquire_with_browser_provider(
+                    provider, config=config, **options
+                )
         if provider.name == "cnki" and route_reason:
             attempt = replace(
                 attempt,
@@ -687,21 +692,22 @@ def acquire_full_text_maximized(
     )
 
     try:
-        if browser_session is not None:
-            recovery = browser_session.acquire(
-                doi=normalized_doi,
-                routes=routes,
-                output_dir=output_dir,
-                expected_title=base.expected_title,
-            )
-        else:
-            recovery = acquire_with_browser(
-                doi=normalized_doi,
-                routes=routes,
-                output_dir=output_dir,
-                expected_title=base.expected_title,
-                config=config,
-            )
+        with output_metadata(base.metadata):
+            if browser_session is not None:
+                recovery = browser_session.acquire(
+                    doi=normalized_doi,
+                    routes=routes,
+                    output_dir=output_dir,
+                    expected_title=base.expected_title,
+                )
+            else:
+                recovery = acquire_with_browser(
+                    doi=normalized_doi,
+                    routes=routes,
+                    output_dir=output_dir,
+                    expected_title=base.expected_title,
+                    config=config,
+                )
     except BrowserCapabilityUnavailable as exc:
         return MaximizedAcquisitionResult(
             doi=normalized_doi,

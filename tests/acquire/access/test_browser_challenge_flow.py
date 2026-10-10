@@ -382,7 +382,11 @@ def test_rsc_direct_pdf_navigates_before_any_extra_request(monkeypatch, tmp_path
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda value, *, config: (ChallengeReport(kind=ChallengeKind.NONE), (), False),
+        lambda value, *, config, return_host=None: (
+            ChallengeReport(kind=ChallengeKind.NONE),
+            (),
+            False,
+        ),
     )
     monkeypatch.setattr(browser_route, "parse_html", lambda html: object())
     monkeypatch.setattr(
@@ -451,7 +455,7 @@ def test_pdf_endpoint_challenge_handoff_does_not_replay_http(monkeypatch, tmp_pa
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda value, *, config, completion_check=None: (
+        lambda value, *, config, completion_check=None, return_host=None: (
             challenge
             if pdf_url in value.goto_calls
             else ChallengeReport(kind=ChallengeKind.NONE),
@@ -638,7 +642,7 @@ def test_article_route_automatically_enters_institutional_sso(
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda page_value, *, config: (
+        lambda page_value, *, config, return_host=None: (
             ChallengeReport(kind=ChallengeKind.NONE),
             (ChallengeReport(kind=ChallengeKind.NONE),),
             False,
@@ -840,6 +844,9 @@ def test_ieee_remembered_institution_waits_then_returns_to_article(
         def wait_for_load_state(self, state, timeout):
             assert state == "domcontentloaded"
 
+        def is_closed(self):
+            return False
+
     page = Page()
     context = SimpleNamespace(pages=[page])
     monkeypatch.setattr(
@@ -852,7 +859,7 @@ def test_ieee_remembered_institution_waits_then_returns_to_article(
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda page, *, config: (
+        lambda page, *, config, return_host=None: (
             ChallengeReport(kind=ChallengeKind.NONE),
             (ChallengeReport(kind=ChallengeKind.NONE),),
             False,
@@ -867,7 +874,7 @@ def test_ieee_remembered_institution_waits_then_returns_to_article(
 
     assert clicked is True
     assert report.kind == ChallengeKind.NONE
-    assert page.waits == [5000, 350]
+    assert page.waits == [5000, 350, 250, 250, 250]
 
 
 def test_visible_institution_text_fallback_clicks_nonsemantic_node():
@@ -929,7 +936,7 @@ def test_cross_origin_institution_popup_is_preserved_when_unclassified(
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda page, *, config: (
+        lambda page, *, config, return_host=None: (
             ChallengeReport(kind=ChallengeKind.NONE),
             (ChallengeReport(kind=ChallengeKind.NONE),),
             False,
@@ -1038,6 +1045,166 @@ def test_external_idp_transient_plain_page_does_not_finish_handoff(tmp_path):
     assert history[0].kind == ChallengeKind.SSO
     assert history[-1].kind == ChallengeKind.NONE
     assert interaction_used is True
+
+
+def test_pdf_redirect_already_on_unrecognized_idp_stays_in_wait(tmp_path):
+    unknown = (
+        "Account",
+        "https://idp.example/idp/profile/SAML2/POST/SSO",
+        "Continue",
+        "<main>Continue</main>",
+    )
+    article = (
+        "Article",
+        "https://publisher.example/article",
+        "Abstract",
+        "<main>Abstract</main>",
+    )
+    page = _Page([unknown] * 8 + [article])
+    report, history, used = _resolve_page_challenge(
+        page,
+        return_host="publisher.example",
+        config=BrowserAccessConfig(
+            profile_root=tmp_path,
+            auto_challenge_grace=0,
+            wait_for_interaction=True,
+            poll_interval=0.001,
+        ),
+    )
+    assert used
+    assert page.index == len(page.states) - 1
+    assert report.kind == ChallengeKind.NONE
+    assert history[0].kind == ChallengeKind.SSO
+
+
+def test_idp_redirect_during_snapshot_cannot_complete_return(monkeypatch, tmp_path):
+    picker = (
+        "Institutional Login",
+        "https://publisher.example/action/ssostart",
+        "Choose your institution",
+        "",
+    )
+    unknown = ("Account", "https://idp.example/continue", "Continue", "")
+    article = ("Article", "https://publisher.example/article", "Abstract", "")
+    page = _Page([picker, *([unknown] * 6), article])
+    calls = 0
+
+    def snapshot_report(page):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            # Reading DOM state dispatches the pending cross-origin navigation.
+            page.index = 1
+        return ChallengeReport(kind=ChallengeKind.NONE)
+
+    monkeypatch.setattr(browser_route, "_report_for_page", snapshot_report)
+    report, history, used = browser_route._resolve_external_auth_page(
+        page,
+        source_host="publisher.example",
+        config=BrowserAccessConfig(
+            profile_root=tmp_path, wait_for_interaction=True, poll_interval=0.001
+        ),
+    )
+    assert used and report.kind == ChallengeKind.NONE
+    assert page.index == len(page.states) - 1
+    assert calls >= 10
+    assert history[0].kind == ChallengeKind.SSO
+
+
+@pytest.mark.parametrize("picker_host", ["publisher.example", "id.publisher.example"])
+def test_handoff_tracks_late_same_tab_idp_redirect(monkeypatch, tmp_path, picker_host):
+    class HandoffPage(_Page):
+        def wait_for_load_state(self, state, timeout):
+            pass
+
+    article = (
+        "Target article",
+        "https://publisher.example/article",
+        "Article abstract",
+        "<main>Article abstract</main>",
+    )
+    picker = (
+        "Institutional Login",
+        f"https://{picker_host}/action/ssostart",
+        "Choose your institution",
+        "<main>Choose your institution</main>",
+    )
+    unknown_idp = (
+        "Account",
+        "https://accounts.university.example/idp/profile/SAML2/POST/SSO",
+        "Continue",
+        "<main>Continue</main>",
+    )
+    # More than four stable NONE observations must not clear the handoff while
+    # the researcher is still on an unfamiliar IdP UI.
+    page = HandoffPage([article, picker, *([unknown_idp] * 6), article])
+    context = SimpleNamespace(pages=[page])
+    monkeypatch.setattr(
+        browser_route, "_click_semantic_institution_control", lambda page: True
+    )
+    monkeypatch.setattr(
+        browser_route, "_ieee_selected_institution_available", lambda page: False
+    )
+    clicked, history, used, report = browser_route._run_institution_handoff(
+        context,
+        page,
+        config=BrowserAccessConfig(
+            profile_root=tmp_path, wait_for_interaction=True, poll_interval=0.001
+        ),
+    )
+    assert clicked and used
+    assert page.index == len(page.states) - 1
+    assert report.kind == ChallengeKind.NONE
+    assert all(item.kind == ChallengeKind.SSO for item in history[:-1])
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        ChallengeKind.BOT_CHALLENGE,
+        ChallengeKind.CAPTCHA,
+        ChallengeKind.AUTHENTICATION,
+        ChallengeKind.MFA,
+    ],
+)
+def test_incomplete_institution_popup_is_never_closed(monkeypatch, tmp_path, kind):
+    class AuthPage(_Page):
+        closed = False
+
+        def wait_for_load_state(self, state, timeout):
+            pass
+
+        def close(self):
+            self.closed = True
+
+        def is_closed(self):
+            return self.closed
+
+    page = _Page([("Article", "https://publisher.example/article", "Article", "")])
+    auth = AuthPage([("Account", "https://id.example/saml", "Account", "")])
+    context = SimpleNamespace(pages=[page])
+
+    def click(page):
+        context.pages.append(auth)
+        return True
+
+    monkeypatch.setattr(browser_route, "_click_semantic_institution_control", click)
+    monkeypatch.setattr(
+        browser_route, "_ieee_selected_institution_available", lambda page: False
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "_report_for_page",
+        lambda page: ChallengeReport(kind=kind if page is auth else ChallengeKind.NONE),
+    )
+    clicked, _, _, report = browser_route._run_institution_handoff(
+        context,
+        page,
+        config=BrowserAccessConfig(profile_root=tmp_path, interactive=False),
+    )
+    assert clicked
+    assert report.kind == kind
+    assert not auth.closed
 
 
 def test_external_idp_can_finish_in_new_publisher_tab(tmp_path):
@@ -1303,7 +1470,7 @@ def test_popup_observation_leaves_target_alive_for_response_capture(
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda page, *, config: (
+        lambda page, *, config, return_host=None: (
             ChallengeReport(kind=ChallengeKind.NONE),
             (ChallengeReport(kind=ChallengeKind.NONE),),
             False,
@@ -1572,7 +1739,12 @@ def test_select_pdf_viewer_target_matches_doi_filename_on_signed_cdn():
     assert selected is target
 
 
-def test_institution_chooser_is_treated_as_sso_handoff(tmp_path):
+def test_institution_chooser_is_treated_as_sso_handoff(tmp_path, monkeypatch):
+    # Test page transitions, not whether a busy CI worker completes in 10 ms.
+    ticks = iter(range(1000))
+    monkeypatch.setattr(
+        browser_route, "time", SimpleNamespace(monotonic=lambda: next(ticks) / 10000)
+    )
     events = []
     page = _Page(
         [

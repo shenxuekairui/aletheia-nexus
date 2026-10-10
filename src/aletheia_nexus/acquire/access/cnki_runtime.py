@@ -5,6 +5,10 @@ import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+from aletheia_nexus.acquire.access.browser_engine.downloads import (
+    CdpDownloadCapture,
+    LocalBrowserDownload,
+)
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
@@ -184,6 +188,32 @@ class CNKIGate:
         self.interaction_used = False
         # A PDF click is a side effect, even if no usable file is saved yet.
         self.download_started = False
+        self.refresh_retry_used = False
+        self.retry_evidence: list[str] = []
+
+    def refresh_once(self, page, *, stage: str, can_refresh=None) -> bool:
+        if not self.config.cnki_refresh_retry or self.refresh_retry_used:
+            return False
+        # A challenge is handled in-place, never repeatedly refreshed.
+        if self.check(page):
+            return False
+        page.wait_for_timeout(1000)
+        if self.check(page):
+            return False
+        if can_refresh is not None and not can_refresh():
+            return False
+        self.refresh_retry_used = True
+        self.retry_evidence.append(f"CNKI refreshed once after {stage} failure")
+        try:
+            page.reload(
+                wait_until="domcontentloaded",
+                timeout=self.config.navigation_timeout * 1000,
+            )
+        except Exception as exc:
+            if type(exc).__name__ != "TimeoutError":
+                raise
+        self.check(page)
+        return True
 
     def check(self, page) -> bool:
         if page.is_closed():
@@ -304,7 +334,7 @@ class CapturedPDF:
 class CNKIFileCapture:
     """Capture only the detail page and its descendants, including PDF popups."""
 
-    def __init__(self, context, page, max_bytes: int):
+    def __init__(self, context, page, max_bytes: int, *, output_dir=None):
         self.context = context
         self.pages = [page]
         self.max_bytes = max_bytes
@@ -315,16 +345,35 @@ class CNKIFileCapture:
         self._finished_requests: set[int] = set()
         self._failed_requests: set[int] = set()
         self.context_closed = False
+        self._native = (
+            CdpDownloadCapture(context, output_dir) if output_dir is not None else None
+        )
         self._subscriptions: list[tuple[object, str, object]] = []
         self._listen(page, "download", self._on_download)
         self._listen(context, "page", self._on_page)
         self._listen(context, "response", self._on_response)
+        self._listen(context, "request", self._on_request)
         self._listen(context, "requestfinished", self._on_request_finished)
         self._listen(context, "requestfailed", self._on_request_failed)
         self._listen(context, "close", self._on_context_close)
 
     def _on_context_close(self, *_):
         self.context_closed = True
+
+    def _on_request(self, request):
+        try:
+            owner = request.frame.page
+            if owner not in self.pages:
+                self._on_page(owner)
+            if owner in self.pages and (
+                request.is_navigation_request()
+                or urlsplit(request.url).path.casefold().endswith(".pdf")
+            ):
+                # A transfer may be waiting for headers: do not refresh it just
+                # because no response/download event has arrived yet.
+                self._pending_requests.add(id(request))
+        except Exception:
+            pass
 
     def _on_request_finished(self, request):
         if id(request) in self._pending_requests:
@@ -375,7 +424,28 @@ class CNKIFileCapture:
 
     def next_file(self):
         if self.downloads:
-            return self.downloads.pop(0)
+            if self._native is not None and self._native.active:
+                # Browser-domain completion is authoritative after a generic
+                # route has changed Chromium's download behavior, or when the
+                # browser is attached over CDP. save_as can otherwise copy an
+                # empty Playwright placeholder without raising an exception.
+                page = next((p for p in self.pages if not p.is_closed()), None)
+                for download in self.downloads:
+                    saved = (
+                        self._native.wait(page, 0, expected_url=download.url)
+                        if page is not None
+                        else None
+                    )
+                    if saved is not None and saved[1] == download.url:
+                        path, url = saved
+                        self.downloads.remove(download)
+                        return LocalBrowserDownload(
+                            path, url, getattr(download, "suggested_filename", "")
+                        )
+                # A canceled/incomplete native event must not suppress a complete
+                # PDF response already received by the owned detail page.
+            else:
+                return self.downloads.pop(0)
         for response in self.responses:
             if id(response) in self._seen_responses:
                 continue
@@ -416,13 +486,26 @@ class CNKIFileCapture:
 
     @property
     def transfer_pending(self):
-        return any(
-            id(response) not in self._seen_responses
-            and id(getattr(response, "request", None)) not in self._failed_requests
-            for response in self.responses
+        pending_downloads = bool(self.downloads)
+        if self._native is not None and self._native.active:
+            pending_downloads = any(
+                self._native.pending_for(download.url) for download in self.downloads
+            )
+        return (
+            pending_downloads
+            or bool(
+                self._pending_requests - self._finished_requests - self._failed_requests
+            )
+            or any(
+                id(response) not in self._seen_responses
+                and id(getattr(response, "request", None)) not in self._failed_requests
+                for response in self.responses
+            )
         )
 
     def close(self, *, preserve=None):
+        if self._native is not None:
+            self._native.close()
         protected = []
         ancestor = preserve
         while ancestor is not None and ancestor not in protected:

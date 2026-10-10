@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--browser-smoke", action="store_true")
+    parser.add_argument("--visible-browser-smoke", action="store_true")
     parser.add_argument("--ocr-smoke", action="store_true")
     parser.add_argument("--public-oa", action="store_true")
     args = parser.parse_args(argv)
@@ -69,6 +70,23 @@ def main(argv: list[str] | None = None) -> int:
                     "pytest",
                     "-q",
                     "tests/acquire/access/test_browser_integration.py",
+                    "tests/acquire/access/test_cnki_browser_integration.py",
+                ],
+                environment,
+            )
+        )
+    if args.visible_browser_smoke:
+        environment = dict(os.environ)
+        environment["AN_RUN_VISIBLE_BROWSER_SMOKE"] = "1"
+        checks.append(
+            (
+                "normal-browser-smoke",
+                [
+                    python,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/acquire/access/test_normal_browser_integration.py",
                 ],
                 environment,
             )

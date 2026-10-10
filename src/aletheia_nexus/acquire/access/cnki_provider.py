@@ -14,6 +14,7 @@ import httpx
 
 from aletheia_nexus.acquire.access.artifact import finalize_access_resource
 from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
+from aletheia_nexus.acquire.access.browser_engine.downloads import save_browser_download
 from aletheia_nexus.acquire.access.browser_route import (
     _challenge_from_non_pdf_response,
     _safe_context_get,
@@ -547,8 +548,10 @@ def _status_for_result(result: AcquisitionResult) -> BrowserAttemptStatus:
     return BrowserAttemptStatus.RETRIEVAL_FAILED
 
 
-def _capture_download(context, page, pdf_button, *, gate, config):
-    capture = CNKIFileCapture(context, page, config.max_bytes)
+def _capture_download(
+    context, page, pdf_button, *, gate, config, output_dir=None, validate_refresh=None
+):
+    capture = CNKIFileCapture(context, page, config.max_bytes, output_dir=output_dir)
     preserve_page = None
     completed = False
     try:
@@ -612,6 +615,50 @@ def _capture_download(context, page, pdf_button, *, gate, config):
                     retry_after_handoff = False
                     control.click()
             if time.monotonic() >= deadline:
+                late_files = []
+
+                def safe_to_refresh():
+                    late_file = capture.next_file()
+                    if late_file is not None:
+                        late_files.append(late_file)
+                    return not late_files and not capture.transfer_pending
+
+                refreshed = (
+                    validate_refresh is not None
+                    and not capture.transfer_pending
+                    and not page.is_closed()
+                    and gate.refresh_once(
+                        page, stage="PDF retrieval", can_refresh=safe_to_refresh
+                    )
+                )
+                if late_files:
+                    completed = True
+                    return late_files[0], capture
+                if refreshed:
+                    gate.wait_ready(page, stage="refreshed detail initialization")
+                    if not validate_refresh():
+                        raise CNKIFileError(
+                            "CNKI refreshed detail identity changed; retry refused"
+                        )
+                    late_file = capture.next_file()
+                    if late_file is not None:
+                        completed = True
+                        return late_file, capture
+                    if capture.transfer_pending:
+                        deadline = time.monotonic() + config.navigation_timeout
+                        continue
+                    control = gate.wait(
+                        page, lambda: _pdf_control(page), stage="refreshed PDF control"
+                    )
+                    # Replace listeners only after observing no active transfer.
+                    capture.close()
+                    capture = CNKIFileCapture(
+                        context, page, config.max_bytes, output_dir=output_dir
+                    )
+                    retry_after_handoff = False
+                    control.click()
+                    deadline = time.monotonic() + config.navigation_timeout
+                    continue
                 raise CNKIStageTimeout("PDF retrieval")
             # Pump the stable detail page, not a transient attachment popup.
             pump = page if not page.is_closed() else live_pages[0]
@@ -672,7 +719,7 @@ def _finalize_cnki_download(
             if filename.casefold().endswith(".caj"):
                 raise CNKIFileError("CNKI returned CAJ instead of PDF")
             try:
-                downloaded.save_as(temporary)
+                save_browser_download(downloaded, temporary)
                 method = "cnki_pdf_download"
             except Exception as exc:
                 stable_page = detail_page
@@ -947,7 +994,7 @@ class CNKIProvider(BaseBrowserProvider):
                 file_attempts=tuple(files),
                 candidates_considered=considered,
                 interaction_used=gate.interaction_used,
-                evidence=tuple(evidence),
+                evidence=(*evidence, *gate.retry_evidence),
                 error=error,
                 elapsed_seconds=time.perf_counter() - started_at,
                 download_started=gate.download_started,
@@ -1031,12 +1078,9 @@ class CNKIProvider(BaseBrowserProvider):
                     if control_retry_used or gate.history or gate.download_started:
                         raise
                     control_retry_used = True
+                    if not gate.refresh_once(page, stage="search controls"):
+                        raise
                     evidence.append("CNKI retried initial search-page hydration once")
-                    page.goto(
-                        CNKI_SEARCH_URL,
-                        wait_until="domcontentloaded",
-                        timeout=config.navigation_timeout * 1000,
-                    )
                     search_input, search_button = gate.wait(
                         page, search_controls, stage=stage
                     )
@@ -1057,13 +1101,14 @@ class CNKIProvider(BaseBrowserProvider):
                 stage = "search results"
                 search_retries = 0
 
-                def resume_search():
+                def resume_search(force=False):
                     nonlocal search_retries
-                    if search_retries or result_state():
+                    if search_retries or (not force and result_state()):
                         return
                     controls = gate.wait(page, search_controls, stage="search controls")
                     if controls:
                         search_retries += 1
+                        _select_search_field(page, gate, name=field_name)
                         controls[0].fill(submitted_query)
                         controls[1].click()
 
@@ -1076,8 +1121,17 @@ class CNKIProvider(BaseBrowserProvider):
                     # or a search which already entered a human security gate.
                     if search_retries or gate.history or gate.download_started:
                         raise
+                    if not gate.refresh_once(page, stage="search results"):
+                        raise
                     evidence.append("CNKI retried stalled search results once")
-                    resume_search()
+                    resume_search(force=True)
+                    state = gate.wait(page, result_state, stage=stage)
+                if (
+                    state == "empty"
+                    and not gate.history
+                    and gate.refresh_once(page, stage="empty search results")
+                ):
+                    resume_search(force=True)
                     state = gate.wait(page, result_state, stage=stage)
                 results = (
                     ()
@@ -1301,12 +1355,34 @@ class CNKIProvider(BaseBrowserProvider):
                                     "Observed PDF link returned a non-PDF response; trying its browser action"
                                 )
                         if downloaded is None:
+
+                            def validate_refresh():
+                                refreshed = detail_bibliography(
+                                    detail_page, fallback_title=selected.title
+                                )
+                                return (
+                                    not conflicting_fields(target_identity, refreshed)
+                                    and (
+                                        not observed_identity.cnki_id
+                                        or refreshed.cnki_id
+                                        == observed_identity.cnki_id
+                                    )
+                                    and _detail_identity(
+                                        detail_page,
+                                        doi=normalized_doi,
+                                        title=title,
+                                        allow_translated_title=selected.cross_language,
+                                    )[0]
+                                )
+
                             downloaded, capture = _capture_download(
                                 context,
                                 detail_page,
                                 pdf_button,
                                 gate=gate,
                                 config=config,
+                                output_dir=output_dir,
+                                validate_refresh=validate_refresh,
                             )
                         handoff_page = None
                         try:

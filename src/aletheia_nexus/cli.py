@@ -89,6 +89,9 @@ def _load_inputs(path: Path) -> tuple[list[object], dict[str, str]]:
                 "issue",
                 "pages",
                 "cnki_id",
+                "folder",
+                "filename",
+                "tags",
             )
         ):
             authors = row.get("authors")
@@ -99,6 +102,13 @@ def _load_inputs(path: Path) -> tuple[list[object], dict[str, str]]:
             elif not isinstance(authors, (list, tuple)):
                 raise ValueError("authors must be a list or semicolon-separated string")
             year = row.get("year")
+            tags = row.get("tags")
+            if tags is None or tags == "":
+                tags = ()
+            if isinstance(tags, str):
+                tags = tuple(t.strip() for t in tags.split(";") if t.strip())
+            elif not isinstance(tags, (list, tuple)):
+                raise ValueError("tags must be a list or semicolon-separated string")
             if isinstance(year, str):
                 year = year.strip()
                 if year and (len(year) != 4 or not year.isdigit()):
@@ -114,6 +124,8 @@ def _load_inputs(path: Path) -> tuple[list[object], dict[str, str]]:
                     "issue",
                     "pages",
                     "cnki_id",
+                    "folder",
+                    "filename",
                 )
             }
             values.append(
@@ -121,6 +133,7 @@ def _load_inputs(path: Path) -> tuple[list[object], dict[str, str]]:
                     **fields,
                     authors=tuple(authors),
                     year=year,
+                    tags=tuple(tags),
                 )
             )
             continue
@@ -333,6 +346,18 @@ def _write_report(path: Path, result) -> None:
         raise
 
 
+def _acquire_public_organized(doi, *, request, output_dir, **kwargs):
+    from aletheia_nexus.acquire.fulltext.storage import organized_output
+    from aletheia_nexus.core.organization import destination
+
+    organization = request
+    directory = (
+        destination(output_dir, organization.folder) if organization else output_dir
+    )
+    with organized_output(organization):
+        return acquire_full_text(doi, output_dir=directory, **kwargs)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus acquire",
@@ -362,6 +387,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.set_defaults(no_cnki=False)
     parser.add_argument("--cnki-all-titles", action="store_true")
     parser.add_argument("--cnki-max-results", type=int, default=20)
+    parser.add_argument(
+        "--cnki-refresh-retry", action=argparse.BooleanOptionalAction, default=True
+    )
     parser.add_argument("--no-cnki-keep-unverified", action="store_true")
     parser.add_argument(
         "--cnki-context-request",
@@ -372,6 +400,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--executable-path", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("downloads"))
     parser.add_argument(
+        "--folder", help="Relative category folder; enables readable PDF names."
+    )
+    parser.add_argument(
+        "--filename", help="Optional readable filename label (not a path)."
+    )
+    parser.add_argument(
+        "--tag", action="append", default=[], help="Repeat for classification tags."
+    )
+    parser.add_argument(
         "--public-only",
         action="store_true",
         help="Try public sources for one DOI; no browser installation is needed.",
@@ -381,6 +418,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile", default="human-handoff")
     parser.add_argument("--profile-root", type=Path, default=None)
     parser.add_argument("--channel", default=None)
+    parser.add_argument(
+        "--browser-launch-mode",
+        choices=("auto", "normal", "managed"),
+        default="auto",
+        help="Default auto uses ordinary visible launch and keeps the browser open; "
+        "headless stays managed. Use managed for the previous launch behavior.",
+    )
     parser.add_argument(
         "--browser-use-system-proxy",
         action="store_true",
@@ -491,6 +535,9 @@ def main(argv: list[str] | None = None) -> int:
         issue=args.issue,
         pages=args.pages,
         cnki_id=args.cnki_id,
+        folder=args.folder,
+        filename=args.filename,
+        tags=tuple(args.tag),
     )
     input_path = Path(args.input) if args.input else None
     if input_path is not None and input_path.is_file():
@@ -530,8 +577,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.source == "cnki":
             parser.error("--public-only cannot use --source cnki")
         doi = citation.doi if citation else normalize_doi(values[0])
-        result = acquire_full_text(
+        result = _acquire_public_organized(
             doi,
+            request=citation,
             output_dir=args.output_dir,
             expected_title=citation.title if citation else titles.get(doi),
             unpaywall_email=args.unpaywall_email,
@@ -572,6 +620,7 @@ def main(argv: list[str] | None = None) -> int:
         profile_name=args.profile,
         profile_root=args.profile_root,
         channel=args.channel,
+        launch_mode=args.browser_launch_mode,
         executable_path=args.executable_path,
         use_system_proxy=args.browser_use_system_proxy,
         cdp_endpoint=args.cdp_endpoint,
@@ -595,6 +644,7 @@ def main(argv: list[str] | None = None) -> int:
         cnki_max_results=args.cnki_max_results,
         cnki_context_request=args.cnki_context_request,
         cnki_keep_unverified=not args.no_cnki_keep_unverified,
+        cnki_refresh_retry=args.cnki_refresh_retry,
     )
     if (
         args.start_browser_if_needed
@@ -823,6 +873,54 @@ def export_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def library_main(argv: list[str] | None = None) -> int:
+    from aletheia_nexus.library import scan_library, update_tags
+
+    if argv and argv[0] == "tag":
+        parser = argparse.ArgumentParser(prog="aletheia-nexus library tag")
+        parser.add_argument("pdf", type=Path)
+        parser.add_argument("--add", action="append", default=[])
+        parser.add_argument("--remove", action="append", default=[])
+        args = parser.parse_args(argv[1:])
+        if not args.add and not args.remove:
+            parser.error("Provide --add or --remove")
+        try:
+            tags = update_tags(args.pdf, add=args.add, remove=args.remove)
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            parser.error(str(exc))
+        print(json.dumps({"tags": tags}, ensure_ascii=False))
+        return 0
+
+    parser = argparse.ArgumentParser(
+        prog="aletheia-nexus library",
+        epilog="Edit labels: aletheia-nexus library tag PAPER.pdf --add LABEL --remove LABEL",
+    )
+    parser.add_argument("root", type=Path, nargs="?", default=Path("downloads"))
+    parser.add_argument("--folder", help="Filter a folder and its subfolders.")
+    parser.add_argument("--tag", help="Filter by exact tag.")
+    parser.add_argument("--query", help="Search titles, DOI, filenames and tags.")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        catalog = scan_library(
+            args.root, folder=args.folder, tag=args.tag, query=args.query
+        )
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
+    if args.json:
+        print(json.dumps(catalog, ensure_ascii=False, indent=2))
+    else:
+        for item in catalog["items"]:
+            print(
+                f"[{item['integrity']}] {item['folder'] or '.'} | {item['title'] or item['doi']}"
+            )
+            print(f"  {item['pdf_path']}  Tags: {', '.join(item['tags'])}")
+        print(
+            f"{len(catalog['items'])} papers; {len(catalog['warnings'])} unreadable records"
+        )
+    return 0
+
+
 def entrypoint(argv: list[str] | None = None) -> int:
     """Dispatch the stable installed CLI without importing optional Playwright."""
 
@@ -839,6 +937,7 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "  aletheia-nexus export PAPER.parsed.json --format FORMAT --output PATH\n"
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus browser-install\n"
+            "  aletheia-nexus library [DIRECTORY] [--folder NAME] [--tag TAG]\n"
             "  aletheia-nexus --version\n\n"
             "Use 'aletheia-nexus COMMAND --help' for command options."
         )
@@ -932,6 +1031,8 @@ def entrypoint(argv: list[str] | None = None) -> int:
         return search_main(args[1:])
     if args[0] == "export":
         return export_main(args[1:])
+    if args[0] == "library":
+        return library_main(args[1:])
     print(f"Unknown command: {args[0]!r}. Use --help.", file=sys.stderr)
     return 2
 

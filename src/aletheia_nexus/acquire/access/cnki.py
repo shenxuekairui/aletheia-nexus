@@ -8,7 +8,9 @@ from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
 )
+from aletheia_nexus.acquire.fulltext.storage import organized_output
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.organization import destination
 from aletheia_nexus.core.paper_request import PaperRequest
 
 
@@ -27,6 +29,9 @@ def acquire_cnki_pdf(
     config: BrowserAccessConfig | None = None,
     browser_session: BrowserSession | None = None,
     metadata_mailto: str | None = None,
+    folder: str | None = None,
+    filename: str | None = None,
+    tags: tuple[str, ...] = (),
 ) -> BrowserAccessAttempt:
     """Search by title or resolved DOI and validate the downloaded main article.
 
@@ -54,17 +59,22 @@ def acquire_cnki_pdf(
         issue=issue,
         pages=pages,
         cnki_id=cnki_id,
+        folder=folder,
+        filename=filename,
+        tags=tags,
     )
     provider = CNKIProvider(authors=authors, request=request)
 
     def acquire(session):
-        return session.acquire_provider(
-            provider,
-            doi=normalized_doi,
-            output_dir=output_dir,
-            expected_title=title,
-            metadata_mailto=metadata_mailto,
-        )
+        directory = destination(output_dir, request.folder)
+        with organized_output(request):
+            return session.acquire_provider(
+                provider,
+                doi=normalized_doi,
+                output_dir=directory,
+                expected_title=title,
+                metadata_mailto=metadata_mailto,
+            )
 
     if browser_session is not None:
         return acquire(browser_session)

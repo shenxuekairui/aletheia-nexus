@@ -159,6 +159,12 @@ def finalize_access_resource(
 
         sidecar_path: Path | None = None
         if should_persist:
+            year = (target_identity.year if target_identity else None) or (
+                observed_identity.year if observed_identity else None
+            )
+            journal = (target_identity.journal if target_identity else None) or (
+                observed_identity.journal if observed_identity else None
+            )
             subdirectory = (
                 None if status == AcquisitionStatus.VERIFIED else "_unverified"
             )
@@ -167,6 +173,9 @@ def finalize_access_resource(
                 doi=normalized_doi or candidate.article_id,
                 output_dir=output_dir,
                 subdirectory=subdirectory,
+                title=expected_title,
+                year=year,
+                journal=journal,
             )
             resource = replace(resource, local_path=file_path)
             elapsed_seconds = time.perf_counter() - started_at
@@ -235,7 +244,13 @@ def finalize_access_resource(
                     "evidence": list(identity.evidence),
                 },
             }
-            sidecar_path = write_json_sidecar(file_path, payload)
+            sidecar_path = write_json_sidecar(
+                file_path,
+                payload,
+                year=year,
+                journal=journal,
+                preserve_existing=status == AcquisitionStatus.VERIFIED,
+            )
         else:
             resource = _delete_temp(resource)
             elapsed_seconds = time.perf_counter() - started_at

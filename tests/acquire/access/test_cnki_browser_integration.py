@@ -23,6 +23,83 @@ _TITLE = "银修饰铜纳米阵列用于电催化还原CO2"
 _DOI = "10.1000/cnki-browser-fixture"
 
 
+@pytest.mark.parametrize("enabled", [True, False])
+def test_cnki_real_refresh_recovers_one_inert_pdf_control(tmp_path, enabled):
+    from aletheia_nexus.acquire.access import BrowserSession, acquire_cnki_pdf
+
+    visits, clicks = [], []
+    body = _pdf_bytes(_TITLE, _DOI)
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        if path == "/kns8s/":
+            route.fulfill(
+                content_type="text/html; charset=utf-8",
+                body=f"""<input id="txt_SearchText"><button class="search-btn">Search</button><table class="result-table-list"><tbody><tr><td><a class="fz14" target="_blank" href="/detail">{_TITLE}</a></td></tr></tbody></table>""",
+            )
+        elif path == "/detail":
+            visits.append(True)
+            action = (
+                "location.href='/article.pdf'" if len(visits) > 1 else "fetch('/inert')"
+            )
+            route.fulfill(
+                content_type="text/html; charset=utf-8",
+                body=f'''<meta name="citation_doi" content="{_DOI}"><h1>{_TITLE}</h1><a id="pdfDown" onclick="{action}">PDF下载</a>''',
+            )
+        elif path == "/inert":
+            clicks.append(True)
+            route.fulfill(body="first action failed")
+        elif path == "/article.pdf":
+            clicks.append(True)
+            route.fulfill(
+                content_type="application/pdf",
+                headers={"Content-Disposition": "attachment; filename=article.pdf"},
+                body=body,
+            )
+        else:
+            route.fulfill(status=404, body="fixture")
+
+    config = BrowserAccessConfig(
+        headless=True,
+        interactive=False,
+        navigation_timeout=1.5,
+        poll_interval=0.02,
+        profile_root=tmp_path / "profiles",
+        cnki_refresh_retry=enabled,
+    )
+    with BrowserSession(config) as session:
+        session._ensure_started().route("**/*", respond)
+        result = acquire_cnki_pdf(
+            doi=_DOI,
+            title=_TITLE,
+            browser_session=session,
+            output_dir=tmp_path / "out",
+            folder="化学/回归",
+            tags=("知网",),
+        )
+    assert len(visits) == (2 if enabled else 1), result
+    assert len(clicks) == (2 if enabled else 1), (
+        result.status,
+        result.evidence,
+        result.error,
+    )
+    assert result.status == (
+        BrowserAttemptStatus.VERIFIED
+        if enabled
+        else BrowserAttemptStatus.RETRIEVAL_FAILED
+    ), result
+    if enabled:
+        assert result.result.file_path.read_bytes() == body
+        assert result.result.file_path.parent == tmp_path / "out/化学/回归"
+        from aletheia_nexus.library import scan_library
+
+        assert (
+            scan_library(tmp_path / "out", tag="知网")["items"][0]["integrity"]
+            == "verified"
+        )
+        assert any("refreshed once" in e for e in result.evidence)
+
+
 @pytest.fixture(autouse=True)
 def forbid_unmocked_api_transport(monkeypatch):
     # BrowserContext.route does not intercept APIRequestContext. A fixture
@@ -71,8 +148,9 @@ def _pdf_bytes(title=_TITLE, doi=_DOI, text=""):
         (True, True, True, True),
     ],
 )
+@pytest.mark.parametrize("reset_downloads", [False, True])
 def test_cnki_delayed_search_and_pdf_delivery(
-    tmp_path, popup, attachment, use_session, doi_less, monkeypatch
+    tmp_path, popup, attachment, use_session, doi_less, monkeypatch, reset_downloads
 ):
     from playwright.sync_api import sync_playwright
 
@@ -142,6 +220,13 @@ def test_cnki_delayed_search_and_pdf_delivery(
 
         with BrowserSession(config) as session:
             context = session._ensure_started()
+            if reset_downloads:
+                from aletheia_nexus.acquire.access.browser_engine.downloads import (
+                    CdpDownloadCapture,
+                )
+
+                native = CdpDownloadCapture(context, tmp_path)
+                native.close()
             context.route("**/*", route_request)
             result = acquire_cnki_pdf(
                 doi=doi or None,
@@ -161,6 +246,13 @@ def test_cnki_delayed_search_and_pdf_delivery(
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(accept_downloads=True)
+        if reset_downloads:
+            from aletheia_nexus.acquire.access.browser_engine.downloads import (
+                CdpDownloadCapture,
+            )
+
+            native = CdpDownloadCapture(context, tmp_path)
+            native.close()
         context.route("**/*", route_request)
         if not attachment:
             # context.route cannot intercept APIRequestContext. Isolate this

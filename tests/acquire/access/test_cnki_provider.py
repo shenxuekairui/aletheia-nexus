@@ -226,6 +226,12 @@ class _SearchPage(_Events):
     def goto(self, url, **kwargs):
         self.url = url
 
+    def reload(self, **kwargs):
+        self.reloads = getattr(self, "reloads", 0) + 1
+
+    def wait_for_timeout(self, value):
+        pass
+
     def wait_for_selector(self, selector, **kwargs):
         assert selector == ".result-table-list tbody tr"
 
@@ -551,6 +557,8 @@ def test_maximized_acquisition_uses_cnki_after_public_routes_before_generic_brow
 
 
 def test_cnki_artifact_records_hash_source_and_access_method(tmp_path):
+    from aletheia_nexus.core.paper_request import PaperRequest
+
     title = "中文论文标题"
     temporary = tmp_path / "cnki.part"
     writer = PdfWriter()
@@ -582,6 +590,9 @@ def test_cnki_artifact_records_hash_source_and_access_method(tmp_path):
         expected_title=title,
         keep_unverified=False,
         transport="cnki_authenticated_browser",
+        observed_identity=PaperRequest(
+            doi=candidate.doi, title=title, year=2024, journal="化学试剂"
+        ),
         access_details={
             "provider": "cnki",
             "fetcher": "CNKIProvider",
@@ -591,6 +602,7 @@ def test_cnki_artifact_records_hash_source_and_access_method(tmp_path):
     )
 
     assert result.status == AcquisitionStatus.VERIFIED
+    assert result.file_path.name.startswith("2024-化学试剂-中文论文标题--")
     payload = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
     assert payload["retrieval"]["sha256"] == digest
     assert payload["candidate"]["provenance"] == ["cnki"]
@@ -843,6 +855,49 @@ def test_cnki_capture_ignores_other_tabs_and_caj_responses():
     assert not any(context.listeners.values())
 
 
+@pytest.mark.parametrize("matching_native_url", [True, False])
+def test_cnki_waits_for_native_completion_not_empty_playwright_placeholder(
+    monkeypatch, tmp_path, matching_native_url
+):
+    from aletheia_nexus.acquire.access import cnki_runtime
+
+    detail = _DetailPage()
+    context = _Context(detail)
+    download = _Download()
+    download.suggested_filename = "article.pdf"
+    download.save_as = lambda path: pytest.fail("Do not copy Playwright placeholder")
+    path = tmp_path / "native.pdf"
+    path.write_bytes(_valid_pdf())
+    ready = []
+    closed = []
+    native = SimpleNamespace(
+        active=True,
+        wait=lambda page, timeout, **kwargs: ready[0] if ready else None,
+        pending_for=lambda url: not ready,
+        close=lambda: closed.append(True),
+    )
+    monkeypatch.setattr(cnki_runtime, "CdpDownloadCapture", lambda *args: native)
+    capture = CNKIFileCapture(context, detail, 100_000, output_dir=tmp_path)
+    detail.emit("download", download)
+    assert capture.transfer_pending
+    assert capture.next_file() is None
+    ready.append(
+        (
+            path,
+            download.url if matching_native_url else "https://other.example/file.pdf",
+        )
+    )
+    saved = capture.next_file()
+    if matching_native_url:
+        assert saved.suggested_filename == "article.pdf"
+        saved.save_as(tmp_path / "saved.pdf")
+        assert (tmp_path / "saved.pdf").read_bytes() == _valid_pdf()
+    else:
+        assert saved is None
+    capture.close()
+    assert closed == [True]
+
+
 def test_cnki_pdf_response_size_limit_cleans_up_and_reports_failure(tmp_path):
     detail = _DetailPage()
     context = _Context(detail)
@@ -857,6 +912,26 @@ def test_cnki_pdf_response_size_limit_cleans_up_and_reports_failure(tmp_path):
 
     assert attempt.status == BrowserAttemptStatus.RETRIEVAL_FAILED
     assert not list(tmp_path.rglob("*.part"))
+
+
+def test_cnki_incomplete_native_download_does_not_hide_completed_response(
+    monkeypatch, tmp_path
+):
+    from aletheia_nexus.acquire.access import cnki_runtime
+
+    detail = _DetailPage()
+    context = _Context(detail)
+    native = SimpleNamespace(
+        active=True, wait=lambda *args, **kwargs: None, close=lambda: None
+    )
+    monkeypatch.setattr(cnki_runtime, "CdpDownloadCapture", lambda *args: native)
+    capture = CNKIFileCapture(context, detail, 100_000, output_dir=tmp_path)
+    detail.emit("download", _Download())
+    context.emit("response", _response(detail))
+    saved = capture.next_file()
+    assert isinstance(saved, cnki_runtime.CapturedPDF)
+    assert saved.body == _valid_pdf()
+    capture.close()
 
 
 def test_cnki_continues_to_next_result_after_conflicting_detail_doi(tmp_path):
@@ -1418,6 +1493,99 @@ def test_cnki_formula_query_has_one_bounded_chinese_phrase_fallback():
     )
 
 
+@pytest.mark.parametrize(
+    "mode", ["success", "twice_failed", "disabled", "pending", "mismatch", "late"]
+)
+def test_cnki_native_failure_refreshes_once_without_replaying_active_transfers(
+    monkeypatch, mode
+):
+    detail = _DetailPage()
+    clicks, refreshes, captures = [], [], []
+    detail.pdf._click = lambda: clicks.append(True)
+    detail.reload = lambda **kwargs: refreshes.append(True)
+    late = []
+    detail.wait_for_timeout = lambda ms: (
+        late.append(True) if mode == "late" and ms == 1000 else None
+    )
+
+    class Capture:
+        def __init__(self, *args, **kwargs):
+            self.pages = [detail]
+            self.context_closed = False
+            self.closed = False
+            self.transfer_pending = mode == "pending"
+            captures.append(self)
+
+        def next_file(self):
+            return (
+                _Download()
+                if (mode == "success" and len(clicks) == 2) or late
+                else None
+            )
+
+        def close(self, **kwargs):
+            self.closed = True
+
+    monkeypatch.setattr(cnki_provider, "CNKIFileCapture", Capture)
+    config = BrowserAccessConfig(
+        navigation_timeout=0.01,
+        poll_interval=0.005,
+        cnki_refresh_retry=mode != "disabled",
+    )
+    gate = CNKIGate(config)
+    gate.check = lambda page: False
+    gate.wait_ready = lambda *a, **kw: None
+    gate.wait = lambda page, predicate, **kw: predicate()
+
+    def call():
+        return cnki_provider._capture_download(
+            object(),
+            detail,
+            detail.pdf,
+            gate=gate,
+            config=config,
+            validate_refresh=lambda: mode != "mismatch",
+        )
+
+    if mode in {"success", "late"}:
+        downloaded, capture = call()
+        assert isinstance(downloaded, _Download)
+        capture.close()
+    else:
+        with pytest.raises(
+            (cnki_provider.CNKIStageTimeout, cnki_provider.CNKIFileError)
+        ):
+            call()
+    assert len(refreshes) == (0 if mode in {"disabled", "pending", "late"} else 1)
+    assert len(clicks) == (2 if mode in {"success", "twice_failed"} else 1)
+    assert all(c.closed for c in captures)
+
+
+def test_cnki_refresh_does_not_reload_a_manual_gate():
+    page = _DetailPage()
+    page.reload = lambda **kw: pytest.fail("must keep authentication in-place")
+    gate = CNKIGate(BrowserAccessConfig())
+    gate.check = lambda page: True  # human handoff completed, no blind refresh
+    assert not gate.refresh_once(page, stage="PDF retrieval")
+    assert not gate.refresh_retry_used
+
+
+def test_cnki_waits_for_inflight_pdf_even_before_response_headers():
+    detail = _DetailPage()
+    context = _Context(detail)
+    capture = CNKIFileCapture(context, detail, 100_000)
+    request = SimpleNamespace(
+        frame=SimpleNamespace(page=detail),
+        url="https://docdown.cnki.net/file.pdf",
+        is_navigation_request=lambda: True,
+    )
+    context.emit("request", request)
+    assert capture.transfer_pending
+    context.emit("requestfailed", request)
+    assert not capture.transfer_pending
+    capture.close()
+
+
 def test_cnki_cross_language_candidate_does_not_mean_identity_match():
     title = "In situ Electrochemical Characterization Techniques for Active Hydrogen"
     page = _SearchPage("电催化硝酸盐还原合成氨过程中活性氢的原位电化学表征技术（英文）")
@@ -1533,8 +1701,9 @@ def test_cnki_transient_download_popup_does_not_restart_context(raise_on_close):
     capture.close()
 
 
-def test_cancelled_native_download_recovers_with_same_browser_session(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize("empty_placeholder", [False, True])
+def test_failed_native_download_recovers_with_same_browser_session(
+    monkeypatch, tmp_path, empty_placeholder
 ):
     requested = []
     disposed = []
@@ -1555,6 +1724,9 @@ def test_cancelled_native_download_recovers_with_same_browser_session(
 
     class Cancelled(_Download):
         def save_as(self, path):
+            if empty_placeholder:
+                Path(path).write_bytes(b"")
+                return
             raise RuntimeError("native transfer was cancelled")
 
     monkeypatch.setattr(cnki_provider, "_safe_context_get", request)

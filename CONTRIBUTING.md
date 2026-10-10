@@ -27,6 +27,17 @@ AN_RUN_BROWSER_SMOKE=1 python -m pytest -q tests/acquire/access/test_browser_int
 
 On PowerShell, set `$env:AN_RUN_BROWSER_SMOKE = "1"` before the last command. Live publisher attempts are not part of CI and must never require sharing credentials with maintainers.
 
+For pre-release validation, run:
+
+```bash
+python scripts/verify_v07_rc.py --browser-smoke --visible-browser-smoke --report downloads/rc-report.json
+```
+
+The browser gate covers generic publishers and CNKI. The visible gate also
+verifies ordinary launch, native downloads and reconnect using a fresh test-owned
+profile. On headless Linux run under `xvfb-run -a`. Add `--ocr-smoke` when Poppler,
+Tesseract and the OCR extra are installed. A skipped optional test is not a pass.
+
 ## What makes a good change
 
 1. Open an issue or discussion for changes to public result semantics, trust criteria, or access-policy behavior before implementing them.
@@ -39,6 +50,6 @@ Write a PR description with the user-visible behavior, why the change is needed,
 
 ## First-time user feedback
 
-We particularly welcome reports from researchers who have never used AN before. Try the [quick start](README.en.md#get-started) with one DOI you are allowed to access, then tell us where installation, status language, or handoff was confusing. The goal is to learn whether a stranger can reach a meaningful result without a maintainer guiding them—not to inflate a success-rate statistic.
+We particularly welcome reports from researchers who have never used AN before. Try the [quick start](README.en.md#quick-start) with one DOI you are allowed to access, then tell us where installation, status language, or handoff was confusing. The goal is to learn whether a stranger can reach a meaningful result without a maintainer guiding them—not to inflate a success-rate statistic.
 
 By contributing code, you agree it will be distributed under the repository's [Apache-2.0 license](LICENSE).

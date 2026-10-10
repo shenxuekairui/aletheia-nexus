@@ -107,6 +107,22 @@ def test_export_and_parse_outputs_refuse_silent_overwrite(tmp_path):
         )
 
 
+def test_parse_and_export_leave_other_partial_files_untouched(tmp_path):
+    artifact = _artifact(tmp_path)
+    output = tmp_path / "new.parsed.json"
+    partial = output.with_suffix(output.suffix + ".part")
+    partial.write_text("another writer owns this", encoding="utf-8")
+    parse_document(
+        FIXTURES / "native_article.pdf", "10.5555/an.v07.native", output_path=output
+    )
+    assert partial.read_text(encoding="utf-8") == "another writer owns this"
+    exported = tmp_path / "new.ai.md"
+    export_partial = exported.with_suffix(exported.suffix + ".part")
+    export_partial.write_text("another export", encoding="utf-8")
+    write_ai_export(exported, export_markdown(artifact))
+    assert export_partial.read_text(encoding="utf-8") == "another export"
+
+
 def test_relative_locators_survive_directory_move(tmp_path):
     artifact = _artifact(tmp_path)
     moved = tmp_path / "moved"

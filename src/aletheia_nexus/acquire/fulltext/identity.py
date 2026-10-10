@@ -238,7 +238,11 @@ def declared_pdf_dois(first_page_text: str) -> tuple[str, ...]:
     )[0]
     values = set()
     for label in re.finditer(
-        r"(?im)(?:\bdoi\s*:\s*|^\s*doi\s+(?=10\s*\.))", front_matter
+        # Publisher links such as /lookup/suppl/doi:10.../-/DCSupplemental
+        # contain a URL path component, not an article DOI declaration. Do not
+        # strip arbitrary suffixes from legitimate DOIs to accommodate them.
+        r"(?im)(?:(?<![\w/])doi\s*:\s*|^\s*doi\s+(?=10\s*\.))",
+        front_matter,
     ):
         dois = extract_pdf_dois(front_matter[label.end() : label.end() + 200])
         if dois:

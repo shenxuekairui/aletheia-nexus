@@ -3,6 +3,11 @@
 import re
 from urllib.parse import urlsplit
 
+from aletheia_nexus.acquire.access.cnki_journals import (
+    cnki_indexed_journal,
+    cnki_journal_from_doi,
+)
+
 
 def cnki_route_reason(
     *, doi, metadata, expected_title, config, source_urls=(), request=None
@@ -22,8 +27,15 @@ def cnki_route_reason(
     normalized = doi.casefold()
     if ".cnki." in normalized or normalized.startswith("10.7503/cjcu"):
         return "cnki_doi_family"
+    doi_journal = cnki_journal_from_doi(normalized, metadata)
+    if doi_journal is not None:
+        return f"cnki_journal_doi_pattern; evidence={doi_journal.evidence_url}"
     if config.cnki_search_all_titles:
         return "explicit_all_titles_opt_in"
+    indexed = cnki_indexed_journal(metadata)
+    if indexed is not None:
+        issn, journal = indexed
+        return f"cnki_indexed_issn:{issn}; evidence={journal.evidence_url}"
 
     def chinese(text):
         return bool(text and re.search(r"[\u3400-\u9fff]", text))

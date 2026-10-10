@@ -136,6 +136,8 @@ def test_installed_browser_provisioner_dispatch_without_source_checkout(monkeypa
         ["--no-cnki"],
         ["--no-cnki-context-request"],
         ["--cnki-context-request"],
+        ["--browser-launch-mode", "normal"],
+        ["--browser-launch-mode", "managed"],
     ],
 )
 def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
@@ -151,6 +153,11 @@ def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
     def acquire(values, **kwargs):
         assert values == [PaperRequest(title="明确的中文题名", authors=("张三",))]
         config = kwargs["browser_config"]
+        assert config.launch_mode == (
+            flags[flags.index("--browser-launch-mode") + 1]
+            if "--browser-launch-mode" in flags
+            else "auto"
+        )
         assert config.interactive is False and config.wait_for_interaction is False
         assert config.interaction_callback is None
         assert config.cnki_enabled == ("--no-cnki" not in flags)

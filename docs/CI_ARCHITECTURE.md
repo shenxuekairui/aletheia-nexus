@@ -26,6 +26,12 @@ installs Poppler and Tesseract and exercises a real raster-only PDF. Browser job
 run real Chromium on Linux and Windows; the Windows job also reruns the
 deterministic suite. Expensive jobs wait for the fast job.
 
+Browser jobs cover the shared acquisition engine, CNKI and the default ordinary
+visible launch/reconnect lifecycle. Linux uses Xvfb; Windows uses its test desktop.
+Every integration fixture uses a fresh test-owned profile, never the user's
+institutional browser. The local v0.7 verifier exposes `--browser-smoke` (shared
+engine + CNKI) and `--visible-browser-smoke` (ordinary launch) separately.
+
 This is a **cost policy**, not a reduced release standard. A draft PR cannot be
 merged. GitHub still records ordinary draft PR events, but jobs are skipped
 before runner allocation; a skipped check is **not** proof that tests passed.

@@ -25,6 +25,12 @@ class _Result:
         self.verified_path = verified_path
         self.verified_result = None
         self.browser_attempts = ()
+        if verified_path is not None and verified_path.is_file():
+            sidecar = verified_path.with_suffix(".acquisition.json")
+            if not sidecar.exists():
+                sidecar.write_text(
+                    json.dumps({"fixture": "verified"}), encoding="utf-8"
+                )
 
 
 def test_structured_batches_separate_same_title_authors_and_resume_by_request(
@@ -250,6 +256,8 @@ def test_batch_checkpoint_resumes_only_hash_matching_verified_file(
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"verified-pdf")
     digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    sidecar = pdf.with_suffix(".acquisition.json")
+    sidecar.write_bytes(b'{"fixture":"verified"}')
     checkpoint = tmp_path / "checkpoint.json"
     checkpoint.write_text(
         json.dumps(
@@ -260,6 +268,9 @@ def test_batch_checkpoint_resumes_only_hash_matching_verified_file(
                         "status": "VERIFIED",
                         "verified_path": str(pdf),
                         "sha256": digest,
+                        "sidecar_sha256": hashlib.sha256(
+                            sidecar.read_bytes()
+                        ).hexdigest(),
                     }
                 },
             }
@@ -280,6 +291,15 @@ def test_batch_checkpoint_resumes_only_hash_matching_verified_file(
     assert result.items[0].status == BatchItemStatus.VERIFIED
     assert result.items[0].resumed is True
     assert result.items[0].verified_path == pdf
+    sidecar.unlink()
+    assert (
+        batch_module._verified_checkpoint_item(
+            "10.1000/one",
+            "10.1000/one",
+            json.loads(checkpoint.read_text())["records"]["10.1000/one"],
+        )
+        is None
+    )
 
 
 def test_changed_verified_file_is_not_trusted(monkeypatch, tmp_path):

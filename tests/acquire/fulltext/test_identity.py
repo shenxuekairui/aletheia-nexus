@@ -1,4 +1,7 @@
-from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
+from aletheia_nexus.acquire.fulltext.identity import (
+    declared_pdf_dois,
+    validate_paper_identity,
+)
 from aletheia_nexus.acquire.fulltext.models import (
     DocumentRole,
     IdentityStatus,
@@ -37,6 +40,54 @@ def test_exact_doi_match_verifies_article_identity():
     assert result.status == IdentityStatus.MATCH
     assert result.document_role == DocumentRole.ARTICLE
     assert result.doi_match is True
+
+
+def test_publisher_supplement_link_is_not_a_declared_article_doi():
+    text = (
+        "Research article https://doi.org/10.1073/pnas.1234567890\n"
+        "Distinctive article heading\n"
+        + "Scientific findings and article front matter. "
+        * 20
+        + "This article contains supporting information online at\n"
+        "https://www.pnas.org/lookup/suppl/doi:10.1073/pnas.\n"
+        "1234567890/- /DCSupplemental.\n"
+    )
+    assert declared_pdf_dois(text) == ()
+    result = validate_paper_identity(
+        target_doi="10.1073/pnas.1234567890",
+        expected_title="Distinctive article heading",
+        source_url="https://www.pnas.org/doi/pdf/10.1073/pnas.1234567890",
+        inspection=_inspection(text=text),
+    )
+    assert result.status == IdentityStatus.MATCH
+    assert result.document_role == DocumentRole.ARTICLE
+
+
+def test_embedded_doi_link_does_not_hide_a_real_conflicting_declaration():
+    text = (
+        "Expected target title\nDOI: 10.1000/other\n"
+        "https://publisher.example/suppl/doi:10.1000/target/-/DCSupplemental\n"
+    )
+    assert declared_pdf_dois(text) == ("10.1000/other",)
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        expected_title="Expected target title",
+        source_url="https://publisher.example/paper.pdf",
+        inspection=_inspection(text=text),
+    )
+    assert result.status == IdentityStatus.MISMATCH
+
+
+def test_declared_doi_suffixes_are_never_truncated_to_match_a_target():
+    doi = "10.1000/target/-/dcsupplemental"
+    assert declared_pdf_dois("DOI: " + doi) == (doi,)
+    result = validate_paper_identity(
+        target_doi="10.1000/target",
+        expected_title="Expected target title",
+        source_url="https://publisher.example/paper.pdf",
+        inspection=_inspection(text="Expected target title\nDOI: " + doi),
+    )
+    assert result.status == IdentityStatus.MISMATCH
 
 
 def test_specific_chinese_title_with_per_character_pdf_spacing_verifies():

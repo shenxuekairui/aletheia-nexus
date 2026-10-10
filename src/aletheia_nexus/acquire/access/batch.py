@@ -22,10 +22,28 @@ from aletheia_nexus.acquire.access.models import (
 )
 from aletheia_nexus.acquire.access.publisher_routes import is_ieee_doi
 from aletheia_nexus.acquire.access.service import acquire_full_text_maximized
+from aletheia_nexus.acquire.fulltext.storage import organized_output
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.organization import destination
 from aletheia_nexus.core.paper_request import PaperRequest
 
 _CHECKPOINT_SCHEMA = "aletheia-nexus/access-batch-checkpoint/v1"
+
+
+def _organization(value):
+    return (
+        value
+        if isinstance(value, PaperRequest)
+        and (value.folder or value.filename or value.tags)
+        else None
+    )
+
+
+def _acquire_item(value, *, output_dir, **kwargs):
+    request = value if isinstance(value, PaperRequest) else None
+    directory = destination(output_dir, request.folder) if request else output_dir
+    with organized_output(request):
+        return acquire_full_text_maximized(value, output_dir=directory, **kwargs)
 
 
 class BatchItemStatus(StrEnum):
@@ -147,6 +165,11 @@ def _verified_checkpoint_item(
     try:
         if _sha256_file(path) != sha256:
             return None
+        sidecar = path.with_suffix(".acquisition.json")
+        if not sidecar.is_file() or _sha256_file(sidecar) != record.get(
+            "sidecar_sha256"
+        ):
+            return None
     except OSError:
         return None
     return BatchAcquisitionItem(
@@ -181,6 +204,8 @@ def _checkpoint_record(
         record["sha256"] = (
             resource.sha256 if resource is not None else _sha256_file(path)
         )
+        sidecar = path.with_suffix(".acquisition.json")
+        record["sidecar_sha256"] = _sha256_file(sidecar) if sidecar.is_file() else None
     history = (previous or {}).get("attempt_history", [])
     record["attempt_history"] = [
         *(history if isinstance(history, list) else []),
@@ -301,7 +326,7 @@ def acquire_full_text_batch_maximized(
         try:
             doi = value.doi if isinstance(value, PaperRequest) else normalize_doi(value)
             key = (
-                value.key
+                value.batch_key
                 if isinstance(value, PaperRequest)
                 else (
                     PaperRequest(doi=doi, title=titles[doi]).key
@@ -358,6 +383,15 @@ def acquire_full_text_batch_maximized(
                 checkpoint_records.get(key),
                 request_key=key,
             )
+            organization = _organization(input_value)
+            if organization is not None:
+                expected_directory = destination(output_dir, organization.folder)
+                if (
+                    resumed_item is not None
+                    and resumed_item.verified_path.resolve().parent
+                    != expected_directory
+                ):
+                    resumed_item = None
             if resumed_item is not None:
                 items.append(resumed_item)
                 if progress_callback is not None:
@@ -370,7 +404,7 @@ def acquire_full_text_batch_maximized(
             for attempt_number in range(1, max_item_attempts + 1):
                 attempts = attempt_number
                 try:
-                    result = acquire_full_text_maximized(
+                    result = _acquire_item(
                         input_value if isinstance(input_value, PaperRequest) else doi,
                         output_dir=output_dir,
                         browser_session=session,
@@ -387,7 +421,7 @@ def acquire_full_text_batch_maximized(
                     ):
                         chosen = manual_file_callback(doi)
                         if chosen:
-                            result = acquire_full_text_maximized(
+                            result = _acquire_item(
                                 input_value
                                 if isinstance(input_value, PaperRequest)
                                 else doi,
@@ -464,7 +498,7 @@ def acquire_full_text_batch_maximized(
                 if not session.interaction_ready(item.doi):
                     continue
                 try:
-                    recovered = acquire_full_text_maximized(
+                    recovered = _acquire_item(
                         item.input_value
                         if isinstance(item.input_value, PaperRequest)
                         else item.doi,

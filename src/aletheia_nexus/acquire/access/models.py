@@ -151,6 +151,10 @@ class BrowserAccessConfig:
     cnki_context_request: bool = False
     # Keep valid but unverified CNKI PDFs isolated for local review, not ingestion.
     cnki_keep_unverified: bool = True
+    # auto: ordinary visible launch; headless keeps Playwright-managed launch.
+    launch_mode: str = "auto"
+    # CNKI only: one bounded refresh outside human gates and active transfers.
+    cnki_refresh_retry: bool = True
 
 
 @dataclass(frozen=True, slots=True)

@@ -28,6 +28,7 @@ def test_requested_browser_failure_fails_release_report(monkeypatch, tmp_path):
     def run(name, command, *, env=None):
         if name == "real-browser-smoke":
             assert env["AN_RUN_BROWSER_SMOKE"] == "1"
+            assert "tests/acquire/access/test_cnki_browser_integration.py" in command
         return {"name": name, "passed": name != "real-browser-smoke"}
 
     monkeypatch.setattr(verifier, "_run", run)
@@ -36,3 +37,18 @@ def test_requested_browser_failure_fails_release_report(monkeypatch, tmp_path):
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert not payload["passed"]
     assert payload["checks"][-1]["name"] == "real-browser-smoke"
+
+
+def test_visible_default_browser_is_an_explicit_release_check(monkeypatch):
+    captured = []
+
+    def run(name, command, *, env=None):
+        if name == "normal-browser-smoke":
+            assert env["AN_RUN_VISIBLE_BROWSER_SMOKE"] == "1"
+            assert "tests/acquire/access/test_normal_browser_integration.py" in command
+            captured.append(name)
+        return {"name": name, "passed": True}
+
+    monkeypatch.setattr(verifier, "_run", run)
+    assert verifier.main(["--visible-browser-smoke"]) == 0
+    assert captured == ["normal-browser-smoke"]

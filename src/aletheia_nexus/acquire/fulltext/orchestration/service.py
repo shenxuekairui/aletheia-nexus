@@ -46,6 +46,7 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
 from aletheia_nexus.acquire.fulltext.resolution.service import resolve_full_text_route
 from aletheia_nexus.acquire.fulltext.retry import validate_retry_config
 from aletheia_nexus.acquire.fulltext.service import acquire_direct_pdf
+from aletheia_nexus.acquire.fulltext.storage import output_metadata
 from aletheia_nexus.acquire.fulltext.urls import derive_https_url
 from aletheia_nexus.acquire.metadata.exceptions import MetadataError
 from aletheia_nexus.acquire.metadata.retry import get_metadata_with_retry
@@ -774,22 +775,23 @@ def acquire_full_text(
             backoff_base=backoff_base,
         )
 
-    result = acquire_from_discovery(
-        discovery,
-        output_dir=output_dir,
-        expected_title=effective_title,
-        max_route_attempts=max_route_attempts,
-        max_file_attempts=max_file_attempts,
-        max_route_depth=max_route_depth,
-        max_route_expansions_per_page=max_route_expansions_per_page,
-        max_attempts_per_route=max_attempts_per_route,
-        max_attempts_per_file=max_attempts_per_file,
-        backoff_base=backoff_base,
-        timeout=timeout,
-        keep_unverified=keep_unverified,
-        skip_supplement_hints=skip_supplement_hints,
-        use_doi_resolver_fallback=use_doi_resolver_fallback,
-    )
+    with output_metadata(metadata):
+        result = acquire_from_discovery(
+            discovery,
+            output_dir=output_dir,
+            expected_title=effective_title,
+            max_route_attempts=max_route_attempts,
+            max_file_attempts=max_file_attempts,
+            max_route_depth=max_route_depth,
+            max_route_expansions_per_page=max_route_expansions_per_page,
+            max_attempts_per_route=max_attempts_per_route,
+            max_attempts_per_file=max_attempts_per_file,
+            backoff_base=backoff_base,
+            timeout=timeout,
+            keep_unverified=keep_unverified,
+            skip_supplement_hints=skip_supplement_hints,
+            use_doi_resolver_fallback=use_doi_resolver_fallback,
+        )
 
     return replace(
         result,

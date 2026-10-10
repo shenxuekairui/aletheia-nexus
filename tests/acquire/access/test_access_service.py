@@ -79,6 +79,79 @@ def _base(status=FullTextAcquisitionStatus.EXHAUSTED, *, candidate=None):
 
 
 @pytest.mark.parametrize(
+    "preference,enabled,expected",
+    [
+        ("auto", True, ["public", "cnki"]),
+        ("auto", False, ["public", "generic"]),
+        ("exclude_cnki", True, ["public", "generic"]),
+    ],
+)
+def test_first_seen_indexed_english_journal_routes_before_generic_challenge(
+    monkeypatch, tmp_path, preference, enabled, expected
+):
+    from types import SimpleNamespace
+
+    calls = []
+    base = replace(
+        _base(),
+        metadata=SimpleNamespace(
+            title="Target Article",
+            journal="Journal of Electrochemistry",
+            issn=("2993-074X",),
+            publisher="Editorial office",
+        ),
+    )
+    monkeypatch.setattr(
+        service, "acquire_full_text", lambda *a, **k: calls.append("public") or base
+    )
+    artifact = AcquisitionResult(
+        candidate=_candidate(),
+        status=AcquisitionStatus.VERIFIED,
+        file_path=tmp_path / "verified.pdf",
+    )
+    from aletheia_nexus.acquire.access.models import BrowserFileAttempt
+
+    attempt = BrowserAccessAttempt(
+        _candidate(),
+        None,
+        BrowserAttemptStatus.VERIFIED,
+        file_attempts=(BrowserFileAttempt(candidate=_candidate(), result=artifact),),
+    )
+    monkeypatch.setattr(
+        service,
+        "acquire_with_browser_provider",
+        lambda *a, **k: calls.append("cnki") or attempt,
+    )
+    monkeypatch.setattr(
+        service,
+        "acquire_with_browser",
+        lambda **k: (
+            calls.append("generic")
+            or BrowserRecoveryResult(
+                doi="10.1000/target",
+                attempts=(),
+                verified_result=None,
+                profile_dir=tmp_path,
+            )
+        ),
+    )
+    result = service.acquire_full_text_maximized(
+        "10.1000/target",
+        output_dir=tmp_path,
+        source_preference=preference,
+        auto_official_api=False,
+        browser_config=BrowserAccessConfig(cnki_enabled=enabled),
+    )
+    assert calls == expected
+    if enabled and preference == "auto":
+        assert result.status == MaximizedAcquisitionStatus.VERIFIED
+        assert any(
+            "cnki_indexed_issn:2993-074X" in e
+            for e in result.browser_attempts[0].evidence
+        )
+
+
+@pytest.mark.parametrize(
     "preference,enabled,called",
     [
         ("cnki", True, True),
@@ -200,7 +273,11 @@ def test_foreign_metadata_with_translated_title_retains_browser_routes(
         _base(),
         expected_title="用户提供的中文翻译题名",
         metadata=SimpleNamespace(
-            title="Original English article", journal="Nature", publisher="Nature"
+            doi="10.1000/target",
+            year=2024,
+            title="Original English article",
+            journal="Nature",
+            publisher="Nature",
         ),
     )
     monkeypatch.setattr(service, "acquire_full_text", lambda *a, **k: base)
@@ -212,6 +289,9 @@ def test_foreign_metadata_with_translated_title_retains_browser_routes(
     routes = []
 
     def browser(**kwargs):
+        from aletheia_nexus.acquire.fulltext.storage import _publication_fields
+
+        assert _publication_fields(kwargs["doi"]) == (2024, "Nature")
         routes.extend(kwargs["routes"])
         return BrowserRecoveryResult(doi=base.doi, attempts=())
 
