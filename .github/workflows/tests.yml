@@ -152,8 +152,9 @@ jobs:
         run: python scripts/install_an_browser.py
       - name: Verify sandboxed Linux browser startup
         env:
-          CHROME_DEVEL_SANDBOX: /opt/google/chrome/chrome-sandbox
+          CHROME_DEVEL_SANDBOX: /usr/local/libexec/an-chrome-sandbox
         run: |
+          sudo install -D -o root -g root -m 4755 /opt/google/chrome/chrome-sandbox /usr/local/libexec/an-chrome-sandbox
           python - <<'PY'
           import os
           from pathlib import Path
@@ -175,7 +176,7 @@ jobs:
         env:
           AN_RUN_BROWSER_SMOKE: "1"
           AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
-          CHROME_DEVEL_SANDBOX: /opt/google/chrome/chrome-sandbox
+          CHROME_DEVEL_SANDBOX: /usr/local/libexec/an-chrome-sandbox
         run: xvfb-run -a python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py
 
   ocr-extra:
