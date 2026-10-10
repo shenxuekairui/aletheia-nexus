@@ -246,4 +246,4 @@ jobs:
         env:
           AN_RUN_BROWSER_SMOKE: "1"
           AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
-        run: python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py
+        run: python -m pytest -vv -o faulthandler_timeout=120 tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py
