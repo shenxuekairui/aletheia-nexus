@@ -62,6 +62,14 @@ def test_normal_browser_downloads_reconnects_and_preserves_session(
                 headers={"Content-Disposition": "attachment; filename=article.pdf"},
                 body=body,
             )
+        elif route.request.url.endswith("/session"):
+            route.fulfill(
+                content_type="text/html",
+                headers={
+                    "Set-Cookie": "an_fixture=retained; Path=/; Secure; SameSite=Lax"
+                },
+                body="<title>AN synthetic session</title><p>Fixture session page.</p>",
+            )
         else:
             route.fulfill(
                 content_type="text/html",
@@ -79,24 +87,17 @@ def test_normal_browser_downloads_reconnects_and_preserves_session(
                 assert endpoints[-1]
                 context.route("https://publisher.example/**", respond)
                 if client_index == 0:
-                    # Synthetic cookie and in-memory page state, not user credentials.
-                    context.add_cookies(
-                        [
-                            {
-                                "name": "an_fixture",
-                                "value": "retained",
-                                "url": "https://publisher.example",
-                            }
-                        ]
-                    )
+                    # Let the fixture site establish its own synthetic session.
+                    # Direct CDP cookie injection can stall on hosted Windows;
+                    # AN's real acquisition flow does not inject user cookies.
                     original = context.pages[0]
+                    original.goto("https://publisher.example/session")
                     original.evaluate("window.anFixture = 'retained'")
                 else:
                     assert context.pages[0].evaluate("window.anFixture") == "retained"
-                    assert any(
-                        c["name"] == "an_fixture" and c["value"] == "retained"
-                        for c in context.cookies("https://publisher.example")
-                    )
+                assert "an_fixture=retained" in context.pages[0].evaluate(
+                    "document.cookie"
+                ).split("; ")
                 for index in range(2):
                     outcome = session.acquire(
                         doi=doi,
