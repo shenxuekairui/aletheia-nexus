@@ -332,6 +332,23 @@ def _engine_id(backend: object) -> str:
     )
 
 
+def _preserves_visible_native(native: str, reading: str) -> bool:
+    """Require surviving text in order; unknown glyphs are not a spelling rule."""
+    left = "".join(unicodedata.normalize("NFKC", native).split()).replace("−", "-")
+    right = "".join(unicodedata.normalize("NFKC", reading).split()).replace("−", "-")
+    left, right = left.removesuffix("."), right.removesuffix(".")
+    parts = re.split(r"[\x00\ufffd\ue000-\uf8ff]+", left)
+    cursor = 0
+    for index, part in enumerate(parts):
+        if not part:
+            continue
+        found = right.find(part, cursor)
+        if found < 0 or (index == 0 and found != 0):
+            return False
+        cursor = found + len(part)
+    return not parts[-1] or cursor == len(right)
+
+
 def _backend_execution_identity(backend: object) -> dict[str, object]:
     identity: dict[str, object] = {
         "name": str(getattr(backend, "name")),
@@ -360,6 +377,13 @@ def _local_glyph_context(
     line: LayoutLine, layout: PageLayout
 ) -> list[tuple[float, float]]:
     """Use exact native glyph provenance to OCR only the affected word context."""
+    if any(
+        c == "\ufffd" or unicodedata.category(c) in {"Cc", "Cs", "Co"}
+        for c in line.text
+    ):
+        # This line is still unreadable, unlike a font-verified recovered unit.
+        # A tiny word crop can truncate the only useful OCR reading of it.
+        return []
     warning = next(
         (
             w
@@ -410,7 +434,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.9.3"
+    version = "1.9.5"
 
     def __init__(
         self,
@@ -769,10 +793,20 @@ class AdaptiveOcrBackend:
                     comparable_area = (
                         0.5 <= _area(line_box) / max(_area(native_box), 1e-12) <= 2
                     )
+                    covers_native_line = (
+                        max(
+                            0,
+                            min(line_box[2], native_box[2])
+                            - max(line_box[0], native_box[0]),
+                        )
+                        / max(native_box[2] - native_box[0], 1e-12)
+                        >= 0.8
+                    )
                     if (
                         existing.text != original.text
                         and confidence >= 0.8
                         and comparable_area
+                        and covers_native_line
                         and _fits_damaged_native(original.text, line.text)
                         and not _fits_damaged_native(original.text, existing.text)
                     ):
@@ -800,7 +834,14 @@ class AdaptiveOcrBackend:
                         and _suspicious_character_ratio((line,)) == 0
                         and confidence >= 0.8
                         and comparable_area
+                        and covers_native_line
+                        and (
+                            _number_signature(existing.text)
+                            == _number_signature(line.text)
+                            or _fits_damaged_native(existing.text, line.text)
+                        )
                         and _agreement(existing.text, line.text) >= 0.5
+                        and _preserves_visible_native(existing.text, line.text)
                         and not any(
                             warning.get("code") == "NATIVE_UNIT_MAPPING_CORRECTED"
                             and _normalized_text(str(warning.get("after", "")))

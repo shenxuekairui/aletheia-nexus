@@ -101,6 +101,30 @@ def test_exact_reading_coalesces_provenance_without_clearing_uncertainty():
     assert merged[0].uncertain
 
 
+@pytest.mark.parametrize("partial", [True, False])
+def test_ocr_recovery_preserves_full_line_and_surviving_numbers(partial):
+    original = line(
+        "After treatment the \ue103ndings show bene\ue103ts at 25 °C.", uncertain=True
+    )
+    recovered = replace(
+        line(
+            "findings show benefits"
+            if partial
+            else "After treatment the findings show benefits at 1 °C.",
+            "ocr",
+            extraction_confidence=0.99,
+        ),
+        x0=150 if partial else 20,
+        x1=420 if partial else 500,
+    )
+    merged, _ = AdaptiveOcrBackend()._merge(page(original), [page(recovered)])
+    assert merged[0].text == original.text
+    assert any(
+        r.text == recovered.text and r.content_region == "ocr-alternative"
+        for r in merged
+    )
+
+
 def test_ocr_cannot_replace_a_font_verified_unit_due_to_an_unrelated_ligature():
     text = "7.4 μm \ue103ber"
     native = replace(
@@ -114,6 +138,26 @@ def test_ocr_cannot_replace_a_font_verified_unit_due_to_an_unrelated_ligature():
     assert [row.text for row in primary] == [text]
     assert any(row.text == "7.4 pm fiber" and row.uncertain for row in merged)
     assert any(w["code"] == "OCR_ENGINE_DISAGREEMENT" for w in warnings)
+
+
+@pytest.mark.parametrize(
+    "reading",
+    [
+        "The modified surface was treated at 25 mA.",
+        "The modified surface was not treated at 25 MA.",
+    ],
+)
+def test_corrupt_ligature_does_not_authorize_changing_conditions_or_unit_case(reading):
+    original = line(
+        "The modi\ue103ed surface was not treated at 25 mA.", uncertain=True
+    )
+    merged, _ = AdaptiveOcrBackend()._merge(
+        page(original), [page(line(reading, "ocr", extraction_confidence=0.99))]
+    )
+    assert merged[0].text == original.text
+    assert any(
+        r.text == reading and r.content_region == "ocr-alternative" for r in merged
+    )
 
 
 @pytest.mark.parametrize(

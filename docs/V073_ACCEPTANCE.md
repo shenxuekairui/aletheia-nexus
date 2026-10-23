@@ -193,3 +193,25 @@ passed 97 focused tests (one opt-in skip); it adds the existing export review
 locations after ranking and prints primary/alternative status, matched observed
 rows, local gaps and differences. These are development checks, not final-head
 release verification or measured review-burden savings.
+
+The complete-text audit also found that a high-confidence short OCR crop could
+replace a longer native line containing an unresolved private glyph. Recovery
+now requires coverage of the native line, preservation of visible text (including
+negation and unit case), and compatible surviving numbers or an explicit
+missing-glyph fit. Still-unreadable lines retain full-line OCR context; already
+recovered glyphs keep the smaller local scope. Nine exposed page probes restored
+the previously readable prose and retained the native originals. The content
+suite passes 475 tests with three opt-in skips. Fresh final extraction is pending;
+the older development-d extraction cannot establish this repair's acceptance.
+
+The optional `qualify_v07_public_oa.py` check was also run unchanged. Its
+`PARSED`-only status check failed for all three fixed public papers, while the
+source hashes, required text, page counts, anchors, tables and figures passed.
+An exact-code v0.7.2 paired native run reproduces all three `PARTIAL` statuses.
+The before/after blocks (text, kind, region and uncertainty), anchors and tables
+are identical, with no runtime errors. Existing reasons are unresolved glyphs,
+unverified raster text and table-column collisions. This optional result remains
+failed in the ledger; it is not relabelled green or weakened. The mandatory full
+RC command in `CI_ARCHITECTURE.md` remains unchanged. Native partial coverage is
+reported as a usage boundary, separately from the locked optional-OCR scientific
+acceptance configuration.
