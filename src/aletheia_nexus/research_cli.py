@@ -169,6 +169,13 @@ def search_main(argv: list[str]) -> int:
                         f"   PDF page {location['page']} — {warning['code']}: {warning.get('detail', '')}"
                     )
                 for difference in location.get("reading_differences", []):
+                    if (
+                        difference.get("status")
+                        == "partial-reading-needs-source-alignment"
+                    ):
+                        print(
+                            f"   PDF page {location['page']} partial alternative: {difference['alternative_text']!r}; align at the source, without treating surrounding prose as missing."
+                        )
                     for change in difference["changes"]:
                         print(
                             f"   PDF page {location['page']} unresolved reading: {change['primary']!r} / alternative {change['alternative']!r}"

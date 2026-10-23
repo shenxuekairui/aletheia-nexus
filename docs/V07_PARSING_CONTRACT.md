@@ -9,6 +9,11 @@ unresolved text differences and local warnings on the hit pages. They are added
 after ranking. Nearby text, observed rows and figure captions remain layout
 context, not interpreted or verified experimental tuples. Selected evidence
 export retains all corresponding readings and original-page anchors.
+An agreeing local text fragment remains an alternative source record without a
+false deletion of surrounding prose. A substantially shorter differing reading
+has `status: partial-reading-needs-source-alignment`, its full `alternative_text`
+and empty `changes`; this is an unresolved local reading, not a claimed aligned
+replacement. Complete comparable readings retain explicit token differences.
 Scientific acceptance and publication remain pending in [V073_ACCEPTANCE.md](V073_ACCEPTANCE.md).
 
 The release target is:

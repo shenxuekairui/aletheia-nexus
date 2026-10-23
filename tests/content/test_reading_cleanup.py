@@ -249,6 +249,33 @@ def test_review_groups_preserve_every_block_and_separate_original_conflicts():
     assert groups[0]["alternative_block_ids"] == ["ocr"]
 
 
+@pytest.mark.parametrize(
+    "alternative,has_difference", [("5 μL of", False), ("5 pL of", True)]
+)
+def test_partial_reading_does_not_report_unobserved_prose_as_deleted(
+    alternative, has_difference
+):
+    entry = {
+        "blocks": [
+            block(
+                "primary",
+                [0.1, 0.1, 0.9, 0.5],
+                text="The electrode was prepared using 5 μL of solution and dried overnight.",
+            ),
+            block("crop", [0.3, 0.2, 0.5, 0.25], "ocr-alternative", text=alternative),
+        ]
+    }
+    group = review_locations(entry)[0]
+    assert group["alternative_block_ids"] == ["crop"]
+    assert bool(group["reading_differences"]) is has_difference
+    if has_difference:
+        difference = group["reading_differences"][0]
+        assert difference["changes"] == []
+        assert difference["alternative_text"] == alternative
+        assert difference["status"] == "partial-reading-needs-source-alignment"
+    assert entry["blocks"][1]["text"] == alternative
+
+
 def test_figure_group_does_not_absorb_prose_or_full_scanned_pages():
     entry = {
         "blocks": [

@@ -130,6 +130,24 @@ def review_locations(entry: dict[str, object]) -> list[dict[str, object]]:
                 continue  # Do not manufacture a comparison across cells/experiments.
             main = matches[0]
             a, b = main["text"].split(), other["text"].split()
+            if b and any(a[i : i + len(b)] == b for i in range(len(a) - len(b) + 1)):
+                # An agreeing local crop does not delete the surrounding prose.
+                # The alternative and its source record still remain in full.
+                continue
+            if len(b) * 2 < len(a):
+                # A short OCR crop and a merged paragraph have different scopes.
+                # Without glyph alignment, do not call the omitted paragraph a
+                # disagreement or guess which repeated number the crop belongs to.
+                group["reading_differences"].append(
+                    {
+                        "primary_block_id": main["id"],
+                        "alternative_block_id": other["id"],
+                        "changes": [],
+                        "alternative_text": other["text"],
+                        "status": "partial-reading-needs-source-alignment",
+                    }
+                )
+                continue
             changes = [
                 {"primary": " ".join(a[i:j]), "alternative": " ".join(b[k:end])}
                 for tag, i, j, k, end in SequenceMatcher(
@@ -524,6 +542,14 @@ def evidence_markdown(pack: dict[str, object]) -> str:
                     ]
                 )
             for difference in group.get("reading_differences", []):
+                if difference.get("status") == "partial-reading-needs-source-alignment":
+                    lines.extend(
+                        [
+                            f"Partial alternative reading, PDF p. {group['page']} ({difference['alternative_block_id']}, primary context {difference['primary_block_id']}): {difference['alternative_text']!r}. Align at the source; unobserved surrounding text is not a difference.",
+                            "",
+                        ]
+                    )
+                    continue
                 lines.extend(
                     [
                         f"Unresolved local difference, PDF p. {group['page']} ({difference['primary_block_id']} / {difference['alternative_block_id']}): "
