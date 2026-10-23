@@ -69,9 +69,14 @@ def _ordered_glyphs(chars: list[LTChar]) -> list[LTChar]:
     def flush() -> None:
         # A lowered label such as 'cat' and an elevated '-1' share x coordinates.
         # Serialize the complete lower run first, without interleaving letters.
-        ordered.extend(
-            sorted(scripts, key=lambda c: ((c.y0 + c.y1) / 2 > baseline, c.x0))
-        )
+        for elevated in (False, True):
+            group = [c for c in scripts if ((c.y0 + c.y1) / 2 > baseline) == elevated]
+            if group and min(c.size for c in group) < max(c.size for c in group) * 0.85:
+                # A subscript can itself carry a smaller subscript and charge.
+                # Its own baseline, not the outer formula baseline, orders them.
+                ordered.extend(_ordered_glyphs(group))
+            else:
+                ordered.extend(sorted(group, key=lambda c: c.x0))
         scripts.clear()
 
     for char in sorted(chars, key=lambda c: c.x0):
@@ -79,8 +84,13 @@ def _ordered_glyphs(chars: list[LTChar]) -> list[LTChar]:
             flush()
             ordered.append(char)
         else:
-            if scripts and char.x0 > max(c.x1 for c in scripts) + 0.3:
-                flush()
+            if scripts:
+                gap = char.x0 - max(c.x1 for c in scripts)
+                local_size = max(c.size for c in scripts)
+                if gap > 0.3 and not (
+                    char.size < local_size * 0.85 and gap <= local_size * 0.6
+                ):
+                    flush()
             scripts.append(char)
     flush()
     return ordered
@@ -118,6 +128,62 @@ def _attach_symbols(rows: list[list[LTChar]], symbols: list[LTChar]) -> set[int]
             ambiguous.update(index for _, index in matches)
             ambiguous.add(len(rows))
             rows.append([symbol])
+    return ambiguous
+
+
+def _attach_nested_scripts(rows: list[list[LTChar]]) -> set[int]:
+    """Revisit short numeric fragments after all local script bases exist.
+
+    A lowered multi-letter label may be assembled after its final digit due to
+    differing ink bounds. Only a unique, adjacent alphabetic base in a larger
+    text row can absorb the detached fragment; ordinary numeric rows stay put.
+    """
+    ambiguous = set()
+    moves = []
+    for source, row in enumerate(rows):
+        fragments = [[]]
+        for char in sorted(row, key=lambda c: c.x0):
+            group = fragments[-1]
+            if group and char.x0 - max(c.x1 for c in group) > max(
+                2, max(c.size for c in group) * 0.9
+            ):
+                fragments.append([])
+            fragments[-1].append(char)
+        for fragment in fragments:
+            text = "".join(c.get_text() for c in fragment).strip()
+            if not re.fullmatch(r"[+−\-0-9]{1,4}", text):
+                continue
+            candidates = []
+            for target, base in enumerate(rows):
+                if (
+                    target == source
+                    or max(c.size for c in fragment) >= max(c.size for c in base) * 0.85
+                ):
+                    continue
+                if all(
+                    any(
+                        c.get_text().isalpha()
+                        and max(0, char.x0 - c.x1, c.x0 - char.x1) <= c.size * 0.8
+                        and (
+                            abs(char.size - c.size) <= char.size * 0.15
+                            and abs(char.an_text_origin[1] - c.an_text_origin[1]) < 0.5
+                            or char.size < c.size * 0.85
+                            and abs((char.y0 + char.y1 - c.y0 - c.y1) / 2)
+                            <= c.size * 0.72
+                        )
+                        for c in base
+                    )
+                    for char in fragment
+                ):
+                    candidates.append(target)
+            if len(candidates) == 1:
+                moves.append((source, candidates[0], fragment))
+            elif candidates:
+                ambiguous.update(id(c) for c in fragment)
+    for source, target, fragment in moves:
+        identities = {id(c) for c in fragment}
+        rows[source][:] = [c for c in rows[source] if id(c) not in identities]
+        rows[target].extend(fragment)
     return ambiguous
 
 
@@ -245,7 +311,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.2"
+    version = "1.19.3"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -476,6 +542,7 @@ class LayoutPdfBackend:
                 ):
                     ambiguous_glyphs.add(id(char))
                 rows[min(matches)[1]].append(char)
+        ambiguous_glyphs.update(_attach_nested_scripts(rows))
         # Repair only isolated signs. Leave already connected prose/formulas
         # in their original rows to avoid changing unrelated reading order.
         for row in rows:

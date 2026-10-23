@@ -6,7 +6,8 @@ closure conditions. Protocol: [V073_FINAL_PLAN.md](V073_FINAL_PLAN.md).
 Baseline: v0.7.2, commit `643094b943c7ab9c7aa7de4ef5897d688617ae6f`.
 Historical first scores remain historical. The exposed development results
 below are complete; the first native-only holdout result is recorded below.
-The locked primary OCR pair and publication remain pending.
+The locked primary OCR candidate run and publication remain pending; its
+completed baseline OCR result is recorded below.
 No independent third-party review or human-time improvement is claimed.
 
 The task-local evidence ledger records baseline hashes, complete historical
@@ -287,8 +288,12 @@ remain failures; grid recovery alone does not establish complete correctness.
 Current parser identity is **3.10.1**.
 
 Hosted run `40038639189` on `e86d8a9` passed seven of eight jobs. Its Windows
-real-browser HTTP 429/session-pause test failed and remains under investigation;
-it is not a passing final CI result.
+real-browser HTTP 429/session-pause test failed. The unchanged test passed a
+local real-browser rerun; adding response/request diagnostics to its existing
+assertion did not relax it or change the product. Run `40040088176` on
+`72f8d635f25c5fb0ecb4c965505623d93e8dceeb` subsequently passed all eight jobs.
+The earlier failure is retained and its cause is not established. Neither run
+certifies later source changes or constitutes final release CI.
 
 The exposed figure-axis audit identified raised rotated numerals separated from
 their base label. Native extraction now uses the actual text origin (including
@@ -311,6 +316,59 @@ with three existing opt-in skips. Initial tests exposed the missing text-rise
 origin and an incorrect test expectation about line-versus-character diagnostic
 fields; their logs are preserved. Native backend identity is now **1.19.2**.
 These source-page probes still require complete fresh scientific regression.
+
+The exposed multi-level table header also split nested subscripts and charges
+into extra rows/columns. Short numeric/sign fragments now rejoin only a unique,
+nearby, smaller-font script base; ordering recurses within nested script groups.
+Competing bases, independent full-size values, connected measurements and distant
+digits remain separate. The source table changes from a fragmented 9-by-7 grid
+to its observed 6-by-5 grid in a fresh complete native document parse, with no
+runtime error. A second source layout recovers formula subscripts in two reagent
+labels; its previously detached comma is still retained separately. Three other
+inspected source pages have identical line texts. This does not establish full
+reaction-condition correspondence or count as a new holdout result.
+
+Native backend identity is **1.19.3**. The content suite passed **573 tests** with
+three opt-in skips before adding a further painted-PDF regression; all four
+nested-script tests then passed. The first ordering failure and intermediate
+source probe remain in the local evidence. No original glyph or PDF is replaced.
+
+## First holdout result: completed baseline OCR configuration
+
+The locked v0.7.2 OCR run completed all 16 PDFs / 671 pages without runtime
+errors. Its full 60-question manual adjudication is **34/60 (56.7%)**: prose
+15/16, tables 12/20, figures 2/12 and SI 5/12. Fifteen questions contain a
+critical error without an adequate local notice. This is the original frozen
+baseline result, not a repaired rerun; the frozen v0.7.3 OCR run continues.
+
+| Source identity | v0.7.2 OCR complete |
+| --- | ---: |
+| H01 / H01-SI | 6/8; 1/3 |
+| H02 | 3/3 |
+| H03R | 1/3 |
+| H04R | 2/5 |
+| H05 / H05-SI | 2/3; 2/3 |
+| H06 / H06-SI | 3/4; 2/3 |
+| H07 | 1/4 |
+| H08 / H08-SI | 1/4; 0/3 |
+| H09 | 3/3 |
+| H10 | 1/3 |
+| H11 | 3/4 |
+| H12 | 3/4 |
+
+OCR recovers additional digits, scales and diagram labels, but several complete
+answers still fail because experiment, panel, unit or axis-endpoint relationships
+are missing. False native glyph mappings also remain primary errors. Correct
+fragments, diagnostic originals or retained alternatives do not rescue a failed
+default answer. Original source conflicts remain separately represented.
+
+Immutable local record `holdout-v072-ocr-first-adjudication.json`, SHA-256:
+`f560cd4c0a3bdf45cff6e9e818606c0b68f981d1f3d84651684321445816b7dc`.
+It includes all judgments, source/parsed hashes, actual primary blocks and
+anchors, error categories and source-specific counts. Exact whole-page reuse of
+an already reviewed native judgment is identified; changed evidence received
+manual review. Neither this baseline nor engineering CI establishes acceptance
+of the current implementation.
 
 ## Completed exposed development acceptance and candidate freeze
 
