@@ -15,7 +15,15 @@ from aletheia_nexus.acquire.access.browser_engine.downloads import (
     LocalBrowserDownload as _LocalBrowserDownload,
 )
 from aletheia_nexus.acquire.access.browser_engine.downloads import save_browser_download
+from aletheia_nexus.acquire.access.browser_engine.observation import (
+    bounded_read,
+    frame_visible,
+    native_pdf_url,
+)
 from aletheia_nexus.acquire.access.browser_engine.viewer import (
+    NativeViewerDownloadError,
+    is_native_pdf_placeholder,
+    is_pdf_document_url,
     select_pdf_viewer_target,
     trigger_embedded_pdf_frame_fetch,
     trigger_pdf_viewer_same_origin_fetch,
@@ -42,6 +50,7 @@ from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
     FullTextCandidate,
+    HostType,
 )
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionResult,
@@ -61,6 +70,11 @@ from aletheia_nexus.acquire.metadata.titles import page_validation_title
 _BROWSER_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _SEMANTIC_PDF_CONTROL = re.compile(
     r"(?:download|view|read|open)?\s*(?:full[- ]?text\s*)?(?:article\s*)?pdf",
+    re.IGNORECASE,
+)
+_PURCHASE_CONTROL = re.compile(
+    r"\b(?:buy|purchase|checkout|cart|subscribe|rent)\b"
+    r"|add[-_ ]?to[-_ ]?cart|购买|购物车|付费|结算",
     re.IGNORECASE,
 )
 _AUXILIARY_PDF_PATH = re.compile(
@@ -127,7 +141,50 @@ _MODAL_DISMISS_SELECTOR = ", ".join(
 )
 
 
-def _page_snapshot(page) -> tuple[str, str, str, str]:
+_OBSERVATION_TIMEOUT = 2.0
+_FRAME_SCAN_TIMEOUT = 3.0
+_OBSERVATION_UNAVAILABLE = "Browser access-state observation unavailable"
+_NATIVE_PDF = "Browser reports a native PDF document"
+_HANDOFF_NOT_STARTED = "Institution control did not open an authentication flow"
+_PURCHASE_LOGIN_OPTION = "Visible login option at a purchase boundary"
+_SOFT_PURCHASE_SIGNALS = frozenset(
+    f"Entitlement signal: {term}"
+    for term in (
+        "purchase this article",
+        "rent or buy",
+        "buy this article",
+        "sign in or purchase",
+    )
+)
+_SNAPSHOT_SCRIPT = """() => {
+    const labels = Array.from(document.querySelectorAll(
+      'a, button, [role="button"], [role="link"]'
+    )).filter(el => el.getClientRects().length
+      && !el.closest('[hidden], [aria-hidden="true"]')
+      && !['hidden', 'collapse'].includes(getComputedStyle(el).visibility)
+    ).slice(0, 200).flatMap(el => [
+      el.innerText || '', el.getAttribute('title') || '',
+      el.getAttribute('aria-label') || ''
+    ]).filter(Boolean).join(' ');
+    return [document.title.slice(0, 4096), location.href,
+      ((document.body?.innerText || '') + '\\n' + labels).slice(0, 100000),
+      (document.documentElement?.outerHTML || '').slice(0, 500000)];
+}"""
+
+
+def _page_snapshot(page, *, timeout=None) -> tuple[str, str, str, str]:
+    if getattr(page, "_impl_obj", None) is not None:
+        # One atomic read avoids mixing an old title with a new login document.
+        # Failure propagates: empty strings must not be mistaken for clearance.
+        return tuple(
+            bounded_read(
+                page,
+                "evaluate",
+                _SNAPSHOT_SCRIPT,
+                timeout=_OBSERVATION_TIMEOUT if timeout is None else timeout,
+            )
+        )
+    # Compatibility for lightweight test/adaptor pages without Playwright.
     try:
         title = page.title()
     except Exception:
@@ -150,7 +207,10 @@ def _page_snapshot(page) -> tuple[str, str, str, str]:
             """
             () => Array.from(document.querySelectorAll(
               'a, button, [role="button"], [role="link"]'
-            )).slice(0, 200).flatMap((element) => [
+            )).filter(el => el.getClientRects().length
+              && !el.closest('[hidden], [aria-hidden="true"]')
+              && !['hidden', 'collapse'].includes(getComputedStyle(el).visibility)
+            ).slice(0, 200).flatMap((element) => [
               element.innerText || '',
               element.getAttribute('title') || '',
               element.getAttribute('aria-label') || ''
@@ -170,14 +230,83 @@ def _page_snapshot(page) -> tuple[str, str, str, str]:
 
 
 def _report_for_page(page) -> ChallengeReport:
-    title, url, visible_text, html = _page_snapshot(page)
+    try:
+        title, url, visible_text, html = _page_snapshot(page)
+    except Exception as exc:
+        if native_pdf_url(page, timeout=_OBSERVATION_TIMEOUT):
+            return ChallengeReport(ChallengeKind.NONE, (_NATIVE_PDF,))
+        return ChallengeReport(
+            kind=ChallengeKind.UNKNOWN,
+            evidence=(
+                _OBSERVATION_UNAVAILABLE,
+                f"Main document read failed: {type(exc).__name__}",
+            ),
+        )
     report = classify_access_challenge(
         title=title,
         url=url,
         visible_text=visible_text,
         html=html,
     )
-    return adapter_for_url(url).refine_page_challenge(page, report)
+    report = adapter_for_url(url).refine_page_challenge(page, report)
+    if (
+        report.kind == ChallengeKind.ENTITLEMENT
+        and report.evidence
+        and set(report.evidence) <= _SOFT_PURCHASE_SIGNALS
+        and _reader_login_control(page) is not None
+    ):
+        # A purchase offer is not proof that an unauthenticated reader lacks
+        # access. Require a visible, safe login control; ordinary article-header
+        # login links alone and explicit institution denials are unaffected.
+        report = ChallengeReport(
+            ChallengeKind.AUTHENTICATION, (_PURCHASE_LOGIN_OPTION,)
+        )
+    if report.kind != ChallengeKind.NONE:
+        return report
+    # Only rendered frames are access surfaces. Hidden OpenAthens preference
+    # frames and other background widgets must not turn an article into a gate.
+    deadline = time.monotonic() + _FRAME_SCAN_TIMEOUT
+    incomplete = False
+    for frame in list(getattr(page, "frames", ()))[1:9]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            incomplete = True
+            break
+        try:
+            if not frame_visible(frame, timeout=min(_OBSERVATION_TIMEOUT, remaining)):
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                incomplete = True
+                break
+            frame_title, frame_url, frame_text, frame_html = _page_snapshot(
+                frame, timeout=min(_OBSERVATION_TIMEOUT, remaining)
+            )
+            embedded = classify_access_challenge(
+                title=frame_title,
+                url=frame_url,
+                visible_text=frame_text,
+                html=frame_html,
+            )
+            if embedded.kind in _AUTH_KINDS:
+                return embedded
+        except Exception:
+            if native_pdf_url(page, frame=frame, timeout=_OBSERVATION_TIMEOUT):
+                # Native embedded viewers may not expose a usable JS context.
+                # Their browser-confirmed PDF MIME cannot contain a login form.
+                continue
+            incomplete = True
+            continue
+    if incomplete:
+        if native_pdf_url(page, timeout=_OBSERVATION_TIMEOUT):
+            # A long-lived connection can retain stale child-frame objects
+            # after navigating into a native PDF. Use current browser metadata.
+            return ChallengeReport(ChallengeKind.NONE, (_NATIVE_PDF,))
+        return ChallengeReport(
+            kind=ChallengeKind.UNKNOWN,
+            evidence=(_OBSERVATION_UNAVAILABLE, "Embedded document scan incomplete"),
+        )
+    return report
 
 
 def _wait_for_ieee_article_controls(page) -> None:
@@ -252,11 +381,13 @@ def _wait_until_challenge_changes(
     completion_check=None,
     interaction_callback=None,
     return_host: str | None = None,
+    allow_authentication: bool = True,
 ) -> ChallengeReport:
     report = initial
     last_challenge = initial
     clear_observations = 0
     clear_url = None
+    failed_observations = 0
     notified_kind = _interaction_kind(initial.kind)
     authentication_started = any(
         item.kind in _AUTH_KINDS for item in [initial, *history]
@@ -301,21 +432,60 @@ def _wait_until_challenge_changes(
             # with a generic TargetClosedError at the DOI level.
             return last_challenge if report.kind == ChallengeKind.NONE else report
 
+        if (
+            report.kind == ChallengeKind.UNKNOWN
+            and _OBSERVATION_UNAVAILABLE in report.evidence
+        ):
+            # Brief navigation races preserve the last gate. Persistent read
+            # failures must return a technical failure, not wait for a user
+            # who may already have completed authentication.
+            _append_report(history, report)
+            failed_observations += 1
+            if failed_observations >= 3:
+                return report
+            report = last_challenge
+            clear_observations = 0
+            clear_url = None
+            continue
+
         if report.kind == ChallengeKind.NONE:
             # A challenge page can briefly become blank while its JavaScript
             # redirects or rebuilds the widget. Repeated observations of that
             # same empty document are not evidence of clearance either: fast
             # Windows polls could otherwise count four blanks before timeout.
-            title, url, visible_text, _ = _page_snapshot(page)
+            try:
+                if _NATIVE_PDF in report.evidence:
+                    title, url, visible_text = "", page.url, ""
+                else:
+                    title, url, visible_text, _ = _page_snapshot(page)
+            except Exception:
+                failed_observations += 1
+                if failed_observations >= 3:
+                    report = ChallengeReport(
+                        ChallengeKind.UNKNOWN, (_OBSERVATION_UNAVAILABLE,)
+                    )
+                    _append_report(history, report)
+                    return report
+                report = last_challenge
+                clear_observations = 0
+                clear_url = None
+                continue
+            failed_observations = 0
             has_content = bool(title.strip() or visible_text.strip())
-            is_pdf_route = urlsplit(url).path.lower().endswith(".pdf")
+            is_pdf_route = _NATIVE_PDF in report.evidence
             if not (has_content or is_pdf_route):
                 try:
                     # Native PDF documents can have no DOM text or title and
                     # use extensionless /doi/pdf/... URLs. Their MIME type is
                     # positive delivery evidence; a blank HTML redirect is not.
                     is_pdf_route = (
-                        page.evaluate("document.contentType") == "application/pdf"
+                        bounded_read(
+                            page,
+                            "evaluate",
+                            "document.contentType",
+                            timeout=_OBSERVATION_TIMEOUT,
+                        )
+                        == "application/pdf"
                     )
                 except Exception:
                     is_pdf_route = False
@@ -334,11 +504,14 @@ def _wait_until_challenge_changes(
             if clear_observations < 4:
                 continue
         else:
+            failed_observations = 0
             clear_observations = 0
             clear_url = None
             last_challenge = report
 
         _append_report(history, report)
+        if not allow_authentication and report.kind in _AUTH_KINDS:
+            return report
         if report.kind in {
             ChallengeKind.NONE,
             ChallengeKind.ENTITLEMENT,
@@ -360,6 +533,7 @@ def _resolve_page_challenge(
     config: BrowserAccessConfig,
     completion_check=None,
     return_host: str | None = None,
+    allow_authentication: bool = True,
 ) -> tuple[ChallengeReport, tuple[ChallengeReport, ...], bool]:
     """Allow normal browser JS first, then bounded human-in-the-loop recovery."""
 
@@ -369,6 +543,8 @@ def _resolve_page_challenge(
     )
     if return_host:
         wait_options["return_host"] = return_host
+    if not allow_authentication:
+        wait_options["allow_authentication"] = False
     report = _report_for_page(page)
     report = _auth_wait_report(
         page,
@@ -377,6 +553,9 @@ def _resolve_page_challenge(
         authentication_started=report.kind in _AUTH_KINDS,
     )
     _append_report(history, report)
+
+    if not allow_authentication and report.kind in _AUTH_KINDS:
+        return report, tuple(history), False
 
     if report.kind == ChallengeKind.NONE:
         return report, tuple(history), False
@@ -396,6 +575,9 @@ def _resolve_page_challenge(
     if report.kind == ChallengeKind.NONE:
         return report, tuple(history), False
 
+    if not allow_authentication and report.kind in _AUTH_KINDS:
+        return report, tuple(history), False
+
     # A hard entitlement/access-denied page is not a prompt to circumvent controls.
     if report.kind in {ChallengeKind.ENTITLEMENT, ChallengeKind.ACCESS_DENIED}:
         return report, tuple(history), False
@@ -403,6 +585,12 @@ def _resolve_page_challenge(
     if not config.interactive or (
         not config.wait_for_interaction and config.interaction_timeout <= 0
     ):
+        return report, tuple(history), False
+
+    if _OBSERVATION_UNAVAILABLE in report.evidence:
+        # A technical read failure is not evidence of a human-facing gate.
+        # Automatic grace has already retried it; let acquisition try another
+        # route instead of entering an indefinite login/CAPTCHA handoff.
         return report, tuple(history), False
 
     # The visible persistent browser is the handoff surface. The user may complete
@@ -771,6 +959,13 @@ def _browser_response_to_file_attempt(
             )
 
         content_type = response.headers.get("content-type")
+        if is_native_pdf_placeholder(body):
+            return BrowserFileAttempt(
+                candidate=candidate,
+                source_page_url=source_page_url,
+                method="browser_response",
+                error="NativePdfViewerPlaceholder: browser returned its HTML viewer shell; native delivery is required",
+            )
         if b"%PDF-" not in body[:1024] and "pdf" not in (content_type or "").lower():
             return BrowserFileAttempt(
                 candidate=candidate,
@@ -1078,6 +1273,7 @@ def _click_semantic_pdf_control_from_locator(locator) -> bool:
             not text
             or _control_is_inside_modal(item)
             or not _SEMANTIC_PDF_CONTROL.search(text)
+            or _PURCHASE_CONTROL.search(text)
             or _AUXILIARY_PDF_PATH.search(href_path)
             or any(
                 marker in lowered
@@ -1132,8 +1328,8 @@ def _dismiss_blocking_modal(page) -> bool:
                 return False
             modal = modals.nth(modal_index)
             try:
-                if not modal.is_visible():
-                    continue
+                # A zero-size portal wrapper can contain a visible fixed
+                # dialog. Visibility belongs to the close control below.
                 try:
                     controls = _semantic_controls(
                         modal, _MODAL_DISMISS_PATTERN, _MODAL_DISMISS_SELECTOR
@@ -1300,6 +1496,64 @@ def _ieee_selected_institution_available(page) -> bool:
     return False
 
 
+def _has_visible_pdf_control(page) -> bool:
+    # A silent remembered session can add citation_pdf_url without changing
+    # the article URL. This is evidence to retry delivery, not verification.
+    try:
+        metadata = page.locator('meta[name="citation_pdf_url"]')
+        if metadata.count() and metadata.first.get_attribute("content"):
+            return True
+    except Exception:
+        pass
+    try:
+        controls = _semantic_controls(
+            page, _SEMANTIC_PDF_CONTROL, _PDF_LINK_CONTROL_SELECTOR
+        )
+        return any(
+            controls.nth(i).is_visible()
+            and not _PURCHASE_CONTROL.search(_control_semantics(controls.nth(i)))
+            for i in range(min(controls.count(), 12))
+        )
+    except Exception:
+        return False
+
+
+def _reader_login_control(page):
+    """Find a visible login action, including branded labels, without buying."""
+    pattern = re.compile(r"\b(?:log\s*in|sign\s*in|login)\b|登录", re.I)
+    # Actual links precede header dropdowns when both are available.
+    for role in ("link", "button"):
+        try:
+            controls = page.get_by_role(role, name=pattern)
+            for index in range(min(controls.count(), 12)):
+                control = controls.nth(index)
+                if not control.is_visible() or _PURCHASE_CONTROL.search(
+                    _control_semantics(control)
+                ):
+                    continue
+                if role == "link":
+                    href = control.get_attribute("href", timeout=500)
+                    target = normalize_derived_url(href or "", base_url=page.url)
+                    if not target:
+                        continue
+                    validate_browser_network_url(target)
+                return control
+        except Exception:
+            continue
+    return None
+
+
+def _click_reader_login_link(page) -> bool:
+    control = _reader_login_control(page)
+    if control is None:
+        return False
+    try:
+        control.click(timeout=5000)
+        return True
+    except Exception:
+        return False
+
+
 def _resolve_external_auth_page(
     page,
     *,
@@ -1307,6 +1561,10 @@ def _resolve_external_auth_page(
     config: BrowserAccessConfig,
     context=None,
     existing_page_ids: set[int] | None = None,
+    origin_url: str | None = None,
+    origin_pdf_control: bool = False,
+    completion_check=None,
+    returned_pages: list | None = None,
 ) -> tuple[ChallengeReport, tuple[ChallengeReport, ...], bool]:
     """Track an institutional handoff through a stable return to the publisher.
 
@@ -1322,32 +1580,57 @@ def _resolve_external_auth_page(
     )
     return_target = None
     return_observations = 0
+    authentication_observed = origin_url is None
 
     def confirm_return(candidate, report):
-        nonlocal return_target, return_observations
+        nonlocal return_target, return_observations, authentication_observed
         report = _auth_wait_report(
             candidate, report, return_host=source_host, authentication_started=True
         )
         if report.kind != ChallengeKind.NONE:
+            authentication_observed = (
+                authentication_observed or report.kind in _AUTH_KINDS
+            )
             return_target = None
             return_observations = 0
             return report, False
+        unchanged_article = (
+            not authentication_observed
+            and str(candidate.url) == origin_url
+            and (origin_pdf_control or not _has_visible_pdf_control(candidate))
+        )
         target = (id(candidate), str(candidate.url))
         if target != return_target:
             return_observations = 0
             return_target = target
         return_observations += 1
-        return (report, True) if return_observations >= 4 else (fallback, False)
+        if unchanged_article and return_observations >= 4:
+            # A no-op institution button is not an authentication gate. End the
+            # handoff attempt without asserting successful login or delivery;
+            # the caller can resume its bounded file acquisition attempt.
+            return ChallengeReport(ChallengeKind.NONE, (_HANDOFF_NOT_STARTED,)), True
+        if return_observations >= 4:
+            if returned_pages is not None:
+                returned_pages.append(candidate)
+            return report, True
+        return fallback, False
 
     def observe() -> tuple[ChallengeReport, bool]:
-        nonlocal return_target, return_observations
+        nonlocal return_target, return_observations, authentication_observed
+        if completion_check is not None and completion_check():
+            return ChallengeReport(
+                kind=ChallengeKind.NONE,
+                evidence=(
+                    "Verified target PDF delivered during institutional handoff",
+                ),
+            ), True
         # Some IdPs leave the original redirect tab open after completing SSO
         # in another tab. A newly opened usable publisher tab is sufficient to
         # retry the article; the normal PDF validation still decides success.
         if context is not None and existing_page_ids is not None:
             try:
                 for candidate in context.pages:
-                    if candidate is page or id(candidate) in existing_page_ids:
+                    if candidate is page:
                         continue
                     if candidate.is_closed():
                         continue
@@ -1355,6 +1638,26 @@ def _resolve_external_auth_page(
                     candidate_host = (urlsplit(candidate_url).hostname or "").lower()
                     if candidate_host != source_host:
                         continue
+                    if id(candidate) in existing_page_ids:
+                        # A reader can finish login in an already-open copy of
+                        # this article. A clear tab on the same publisher alone
+                        # is insufficient: require the same article route and a
+                        # visible PDF control before resuming delivery.
+                        if not origin_url:
+                            continue
+                        origin_path = re.sub(
+                            r"/(?:e?pdf)/?$", "", urlsplit(origin_url).path
+                        ).rstrip("/")
+                        candidate_path = re.sub(
+                            r"/(?:e?pdf)/?$", "", urlsplit(candidate_url).path
+                        ).rstrip("/")
+                        if (
+                            origin_path != candidate_path
+                            or urlsplit(origin_url).query
+                            != urlsplit(candidate_url).query
+                            or not _has_visible_pdf_control(candidate)
+                        ):
+                            continue
                     candidate_report = _report_for_page(candidate)
                     if (
                         candidate_report.kind == ChallengeKind.NONE
@@ -1390,6 +1693,8 @@ def _resolve_external_auth_page(
             except Exception:
                 pass
         report = _report_for_page(page)
+        if current_host != source_host or report.kind in _AUTH_KINDS:
+            authentication_observed = True
         # DOM reads pump browser events. The IdP redirect can happen between
         # reading the old publisher URL and classifying the new document.
         if str(page.url) != current_url:
@@ -1407,6 +1712,15 @@ def _resolve_external_auth_page(
 
     report, completed = observe()
     _append_report(history, report)
+    # Retry technical observation failures without presenting them as login.
+    for _ in range(2):
+        if completed or _OBSERVATION_UNAVAILABLE not in report.evidence:
+            break
+        page.wait_for_timeout(config.poll_interval * 1000)
+        report, completed = observe()
+        _append_report(history, report)
+    if _OBSERVATION_UNAVAILABLE in report.evidence:
+        return report, tuple(history), False
     # A remembered institution may have activated without any user action.
     # Briefly confirm that already-clear return even in non-interactive mode;
     # this is page stabilization, not permission to wait through a new login.
@@ -1433,6 +1747,7 @@ def _resolve_external_auth_page(
         callback_url = redact_url_for_record(getattr(page, "url", "")) or ""
         config.interaction_callback(report, callback_url)
 
+    failed_observations = 0
     deadline = (
         None
         if config.wait_for_interaction
@@ -1459,6 +1774,12 @@ def _resolve_external_auth_page(
 
         report, completed = observe()
         _append_report(history, report)
+        if _OBSERVATION_UNAVAILABLE in report.evidence:
+            failed_observations += 1
+            if failed_observations >= 3:
+                return report, tuple(history), True
+        else:
+            failed_observations = 0
         if completed or report.kind in {
             ChallengeKind.ENTITLEMENT,
             ChallengeKind.ACCESS_DENIED,
@@ -1472,6 +1793,7 @@ def _run_institution_handoff(
     page,
     *,
     config: BrowserAccessConfig,
+    completion_check=None,
 ) -> tuple[bool, tuple[ChallengeReport, ...], bool, ChallengeReport]:
     """Use one explicit institution-access control, then observe legitimate auth."""
 
@@ -1484,8 +1806,13 @@ def _run_institution_handoff(
     except Exception:
         source_host = ""
     existing_page_ids = {id(open_page) for open_page in context.pages}
+    origin_url = str(page.url)
+    origin_pdf_control = _has_visible_pdf_control(page)
     ieee_selected_institution = _ieee_selected_institution_available(page)
-    if not _click_semantic_institution_control(page):
+    purchase_login = _PURCHASE_LOGIN_OPTION in boundary.evidence
+    if not _click_semantic_institution_control(page) and not (
+        purchase_login and _click_reader_login_link(page)
+    ):
         return False, (), False, ChallengeReport(kind=ChallengeKind.NONE)
 
     try:
@@ -1498,6 +1825,25 @@ def _run_institution_handoff(
         for popup in context.pages
         if id(popup) not in existing_page_ids and popup is not page
     ][:4]
+    if (
+        not new_pages
+        and str(page.url) == origin_url
+        and _report_for_page(page).kind == ChallengeKind.NONE
+        and not ieee_selected_institution
+        and (origin_pdf_control or not _has_visible_pdf_control(page))
+        and _click_reader_login_link(page)
+    ):
+        # Follow only the visible publisher login link, never a constructed
+        # identity-provider URL or credentials. Login remains a human handoff.
+        try:
+            page.wait_for_timeout(1000)
+        except Exception:
+            pass
+        new_pages = [
+            popup
+            for popup in context.pages
+            if id(popup) not in existing_page_ids and popup is not page
+        ][:4]
     if ieee_selected_institution and not new_pages:
         try:
             current_host = (urlsplit(page.url).hostname or "").lower()
@@ -1525,13 +1871,38 @@ def _run_institution_handoff(
         # misses that subsequent IdP transition and lets a plain login/loading
         # document clear the generic challenge wait. Track return-to-publisher
         # for the entire handoff, including initially same-origin selections.
+        returned_pages: list = []
         report, observed, used = _resolve_external_auth_page(
             auth_page,
             source_host=source_host,
             config=config,
             context=context,
             existing_page_ids=existing_page_ids,
+            origin_url=None if ieee_selected_institution else origin_url,
+            origin_pdf_control=origin_pdf_control,
+            returned_pages=returned_pages,
+            **(
+                {"completion_check": completion_check}
+                if completion_check is not None
+                else {}
+            ),
         )
+        if report.kind == ChallengeKind.NONE and returned_pages:
+            returned_page = returned_pages[-1]
+            if returned_page is not page:
+                # Resume the owned working tab at the observed return URL.
+                # Otherwise retrying the stale IdP tab starts another login wait.
+                target_url = validate_browser_network_url(str(returned_page.url))
+                try:
+                    page.goto(
+                        target_url,
+                        wait_until="domcontentloaded",
+                        timeout=config.navigation_timeout * 1000,
+                    )
+                except Exception:
+                    # The subsequent ordinary route still observes the page,
+                    # captures any attachment and verifies document identity.
+                    pass
         auth_page_closed = False
         if auth_page is not page:
             try:
@@ -1565,6 +1936,8 @@ def _run_institution_handoff(
 
 
 def _status_from_challenge(report: ChallengeReport) -> BrowserAttemptStatus:
+    if _OBSERVATION_UNAVAILABLE in report.evidence:
+        return BrowserAttemptStatus.RETRIEVAL_FAILED
     if report.kind == ChallengeKind.ENTITLEMENT:
         return BrowserAttemptStatus.ENTITLEMENT_REQUIRED
     if report.kind == ChallengeKind.ACCESS_DENIED:
@@ -1615,6 +1988,16 @@ def _response_is_pdf_candidate(response) -> bool:
         return False
 
 
+def _is_repository_route(source: FullTextCandidate, page) -> bool:
+    # Redirect/attached-page candidates can inherit a resolver's or publisher's
+    # type. Prefer a known repository URL over that inherited provider metadata.
+    return (
+        refine_host_type(source.url, source.host_type) == HostType.REPOSITORY
+        or refine_host_type(str(getattr(page, "url", "")), HostType.UNKNOWN)
+        == HostType.REPOSITORY
+    )
+
+
 def _observe_pdf_popups(
     context,
     *,
@@ -1624,6 +2007,7 @@ def _observe_pdf_popups(
     expected_title: str | None,
     config: BrowserAccessConfig,
     return_host: str | None = None,
+    completion_check=None,
 ) -> tuple[list[FullTextCandidate], list[ChallengeReport], bool]:
     """Observe popup access and PDF URLs; the route owns requests and cleanup."""
     candidates: list[FullTextCandidate] = []
@@ -1643,11 +2027,25 @@ def _observe_pdf_popups(
         except Exception:
             pass
         report, observed, used = _resolve_page_challenge(
-            popup, config=config, return_host=return_host
+            popup,
+            config=config,
+            return_host=return_host,
+            **(
+                {"completion_check": completion_check}
+                if completion_check is not None
+                else {}
+            ),
+            **(
+                {"allow_authentication": False}
+                if _is_repository_route(source, popup)
+                else {}
+            ),
         )
         for item in observed:
             _append_report(challenges, item)
         interaction_used = interaction_used or used
+        if completion_check is not None and completion_check():
+            return candidates, challenges, interaction_used
         if report.kind != ChallengeKind.NONE:
             continue
 
@@ -1694,6 +2092,7 @@ def attempt_browser_route(
     _navigate_source: bool = True,
     _browser_native_only: bool = False,
     _native_download_capture=None,
+    _navigation_referrer: str | None = None,
 ) -> BrowserAccessAttempt:
     # A control-triggered download must stay captured through authentication
     # and finalization, with cleanup on every return and exception path.
@@ -1713,6 +2112,7 @@ def attempt_browser_route(
             _navigate_source=_navigate_source,
             _browser_native_only=_browser_native_only,
             _native_download_capture=_native_download_capture,
+            _navigation_referrer=_navigation_referrer,
             _capture_scope=capture_scope,
         )
 
@@ -1733,6 +2133,7 @@ def _attempt_browser_route(
     _navigate_source: bool = True,
     _browser_native_only: bool = False,
     _native_download_capture=None,
+    _navigation_referrer: str | None = None,
     _capture_scope,
 ) -> BrowserAccessAttempt:
     started_at = time.perf_counter()
@@ -1749,6 +2150,65 @@ def _attempt_browser_route(
     interaction_used = False
     requested_http_urls: set[str] = set()
     control_capture = None
+    failed_native_candidate: FullTextCandidate | None = None
+
+    def save_current_pdf_viewer(target_page=None) -> BrowserFileAttempt | None:
+        """Validate delivery from the existing native viewer, without navigation."""
+        nonlocal failed_native_candidate
+        viewer_page = page if target_page is None else target_page
+        try:
+            viewer_save = _trigger_pdf_viewer_save(
+                context,
+                viewer_page,
+                doi=source.doi,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                timeout=config.request_timeout,
+                max_bytes=config.max_bytes,
+            )
+        except NativeViewerDownloadError as exc:
+            candidate = source
+            if exc.url and is_pdf_document_url(exc.url):
+                try:
+                    candidate = _candidate_for_url(source, exc.url)
+                    failed_native_candidate = candidate
+                except ValueError:
+                    pass
+            file_attempts.append(
+                BrowserFileAttempt(
+                    candidate=candidate,
+                    source_page_url=viewer_page.url,
+                    method="browser_viewer_save",
+                    error=str(exc),
+                )
+            )
+            return None
+        if viewer_save is None:
+            return None
+        saved_path, staging_dir = viewer_save
+        try:
+            attempt = _download_to_file_attempt(
+                _LocalBrowserDownload(saved_path, viewer_page.url),
+                parent=source,
+                source_page_url=viewer_page.url,
+                output_dir=output_dir,
+                expected_title=expected_title,
+                config=config,
+            )
+            attempt = replace(attempt, method="browser_viewer_save")
+            file_attempts.append(attempt)
+            if (
+                attempt.result is not None
+                and attempt.result.status == AcquisitionStatus.VERIFIED
+            ):
+                return attempt
+            return None
+        finally:
+            saved_path.unlink(missing_ok=True)
+            try:
+                staging_dir.rmdir()
+            except OSError:
+                pass
 
     def finish_route(
         status: BrowserAttemptStatus,
@@ -1758,6 +2218,34 @@ def _attempt_browser_route(
         error: str | None = None,
     ) -> BrowserAccessAttempt:
         """One result boundary preserves every delivery and access observation."""
+        if (
+            status == BrowserAttemptStatus.RETRIEVAL_FAILED
+            and _OBSERVATION_UNAVAILABLE in evidence
+        ):
+            # An unreadable embedded document is neither a confirmed login nor
+            # proof that delivery failed. A matching, already loaded native PDF
+            # may still be saved. Keep the UNKNOWN observation in history and
+            # require the ordinary PDF/identity/role gate before success.
+            if save_current_pdf_viewer() is not None:
+                status = BrowserAttemptStatus.VERIFIED
+                evidence = (
+                    *evidence,
+                    "Verified native PDF despite unavailable DOM observation",
+                )
+            elif failed_native_candidate is not None and not _browser_native_only:
+                return recover_pdf_endpoint(failed_native_candidate)
+        if (
+            _is_repository_route(source, page)
+            and status == BrowserAttemptStatus.INTERACTION_REQUIRED
+            and challenge_history
+            and challenge_history[-1].kind in _AUTH_KINDS
+        ):
+            status = BrowserAttemptStatus.AUTH_REQUIRED
+            evidence = (
+                "Repository account authentication required; not publisher institutional access. "
+                "Automatic acquisition continues with other sources without requesting repository credentials.",
+                *evidence,
+            )
         return BrowserAccessAttempt(
             source_candidate=source,
             final_url=final_url,
@@ -1871,6 +2359,7 @@ def _attempt_browser_route(
                 _browser_native_only=True,
                 _allow_runtime_pdf_handoff=False,
                 _native_download_capture=capture,
+                _navigation_referrer=str(page.url),
             )
         finally:
             capture.close()
@@ -1936,6 +2425,9 @@ def _attempt_browser_route(
 
     def check_verified_delivery() -> bool:
         nonlocal verified_during_wait
+        if verified_during_wait is not None:
+            return True
+        sync_session_events()
         delivered = None
         if _native_download_capture is not None and _native_download_capture.started:
             saved = _native_download_capture.wait(page, config.request_timeout)
@@ -1981,7 +2473,7 @@ def _attempt_browser_route(
     def run_institution_handoff_and_retry() -> BrowserAccessAttempt | None:
         nonlocal interaction_used
 
-        if not _allow_access_handoff:
+        if not _allow_access_handoff or _is_repository_route(source, page):
             return None
 
         (
@@ -1993,6 +2485,7 @@ def _attempt_browser_route(
             context,
             page,
             config=config,
+            completion_check=check_verified_delivery,
         )
         if not access_clicked:
             return None
@@ -2000,6 +2493,14 @@ def _attempt_browser_route(
         for report in access_reports:
             _append_report(challenge_history, report)
         interaction_used = interaction_used or access_interaction_used
+        if verified_during_wait is not None:
+            return finish_route(
+                BrowserAttemptStatus.VERIFIED,
+                final_url=page.url,
+                evidence=(
+                    "Verified target PDF delivered during institutional handoff",
+                ),
+            )
 
         if access_final.kind != ChallengeKind.NONE:
             return finish_route(
@@ -2068,7 +2569,11 @@ def _attempt_browser_route(
             candidates_considered=len(merged_file_attempts),
             interaction_used=interaction_used or retry.interaction_used,
             evidence=(
-                "Institutional access handoff completed; current browser page resumed",
+                (
+                    "Institution control opened no authentication flow; file acquisition retried"
+                    if _HANDOFF_NOT_STARTED in access_final.evidence
+                    else "Institutional access handoff completed; current browser page resumed"
+                ),
                 *retry.evidence,
             ),
             error=retry.error,
@@ -2152,6 +2657,11 @@ def _attempt_browser_route(
                 safe_source_url,
                 wait_until="domcontentloaded",
                 timeout=config.navigation_timeout * 1000,
+                **(
+                    {"referer": validate_browser_network_url(_navigation_referrer)}
+                    if _navigation_referrer
+                    else {}
+                ),
             )
         except Exception as exc:
             navigation_error = exc
@@ -2260,14 +2770,25 @@ def _attempt_browser_route(
         _wait_for_ieee_article_controls(page)
         initial_report = _report_for_page(page)
     _append_report(challenge_history, initial_report)
-    if initial_report.kind == ChallengeKind.SSO:
+    if (
+        initial_report.kind == ChallengeKind.SSO
+        or _PURCHASE_LOGIN_OPTION in initial_report.evidence
+    ):
         handoff_result = run_institution_handoff_and_retry()
         if handoff_result is not None:
             return handoff_result
 
     if _native_download_capture is None:
         final_report, observed, used = _resolve_page_challenge(
-            page, config=config, return_host=challenge_return_host
+            page,
+            config=config,
+            completion_check=check_verified_delivery,
+            return_host=challenge_return_host,
+            **(
+                {"allow_authentication": False}
+                if _is_repository_route(source, page)
+                else {}
+            ),
         )
     else:
         final_report, observed, used = _resolve_page_challenge(
@@ -2275,6 +2796,11 @@ def _attempt_browser_route(
             config=config,
             completion_check=check_verified_delivery,
             return_host=challenge_return_host,
+            **(
+                {"allow_authentication": False}
+                if _is_repository_route(source, page)
+                else {}
+            ),
         )
     for report in observed:
         _append_report(challenge_history, report)
@@ -2416,45 +2942,17 @@ def _attempt_browser_route(
     # Chromium's built-in PDF webview keeps its Save control outside the normal
     # page/frame DOM. In an attached real browser, invoke that native control
     # through its isolated DevTools target and validate the resulting file.
-    viewer_save = _trigger_pdf_viewer_save(
-        context,
-        page,
-        doi=source.doi,
-        output_dir=output_dir,
-        expected_title=expected_title,
-        timeout=config.request_timeout,
-        max_bytes=config.max_bytes,
-    )
-    if viewer_save is not None:
-        saved_path, staging_dir = viewer_save
-        try:
-            viewer_attempt = _download_to_file_attempt(
-                _LocalBrowserDownload(saved_path, page.url),
-                parent=source,
-                source_page_url=page.url,
-                output_dir=output_dir,
-                expected_title=expected_title,
-                config=config,
-            )
-            viewer_attempt = replace(viewer_attempt, method="browser_viewer_save")
-            file_attempts.append(viewer_attempt)
-            if (
-                viewer_attempt.result is not None
-                and viewer_attempt.result.status == AcquisitionStatus.VERIFIED
-            ):
-                return finish_route(
-                    BrowserAttemptStatus.VERIFIED,
-                    final_url=page.url,
-                    evidence=(
-                        "Verified after automatic save from Chromium PDF viewer",
-                    ),
-                )
-        finally:
-            saved_path.unlink(missing_ok=True)
-            try:
-                staging_dir.rmdir()
-            except OSError:
-                pass
+    if save_current_pdf_viewer() is not None:
+        return finish_route(
+            BrowserAttemptStatus.VERIFIED,
+            final_url=page.url,
+            evidence=("Verified after automatic save from Chromium PDF viewer",),
+        )
+    if failed_native_candidate is not None and not _browser_native_only:
+        # Save can re-request a PDF URL that has its own authentication gate.
+        # Visit that observed endpoint once through the usual visible-browser
+        # handoff. The native-only child route cannot recurse or replay HTTP.
+        return recover_pdf_endpoint(failed_native_candidate)
 
     for response in pending_browser_responses():
         attempt = _browser_response_to_file_attempt(
@@ -2648,10 +3146,17 @@ def _attempt_browser_route(
             expected_title=expected_title,
             config=config,
             return_host=challenge_return_host,
+            completion_check=check_verified_delivery,
         )
         for report in popup_challenges:
             _append_report(challenge_history, report)
         interaction_used = interaction_used or popup_interaction_used
+        if verified_during_wait is not None:
+            return finish_route(
+                BrowserAttemptStatus.VERIFIED,
+                final_url=page.url,
+                evidence=("Verified target PDF delivered during popup interaction",),
+            )
         sync_session_events()
         popup_pages = [
             popup
@@ -2679,6 +3184,24 @@ def _attempt_browser_route(
                 ):
                     response_verified = attempt.result
                     break
+            if response_verified is None:
+                for popup in popup_pages:
+                    if popup.is_closed():
+                        continue
+                    popup_report = _auth_wait_report(
+                        popup,
+                        _report_for_page(popup),
+                        return_host=challenge_return_host,
+                        authentication_started=any(
+                            item.kind in _AUTH_KINDS for item in popup_challenges
+                        ),
+                    )
+                    if popup_report.kind != ChallengeKind.NONE:
+                        continue
+                    saved = save_current_pdf_viewer(popup)
+                    if saved is not None:
+                        response_verified = saved.result
+                        break
         finally:
             for popup in popup_pages:
                 try:
@@ -2702,7 +3225,7 @@ def _attempt_browser_route(
             return finish_route(
                 BrowserAttemptStatus.VERIFIED,
                 final_url=page.url,
-                evidence=("PDF popup yielded live browser response bytes",),
+                evidence=("PDF popup delivered a verified file before closing",),
             )
 
         for popup in popup_pages:
@@ -2725,12 +3248,39 @@ def _attempt_browser_route(
                 )
 
         final, observed, used = _resolve_page_challenge(
-            page, config=config, return_host=challenge_return_host
+            page,
+            config=config,
+            completion_check=check_verified_delivery,
+            return_host=challenge_return_host,
+            **(
+                {"allow_authentication": False}
+                if _is_repository_route(source, page)
+                else {}
+            ),
         )
         for report in observed:
             _append_report(challenge_history, report)
         interaction_used = interaction_used or used
+        if verified_during_wait is not None:
+            return finish_route(
+                BrowserAttemptStatus.VERIFIED,
+                final_url=page.url,
+                evidence=(
+                    "Verified target PDF delivered during PDF-control interaction",
+                ),
+            )
         if final.kind == ChallengeKind.NONE:
+            saved = save_current_pdf_viewer()
+            if saved is not None:
+                return finish_route(
+                    BrowserAttemptStatus.VERIFIED,
+                    final_url=page.url,
+                    evidence=(
+                        "Saved the native PDF viewer opened by the article control",
+                    ),
+                )
+            if failed_native_candidate is not None and not _browser_native_only:
+                return recover_pdf_endpoint(failed_native_candidate)
             for response in pending_browser_responses():
                 attempt = _browser_response_to_file_attempt(
                     response,
@@ -2817,6 +3367,7 @@ def _attempt_browser_route(
             _allow_runtime_pdf_handoff=False,
             _navigate_source=True,
             _browser_native_only=_browser_native_only,
+            _navigation_referrer=str(page.url),
         )
         merged_history = list(challenge_history)
         for report in runtime_attempt.challenge_history:

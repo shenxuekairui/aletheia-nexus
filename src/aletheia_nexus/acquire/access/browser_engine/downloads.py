@@ -122,6 +122,16 @@ class CdpDownloadCapture:
     def started(self) -> bool:
         return bool(self._transfers)
 
+    @property
+    def cancelled_url(self) -> str | None:
+        """Return only an unambiguous URL whose observed transfers all failed."""
+        if not self._transfers or any(
+            transfer.state != "canceled" for transfer in self._transfers.values()
+        ):
+            return None
+        urls = {transfer.url for transfer in self._transfers.values() if transfer.url}
+        return next(iter(urls)) if len(urls) == 1 else None
+
     def pending_for(self, url: str) -> bool:
         transfers = [t for t in self._transfers.values() if t.url == url]
         # No correlated native event yet is uncertain, not evidence of failure.
@@ -147,9 +157,17 @@ class CdpDownloadCapture:
             transfer.state = "canceled"
 
     def wait(
-        self, page, timeout: float, *, expected_url: str | None = None
+        self,
+        page,
+        timeout: float,
+        *,
+        expected_url: str | None = None,
+        wait_for_start: bool = False,
     ) -> tuple[Path, str] | None:
-        if not self.active or not self.started:
+        # A viewer click can acknowledge before downloadWillBegin is delivered.
+        # Only an explicit save action opts into waiting for that first event;
+        # passive delivery checks must still return immediately when idle.
+        if not self.active or (not self.started and not wait_for_start):
             return None
         deadline = time.monotonic() + max(0.0, timeout)
         while True:

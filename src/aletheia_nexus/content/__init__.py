@@ -29,6 +29,11 @@ from aletheia_nexus.content.export import (
     write_ai_export,
 )
 from aletheia_nexus.content.gate import ParserInput, validate_parser_input
+from aletheia_nexus.content.judgment import (
+    EvidenceJudge,
+    ReadingDecision,
+    assess_reading,
+)
 from aletheia_nexus.content.parser import ParserConfig
 from aletheia_nexus.content.schema import (
     PARSED_DOCUMENT_SCHEMA,
@@ -38,6 +43,9 @@ from aletheia_nexus.content.schema import (
 from aletheia_nexus.content.service import ParseResult, parse_document
 
 __all__ = [
+    "EvidenceJudge",
+    "ReadingDecision",
+    "assess_reading",
     "ParseResult",
     "AdaptiveOcrBackend",
     "AdaptiveOcrConfig",

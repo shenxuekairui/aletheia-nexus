@@ -18,6 +18,7 @@ from aletheia_nexus.acquire.access.models import (
     ElsevierAccessStatus,
     MaximizedAcquisitionStatus,
 )
+from aletheia_nexus.acquire.discovery import crossref as crossref_discovery
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
     DiscoveryResult,
@@ -39,6 +40,17 @@ from aletheia_nexus.acquire.fulltext.resolution.models import (
     RetrievedPage,
     RouteResolutionResult,
 )
+from aletheia_nexus.acquire.metadata.exceptions import MetadataNotFoundError
+
+
+@pytest.fixture(autouse=True)
+def offline_crossref_fallback(monkeypatch):
+    """Legacy route fixtures do not make real optional metadata requests."""
+
+    def not_indexed(*args, **kwargs):
+        raise MetadataNotFoundError("No Crossref record in this offline fixture")
+
+    monkeypatch.setattr(crossref_discovery, "get_crossref_metadata", not_indexed)
 
 
 def _candidate(
@@ -1124,6 +1136,44 @@ def test_all_browser_internal_failures_surface_error():
 
     assert status == MaximizedAcquisitionStatus.ERROR
     assert "browser/navigation errors" in message.lower()
+
+
+@pytest.mark.parametrize(
+    "terminal,expected",
+    [
+        (
+            BrowserAttemptStatus.NAVIGATION_ERROR,
+            MaximizedAcquisitionStatus.RETRIEVED_UNVERIFIED,
+        ),
+        (
+            BrowserAttemptStatus.RETRIEVAL_FAILED,
+            MaximizedAcquisitionStatus.RETRIEVED_UNVERIFIED,
+        ),
+        (
+            BrowserAttemptStatus.INTERACTION_REQUIRED,
+            MaximizedAcquisitionStatus.INTERACTION_REQUIRED,
+        ),
+        (BrowserAttemptStatus.ACCESS_DENIED, MaximizedAcquisitionStatus.ACCESS_DENIED),
+    ],
+)
+def test_file_evidence_survives_errors_without_hiding_access_challenges(
+    terminal, expected, tmp_path
+):
+    from aletheia_nexus.acquire.access.models import BrowserFileAttempt
+
+    result = AcquisitionResult(
+        candidate=_candidate(),
+        status=AcquisitionStatus.RETRIEVED_UNVERIFIED,
+        file_path=tmp_path / "retained.pdf",
+    )
+    attempt = BrowserAccessAttempt(
+        source_candidate=_candidate(),
+        final_url=None,
+        status=terminal,
+        file_attempts=(BrowserFileAttempt(candidate=_candidate(), result=result),),
+    )
+    status, _ = service._final_status_from_browser(_base(), (attempt,))
+    assert status == expected
 
 
 def test_browser_config_type_error_precedes_base_acquisition(monkeypatch, tmp_path):

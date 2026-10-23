@@ -112,6 +112,7 @@ def test_sparse_page_is_explicitly_partial(tmp_path):
     assert {item["code"] for item in result.document["warnings"]} == {
         "PAGE_WITHOUT_TEXT",
         "SPARSE_TEXT",
+        "IMAGE_DOMINANT_PAGE",
     }
 
 

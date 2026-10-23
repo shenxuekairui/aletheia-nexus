@@ -12,9 +12,8 @@ from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionResult,
     AcquisitionStatus,
-    DocumentRole,
-    IdentityStatus,
     RetrievedResource,
+    classify_retrieved,
 )
 from aletheia_nexus.acquire.fulltext.storage import promote_resource, write_json_sidecar
 from aletheia_nexus.acquire.fulltext.validation import inspect_pdf
@@ -63,19 +62,6 @@ def _sanitize_access_details(
     raise TypeError(
         "access_details values must be JSON-compatible primitives, lists, or dicts"
     )
-
-
-def _classify(
-    identity_status: IdentityStatus,
-    role: DocumentRole,
-) -> AcquisitionStatus:
-    if role == DocumentRole.SUPPLEMENT:
-        return AcquisitionStatus.SUPPLEMENT
-    if identity_status == IdentityStatus.MATCH and role == DocumentRole.ARTICLE:
-        return AcquisitionStatus.VERIFIED
-    if identity_status == IdentityStatus.MISMATCH:
-        return AcquisitionStatus.MISMATCH
-    return AcquisitionStatus.RETRIEVED_UNVERIFIED
 
 
 def _delete_temp(resource: RetrievedResource) -> RetrievedResource:
@@ -154,7 +140,7 @@ def finalize_access_resource(
                 inspection=inspection,
                 source_url=resource.final_url,
             )
-        status = _classify(identity.status, identity.document_role)
+        status = classify_retrieved(identity.status, identity.document_role)
         should_persist = status == AcquisitionStatus.VERIFIED or keep_unverified
 
         sidecar_path: Path | None = None

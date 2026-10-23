@@ -18,6 +18,12 @@ def test_cnki_review_retention_must_be_boolean():
         browser_profile_dir(BrowserAccessConfig(cnki_keep_unverified="yes"))
 
 
+@pytest.mark.parametrize("interval", [-1, True, "5", None, float("nan"), float("inf")])
+def test_cnki_paper_interval_rejects_invalid_values(interval):
+    with pytest.raises(ValueError, match="cnki_paper_interval"):
+        browser_profile_dir(BrowserAccessConfig(cnki_paper_interval=interval))
+
+
 @pytest.mark.parametrize("name", ["../escape", ".", "..", "bad/name", ""])
 def test_browser_profile_name_rejects_unsafe_paths(tmp_path, name):
     config = BrowserAccessConfig(
@@ -53,6 +59,23 @@ def test_browser_proxy_choice_must_be_boolean(tmp_path):
         browser_profile_dir(
             BrowserAccessConfig(profile_root=tmp_path, use_system_proxy="yes")
         )
+
+
+@pytest.mark.parametrize(
+    "options,expected",
+    [
+        ({}, True),
+        ({"direct_connection": True}, False),
+        ({"use_system_proxy": True}, True),
+        ({"use_system_proxy": False}, False),
+    ],
+)
+def test_browser_network_default_and_explicit_legacy_options(
+    tmp_path, options, expected
+):
+    config = BrowserAccessConfig(profile_root=tmp_path, **options)
+    browser_profile_dir(config)
+    assert config.resolved_use_system_proxy is expected
 
 
 def test_headless_browser_rejects_interactive_handoff(tmp_path):

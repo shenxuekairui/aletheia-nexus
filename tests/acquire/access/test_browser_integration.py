@@ -50,6 +50,229 @@ def control_browser():
         instance.close()
 
 
+@pytest.mark.parametrize(
+    "hidden_attribute",
+    [
+        "hidden",
+        'style="display:none"',
+        'style="visibility:hidden"',
+        'aria-hidden="true"',
+    ],
+)
+def test_hidden_purchase_control_does_not_gate_an_entitled_article(
+    control_browser, hidden_attribute
+):
+    context = control_browser.new_context()
+    page = context.new_page()
+    context.route(
+        "**/*",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body=f"""
+        <title>Target article</title><header><a href="/login">Login</a></header>
+        <main>Full article text <a href="/article/target/pdf">PDF</a></main>
+        <div {hidden_attribute}><a title="Buy this article in print" href="/purchase">Print</a></div>
+    """,
+        ),
+    )
+    try:
+        page.goto("https://publisher.example/article/target")
+        assert browser_route._report_for_page(page).kind == ChallengeKind.NONE
+    finally:
+        context.close()
+
+
+def test_native_viewer_document_url_is_read_through_shadow_dom(control_browser):
+    page = control_browser.new_page()
+    try:
+        page.set_content("<pdf-viewer></pdf-viewer>")
+        expected = "https://cdn.example/target/main.pdf?signature=one"
+        page.evaluate(
+            """url => {
+          const root = document.querySelector('pdf-viewer').attachShadow({mode: 'open'});
+          const plugin = document.createElement('embed');
+          plugin.setAttribute('original-url', url);
+          root.appendChild(plugin);
+        }""",
+            expected,
+        )
+        assert page.evaluate(viewer._PDF_VIEWER_DOCUMENT_EXPRESSION) == expected
+        page.set_content('<embed src="https://cdn.example/unrelated/main.pdf">')
+        assert page.evaluate(viewer._PDF_VIEWER_DOCUMENT_EXPRESSION) is None
+    finally:
+        page.close()
+
+
+def test_inert_institution_widget_uses_visible_publisher_login(control_browser):
+    context = control_browser.new_context()
+    page = context.new_page()
+    visits = []
+
+    def respond(route):
+        visits.append(route.request.url)
+        if route.request.url.endswith("/article"):
+            html = '<title>Article</title><main>Article abstract and references</main><a href="javascript:;">Access through your institution</a><a href="/login">Log In</a>'
+        else:
+            html = '<title>Log In</title><label>Username</label><input><label>Password</label><input type="password">'
+        route.fulfill(content_type="text/html", body=html)
+
+    context.route("**/*", respond)
+    try:
+        page.goto("https://publisher.example/article")
+        clicked, history, used, final = browser_route._run_institution_handoff(
+            context,
+            page,
+            config=BrowserAccessConfig(interactive=False),
+        )
+        assert clicked and not used
+        assert final.kind == ChallengeKind.AUTHENTICATION
+        assert page.url == "https://publisher.example/login"
+        assert visits == [
+            "https://publisher.example/article",
+            "https://publisher.example/login",
+        ]
+        assert all(r.kind != ChallengeKind.NONE for r in history)
+    finally:
+        context.close()
+
+
+def test_logged_in_article_with_inert_institution_button_does_not_wait(control_browser):
+    context = control_browser.new_context()
+    page = context.new_page()
+    context.route(
+        "**/*",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body='<title>Research article</title><p>Full text access</p><main>Introduction. Experimental methods. Results.</main><a href="/document.pdf">View PDF</a><button>Access through your institution</button>',
+        ),
+    )
+    notices = []
+    try:
+        page.goto("https://publisher.example/article")
+        clicked, history, used, report = browser_route._run_institution_handoff(
+            context,
+            page,
+            config=BrowserAccessConfig(
+                interactive=True,
+                wait_for_interaction=True,
+                interaction_callback=lambda *args: notices.append(args),
+            ),
+        )
+        assert clicked and not used and not notices
+        assert report.kind == ChallengeKind.NONE
+        assert browser_route._HANDOFF_NOT_STARTED in report.evidence
+        assert history[-1] == report
+        assert page.url == "https://publisher.example/article"
+    finally:
+        context.close()
+
+
+def test_zero_size_modal_wrapper_still_allows_explicit_close(control_browser):
+    page = control_browser.new_page()
+    try:
+        page.set_content("""<button onclick="window.pdfClicked=true">View PDF</button>
+          <div class="js-react-modal" style="width:0;height:0;overflow:visible">
+            <div style="position:fixed;inset:0;background:white;z-index:100">
+              <p>Other users also viewed these articles</p>
+              <button aria-label="close window" onclick="this.parentElement.remove()">×</button>
+              <button onclick="window.wrongPdf=true">Download recommended PDFs</button>
+            </div>
+          </div>""")
+        assert not page.locator(".js-react-modal").is_visible()
+        assert browser_route._dismiss_blocking_modal(page)
+        assert browser_route._click_semantic_pdf_control(page)
+        assert page.evaluate("window.pdfClicked === true && !window.wrongPdf")
+    finally:
+        page.close()
+
+
+@pytest.mark.parametrize("visible", [True, False])
+def test_rendered_institution_frame_is_detected(control_browser, visible):
+    context = control_browser.new_context()
+    page = context.new_page()
+    context.route(
+        "https://idp.example/login",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body="<title>Choose your institution</title><p>Choose your institution</p>",
+        ),
+    )
+    try:
+        style = "" if visible else "display:none"
+        page.set_content(
+            f'<title>Article</title><p>Article abstract</p><iframe style="{style}" src="https://idp.example/login"></iframe>'
+        )
+        result = browser_route._report_for_page(page)
+        assert result.kind == (ChallengeKind.SSO if visible else ChallengeKind.NONE)
+    finally:
+        context.close()
+
+
+def test_repository_auth_redirect_does_not_block_publisher_recovery(
+    control_browser, tmp_path
+):
+    context = control_browser.new_context()
+    page = context.new_page()
+    notices = []
+    context.route(
+        "**/*",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body="<main>Scegli il metodo di autenticazione: Autenticazione Esterna Autenticazione IRIS</main>",
+        ),
+    )
+    try:
+        page.goto("https://repository.example/au/login")
+        source = FullTextCandidate(
+            doi="10.1000/test",
+            url="https://repository.example/paper",
+            provenance=(),
+            host_type=HostType.REPOSITORY,
+        )
+        result = browser_route.attempt_browser_route(
+            context,
+            page,
+            source=source,
+            output_dir=tmp_path,
+            expected_title="Article",
+            config=BrowserAccessConfig(
+                wait_for_interaction=True,
+                interaction_callback=lambda *args: notices.append(args),
+            ),
+            _navigate_source=False,
+            _browser_native_only=True,
+        )
+        assert result.status == BrowserAttemptStatus.AUTH_REQUIRED
+        assert not result.interaction_used and not notices
+        assert "not publisher institutional access" in result.evidence[0]
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("has_download", [False, True])
+def test_pdf_controls_skip_purchase_and_cart_actions(control_browser, has_download):
+    page = control_browser.new_page()
+    try:
+        page.set_content(
+            """<main>Article abstract</main>
+          <button onclick="window.purchased=true">Buy article PDF USD 39.95</button>
+          <a href="https://order.springer.com/public/cart?pdf=123" onclick="window.purchased=true;return false">PDF</a>
+          <button aria-label="Purchase PDF" onclick="window.purchased=true">View PDF</button>
+          <button onclick="window.purchased=true">购买 PDF</button>"""
+            + (
+                '<button onclick="window.downloaded=true">Download PDF</button>'
+                if has_download
+                else ""
+            )
+        )
+        assert browser_route._has_visible_pdf_control(page) is has_download
+        assert browser_route._click_semantic_pdf_control(page) is has_download
+        assert page.evaluate("Boolean(window.purchased)") is False
+        assert page.evaluate("Boolean(window.downloaded)") is has_download
+    finally:
+        page.close()
+
+
 @pytest.mark.parametrize("kind", ["pdf", "institution"])
 def test_hidden_duplicate_controls_do_not_delay_visible_entry(control_browser, kind):
     page = control_browser.new_page()
@@ -70,6 +293,102 @@ def test_hidden_duplicate_controls_do_not_delay_visible_entry(control_browser, k
         assert time.monotonic() - started < 5
     finally:
         page.close()
+
+
+@pytest.mark.parametrize("entry", ["initial", "control", "popup"])
+@pytest.mark.parametrize("valid_pdf", [True, False])
+def test_verified_delivery_releases_stale_login_wait(
+    control_browser, local_article_server, tmp_path, monkeypatch, entry, valid_pdf
+):
+    context = control_browser.new_context()
+    page = context.new_page()
+    responses, downloads, notices = [], [], []
+    browser._install_context_event_capture(
+        context,
+        pdf_responses=responses,
+        downloads=downloads,
+        snapshot_pdf_responses=True,
+        max_bytes=100000,
+    )
+    context.route(
+        "**/delivered.pdf",
+        lambda route: route.fulfill(
+            content_type="application/pdf",
+            body=_Handler.pdf_body if valid_pdf else b"%PDF-invalid",
+        ),
+    )
+    context.route(
+        "**/stale-login",
+        lambda route: route.fulfill(
+            content_type="text/html",
+            body="<title>Institutional login</title><p>Institutional login</p>",
+        ),
+    )
+    monkeypatch.setattr(browser_route, "validate_browser_network_url", lambda url: url)
+    monkeypatch.setattr(browser_route, "_install_browser_request_guard", lambda p: [])
+    monkeypatch.setattr(
+        browser_route, "_trigger_embedded_pdf_frame_fetch", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        browser_route, "_trigger_pdf_viewer_same_origin_fetch", lambda *a, **k: False
+    )
+    monkeypatch.setattr(browser_route, "_trigger_pdf_viewer_save", lambda *a, **k: None)
+    monkeypatch.setattr(browser_route, "derive_pdf_candidates", lambda **k: ())
+
+    def deliver(report, url):
+        notices.append(report.kind)
+        # The article's bytes arrive, but the login UI deliberately stays open.
+        page.evaluate("fetch('/delivered.pdf').then(r=>r.arrayBuffer()).then(()=>true)")
+
+    try:
+        page.goto(local_article_server + "/article")
+        page.evaluate("document.querySelector('meta[name=citation_pdf_url]').remove()")
+        if entry == "initial":
+            page.evaluate("document.body.innerHTML='<p>Institutional login</p>'")
+        elif entry == "control":
+            page.evaluate(
+                """() => {const b=document.createElement('button');b.textContent='Download PDF';b.onclick=()=>document.body.innerHTML='<p>Institutional login</p>';document.body.append(b);} """
+            )
+        else:
+            page.evaluate(
+                """() => {const b=document.createElement('button');b.textContent='Download PDF';b.onclick=()=>window.open('/stale-login');document.body.append(b);} """
+            )
+        result = browser_route.attempt_browser_route(
+            context,
+            page,
+            source=FullTextCandidate(
+                doi="10.1000/browser-integration",
+                url=local_article_server + "/article",
+                provenance=(),
+            ),
+            output_dir=tmp_path,
+            expected_title="Authenticated Browser Integration Article",
+            config=BrowserAccessConfig(
+                interactive=True,
+                wait_for_interaction=False,
+                interaction_timeout=1,
+                auto_challenge_grace=0,
+                poll_interval=0.05,
+                interaction_callback=deliver,
+                request_timeout=1,
+            ),
+            session_blocked_urls=[],
+            session_pdf_responses=responses,
+            session_downloads=downloads,
+            _navigate_source=False,
+        )
+        assert notices
+        if valid_pdf:
+            assert result.status == BrowserAttemptStatus.VERIFIED, result
+            assert result.result.file_path.read_bytes() == _Handler.pdf_body
+        else:
+            assert result.status == BrowserAttemptStatus.INTERACTION_REQUIRED, result
+            assert (
+                result.result is None
+                or result.result.status != AcquisitionStatus.VERIFIED
+            )
+    finally:
+        context.close()
 
 
 def test_same_tab_institution_choice_waits_for_late_idp_return(control_browser):
@@ -1563,7 +1882,11 @@ def test_pdf_endpoint_handoff_uses_visible_wait_then_native_delivery(
         max_bytes=100000,
     )
 
+    navigation_referrers = []
+
     def gate(route):
+        if route.request.is_navigation_request():
+            navigation_referrers.append(route.request.all_headers().get("referer"))
         if "fixture_verified=yes" in route.request.all_headers().get("cookie", ""):
             route.fulfill(
                 content_type="application/pdf",
@@ -1633,6 +1956,7 @@ def test_pdf_endpoint_handoff_uses_visible_wait_then_native_delivery(
             _navigate_source=False,
         )
         assert api_calls == [endpoint]
+        assert navigation_referrers[0] == local_article_server + "/article"
         if wait_for_user:
             assert notices and notices[0][0] == ChallengeKind.CAPTCHA
             assert result.status == BrowserAttemptStatus.VERIFIED, [

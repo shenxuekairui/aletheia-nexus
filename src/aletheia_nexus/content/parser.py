@@ -7,13 +7,15 @@ import json
 import math
 import re
 import statistics
-import unicodedata
 from dataclasses import dataclass, replace
-from difflib import SequenceMatcher
 
 from pypdf import PdfReader
 
-from aletheia_nexus.content.backends import ExtractionBackend, NativePdfBackend
+from aletheia_nexus.content.backends import ExtractionBackend, LayoutPdfBackend
+from aletheia_nexus.content.captions import (
+    _caption_match,
+    _deduplicate_caption_blocks,
+)
 from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.gate import ParserInput
 from aletheia_nexus.content.geometry import PageGeometry
@@ -24,14 +26,24 @@ from aletheia_nexus.content.models import (
     validate_page_layout,
 )
 from aletheia_nexus.content.pipeline import ParserPipeline
+from aletheia_nexus.content.ruled_tables import (
+    explicit_grid_cells,
+    prepare_ruled_tables,
+)
 from aletheia_nexus.content.schema import (
     PARSED_DOCUMENT_SCHEMA,
     compute_parsed_artifact_id,
 )
+from aletheia_nexus.content.table_layout import (
+    _aligned_table_fragments,
+    _prepare_table_lines,
+    _table_cells,
+    _table_local_warnings,
+)
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "2.5.0"
+PARSER_VERSION = "3.8.2"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -70,54 +82,24 @@ _AFFILIATION_HINT = re.compile(
 )
 _AFFILIATION_COUNTRY = re.compile(r";\s*[A-Z][\w -]+[.;]?$", re.UNICODE)
 _CITATION = re.compile(r"\[(\d+(?:\s*[-,]\s*\d+)*)\]")
-_CAPTION = re.compile(
-    r"^(?P<kind>fig(?:ure)?|table)\.?\s*"
-    r"(?P<label>(?:[A-Z]?\d+(?:[A-Za-z](?=$|\s|[,;:.|\-]))?"
-    r"|[IVXLCDM]+(?=$|\s|[,;:.|\-])))",
-    re.IGNORECASE,
-)
-_GLUED_TABLE_CAPTION = re.compile(
-    r"(?<=[a-z])(?P<kind>table)\s*(?P<label>\d+(?:[A-Za-z])?)(?=\s|$)",
-    re.IGNORECASE,
-)
-_CAPTION_MENTION = re.compile(
-    r"^(?:clearly\s+)?(?:show(?:s|ed)?|present(?:s|ed)?|illustrat(?:e|es|ed)|"
-    r"summari[sz](?:e|es|ed)|list(?:s|ed)?|represent(?:s|ed)?|provide(?:s|d)|"
-    r"depict(?:s|ed)?|demonstrat(?:e|es|ed)|compare(?:s|d)|report(?:s|ed)?|"
-    r"give(?:s)?|contain(?:s|ed)?|display(?:s|ed)?|indicat(?:e|es|ed)|"
-    r"plot(?:s|ted)?|highlight(?:s|ed)?|reveal(?:s|ed)?|correspond(?:s|ed)?|"
-    r"regard(?:s|ed|ing)?)\b",
-    re.IGNORECASE,
-)
-_CAPTION_PANEL_CITATION = re.compile(r"^\([A-Za-z0-9]+\)\s*\[\d")
-_CAPTION_PANEL = re.compile(r"^\([A-Za-z0-9]+\)\s*")
-_CAPTION_SUFFIX_MENTION = re.compile(r"^on\b", re.IGNORECASE)
-_CAPTION_JOINED_SUFFIX_MENTION = re.compile(r"^[A-Za-z]on\b", re.IGNORECASE)
-_CAPTION_CROSS_REFERENCE = re.compile(
-    r"^(?:\)|and\b|(?:figure\s+)?supplements?\s+\d+(?:[a-z]|\s*[–—-]\s*\d+)?"
-    r"(?:\s*[),]|\s*(?:and|for|in|into|provide|see)\b|\s*$)|"
-    r"(?:we|this|these|our)\b)",
-    re.IGNORECASE,
-)
-_CAPTION_PROSE_REFERENCE = re.compile(
-    r"\b(?:is shown as|shown in|see\s+(?:the\s+)?figure|required\s+\d|"
-    r"provide(?:s|d)?\s+(?:a\s+)?rigorous\s+validation)\b",
-    re.IGNORECASE,
-)
-_CAPTION_SENTENCE = re.compile(
-    r"^(?:the\b.*?\b(?:is|are|was|were|has|have)\b|"
-    r"(?:\S+\s+){0,3}(?:is|are|was|were)\b)",
-    re.IGNORECASE,
-)
-_CAPTION_CONTAMINATION = re.compile(
-    r"\b(?:be concluded|however|in addition|it\s*can)\b", re.IGNORECASE
-)
 _EQUATION = re.compile(r"(?:[=≈≤≥±∑∫√→←]|\b(?:sin|cos|log|exp)\s*\(|^[A-Za-z]\s*=)")
 _MATH_GLYPH = re.compile(r"[αβγδεϵζηθικλμνξοπρστυφχψωΓΔΘΛΞΠΣΦΨΩ]", re.UNICODE)
 _PAGE_LABEL = re.compile(
     r"^(?:[-–—]\s*)?\d+(?:\s*of\s*\d+)*(?:\s*[-–—])?$", re.IGNORECASE
 )
 _SEMANTIC_SECTIONS = {
+    "摘要": "abstract",
+    "引言": "introduction",
+    "实验": "methods",
+    "实验部分": "methods",
+    "试验方法": "methods",
+    "实验方法": "methods",
+    "材料与方法": "methods",
+    "结果与讨论": "results-discussion",
+    "结果和讨论": "results-discussion",
+    "结论": "conclusion",
+    "参考文献": "references",
+    "致谢": "acknowledgments",
     "abstract": "abstract",
     "introduction": "introduction",
     "background": "background",
@@ -216,11 +198,213 @@ class ParserConfig:
         return hashlib.sha256(encoded).hexdigest()
 
 
+def _associate_figure_labels(lines, objects, width, height):
+    """Keep explicitly printed percentage labels with their aligned categories.
+
+    This reads printed labels, never estimates bar heights or plot values.
+    Only a complete, unique set of spatial column matches is emitted. Original
+    fragments remain alternative evidence and derived associations stay flagged.
+    """
+    removed = set()
+    pairs = []
+    for obj in objects:
+        if obj.object_type != "image" or not obj.bbox:
+            continue
+        x0, y0, x1, y1 = (
+            obj.bbox[0] * width,
+            obj.bbox[1] * height,
+            obj.bbox[2] * width,
+            obj.bbox[3] * height,
+        )
+        values = [
+            line
+            for line in lines
+            if line.content_region not in {"ocr-alternative", "native-alternative"}
+            and re.fullmatch(r"[−+\-]?\d+(?:\.\d+)?\s*%", line.text.strip())
+            and x0 <= line.x0 < line.x1 <= x1
+            and y0 <= line.y0 <= y1
+        ]
+        values.sort(key=lambda line: (line.x0 + line.x1) / 2)
+        if len(values) < 3:
+            continue
+        centers = [(line.x0 + line.x1) / 2 for line in values]
+        if any(
+            b - a < max(line.font_size for line in values) * 2
+            for a, b in zip(centers, centers[1:])
+        ):
+            continue
+        labels = []
+        originals = []
+        for line in lines:
+            if (
+                line.content_region in {"ocr-alternative", "native-alternative"}
+                or not -line.font_size * 0.5 <= y0 - line.y1 <= line.font_size * 2
+                or line.x1 < centers[0]
+                or line.x0 > centers[-1]
+            ):
+                continue
+            for part in _aligned_table_fragments(line, values) or (line,):
+                labels.append(part)
+                originals.append(line)
+        matches = []
+        used = set()
+        for i, value in enumerate(values):
+            spacing = min(
+                (abs(c - centers[i]) for j, c in enumerate(centers) if j != i)
+            )
+            near = [
+                j
+                for j, label in enumerate(labels)
+                if abs((label.x0 + label.x1) / 2 - centers[i]) < spacing * 0.3
+            ]
+            if len(near) != 1 or near[0] in used:
+                break
+            used.add(near[0])
+            matches.append((value, labels[near[0]], originals[near[0]]))
+        if len(matches) != len(values):
+            continue
+        if (
+            max(label.y0 for _, label, _ in matches)
+            - min(label.y0 for _, label, _ in matches)
+            > max(label.font_size for _, label, _ in matches) * 0.6
+        ):
+            continue
+        for value, label, original in matches:
+            removed.update((id(value), id(original)))
+            pairs.append(
+                replace(
+                    value,
+                    text=f"{label.text}: {value.text}",
+                    x0=min(label.x0, value.x0),
+                    y0=min(label.y0, value.y0),
+                    x1=max(label.x1, value.x1),
+                    y1=max(label.y1, value.y1),
+                    content_region="figure",
+                    extraction_method="positioned-figure-label-value",
+                    source_engines=tuple(
+                        dict.fromkeys((*label.source_engines, *value.source_engines))
+                    ),
+                    uncertain=True,
+                    glyph_spans=(),
+                )
+            )
+    return tuple(
+        [line for line in lines if id(line) not in removed]
+        + pairs
+        + [
+            replace(line, content_region="native-alternative", uncertain=True)
+            for line in lines
+            if id(line) in removed
+        ]
+    )
+
+
+def _sort_spatial_lines(lines):
+    """Order aligned figure labels left-to-right despite OCR box jitter."""
+    ordered = sorted(lines, key=lambda line: (-line.y0, line.x0))
+    result = []
+    i = 0
+    while i < len(ordered):
+        first = ordered[i]
+        row = [first]
+        i += 1
+        if first.content_region == "figure":
+            while i < len(ordered):
+                other = ordered[i]
+                h = min(first.y1 - first.y0, other.y1 - other.y0)
+                if (
+                    other.content_region != "figure"
+                    or h <= 0
+                    or max(first.y1 - first.y0, other.y1 - other.y0) > h * 1.6
+                    or abs(first.y0 + first.y1 - other.y0 - other.y1) > h
+                ):
+                    break
+                row.append(other)
+                i += 1
+        result.extend(sorted(row, key=lambda line: line.x0))
+    return result
+
+
+def _order_layout_lines(lines, layout, config):
+    """Keep a spanning source image together across prose columns."""
+    for obj in sorted(layout.objects, key=lambda o: -(o.bbox[3] if o.bbox else 0)):
+        if obj.object_type != "image" or obj.bbox is None:
+            continue
+        x0, y0, x1, y1 = obj.bbox
+        if x1 - x0 < 0.58 or (x1 - x0) * (y1 - y0) > 0.65:
+            continue
+        left, right = x0 * layout.width, x1 * layout.width
+        bottom, top = y0 * layout.height, y1 * layout.height
+        band = [
+            line
+            for line in lines
+            if line.content_region == "figure"
+            and left - 1 <= (line.x0 + line.x1) / 2 <= right + 1
+            and bottom - 1 <= (line.y0 + line.y1) / 2 <= top + 1
+        ]
+        if len(band) < 2:
+            continue
+        selected = {id(line) for line in band}
+        rest = tuple(line for line in lines if id(line) not in selected)
+        return [
+            *_order_layout_lines(
+                tuple(line for line in rest if line.y0 >= top), layout, config
+            ),
+            *_sort_spatial_lines(band),
+            *_order_layout_lines(
+                tuple(line for line in rest if bottom < line.y0 < top), layout, config
+            ),
+            *_order_layout_lines(
+                tuple(line for line in rest if line.y0 <= bottom), layout, config
+            ),
+        ]
+    return _order_lines(lines, layout.width, config)
+
+
 def _order_lines(
     lines: tuple[LayoutLine, ...], width: float, config: ParserConfig
 ) -> list[LayoutLine]:
     """Use spanning lines as bands, then read left column before right column."""
 
+    captions = [
+        line for line in lines if line.content_region == "spanning-table-caption"
+    ]
+    if captions:
+        caption = max(captions, key=lambda item: item.y1)
+        next_caption_top = max(
+            (
+                line.y1
+                for line in lines
+                if line.y1 < caption.y0 and _caption_match(line.text)
+            ),
+            default=float("-inf"),
+        )
+        table = [
+            line
+            for line in lines
+            if line.content_region == "table-cell"
+            and line.y1 <= caption.y0 + 1
+            and line.y0 >= next_caption_top
+        ]
+        # Spanning table rows are a single reading band, never two prose columns.
+        band = [caption]
+        for line in sorted(table, key=lambda item: -item.y1):
+            band.append(line)
+        top, bottom = max(item.y1 for item in band), min(item.y0 for item in band)
+        selected = {id(item) for item in band}
+        rest = tuple(item for item in lines if id(item) not in selected)
+        return [
+            *_order_lines(
+                tuple(item for item in rest if item.y0 >= top), width, config
+            ),
+            *sorted(band, key=lambda item: (-round((item.y0 + item.y1) / 2), item.x0)),
+            *_order_lines(
+                tuple(item for item in rest if bottom < item.y0 < top), width, config
+            ),
+            *_order_lines(
+                tuple(item for item in rest if item.y0 <= bottom), width, config
+            ),
+        ]
     if len(lines) < 3 or width <= 0:
         return sorted(lines, key=lambda item: (-item.y0, item.x0))
     spanning = sorted(
@@ -236,18 +420,20 @@ def _order_lines(
         split = width * config.column_split_ratio
         left = [line for line in region if (line.x0 + line.x1) / 2 < split]
         right = [line for line in region if (line.x0 + line.x1) / 2 >= split]
-        left_substantial = sum(len(line.text) > 12 for line in left)
-        right_substantial = sum(len(line.text) > 12 for line in right)
+        left_substantial = sum(
+            len(line.text) > 12 or line.content_region == "table-cell" for line in left
+        )
+        right_substantial = sum(
+            len(line.text) > 12 or line.content_region == "table-cell" for line in right
+        )
         if (
             len(left) >= 2
             and len(right) >= 2
             and left_substantial >= 2
             and right_substantial >= 2
         ):
-            return sorted(left, key=lambda item: (-item.y0, item.x0)) + sorted(
-                right, key=lambda item: (-item.y0, item.x0)
-            )
-        return sorted(region, key=lambda item: (-item.y0, item.x0))
+            return _sort_spatial_lines(left) + _sort_spatial_lines(right)
+        return _sort_spatial_lines(region)
 
     result: list[LayoutLine] = []
     upper = float("inf")
@@ -293,6 +479,8 @@ def _semantic_section(text: str) -> str | None:
 
 def _kind(line: LayoutLine, median_font: float, heading_font_ratio: float) -> str:
     text = line.text.strip()
+    if line.content_region == "table-cell":
+        return "paragraph"
     if _caption_match(text):
         return "caption"
     if _is_author_reference(text):
@@ -359,176 +547,6 @@ def _looks_like_unnumbered_reference(text: str) -> bool:
     )
 
 
-def _caption_match(text: str) -> re.Match[str] | None:
-    """Return a caption prefix only when the remainder reads like a caption."""
-
-    stripped = text.strip()
-    match = _CAPTION.match(stripped)
-    if match is None:
-        match = _GLUED_TABLE_CAPTION.search(stripped)
-    if match is None:
-        return None
-    if (
-        match.start() == 0
-        and match.end() < len(stripped)
-        and stripped[match.end()].islower()
-    ):
-        return None
-    if match.start() > 0:
-        before = stripped[: match.start()]
-        after = stripped[match.end() :].lstrip()
-        if (
-            not after
-            or not (after[0].isupper() or after[0].isdigit())
-            or re.search(r"[.!?]\s", before)
-        ):
-            return None
-    remainder = stripped[match.end() :].lstrip()
-    if remainder.startswith((",", ";")):
-        return None
-    description = _caption_description(stripped, match)
-    if (
-        not description
-        and "continued" not in stripped.casefold()
-        and not stripped.isupper()
-        and not stripped.endswith((".", ":"))
-    ):
-        return None
-    if _CAPTION_MENTION.match(description):
-        return None
-    if _CAPTION_PANEL_CITATION.match(description):
-        return None
-    panel = _CAPTION_PANEL.match(description)
-    if panel is not None and _CAPTION_MENTION.match(description[panel.end() :]):
-        return None
-    if match.group("label")[-1].isalpha() and _CAPTION_SUFFIX_MENTION.match(
-        description
-    ):
-        return None
-    if _CAPTION_JOINED_SUFFIX_MENTION.match(description):
-        return None
-    if _CAPTION_CROSS_REFERENCE.match(description):
-        return None
-    if _CAPTION_PROSE_REFERENCE.search(description):
-        return None
-    return match
-
-
-def _caption_description(text: str, match: re.Match[str]) -> str:
-    stripped = text.strip()
-    before = stripped[: match.start()].strip(".:|-–— ")
-    after = stripped[match.end() :].lstrip(".:|-–— ")
-    return " ".join(part for part in (before, after) if part)
-
-
-def _caption_comparison_text(text: str, match: re.Match[str]) -> str:
-    description = _caption_description(text, match)
-    normalized = unicodedata.normalize("NFKD", description).casefold()
-    return "".join(character for character in normalized if character.isalnum())
-
-
-def _caption_quality(text: str, match: re.Match[str]) -> tuple[int, int, int, int]:
-    description = _caption_description(text, match)
-    marker = match.group("kind")
-    marker_count = len(re.findall(rf"\b{re.escape(marker)}", text, re.IGNORECASE))
-    return (
-        -int(_CAPTION_SENTENCE.search(description) is not None),
-        -int(_CAPTION_CONTAMINATION.search(description) is not None),
-        -marker_count,
-        len(_caption_comparison_text(text, match)),
-    )
-
-
-def _deduplicate_caption_blocks(blocks: list[dict[str, object]]) -> None:
-    """Keep one semantic caption for duplicated PDF text-layer evidence."""
-
-    descriptive_keys: set[tuple[str, str]] = set()
-    for block in blocks:
-        if block["kind"] != "caption":
-            continue
-        text = str(block["text"])
-        match = _caption_match(text)
-        if match is None:
-            continue
-        description = _caption_description(text, match).casefold()
-        if description and "continued" not in description:
-            descriptive_keys.add(
-                (match.group("kind").casefold(), match.group("label").casefold())
-            )
-    for block in blocks:
-        if block["kind"] != "caption":
-            continue
-        text = str(block["text"])
-        match = _caption_match(text)
-        if match is None:
-            continue
-        key = (match.group("kind").casefold(), match.group("label").casefold())
-        if key in descriptive_keys and not _caption_description(text, match):
-            block["kind"] = "paragraph"
-
-    kept: dict[tuple[str, str], list[dict[str, object]]] = {}
-    for block in blocks:
-        if block["kind"] != "caption":
-            continue
-        text = str(block["text"])
-        match = _caption_match(text)
-        if match is None:
-            continue
-        key = (match.group("kind").casefold(), match.group("label").casefold())
-        description = _caption_description(text, match).casefold()
-        if "continued" in description or "supplement" in description:
-            kept.setdefault(key, []).append(block)
-            continue
-        comparison = _caption_comparison_text(text, match)
-        duplicate: dict[str, object] | None = None
-        for candidate in kept.get(key, []):
-            candidate_text = str(candidate["text"])
-            candidate_match = _caption_match(candidate_text)
-            if candidate_match is None:
-                continue
-            candidate_description = _caption_description(
-                candidate_text, candidate_match
-            ).casefold()
-            if "continued" in candidate_description or "supplement" in (
-                candidate_description
-            ):
-                continue
-            page_distance = abs(int(block["page"]) - int(candidate["page"]))
-            candidate_comparison = _caption_comparison_text(
-                candidate_text, candidate_match
-            )
-            minimum_length = min(len(comparison), len(candidate_comparison))
-            similar = (
-                minimum_length >= 12
-                and (
-                    comparison in candidate_comparison
-                    or candidate_comparison in comparison
-                )
-            ) or (
-                minimum_length >= 30
-                and SequenceMatcher(
-                    None, comparison, candidate_comparison, autojunk=False
-                ).ratio()
-                >= 0.72
-            )
-            if page_distance == 0 or (page_distance == 1 and similar):
-                duplicate = candidate
-                break
-        if duplicate is None:
-            kept.setdefault(key, []).append(block)
-            continue
-        duplicate_text = str(duplicate["text"])
-        duplicate_match = _caption_match(duplicate_text)
-        if duplicate_match is not None and _caption_quality(
-            text, match
-        ) > _caption_quality(duplicate_text, duplicate_match):
-            duplicate["kind"] = "paragraph"
-            kept[key].remove(duplicate)
-            kept[key].append(block)
-        else:
-            block["kind"] = "paragraph"
-
-
 def _looks_like_heading_text(text: str) -> bool:
     letters = sum(character.isalpha() for character in text)
     digits = sum(character.isdigit() for character in text)
@@ -565,7 +583,11 @@ def _page_furniture_keys(layouts: dict[int, PageLayout]) -> set[str]:
 def _is_page_furniture(
     line: LayoutLine, layout: PageLayout, repeated_keys: set[str]
 ) -> bool:
-    if layout.height <= 0:
+    if layout.height <= 0 or line.content_region in {
+        "table-cell",
+        "spanning-table-caption",
+        "figure",
+    }:
         return False
     if line.y0 / layout.height < 0.1 or line.y1 / layout.height > 0.9:
         if _furniture_key(line.text) in repeated_keys or _PAGE_LABEL.fullmatch(
@@ -599,7 +621,22 @@ def _can_merge(
     width: float,
     split_ratio: float,
 ) -> bool:
-    if len(previous.text.split()) <= 2 and len(current.text.split()) <= 2:
+    if (
+        previous.content_region == "table-cell"
+        or current.content_region == "table-cell"
+        or previous.content_region != current.content_region
+        or previous.extraction_method != current.extraction_method
+    ):
+        return False
+    chinese_prose = all(
+        len(re.findall(r"[\u3400-\u9fff]", line.text)) >= 8
+        for line in (previous, current)
+    )
+    if (
+        not chinese_prose
+        and len(previous.text.split()) <= 2
+        and len(current.text.split()) <= 2
+    ):
         return False
     if _line_column(previous, width, split_ratio) != _line_column(
         current, width, split_ratio
@@ -719,10 +756,37 @@ class _NativeExtractionStage:
         for page_index, layout in sorted(context.layouts.items()):
             if not layout.lines:
                 continue
-            median_font = statistics.median(line.font_size for line in layout.lines)
+            median_font = statistics.median(
+                size
+                for line in layout.lines
+                for size in [line.font_size] * max(1, len(line.text.strip()))
+            )
             previous_line: LayoutLine | None = None
             previous_kind: str | None = None
-            for line in _order_lines(layout.lines, layout.width, config):
+            prepared_lines = _associate_figure_labels(
+                layout.lines, layout.objects, layout.width, layout.height
+            )
+            ordinary = tuple(
+                line
+                for line in prepared_lines
+                if line.content_region not in {"ocr-alternative", "native-alternative"}
+            )
+            ordinary = _prepare_table_lines(
+                ordinary, layout.width, layout.objects, layout.height
+            )
+            ordinary = prepare_ruled_tables(
+                ordinary, layout, _caption_match, _aligned_table_fragments
+            )
+            alternatives = tuple(
+                line
+                for line in prepared_lines
+                if line.content_region in {"ocr-alternative", "native-alternative"}
+            )
+            ordered = [
+                *_order_layout_lines(ordinary, layout, config),
+                *_order_lines(alternatives, layout.width, config),
+            ]
+            for line in ordered:
                 line_engines = line.source_engines or (
                     f"{backend.name}@{backend.version}",
                 )
@@ -1193,73 +1257,6 @@ def _anchor_map(
     return {str(item["id"]): item for item in anchors}
 
 
-def _table_cells(
-    caption: dict[str, object],
-    blocks: list[dict[str, object]],
-    anchors: dict[str, dict[str, object]],
-) -> tuple[list[dict[str, object]], int, int]:
-    candidates: list[tuple[dict[str, object], dict[str, object]]] = []
-    caption_order = int(caption["order"])
-    page = caption["page"]
-    for block in blocks:
-        if int(block["order"]) <= caption_order or block["page"] != page:
-            continue
-        if block["kind"] in {"heading", "caption", "reference"}:
-            break
-        anchor = anchors[str(block["anchor_id"])]
-        if anchor["bbox"] is None:
-            continue
-        candidates.append((block, anchor))
-        if len(candidates) >= 40:
-            break
-
-    rows: list[list[tuple[dict[str, object], dict[str, object]]]] = []
-    for block, anchor in sorted(
-        candidates,
-        key=lambda pair: (
-            -float(pair[1]["bbox"][1]),
-            float(pair[1]["bbox"][0]),
-        ),
-    ):
-        center_y = (float(anchor["bbox"][1]) + float(anchor["bbox"][3])) / 2
-        row = next(
-            (
-                item
-                for item in rows
-                if abs(
-                    (float(item[0][1]["bbox"][1]) + float(item[0][1]["bbox"][3])) / 2
-                    - center_y
-                )
-                <= 0.0125
-            ),
-            None,
-        )
-        if row is None:
-            rows.append([(block, anchor)])
-        else:
-            row.append((block, anchor))
-    rows = [row for row in rows if len(row) >= 2]
-    if len(rows) < 2:
-        return [], 0, 0
-    column_count = max(len(row) for row in rows)
-    cells: list[dict[str, object]] = []
-    for row_index, row in enumerate(rows, start=1):
-        for column_index, (block, anchor) in enumerate(
-            sorted(row, key=lambda pair: float(pair[1]["bbox"][0])), start=1
-        ):
-            cells.append(
-                {
-                    "row": row_index,
-                    "column": column_index,
-                    "text": block["text"],
-                    "block_id": block["id"],
-                    "anchor_id": anchor["id"],
-                    "bbox": anchor["bbox"],
-                }
-            )
-    return cells, len(rows), column_count
-
-
 def _meaningful_image(image: object) -> bool:
     bbox = getattr(image, "bbox", None)
     if bbox is None:
@@ -1310,7 +1307,9 @@ def _objects(
         match = _caption_match(str(block["text"]))
         if block["kind"] != "caption" or match is None:
             continue
-        is_figure = match.group("kind").lower().startswith("fig")
+        is_figure = match.group("kind").lower().startswith(
+            ("fig", "scheme")
+        ) or match.group("kind") in {"图", "图式"}
         collection = figures if is_figure else tables
         prefix = "f" if is_figure else "t"
         identifier = f"{prefix}{len(collection) + 1:05d}"
@@ -1344,6 +1343,40 @@ def _objects(
                 for distance, image in positioned
                 if closest is not None and distance <= closest + 0.03
             ]
+            # A multi-row figure has panels farther from its caption than the
+            # nearest row. Follow only aligned, closely spaced image columns;
+            # an intervening caption ends the group.
+            for _ in images:
+                added = []
+                for image in images:
+                    if image in linked_images or not image.bbox:
+                        continue
+                    a = image.bbox
+                    for neighbour in linked_images:
+                        b = neighbour.bbox
+                        if not b:
+                            continue
+                        overlap = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+                        gap = max(0, a[1] - b[3], b[1] - a[3])
+                        separated = any(
+                            other["page"] == block["page"]
+                            and other["kind"] == "caption"
+                            and (box := anchor_by_id[other["anchor_id"]]["bbox"])
+                            and min(a[3], b[3])
+                            < (box[1] + box[3]) / 2
+                            < max(a[1], b[1])
+                            for other in blocks
+                        )
+                        if (
+                            0.002 < gap <= 0.04
+                            and overlap >= 0.8 * max(a[2] - a[0], b[2] - b[0])
+                            and not separated
+                        ):
+                            added.append(image)
+                            break
+                if not added:
+                    break
+                linked_images.extend(added)
             item["source_objects"] = [
                 {
                     "name": image.name,
@@ -1351,9 +1384,35 @@ def _objects(
                     "width": image.width,
                     "height": image.height,
                     "bbox": list(image.bbox) if image.bbox else None,
+                    "text_completeness": "not-verified",
                 }
                 for image in linked_images
             ]
+            for source in item["source_objects"]:
+                box = source["bbox"]
+                source["annotation_block_ids"] = [
+                    str(candidate["id"])
+                    for candidate in blocks
+                    if candidate["page"] == block["page"]
+                    and any(
+                        str(engine).endswith("+image-label")
+                        for engine in candidate.get("source_engines", [])
+                    )
+                    and not str(candidate.get("content_region", "")).endswith(
+                        "alternative"
+                    )
+                    and (label_box := anchor_by_id[candidate["anchor_id"]]["bbox"])
+                    and box
+                    and box[0] <= (label_box[0] + label_box[2]) / 2 <= box[2]
+                    and box[1] <= (label_box[1] + label_box[3]) / 2 <= box[3]
+                ]
+            item["object_block_ids"] = list(
+                dict.fromkeys(
+                    bid
+                    for source in item["source_objects"]
+                    for bid in source["annotation_block_ids"]
+                )
+            )
             if len(linked_images) == 1:
                 item["association"] = "caption+single-page-image"
                 item["evidence_status"] = "caption-and-region-observed"
@@ -1367,7 +1426,12 @@ def _objects(
             else:
                 item["association"] = "caption-only"
         else:
-            cells, row_count, column_count = _table_cells(block, blocks, anchor_by_id)
+            explicit = explicit_grid_cells(
+                block, blocks, anchor_by_id, layouts[int(block["page"])]
+            )
+            cells, row_count, column_count = explicit or _table_cells(
+                block, blocks, anchor_by_id
+            )
             item["cells"] = cells
             item["row_count"] = row_count
             item["column_count"] = column_count
@@ -1406,6 +1470,24 @@ class _StructureStage:
             context.tables,
             context.unassociated_image_resources,
         ) = _objects(context.blocks, context.anchors, context.layouts)
+        anchors = {a["id"]: a for a in context.anchors}
+        for table in context.tables:
+            context.warnings.extend(
+                _table_local_warnings(table, context.blocks, anchors)
+            )
+        for figure in context.figures:
+            objects = figure.get("source_objects", [])
+            if objects:
+                context.warnings.append(
+                    {
+                        "code": "RASTER_REGION_TEXT_UNVERIFIED",
+                        "page": objects[0]["page"],
+                        "anchor_id": figure["anchor_id"],
+                        "object_id": figure["id"],
+                        "regions": [obj["bbox"] for obj in objects],
+                        "detail": "Image regions may contain untranscribed values, units or scale bars. Caption/panel labels do not establish image-text coverage; inspect these original regions.",
+                    }
+                )
 
 
 class _QualityStage:
@@ -1440,7 +1522,16 @@ class _QualityStage:
                 for engine in item.get("source_engines", [])
             )
         ]
-        review_codes = {"OCR_ENGINE_DISAGREEMENT", "OCR_ORIENTATION_UNCERTAIN"}
+        review_codes = {
+            "IMAGE_LABEL_UNRESOLVED",
+            "TABLE_COLUMN_COLLISION",
+            "TABLE_CONTINUATION_UNRESOLVED",
+            "OCR_ENGINE_DISAGREEMENT",
+            "OCR_ORIENTATION_UNCERTAIN",
+            "NATIVE_GLYPH_UNCERTAIN",
+            "IMAGE_DOMINANT_PAGE",
+            "RASTER_REGION_TEXT_UNVERIFIED",
+        }
         context.quality = {
             "page_coverage": {
                 "parsed": len(context.layouts),
@@ -1480,10 +1571,13 @@ class _QualityStage:
             ),
             "manual_review_required": any(
                 item["code"] in review_codes for item in context.warnings
-            ),
+            )
+            or any(block.get("uncertain", False) for block in context.blocks),
             "stopped_early": context.stopped_early,
         }
         informational_warnings = {
+            "RASTER_REGION_TEXT_UNVERIFIED",
+            "MARGIN_TEXT_OMITTED",
             "OCR_TRIGGERED",
             "OCR_TEXT_SUPPLEMENTED",
             "OCR_ORIENTATION_CORRECTED",
@@ -1540,6 +1634,16 @@ def _document(context: PipelineContext, pipeline: ParserPipeline) -> dict[str, o
         "source": {
             "artifact_id": f"an:source:sha256:{source.pdf_sha256}",
             "doi": source.doi,
+            "title": source.title,
+            "article_id": source.article_id
+            or (
+                "doi:" + source.doi
+                if source.doi
+                else f"an:source:sha256:{source.pdf_sha256}"
+            ),
+            "document_role": source.document_role,
+            "identity_basis": source.identity_basis,
+            "parent": source.parent,
             "pdf_sha256": source.pdf_sha256,
             "acquisition_sidecar_sha256": source.sidecar_sha256,
             "page_count": source.page_count,
@@ -1582,7 +1686,7 @@ def parse_pdf(
 ) -> dict[str, object]:
     """Run a request-local pipeline over an already gated PDF."""
 
-    selected_backend = backend or NativePdfBackend()
+    selected_backend = backend or LayoutPdfBackend()
     reader = PdfReader(source.pdf_path, strict=False)
     context = PipelineContext(
         source=source,

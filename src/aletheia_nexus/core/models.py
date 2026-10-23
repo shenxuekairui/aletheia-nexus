@@ -2,6 +2,18 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class MetadataLink:
+    """A deposited resource link, not a promise of access or verified content."""
+
+    url: str
+    source: str
+    relation: str = "full_text"
+    content_type: str | None = None
+    content_version: str | None = None
+    intended_application: str | None = None
+
+
+@dataclass(frozen=True)
 class PaperMetadata:
     """Normalized metadata for one scholarly work."""
 
@@ -18,3 +30,4 @@ class PaperMetadata:
     issue: str | None
     pages: str | None
     url: str | None
+    links: tuple[MetadataLink, ...] = ()

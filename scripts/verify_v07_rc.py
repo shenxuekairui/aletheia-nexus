@@ -71,6 +71,8 @@ def main(argv: list[str] | None = None) -> int:
                     "-q",
                     "tests/acquire/access/test_browser_integration.py",
                     "tests/acquire/access/test_cnki_browser_integration.py",
+                    "tests/acquire/access/test_observation_deadlines.py",
+                    "tests/acquire/access/test_acquisition_timing.py",
                 ],
                 environment,
             )

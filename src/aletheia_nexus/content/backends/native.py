@@ -55,7 +55,7 @@ def _text_lines(page: Any, geometry: PageGeometry) -> tuple[LayoutLine, ...]:
         font_dictionary: dict[str, object] | None,
         font_size: float,
     ) -> None:
-        cleaned = " ".join(text.replace("\x00", " ").split())
+        cleaned = " ".join(text.split())
         if not cleaned:
             return
         combined = _matrix(tm, cm)
@@ -159,7 +159,7 @@ def _text_lines(page: Any, geometry: PageGeometry) -> tuple[LayoutLine, ...]:
                 y1=y1,
                 font_size=font_size,
                 extraction_confidence=1.0,
-                source_engines=("pypdf-native-layout@2.1.0",),
+                source_engines=("pypdf-native-layout@2.2.0",),
                 bold=(
                     sum(len(item.text) for item in row if item.bold)
                     >= sum(len(item.text) for item in row) / 2
@@ -176,78 +176,37 @@ def _dereference(value: Any) -> Any:
 def _page_objects(page: Any, geometry: PageGeometry) -> tuple[PageObject, ...]:
     """Record images actually painted on a page, without decoding their bytes."""
 
-    resources = _dereference(page.get("/Resources"))
-    if not hasattr(resources, "get"):
-        return ()
-    xobjects = _dereference(resources.get("/XObject"))
-    if not hasattr(xobjects, "items"):
-        return ()
-    image_resources: dict[str, Any] = {}
-    for raw_name, reference in xobjects.items():
-        try:
-            value = _dereference(reference)
-            if str(value.get("/Subtype")) != "/Image":
-                continue
-            if bool(value.get("/ImageMask", False)):
-                continue
-            image_resources[str(raw_name)] = value
-        except Exception:
-            continue
+    from aletheia_nexus.content.backends.pdf_images import painted_images
 
-    objects: list[PageObject] = []
-    occurrences: dict[str, int] = {}
-
-    def visit_operand(
-        operator: bytes,
-        operands: list[object],
-        cm: list[float],
-        tm: list[float],
-    ) -> None:
-        del tm
-        if operator != b"Do" or not operands:
-            return
-        raw_name = str(operands[0])
-        value = image_resources.get(raw_name)
-        if value is None:
-            return
-        try:
-            a, b, c, d, e, f = (float(item) for item in cm)
-            points = (
-                (e, f),
-                (a + e, b + f),
-                (c + e, d + f),
-                (a + c + e, b + d + f),
+    objects = []
+    occurrences = {}
+    for path, value, matrix, visible, full in painted_images(page):
+        bbox = geometry.normalized_box_from_points(
+            ((visible[0], visible[1]), (visible[2], visible[3]))
+        )
+        base_name = "/".join(name.lstrip("/") for name in path)
+        occurrence = occurrences.get(base_name, 0) + 1
+        occurrences[base_name] = occurrence
+        name = base_name if occurrence == 1 else f"{base_name}#{occurrence}"
+        objects.append(
+            PageObject(
+                object_type="image",
+                name=name,
+                width=int(value["/Width"]),
+                height=int(value["/Height"]),
+                bbox=tuple(round(item, 6) for item in bbox),
             )
-            bbox = geometry.normalized_box_from_points(points)
-            if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
-                return
-            width = value.get("/Width")
-            height = value.get("/Height")
-            base_name = raw_name.lstrip("/")
-            occurrence = occurrences.get(base_name, 0) + 1
-            occurrences[base_name] = occurrence
-            name = base_name if occurrence == 1 else f"{base_name}#{occurrence}"
-            objects.append(
-                PageObject(
-                    object_type="image",
-                    name=name,
-                    width=int(width) if width is not None else None,
-                    height=int(height) if height is not None else None,
-                    bbox=tuple(round(item, 6) for item in bbox),
-                )
-            )
-        except Exception:
-            return
+        )
+    from aletheia_nexus.content.backends.pdf_rules import painted_rules
 
-    page.extract_text(visitor_operand_before=visit_operand)
-    return tuple(objects)
+    return (*objects, *painted_rules(page, geometry))
 
 
 class NativePdfBackend:
     """Extract native PDF text and auditable page-resource metadata."""
 
     name = "pypdf-native-layout"
-    version = "2.1.0"
+    version = "2.4.0"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -258,7 +217,17 @@ class NativePdfBackend:
         return {"runtime_dependencies": {"pypdf": pypdf_version}}
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
+        from dataclasses import replace
+
+        from aletheia_nexus.content.backends.layout import suspicious_text
+
         geometry = PageGeometry.from_page(page)
+        lines = tuple(
+            replace(line, uncertain=True, extraction_confidence=0.5)
+            if suspicious_text(line.text)
+            else line
+            for line in _text_lines(page, geometry)
+        )
         return PageLayout(
             page=page_number,
             width=geometry.width,
@@ -266,6 +235,15 @@ class NativePdfBackend:
             media_box=geometry.media_box,
             crop_box=geometry.crop_box,
             rotation=geometry.rotation,
-            lines=_text_lines(page, geometry),
+            lines=lines,
             objects=_page_objects(page, geometry),
+            warnings=(
+                {
+                    "code": "NATIVE_GLYPH_UNCERTAIN",
+                    "detail": f"page {page_number}: native text contains missing/ambiguous glyphs",
+                    "page": page_number,
+                },
+            )
+            if any(line.uncertain for line in lines)
+            else (),
         )

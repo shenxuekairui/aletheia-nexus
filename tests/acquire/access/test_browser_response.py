@@ -113,6 +113,55 @@ def test_cdp_download_capture_uses_completed_browser_domain_file(tmp_path):
     assert not staging_dir.exists()
 
 
+def test_explicit_save_waits_for_download_event_after_click_acknowledgement(tmp_path):
+    capture = _CdpDownloadCapture(_CdpContext(), tmp_path)
+    saved = capture.staging_dir / "delayed-guid"
+
+    class DelayedPage(_WaitPage):
+        polls = 0
+
+        def wait_for_timeout(self, value):
+            self.polls += 1
+            if self.polls == 1:
+                capture._on_begin({"guid": "delayed-guid", "url": self.url})
+            elif self.polls == 2:
+                saved.write_bytes(_pdf_bytes())
+                capture._on_progress({"guid": "delayed-guid", "state": "completed"})
+
+    page = DelayedPage()
+    assert not capture.started
+    assert capture.wait(page, 1, wait_for_start=True) == (saved, page.url)
+    assert page.polls == 2
+    capture.close()
+
+
+def test_save_with_no_download_event_stops_at_deadline(tmp_path, monkeypatch):
+    from aletheia_nexus.acquire.access.browser_engine import downloads
+
+    capture = _CdpDownloadCapture(_CdpContext(), tmp_path)
+    clock = [0.0]
+    monkeypatch.setattr(downloads.time, "monotonic", lambda: clock[0])
+
+    class Page(_WaitPage):
+        def wait_for_timeout(self, value):
+            clock[0] += value / 1000
+
+    assert capture.wait(Page(), 0.25, wait_for_start=True) is None
+    assert 0.25 <= clock[0] <= 0.35
+    capture.close()
+
+
+def test_passive_capture_with_no_event_does_not_wait(tmp_path):
+    capture = _CdpDownloadCapture(_CdpContext(), tmp_path)
+
+    class Page(_WaitPage):
+        def wait_for_timeout(self, value):
+            pytest.fail("An idle delivery probe must not add a download timeout")
+
+    assert capture.wait(Page(), 30) is None
+    capture.close()
+
+
 @pytest.mark.parametrize(
     "failure", ["incomplete", "canceled", "empty", "partial", "outside", "missing"]
 )

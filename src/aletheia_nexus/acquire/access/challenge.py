@@ -352,9 +352,22 @@ def classify_access_challenge(
 
     if auth_hits or (
         login_url
-        and any(
-            marker in title_text
-            for marker in ("sign in", "log in", "login", "登录", "认证")
+        and (
+            any(
+                marker in title_text
+                for marker in ("sign in", "log in", "login", "登录", "认证")
+            )
+            or any(
+                marker in semantic
+                for marker in (
+                    "scegli il metodo di autenticazione",
+                    "autenticazione esterna",
+                    "autenticazione iris",
+                    "choose an authentication method",
+                    "select authentication method",
+                    "选择认证方式",
+                )
+            )
         )
     ):
         evidence = [f"Authentication signal: {term}" for term in auth_hits[:3]]

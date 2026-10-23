@@ -1,12 +1,14 @@
 """Default launch and profile ownership without real authentication/network."""
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
 from aletheia_nexus.acquire.access import browser
 from aletheia_nexus.acquire.access.browser_engine import launcher
+from aletheia_nexus.acquire.access.cnki_provider import CNKIProvider
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
@@ -27,7 +29,7 @@ def test_profile_lease_excludes_other_clients_and_releases(tmp_path):
     second.close()
 
 
-@pytest.mark.parametrize("system_proxy", [False, True])
+@pytest.mark.parametrize("system_proxy", [None, False, True])
 def test_ordinary_launch_uses_minimal_flags_and_reuses_exact_profile(
     monkeypatch, tmp_path, system_proxy
 ):
@@ -40,25 +42,25 @@ def test_ordinary_launch_uses_minimal_flags_and_reuses_exact_profile(
     monkeypatch.setattr(
         launcher, "_active_endpoint", lambda p: endpoint if launches else None
     )
+    monkeypatch.setattr(launcher, "_available_loopback_port", lambda: 43210)
+    monkeypatch.setattr(launcher, "_startup_endpoint", lambda *a: endpoint)
 
     def launch(args, **kwargs):
         launches.append(args)
         return SimpleNamespace(poll=lambda: None)
 
     monkeypatch.setattr(launcher.subprocess, "Popen", launch)
+    options = {} if system_proxy is None else {"use_system_proxy": system_proxy}
     for _ in range(2):
         assert (
-            launcher.normal_browser_endpoint(
-                chromium, tmp_path, use_system_proxy=system_proxy
-            )
-            == endpoint
+            launcher.normal_browser_endpoint(chromium, tmp_path, **options) == endpoint
         )
     assert len(launches) == 1
     flags = launches[0]
     assert "--remote-debugging-address=127.0.0.1" in flags
-    assert "--remote-debugging-port=0" in flags
+    assert "--remote-debugging-port=43210" in flags
     assert f"--user-data-dir={tmp_path.resolve()}" in flags
-    assert ("--no-proxy-server" in flags) is not system_proxy
+    assert ("--no-proxy-server" in flags) is (system_proxy is False)
     assert not any("disable-features" in arg or "automation" in arg for arg in flags)
     assert not any("headless" in arg for arg in flags)
 
@@ -78,7 +80,7 @@ def test_existing_browser_is_never_silently_restarted_or_reconfigured(
             json.dumps(
                 {
                     "endpoint": endpoint,
-                    "use_system_proxy": mismatch == "network",
+                    "use_system_proxy": mismatch != "network",
                     "executable": str(tmp_path / "old.exe"),
                 }
             ),
@@ -193,6 +195,59 @@ def test_invalid_active_port_never_connects(monkeypatch, tmp_path, content):
     assert launcher._active_endpoint(tmp_path) is None
 
 
+@pytest.mark.parametrize("matching", [True, False])
+def test_explicit_port_requires_launch_marker_and_reuses_recorded_identity(
+    monkeypatch, tmp_path, matching
+):
+    endpoint = "ws://127.0.0.1:43210/devtools/browser/owned-id"
+    marker = "about:blank#an-start-random-marker"
+    calls = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, size):
+            return json.dumps(self.payload).encode()
+
+    def open_url(url, **kwargs):
+        calls.append(url)
+        return Response(
+            [{"type": "page", "url": marker if matching else "about:blank"}]
+            if url.endswith("/json/list")
+            else {"webSocketDebuggerUrl": endpoint}
+        )
+
+    monkeypatch.setattr(
+        launcher, "build_opener", lambda *a: SimpleNamespace(open=open_url)
+    )
+    assert launcher._startup_endpoint(43210, marker) == (endpoint if matching else None)
+    if matching:
+        # Explicit ports do not need Chromium's port=0 discovery file.
+        (tmp_path / ".an-normal-browser.json").write_text(
+            json.dumps({"endpoint": endpoint})
+        )
+        assert launcher._active_endpoint(tmp_path) == endpoint
+        assert calls[-1].endswith("/json/version")
+
+
+def test_loopback_port_selection_skips_an_occupied_port():
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen()
+        port = launcher._available_loopback_port()
+        assert 0 < port <= 65535
+        assert port != occupied.getsockname()[1]
+
+
 class _Page:
     url = "about:blank"
     closed = False
@@ -259,8 +314,11 @@ class _Manager:
         self.closed = True
 
 
-def test_default_session_launches_normal_and_preserves_window_on_exit(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize(
+    "network", [{}, {"direct_connection": True}, {"use_system_proxy": False}]
+)
+def test_session_launches_normal_and_preserves_window_on_exit(
+    monkeypatch, tmp_path, network
 ):
     manager = _Manager()
     monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
@@ -283,7 +341,7 @@ def test_default_session_launches_normal_and_preserves_window_on_exit(
         )
 
     monkeypatch.setattr(browser, "attempt_browser_route", attempt)
-    config = BrowserAccessConfig(profile_root=tmp_path)
+    config = BrowserAccessConfig(profile_root=tmp_path, **network)
     with browser.BrowserSession(config) as session:
         for suffix in ("first", "second"):
             doi = f"10.1000/{suffix}"
@@ -303,12 +361,98 @@ def test_default_session_launches_normal_and_preserves_window_on_exit(
         session.wait_until_closed()  # no artificial CLI hang in normal mode
         assert session._attached_external
     assert len(launches) == 1
-    assert launches[0][1]["use_system_proxy"] is False
+    assert launches[0][1]["use_system_proxy"] is (not network)
     assert manager.context.routes  # URL guard preserved
     assert len(attempts) == 2 and all(p.closed for p in attempts)
     assert not manager.context.closed and not manager.context.pages[0].closed
     assert manager.closed
     launcher.ProfileLease(session.profile_dir).close()
+
+
+@pytest.mark.parametrize("mode", ["normal", "managed"])
+@pytest.mark.parametrize("direct", [False, True])
+def test_safe_provider_reconnect_preserves_network_mode(
+    monkeypatch, tmp_path, mode, direct
+):
+    launches = []
+
+    def new_manager():
+        manager = _Manager()
+        if mode == "managed":
+
+            def launch(**kwargs):
+                launches.append("--no-proxy-server" not in kwargs["args"])
+                return manager.context
+
+            manager.playwright.chromium.launch_persistent_context = launch
+        return manager
+
+    def normal_launch(*args, **kwargs):
+        launches.append(kwargs["use_system_proxy"])
+        return "ws://127.0.0.1:43210/devtools/browser/owned-id"
+
+    monkeypatch.setattr(browser, "_load_playwright", lambda: new_manager)
+    monkeypatch.setattr(browser, "normal_browser_endpoint", normal_launch)
+    monkeypatch.setattr(browser, "fixed_portable_browser", lambda: None)
+    calls = []
+
+    def fetch(**kwargs):
+        calls.append(kwargs)
+        return BrowserAccessAttempt(
+            source_candidate=FullTextCandidate(
+                doi="10.1000/retry", url="https://cnki.net/", provenance=()
+            ),
+            final_url=None,
+            status=BrowserAttemptStatus.ERROR
+            if len(calls) == 1
+            else BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            evidence=("CNKI browser target closed",) if len(calls) == 1 else (),
+        )
+
+    config = BrowserAccessConfig(
+        profile_root=tmp_path,
+        launch_mode=mode,
+        direct_connection=direct,
+        cnki_paper_interval=0,
+    )
+    provider = CNKIProvider()
+    monkeypatch.setattr(provider, "fetch", fetch)
+    with browser.BrowserSession(config) as session:
+        attempt = session.acquire_provider(
+            provider,
+            doi="10.1000/retry",
+            output_dir=tmp_path,
+        )
+    assert attempt.status == BrowserAttemptStatus.NO_FILE_CANDIDATES
+    assert len(calls) == 2 and launches == [not direct, not direct]
+
+
+@pytest.mark.parametrize("closed", [False, True])
+@pytest.mark.parametrize("direct", [False, True])
+def test_session_rejects_network_change_before_reuse_or_reconnect(
+    monkeypatch, tmp_path, closed, direct
+):
+    manager = _Manager()
+    monkeypatch.setattr(browser, "_load_playwright", lambda: lambda: manager)
+    launches = []
+
+    def launch(*args, **kwargs):
+        launches.append(kwargs["use_system_proxy"])
+        return "ws://127.0.0.1:43210/devtools/browser/owned-id"
+
+    monkeypatch.setattr(browser, "normal_browser_endpoint", launch)
+    config = BrowserAccessConfig(profile_root=tmp_path, direct_connection=direct)
+    with browser.BrowserSession(config) as session:
+        session._ensure_started()
+        if closed:
+            session.close()
+        session.config = replace(config, direct_connection=not direct)
+        with pytest.raises(
+            browser.BrowserCapabilityUnavailable, match="network mode cannot change"
+        ):
+            session._ensure_started()
+    assert launches == [not direct]
+    assert not manager.context.closed
 
 
 @pytest.mark.parametrize("failure", ["launch", "attach", "unsafe_version", "setup"])

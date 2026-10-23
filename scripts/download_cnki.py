@@ -10,6 +10,8 @@ from aletheia_nexus.acquire.access import (
     BrowserSession,
     acquire_cnki_pdf,
 )
+from aletheia_nexus.acquire.access.cnki_runtime import CNKI_RATE_LIMITED
+from aletheia_nexus.cli import _add_browser_network_arguments
 
 
 def _interaction_notice(challenge, url):
@@ -47,9 +49,7 @@ def main() -> int:
         help="auto: ordinary visible browser; headless uses managed launch.",
     )
     parser.add_argument("--executable-path", type=Path)
-    network = parser.add_mutually_exclusive_group()
-    network.add_argument("--direct-connection", action="store_true")
-    network.add_argument("--browser-use-system-proxy", action="store_true")
+    _add_browser_network_arguments(parser)
     parser.add_argument(
         "--cnki-context-request",
         action=argparse.BooleanOptionalAction,
@@ -69,6 +69,13 @@ def main() -> int:
     parser.add_argument("--interaction-timeout", type=float)
     parser.add_argument("--navigation-timeout", type=float, default=45.0)
     parser.add_argument("--max-results", type=int, default=20)
+    parser.add_argument(
+        "--cnki-paper-interval",
+        type=float,
+        default=5.0,
+        metavar="SECONDS",
+        help="Minimum pause between papers (default: 5 seconds; 0 disables).",
+    )
     parser.add_argument(
         "--cnki-refresh-retry", action=argparse.BooleanOptionalAction, default=True
     )
@@ -125,6 +132,7 @@ def main() -> int:
         keep_unverified=args.keep_unverified,
         cnki_keep_unverified=args.cnki_keep_unverified,
         cnki_refresh_retry=args.cnki_refresh_retry,
+        cnki_paper_interval=args.cnki_paper_interval,
     )
     with BrowserSession(config) as session:
         exit_code = 0
@@ -155,6 +163,8 @@ def main() -> int:
                     break
             if attempt.status != BrowserAttemptStatus.VERIFIED:
                 exit_code = max(exit_code, 1)
+            if attempt.error == CNKI_RATE_LIMITED:
+                break
             if "CNKI browser target closed" in attempt.evidence:
                 break
         if (

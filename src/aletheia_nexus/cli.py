@@ -34,12 +34,8 @@ from aletheia_nexus.acquire.fulltext import (
     acquire_full_text,
 )
 from aletheia_nexus.content import (
-    AdaptiveOcrBackend,
     ChunkConfig,
-    ParserConfig,
     ParserInputError,
-    TesseractOcrBackend,
-    TesseractOcrConfig,
     export_jsonl,
     export_markdown,
     load_parsed_document,
@@ -47,7 +43,13 @@ from aletheia_nexus.content import (
     serialize_chunks,
     write_ai_export,
 )
+from aletheia_nexus.core.artifact_paths import find_json_path, json_output_path
 from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.parsing_cli import (
+    add_parsing_options,
+    parser_config,
+    parsing_backend,
+)
 
 
 def _load_inputs(path: Path) -> tuple[list[object], dict[str, str]]:
@@ -172,7 +174,7 @@ def _find_browser() -> Path:
 
 
 def _start_cdp_browser(
-    endpoint: str, profile_dir: Path, *, use_system_proxy: bool = False
+    endpoint: str, profile_dir: Path, *, use_system_proxy: bool = True
 ) -> None:
     parsed = urlsplit(endpoint)
     if parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or not parsed.port:
@@ -204,6 +206,24 @@ def _start_cdp_browser(
     raise RuntimeError("Browser started but the CDP endpoint did not become ready")
 
 
+def _add_browser_network_arguments(parser) -> None:
+    network = parser.add_mutually_exclusive_group()
+    network.add_argument(
+        "--browser-use-system-proxy",
+        action="store_true",
+        default=None,
+        help="Follow OS proxy settings for a newly launched browser (default). "
+        "An existing external CDP browser keeps its own network settings.",
+    )
+    network.add_argument(
+        "--direct-connection",
+        "--browser-direct-connection",
+        action="store_true",
+        help="Explicitly bypass browser proxies for this session. "
+        "AN never switches network mode automatically during a task.",
+    )
+
+
 def _progress(item: BatchAcquisitionItem, index: int, total: int) -> None:
     path = f" -> {item.verified_path}" if item.verified_path else ""
     resumed = " [resumed]" if item.resumed else ""
@@ -211,7 +231,11 @@ def _progress(item: BatchAcquisitionItem, index: int, total: int) -> None:
         f"[{index}/{total}] {item.doi or item.input_value}: {item.status}{resumed}{path}",
         flush=True,
     )
-    if item.status == BatchItemStatus.INTERACTION_REQUIRED and item.result:
+    if (
+        item.status
+        in {BatchItemStatus.INTERACTION_REQUIRED, BatchItemStatus.AUTH_REQUIRED}
+        and item.result
+    ):
         print(f"  {item.result.message}", flush=True)
 
 
@@ -259,6 +283,8 @@ def _safe_diagnostics(item: BatchAcquisitionItem) -> dict | None:
                 "error": attempt.error,
                 "interaction_used": attempt.interaction_used,
                 "candidates_considered": attempt.candidates_considered,
+                "bibliographic_conflicts": list(attempt.bibliographic_conflicts),
+                "elapsed_seconds": attempt.elapsed_seconds,
                 "challenge_history": [
                     {
                         "kind": challenge.kind.value,
@@ -388,6 +414,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cnki-all-titles", action="store_true")
     parser.add_argument("--cnki-max-results", type=int, default=20)
     parser.add_argument(
+        "--cnki-paper-interval",
+        type=float,
+        default=5.0,
+        metavar="SECONDS",
+        help="Minimum pause between CNKI papers in this session (default: 5; 0 disables).",
+    )
+    parser.add_argument(
         "--cnki-refresh-retry", action=argparse.BooleanOptionalAction, default=True
     )
     parser.add_argument("--no-cnki-keep-unverified", action="store_true")
@@ -425,16 +458,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Default auto uses ordinary visible launch and keeps the browser open; "
         "headless stays managed. Use managed for the previous launch behavior.",
     )
-    parser.add_argument(
-        "--browser-use-system-proxy",
-        action="store_true",
-        help=(
-            "Let a newly launched dedicated browser use the OS proxy settings "
-            "instead of AN's direct-connection default. Authentication traffic "
-            "may pass through the configured proxy; an already attached CDP "
-            "browser keeps its own network settings."
-        ),
-    )
+    _add_browser_network_arguments(parser)
     parser.add_argument("--cdp-endpoint", default=None)
     parser.add_argument(
         "--cdp-navigate",
@@ -449,7 +473,7 @@ def main(argv: list[str] | None = None) -> int:
         action=argparse.BooleanOptionalAction,
         default=True,
         help=(
-            "Automatically start AN's dedicated direct-connection Edge/Chrome "
+            "Automatically start AN's dedicated Edge/Chrome with the selected network mode "
             "when a configured loopback CDP endpoint is unavailable (default: "
             "enabled; disable with --no-start-browser-if-needed)."
         ),
@@ -614,8 +638,10 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--local-pdf must use a non-empty DOI and path")
         local_pdfs[doi] = Path(path.strip('"'))
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint = args.checkpoint or args.output_dir / "batch-checkpoint.json"
-    report = args.report or args.output_dir / "batch-report.json"
+    checkpoint = args.checkpoint or find_json_path(
+        args.output_dir / "batch-checkpoint.json"
+    )
+    report = args.report or json_output_path(args.output_dir / "batch-report.json")
     config = BrowserAccessConfig(
         profile_name=args.profile,
         profile_root=args.profile_root,
@@ -623,6 +649,7 @@ def main(argv: list[str] | None = None) -> int:
         launch_mode=args.browser_launch_mode,
         executable_path=args.executable_path,
         use_system_proxy=args.browser_use_system_proxy,
+        direct_connection=args.direct_connection,
         cdp_endpoint=args.cdp_endpoint,
         cdp_resume_existing_page=not args.cdp_navigate,
         headless=args.headless,
@@ -645,6 +672,7 @@ def main(argv: list[str] | None = None) -> int:
         cnki_context_request=args.cnki_context_request,
         cnki_keep_unverified=not args.no_cnki_keep_unverified,
         cnki_refresh_retry=args.cnki_refresh_retry,
+        cnki_paper_interval=args.cnki_paper_interval,
     )
     if (
         args.start_browser_if_needed
@@ -654,7 +682,7 @@ def main(argv: list[str] | None = None) -> int:
         _start_cdp_browser(
             args.cdp_endpoint,
             browser_profile_dir(config),
-            use_system_proxy=config.use_system_proxy,
+            use_system_proxy=config.resolved_use_system_proxy,
         )
 
     result = acquire_full_text_batch_maximized(
@@ -721,28 +749,16 @@ def parse_main(argv: list[str] | None = None) -> int:
         description="Parse a VERIFIED PDF into source-linked structured JSON.",
     )
     parser.add_argument("pdf", type=Path)
-    parser.add_argument("--doi", required=True)
+    parser.add_argument(
+        "--doi", help="Optional check against the recorded DOI; never invents one."
+    )
     parser.add_argument("--sidecar", type=Path)
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--max-pages", type=int, default=2000)
-    parser.add_argument("--max-blocks", type=int, default=200_000)
-    parser.add_argument("--max-text-characters", type=int, default=20_000_000)
-    parser.add_argument(
-        "--ocr",
-        action="store_true",
-        help="Enable native-first selective OCR through Poppler and Tesseract.",
-    )
-    parser.add_argument("--ocr-languages", default="eng")
-    parser.add_argument("--ocr-max-raster-pixels", type=int, default=50_000_000)
+    add_parsing_options(parser)
     parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Explicitly replace an existing parsed output.",
-    )
-    parser.add_argument(
-        "--no-merge-paragraph-lines",
-        action="store_true",
-        help="Keep each positioned PDF text line as a separate block.",
     )
     parser.add_argument(
         "--fail-on-partial",
@@ -751,24 +767,8 @@ def parse_main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        config = ParserConfig(
-            max_pages=args.max_pages,
-            max_blocks=args.max_blocks,
-            max_text_characters=args.max_text_characters,
-            merge_paragraph_lines=not args.no_merge_paragraph_lines,
-        )
-        backend = None
-        if args.ocr:
-            backend = AdaptiveOcrBackend(
-                ocr_backends=(
-                    TesseractOcrBackend(
-                        TesseractOcrConfig(
-                            languages=args.ocr_languages,
-                            max_raster_pixels=args.ocr_max_raster_pixels,
-                        )
-                    ),
-                )
-            )
+        config = parser_config(args)
+        backend = parsing_backend(args)
         result = parse_document(
             args.pdf,
             args.doi,
@@ -784,7 +784,9 @@ def parse_main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         print(f"Could not write parsed artifact: {exc}", file=sys.stderr)
         return 2
-    print(f"{result.source.doi}: {result.status}")
+    print(
+        f"{result.source.doi or result.source.title or result.source.article_id}: {result.status}"
+    )
     print(f"Parsed artifact: {result.output_path}")
     quality = result.document["quality"]
     print(
@@ -803,6 +805,11 @@ def parse_main(argv: list[str] | None = None) -> int:
 def search_main(argv: list[str] | None = None) -> int:
     """Search parsed blocks and print their source locations."""
 
+    if argv and (Path(argv[0]).is_dir() or argv[0] in {"-h", "--help"}):
+        from aletheia_nexus.research_cli import search_main as search_corpus_main
+
+        return search_corpus_main(argv)
+
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus search",
         description="Search a validated parsed artifact with PDF source anchors.",
@@ -811,6 +818,8 @@ def search_main(argv: list[str] | None = None) -> int:
     parser.add_argument("query")
     parser.add_argument("--section-type")
     parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--mode", choices=("and", "or"), default="and")
+    parser.add_argument("--exact", action="store_true")
     parser.add_argument(
         "--verify-sources",
         action="store_true",
@@ -828,7 +837,11 @@ def search_main(argv: list[str] | None = None) -> int:
                 print(f"Source integrity failed: {failed}", file=sys.stderr)
                 return 7
         hits = artifact.search(
-            args.query, section_type=args.section_type, limit=args.limit
+            args.query,
+            section_type=args.section_type,
+            limit=args.limit,
+            mode=args.mode,
+            exact=args.exact,
         )
     except (OSError, ValueError) as exc:
         print(f"Could not search parsed artifact: {exc}", file=sys.stderr)
@@ -843,6 +856,11 @@ def search_main(argv: list[str] | None = None) -> int:
 
 def export_main(argv: list[str] | None = None) -> int:
     """Export a validated canonical document without reparsing its PDF."""
+
+    if argv and (Path(argv[0]).is_dir() or argv[0] in {"-h", "--help"}):
+        from aletheia_nexus.research_cli import export_main as export_corpus_main
+
+        return export_corpus_main(argv)
 
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus export",
@@ -932,9 +950,12 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "  aletheia-nexus acquire DOI [options]\n"
             "  aletheia-nexus acquire INPUT.txt [options]\n"
             "  aletheia-nexus acquire --title TITLE [options]\n"
-            "  aletheia-nexus parse PAPER.pdf --doi DOI [options]\n"
-            "  aletheia-nexus search PAPER.parsed.json QUERY [options]\n"
-            "  aletheia-nexus export PAPER.parsed.json --format FORMAT --output PATH\n"
+            "  aletheia-nexus import PAPER.pdf --title TITLE --output-dir CORPUS [options]\n"
+            "  aletheia-nexus parse PAPER.pdf [--doi DOI] [options]\n"
+            "  aletheia-nexus parse-batch CORPUS [options]\n"
+            "  aletheia-nexus search CORPUS|PAPER.parsed.json QUERY [options]\n"
+            "  aletheia-nexus export CORPUS|PAPER.parsed.json --format FORMAT --output PATH\n"
+            "  aletheia-nexus open-source CORPUS RESULTS.json NUMBER [--launch]\n"
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus browser-install\n"
             "  aletheia-nexus library [DIRECTORY] [--folder NAME] [--tag TAG]\n"
@@ -1025,6 +1046,14 @@ def entrypoint(argv: list[str] | None = None) -> int:
             return 2
     if args[0] == "acquire":
         return main(args[1:])
+    if args[0] in {"import", "parse-batch", "open-source"}:
+        from aletheia_nexus.research_cli import batch_main, import_main, open_main
+
+        return {
+            "import": import_main,
+            "parse-batch": batch_main,
+            "open-source": open_main,
+        }[args[0]](args[1:])
     if args[0] == "parse":
         return parse_main(args[1:])
     if args[0] == "search":

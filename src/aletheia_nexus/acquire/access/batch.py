@@ -23,6 +23,7 @@ from aletheia_nexus.acquire.access.models import (
 from aletheia_nexus.acquire.access.publisher_routes import is_ieee_doi
 from aletheia_nexus.acquire.access.service import acquire_full_text_maximized
 from aletheia_nexus.acquire.fulltext.storage import organized_output
+from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.organization import destination
 from aletheia_nexus.core.paper_request import PaperRequest
@@ -165,7 +166,7 @@ def _verified_checkpoint_item(
     try:
         if _sha256_file(path) != sha256:
             return None
-        sidecar = path.with_suffix(".acquisition.json")
+        sidecar = acquisition_sidecar_path(path)
         if not sidecar.is_file() or _sha256_file(sidecar) != record.get(
             "sidecar_sha256"
         ):
@@ -204,7 +205,7 @@ def _checkpoint_record(
         record["sha256"] = (
             resource.sha256 if resource is not None else _sha256_file(path)
         )
-        sidecar = path.with_suffix(".acquisition.json")
+        sidecar = acquisition_sidecar_path(path)
         record["sidecar_sha256"] = _sha256_file(sidecar) if sidecar.is_file() else None
     history = (previous or {}).get("attempt_history", [])
     record["attempt_history"] = [

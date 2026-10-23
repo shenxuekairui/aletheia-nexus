@@ -22,7 +22,9 @@ The fast job runs `pip check`, Ruff format/lint, compilation, frozen benchmark
 verification, and the complete deterministic pytest suite on Python 3.11. A
 matrix reruns it on 3.12, 3.13, and 3.14. The package job builds/checks the
 distributions and installs the wheel in a clean virtual environment. The OCR job
-installs Poppler and Tesseract and exercises a real raster-only PDF. Browser jobs
+installs Poppler, Tesseract and the image-OCR extra, exercises a real raster-only
+PDF, and reads a self-authored measurement image with bundled RapidOCR models
+while network access is denied by the test. Browser jobs
 run real Chromium on Linux and Windows; the Windows job also reruns the
 deterministic suite. Expensive jobs wait for the fast job.
 
@@ -79,8 +81,8 @@ real-network job consuming minutes while nobody is preparing a release.
 
 1. Keep development PRs in draft while iterating. Ordinary draft pushes do not
    consume cloud runner minutes. Run deterministic checks locally with
-   `scripts/verify_v06_rc.ps1`; add `-Browser` if Chromium is installed. Run it
-   under both supported Python versions for a full local compatibility check.
+   `python scripts/verify_v07_rc.py --browser-smoke --visible-browser-smoke --ocr-smoke`.
+   The hosted compatibility gate covers Python 3.11 through 3.14.
    If the change has significant cross-platform or browser risk, apply
    `ci:full` once to run the complete hosted matrix on that draft head. Record
    the run URL and commit. If Actions quota is exhausted, report the missing

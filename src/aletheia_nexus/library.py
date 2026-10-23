@@ -7,13 +7,19 @@ from pathlib import Path
 from uuid import uuid4
 
 from aletheia_nexus.acquire.fulltext.storage import is_verified_record
+from aletheia_nexus.content.gate import validate_parser_input
+from aletheia_nexus.core.artifact_paths import (
+    acquisition_sidecar_path,
+    find_json_path,
+    json_output_path,
+)
 from aletheia_nexus.core.organization import normalize_folder
 
 _LABEL_SCHEMA = "aletheia-nexus/library-labels/v1"
 
 
 def _labels(pdf: Path, sha256: str, initial: list[str]) -> list[str]:
-    path = pdf.with_suffix(".library.json")
+    path = find_json_path(pdf.with_suffix(".library.json"))
     if not isinstance(initial, list) or any(not isinstance(t, str) for t in initial):
         raise ValueError("Invalid initial library labels")
     if path.is_symlink():
@@ -37,11 +43,13 @@ def update_tags(pdf: str | Path, *, add=(), remove=()) -> list[str]:
     pdf = Path(pdf).resolve()
     if pdf.suffix.lower() != ".pdf" or not pdf.is_file():
         raise ValueError("Provide an existing PDF")
-    payload = json.loads(
-        pdf.with_suffix(".acquisition.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads(acquisition_sidecar_path(pdf).read_text(encoding="utf-8"))
     if not is_verified_record(payload):
-        raise ValueError("Labels require a verified acquisition record")
+        if payload.get("schema") != "aletheia-nexus/local-document/v1":
+            raise ValueError(
+                "Labels require a verified acquisition or registered local record"
+            )
+        validate_parser_input(pdf)
     with pdf.open("rb") as handle:
         digest = hashlib.file_digest(handle, "sha256").hexdigest()
     if digest != payload.get("retrieval", {}).get("sha256"):
@@ -59,7 +67,8 @@ def update_tags(pdf: str | Path, *, add=(), remove=()) -> list[str]:
     tags = list(
         dict.fromkeys(t for t in [*tags, *(t.strip() for t in add)] if t not in removed)
     )
-    path = pdf.with_suffix(".library.json")
+    path = json_output_path(pdf.with_suffix(".library.json"))
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + uuid4().hex + ".part")
     try:
         temporary.write_text(
@@ -90,21 +99,29 @@ def scan_library(root: str | Path, *, folder=None, tag=None, query=None) -> dict
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
                 raise ValueError("Invalid library record")
-            if payload.get("status") != "VERIFIED":
+            local = payload.get("schema") == "aletheia-nexus/local-document/v1"
+            if payload.get("status") != ("REGISTERED" if local else "VERIFIED"):
                 continue
-            if not is_verified_record(payload):
+            if not local and not is_verified_record(payload):
                 raise ValueError("Incomplete acquisition evidence")
             pdf = sidecar.with_name(
                 sidecar.name.removesuffix(".acquisition.json") + ".pdf"
             )
+            if sidecar.parent.name == "json" and not pdf.is_file():
+                pdf = sidecar.parent.parent / pdf.name
+            if sidecar != acquisition_sidecar_path(pdf):
+                continue
             if not pdf.resolve().is_relative_to(root):
                 continue
+            if local:
+                validate_parser_input(pdf, sidecar_path=sidecar)
             relative_folder = pdf.parent.relative_to(root).as_posix()
             relative_folder = "" if relative_folder == "." else relative_folder
             organization = payload.get("organization") or {}
             title = (
                 organization.get("title")
                 or payload.get("target", {}).get("expected_title")
+                or payload.get("target", {}).get("title")
                 or ""
             )
             doi = payload.get("target", {}).get("doi")
@@ -153,6 +170,13 @@ def scan_library(root: str | Path, *, folder=None, tag=None, query=None) -> dict
                     "pdf_path": str(pdf),
                     "sidecar_path": str(sidecar),
                     "integrity": integrity,
+                    "document_role": payload.get("identity_validation", {}).get(
+                        "document_role", "ARTICLE"
+                    ),
+                    "identity_basis": "local_declared"
+                    if local
+                    else "acquisition_verified",
+                    "parent": payload.get("parent"),
                 }
             )
         except (OSError, ValueError, TypeError, AttributeError):

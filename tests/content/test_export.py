@@ -168,6 +168,7 @@ def test_structure_aware_chunks_keep_table_evidence_separate(tmp_path):
 
     table = artifact.document["tables"][0]
     table_block_ids = set(table["object_block_ids"])
+    table_block_ids.add(table["caption_block_id"])
     table_chunks = [chunk for chunk in result["chunks"] if chunk["table"] is not None]
 
     assert table_chunks

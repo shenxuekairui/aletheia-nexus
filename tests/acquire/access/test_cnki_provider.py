@@ -649,6 +649,61 @@ def _valid_pdf(title="中文论文标题", *, doi="10.1000/cnki-target", text=""
     return buffer.getvalue()
 
 
+def test_complete_bibliography_without_printed_doi_is_saved_and_usable(tmp_path):
+    from dataclasses import replace
+
+    from aletheia_nexus.acquire.fulltext.bibliographic import BIBLIOGRAPHIC_POLICY
+    from aletheia_nexus.content.gate import validate_parser_input
+    from aletheia_nexus.core.paper_request import PaperRequest
+    from aletheia_nexus.library import scan_library
+
+    title = "Electrochemical conversion of organic acids in aqueous solutions"
+    target = PaperRequest(
+        doi="10.1000/cnki-target",
+        title=title,
+        authors=("Alice Chen",),
+        journal="Journal of Testing",
+        year=2024,
+    )
+    observed = replace(target, doi=None, cnki_id="cnki:cjfq:synthetic2024001")
+    body = _valid_pdf(
+        title, doi=None, text=title + "\nAlice Chen\nJournal of Testing 2024"
+    )
+    source = tmp_path / "download.part"
+    source.write_bytes(body)
+    url = "https://kns.cnki.net/article.pdf"
+    result = finalize_access_resource(
+        candidate=FullTextCandidate(
+            doi=target.doi, url=url, provenance=(DiscoveryProvider.CNKI,)
+        ),
+        resource=RetrievedResource(
+            requested_url=url,
+            final_url=url,
+            http_status=200,
+            content_type="application/pdf",
+            size_bytes=len(body),
+            sha256=hashlib.sha256(body).hexdigest(),
+            local_path=source,
+        ),
+        output_dir=tmp_path / "output",
+        expected_title=title,
+        keep_unverified=True,
+        transport="cnki_authenticated_browser",
+        access_details={"validation_policy": BIBLIOGRAPHIC_POLICY},
+        target_identity=target,
+        observed_identity=observed,
+    )
+    assert result.status == AcquisitionStatus.VERIFIED
+    assert "_unverified" not in result.file_path.parts
+    payload = json.loads(result.sidecar_path.read_text(encoding="utf-8"))
+    assert payload["target"]["doi"] == target.doi
+    assert payload["identity_validation"]["doi_match"] is False
+    assert payload["identity_validation"]["policy"] == BIBLIOGRAPHIC_POLICY
+    assert len(scan_library(tmp_path / "output")["items"]) == 1
+    parsed_input = validate_parser_input(result.file_path, requested_doi=target.doi)
+    assert parsed_input.doi == target.doi
+
+
 def _response(page, *, body=None, url="https://kns.cnki.net/article.pdf"):
     return SimpleNamespace(
         frame=SimpleNamespace(page=page),
@@ -1200,6 +1255,65 @@ def test_cnki_invalid_pdf_download_is_failure_instead_of_unverified_pdf(tmp_path
     assert not list(tmp_path.rglob("*.part"))
 
 
+@pytest.mark.parametrize("failure", ["timeout", "error"])
+@pytest.mark.parametrize("failed_stage", ["search controls", "search results"])
+def test_retained_pdf_survives_later_search_failure(
+    monkeypatch, tmp_path, failure, failed_stage
+):
+    from aletheia_nexus.acquire.access.cnki_runtime import CNKIStageTimeout
+
+    original_wait = CNKIGate.wait
+
+    def wait(gate, page, predicate, *, stage, **kwargs):
+        if gate.download_started and stage == failed_stage:
+            if failure == "timeout":
+                raise CNKIStageTimeout(stage)
+            raise RuntimeError("private query token")
+        return original_wait(gate, page, predicate, stage=stage, **kwargs)
+
+    monkeypatch.setattr(CNKIGate, "wait", wait)
+    monkeypatch.setattr(
+        cnki_provider, "_search_queries", lambda title: (title, title + "再次检索")
+    )
+    detail = _DetailPage()
+    context = _Context(detail)
+    detail.pdf._click = lambda: context.emit(
+        "response", _response(detail, body=_valid_pdf(doi=None))
+    )
+    attempt = _fetch(
+        _SearchPage("中文论文标题"), detail, tmp_path, context=context, doi=""
+    )
+    assert attempt.status == BrowserAttemptStatus.RETRIEVED_UNVERIFIED
+    assert attempt.result.file_path.is_file()
+    assert attempt.error is not None and "private query token" not in attempt.error
+    assert len(attempt.file_attempts) == 1
+
+
+def test_conflict_diagnostics_expose_field_names_without_session_data(
+    monkeypatch, tmp_path
+):
+    from aletheia_nexus.core.paper_request import PaperRequest
+
+    monkeypatch.setattr(
+        cnki_provider,
+        "detail_bibliography",
+        lambda *a, **k: PaperRequest(title="中文论文标题", journal="Other Journal"),
+    )
+    attempt = CNKIProvider(
+        request=PaperRequest(title="中文论文标题", journal="Requested Journal")
+    ).fetch(
+        doi="",
+        context=_Context(_DetailPage()),
+        page=_SearchPage("中文论文标题"),
+        output_dir=tmp_path,
+        config=BrowserAccessConfig(),
+        metadata=_metadata(),
+    )
+    assert attempt.status == BrowserAttemptStatus.PAGE_MISMATCH
+    assert attempt.bibliographic_conflicts == ("journal",)
+    assert not attempt.file_attempts
+
+
 @pytest.mark.parametrize(
     "origin,verified",
     [
@@ -1250,7 +1364,7 @@ def test_unverified_first_pdf_does_not_prevent_second_result_verification(tmp_pa
     assert rejected.file_path.parent.name == "_unverified"
     assert rejected.sidecar_path.is_file()
     payload = json.loads(rejected.sidecar_path.read_text(encoding="utf-8"))
-    assert payload["identity_validation"]["policy"] == "cnki_bibliographic/v3"
+    assert payload["identity_validation"]["policy"] == "cnki_bibliographic/v5"
     assert result.result is result.file_attempts[1].result
 
 
@@ -1906,6 +2020,36 @@ def test_manual_popup_can_close_after_verification_without_duplicate_download(tm
     assert len(clicks) == 1
 
 
+def test_manual_popup_closing_during_dom_read_resumes_ready_opener(monkeypatch):
+    from aletheia_nexus.acquire.access import cnki_runtime
+
+    detail, popup = _DetailPage(), _DetailPage()
+    popup.url = "https://kns.cnki.net/verify/home?captchaType=fixture"
+    popup.opener = lambda: detail
+    original = cnki_runtime.challenge_for_page
+    popup_reads = []
+
+    def read(target):
+        if target is popup:
+            popup_reads.append(True)
+            if len(popup_reads) == 2:
+                popup.close()
+                raise cnki_runtime.CNKITargetClosed()
+        return original(target)
+
+    monkeypatch.setattr(cnki_runtime, "challenge_for_page", read)
+    notices = []
+    gate = CNKIGate(
+        BrowserAccessConfig(
+            poll_interval=0.01,
+            interaction_callback=lambda *args: notices.append(args),
+        )
+    )
+    assert gate.check(popup)
+    assert gate.interaction_used and len(notices) == 1
+    assert popup.closed and not detail.closed
+
+
 def test_save_failure_preserves_new_authentication_popup_and_its_opener(tmp_path):
     detail, popup = _DetailPage(), _DetailPage()
     context = _Context(detail)
@@ -2370,15 +2514,19 @@ def test_ip_auto_login_transition_waits_without_prompting_for_account():
     assert len(polls) >= 2 and not gate.interaction_used
 
 
-def test_maximized_acquisition_stops_closed_cnki_transfer_before_generic_replay(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize("rate_limited", [False, True])
+def test_maximized_acquisition_stops_closed_or_limited_cnki_before_generic_replay(
+    monkeypatch, tmp_path, rate_limited
 ):
     attempt = BrowserAccessAttempt(
         source_candidate=cnki_provider._source_candidate("10.1000/target"),
         final_url=None,
-        status=BrowserAttemptStatus.RETRIEVAL_FAILED,
-        download_started=True,
-        evidence=("CNKI browser target closed",),
+        status=BrowserAttemptStatus.ACCESS_DENIED
+        if rate_limited
+        else BrowserAttemptStatus.RETRIEVAL_FAILED,
+        download_started=not rate_limited,
+        evidence=() if rate_limited else ("CNKI browser target closed",),
+        error="CNKI_RATE_LIMITED" if rate_limited else None,
     )
     base = MultiRouteAcquisitionResult(
         doi="10.1000/target",
@@ -2407,3 +2555,85 @@ def test_maximized_acquisition_stops_closed_cnki_transfer_before_generic_replay(
     )
     assert result.browser_attempts == (attempt,)
     assert result.status != MaximizedAcquisitionStatus.VERIFIED
+
+
+@pytest.mark.parametrize("interactive", [True, False])
+@pytest.mark.parametrize(
+    "message", ["对不起，您的操作太过频繁！", "过于频繁，请休息一会儿"]
+)
+def test_cnki_frequency_notice_stops_before_search_or_refresh(
+    tmp_path, interactive, message
+):
+    page = _SearchPage("中文论文标题")
+    original = page.locator
+    page.locator = lambda selector: (
+        _Element(text=message) if selector == "body" else original(selector)
+    )
+    page.button._click = lambda: pytest.fail("Must stop before searching")
+    page.reload = lambda **kw: pytest.fail("Must not refresh a rate limit")
+    result = _fetch(
+        page,
+        _DetailPage(),
+        tmp_path,
+        config=BrowserAccessConfig(interactive=interactive, wait_for_interaction=True),
+    )
+    assert result.status == BrowserAttemptStatus.ACCESS_DENIED
+    assert result.error == "CNKI_RATE_LIMITED"
+    assert not result.download_started and not result.interaction_used
+
+
+def test_cnki_http_429_stops_request_recovery_without_retry(monkeypatch):
+    page = _DetailPage()
+    page.goto = lambda *a, **kw: pytest.fail("Must not navigate/retry after 429")
+    calls, disposed = [], []
+    response = SimpleNamespace(
+        url="https://docdown.cnki.net/article.pdf",
+        status=429,
+        headers={"content-type": "text/html"},
+        body=lambda: b"Too many requests",
+        dispose=lambda: disposed.append(True),
+    )
+    monkeypatch.setattr(
+        cnki_provider,
+        "_safe_context_get",
+        lambda *a, **kw: (calls.append(True) or response, ()),
+    )
+    config = BrowserAccessConfig()
+    with pytest.raises(CNKIInteractionRequired) as error:
+        cnki_provider._recover_pdf_request(
+            object(),
+            page,
+            url=response.url,
+            detail_url=page.url,
+            gate=CNKIGate(config),
+            config=config,
+        )
+    assert "CNKI_RATE_LIMITED" in error.value.report.evidence
+    assert calls == disposed == [True]
+
+
+@pytest.mark.parametrize("owned_page", [True, False])
+@pytest.mark.parametrize("host", ["kns.cnki.net", "metrics.example.org"])
+def test_native_rate_limit_is_scoped_to_cnki_and_current_paper(owned_page, host):
+    page = _DetailPage()
+    context = _Context(page)
+    capture = CNKIFileCapture(context, page, 1024)
+    owner = page if owned_page else _DetailPage()
+    try:
+        context.emit(
+            "response",
+            SimpleNamespace(
+                frame=SimpleNamespace(page=owner),
+                status=429,
+                url=f"https://{host}/download",
+                headers={},
+            ),
+        )
+        if owned_page and host == "kns.cnki.net":
+            with pytest.raises(CNKIInteractionRequired) as error:
+                capture.next_file()
+            assert "CNKI_RATE_LIMITED" in error.value.report.evidence
+        else:
+            assert capture.next_file() is None
+    finally:
+        capture.close()

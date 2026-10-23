@@ -42,6 +42,19 @@ class DocumentRole(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+def classify_retrieved(
+    identity_status: IdentityStatus,
+    role: DocumentRole,
+) -> AcquisitionStatus:
+    if role == DocumentRole.SUPPLEMENT:
+        return AcquisitionStatus.SUPPLEMENT
+    if identity_status == IdentityStatus.MATCH and role == DocumentRole.ARTICLE:
+        return AcquisitionStatus.VERIFIED
+    if identity_status == IdentityStatus.MISMATCH:
+        return AcquisitionStatus.MISMATCH
+    return AcquisitionStatus.RETRIEVED_UNVERIFIED
+
+
 @dataclass(frozen=True, slots=True)
 class RedirectHop:
     """One manually validated HTTP redirect."""

@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 from aletheia_nexus.core.identifiers.doi import extract_dois
 from aletheia_nexus.core.paper_request import (
     PaperRequest,
-    bibliographic_field_key,
+    bibliographic_fields_match,
     compact_bibliography,
 )
 
@@ -162,12 +162,7 @@ def conflicting_fields(target: PaperRequest, observed: PaperRequest) -> tuple[st
         fields.append("title")
     for field in ("doi", "journal", "year", "volume", "issue", "pages", "cnki_id"):
         wanted, actual = getattr(target, field), getattr(observed, field)
-        if (
-            wanted
-            and actual
-            and bibliographic_field_key(field, wanted)
-            != bibliographic_field_key(field, actual)
-        ):
+        if wanted and actual and not bibliographic_fields_match(field, wanted, actual):
             fields.append(field)
     if target.authors and observed.authors:
         actual = {compact_bibliography(a) for a in observed.authors}

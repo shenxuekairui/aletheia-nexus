@@ -1,6 +1,8 @@
 """Opt-in visible browser test; only a fresh, test-owned profile is touched."""
 
+import json
 import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -21,16 +23,19 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize("direct", [False, True])
 def test_normal_browser_downloads_reconnects_and_preserves_session(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, direct
 ):
     from playwright.sync_api import sync_playwright
 
     config = BrowserAccessConfig(
         profile_root=tmp_path / "profiles",
+        executable_path=os.environ.get("AN_TEST_BROWSER_EXECUTABLE"),
         interactive=False,
         navigation_timeout=15,
         request_timeout=5,
+        direct_connection=direct,
     )
     body = (
         Path(__file__).parents[3] / "benchmarks/v07_fixtures/native_article.pdf"
@@ -83,19 +88,31 @@ def test_normal_browser_downloads_reconnects_and_preserves_session(
             with BrowserSession(config) as session:
                 profile = session.profile_dir
                 context = session._ensure_started()
+                probe = context.new_page()
+                assert probe.evaluate("navigator.webdriver") is False
+                probe.close()
                 endpoints.append(_active_endpoint(profile))
                 assert endpoints[-1]
+                metadata = json.loads(
+                    (profile / ".an-normal-browser.json").read_text(encoding="utf-8")
+                )
+                assert metadata["use_system_proxy"] is not direct
                 context.route("https://publisher.example/**", respond)
                 if client_index == 0:
                     # Let the fixture site establish its own synthetic session.
                     # Direct CDP cookie injection can stall on hosted Windows;
                     # AN's real acquisition flow does not inject user cookies.
-                    original = context.pages[0]
+                    original = context.new_page()
                     original.goto("https://publisher.example/session")
                     original.evaluate("window.anFixture = 'retained'")
                 else:
-                    assert context.pages[0].evaluate("window.anFixture") == "retained"
-                assert "an_fixture=retained" in context.pages[0].evaluate(
+                    original = next(
+                        p
+                        for p in context.pages
+                        if p.url == "https://publisher.example/session"
+                    )
+                    assert original.evaluate("window.anFixture") == "retained"
+                assert "an_fixture=retained" in original.evaluate(
                     "document.cookie"
                 ).split("; ")
                 for index in range(2):
@@ -132,4 +149,13 @@ def test_normal_browser_downloads_reconnects_and_preserves_session(
             with sync_playwright() as playwright:
                 instance = playwright.chromium.connect_over_cdp(endpoint)
                 cdp = instance.new_browser_cdp_session()
-                cdp.send("Browser.close")
+                processes = cdp.send("SystemInfo.getProcessInfo")["processInfo"]
+                pid = next(p["id"] for p in processes if p["type"] == "browser")
+                cdp.detach()
+                instance.close()
+            # Browser.close can lose its protocol reply as the process exits.
+            # Terminate only this test-owned browser after disconnecting CDP.
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
