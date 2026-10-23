@@ -90,6 +90,20 @@ will be scored separately after the candidate is stable.
 - `protocol/exposed-identities-expanded.json`:
   `4f178b8930112bc08d107c6b8e1a937b46c54b211b2aedc8a291a1ae027d3c73`
 
+The 20-task baseline is now recorded before product tuning. Full-document
+exports for each task retain all readings. The implementing assistant actually
+checked **42 independent answer-affecting source issues**, median **2** per
+task; default complete answers were **16/20**, and source-assisted completion
+was **20/20**. Eight missing microscopy panel identities count eight checks.
+Unrelated alternatives and display groups do not count. The candidate must
+require at most **31** such checks, with median at most 2 and no loss of
+completion, coverage or conflicts. The observed review wall time was 245 s
+across four batches, including assistant/tool time; this is not human timing
+and no human speedup is claimed. Per-task times were not measured.
+
+- `baseline/tasks/adjudication.json`:
+  `b8a5c76ee835868cd7545d71aa30527e5aa888fdd4f0ca01a872c7b787898676`
+
 Pending release gates: no-regression checks;
 20-task review comparison; 32+4 legacy and 20 new retrieval queries; new paired
 holdout; scientific-use review; final-commit CI and clean-install use; merged
