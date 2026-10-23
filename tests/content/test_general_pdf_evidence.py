@@ -1,5 +1,6 @@
 """Independent synthetic regressions for scientific PDF evidence recovery."""
 
+import pytest
 from pypdf import PdfWriter
 from pypdf.generic import NameObject, NumberObject
 from test_display_and_tables import array, dictionary, regular_font, stream
@@ -396,7 +397,8 @@ def test_backend_alternative_never_hides_its_primary_derived_reading():
 def test_printed_bar_values_follow_legend_colours_not_value_order():
     from copy import deepcopy
 
-    from PIL import Image, ImageDraw
+    Image = pytest.importorskip("PIL.Image")
+    ImageDraw = pytest.importorskip("PIL.ImageDraw")
 
     from aletheia_nexus.content.backends.image_bars import associate_bars
 
@@ -441,7 +443,7 @@ def test_printed_bar_values_follow_legend_colours_not_value_order():
 
 
 def test_touching_micrograph_panels_keep_fragmented_units_and_raw_readings():
-    from PIL import Image
+    Image = pytest.importorskip("PIL.Image")
 
     from aletheia_nexus.content.backends.image_panels import (
         associate_scales,
