@@ -1,6 +1,9 @@
 from dataclasses import replace
 
-from aletheia_nexus.content.figure_labels import associate_keyed_labels
+from aletheia_nexus.content.figure_labels import (
+    associate_keyed_labels,
+    associate_percentage_results,
+)
 from aletheia_nexus.content.models import LayoutLine
 
 
@@ -65,3 +68,45 @@ def test_table_cells_and_low_confidence_are_preserved():
     )
     assert primary.extraction_confidence == 0.4
     assert primary.engine_agreement is None
+
+
+def results():
+    return tuple(
+        LayoutLine(text, x, y, x + w, y + 8, 8)
+        for text, x, y, w in [
+            ("K2", 45, 120, 10),
+            ("K4", 145, 120, 10),
+            ("23% yield, 87% ee", 15, 110, 70),
+            ("41% yield, 93% ee", 115, 110, 70),
+            ("48% yield, 89% ee*", 13, 100, 74),
+            ("52% yield, 95% ee*", 113, 100, 74),
+        ]
+    )
+
+
+def test_footnoted_result_stays_distinct_under_the_printed_label():
+    source = results()
+    output = associate_percentage_results(source)
+    primary = [
+        line for line in output if not line.content_region.endswith("alternative")
+    ]
+    assert [line.text for line in primary] == [
+        "K2\n23% yield, 87% ee\n48% yield, 89% ee*",
+        "K4\n41% yield, 93% ee\n52% yield, 95% ee*",
+    ]
+    assert [
+        line.text for line in output if line.content_region.endswith("alternative")
+    ] == [line.text for line in source]
+    assert all(line.uncertain for line in output)
+
+
+def test_percentage_result_requires_unique_label_and_separate_columns():
+    source = results()
+    ambiguous = (*source, replace(source[0], text="K9", y0=128, y1=136))
+    assert associate_percentage_results(ambiguous) == ambiguous
+    crossing = tuple(
+        replace(line, x0=40, x1=160) if line is source[3] else line for line in source
+    )
+    assert associate_percentage_results(crossing) == crossing
+    table = tuple(replace(line, content_region="table-cell") for line in source)
+    assert associate_percentage_results(table) == table

@@ -21,9 +21,16 @@ from aletheia_nexus.content.embedded_tables import (
     append_embedded_tables,
     prepare_embedded_tables,
 )
-from aletheia_nexus.content.figure_labels import associate_keyed_labels
+from aletheia_nexus.content.figure_labels import (
+    associate_keyed_labels,
+    associate_percentage_results,
+)
 from aletheia_nexus.content.gate import ParserInput
 from aletheia_nexus.content.geometry import PageGeometry
+from aletheia_nexus.content.indexed_tables import (
+    prepare_indexed_tables,
+    repair_indexed_tables,
+)
 from aletheia_nexus.content.models import (
     LayoutLine,
     PageLayout,
@@ -48,7 +55,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.10.0"
+PARSER_VERSION = "3.10.1"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -783,7 +790,9 @@ class _NativeExtractionStage:
                 ordinary, layout, _caption_match, _aligned_table_fragments
             )
             ordinary = prepare_embedded_tables(ordinary, layout)
+            ordinary = prepare_indexed_tables(ordinary, layout)
             ordinary = associate_keyed_labels(ordinary)
+            ordinary = associate_percentage_results(ordinary)
             alternatives = tuple(
                 line
                 for line in prepared_lines
@@ -1456,6 +1465,7 @@ def _objects(
         by_block[str(block["id"])]["object_ref"] = identifier
 
     append_embedded_tables(tables, blocks, anchor_by_id, layouts)
+    repair_indexed_tables(tables, blocks, anchor_by_id, layouts)
     meaningful_images = {
         (page_number, image.name)
         for page_number, layout in layouts.items()

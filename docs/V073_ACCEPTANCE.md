@@ -262,8 +262,33 @@ three separate mass/error label groups, and the missing bullet; three other
 source layouts create no new embedded grid or keyed group. These are regressions,
 not new first scores. Initial fixture failures (a missing required title and a
 counterexample that did not actually cross the neighboring column) are retained
-in the local test logs. Current parser identity is **3.10.0**, native backend
+in the local test logs. This stage used parser identity **3.10.0**, native backend
 **1.19.1**; complete scientific regressions and release verification remain due.
+
+Another exposed table places a reaction diagram between its caption and an
+explicit Entry header. The parser now recognizes a complete, consecutively
+numbered experiment grid under aligned headers, preserves wrapped header text,
+and keeps the diagram as context rather than treating its fragments as data
+cells. Missing columns, discontinuous indices and intervening captions abstain.
+Literal `nd` remains `nd`; no numerical value is inferred. Repeated percentage
+result lines under uniquely aligned source labels retain their separate lines
+and footnote markers. An ambiguous upper result cannot be bypassed by assigning
+a lower result to the label. Original fragments remain available.
+
+The content suite passes **542 tests**, with three existing opt-in skips.
+A fresh native probe restores the exposed table's seven experiment rows; a
+structural replay of completed, already exposed OCR layouts also restores nine
+label/result groups, including the separate starred results. Replay is not fresh
+extraction or a new score. The first replay harness failed backend validation
+because JSON arrays were not reconstructed as tuples; that output is preserved.
+The corrected harness has no parse errors. The initial competing-result test
+failure is also retained. Unresolved native chemical-label case differences
+remain failures; grid recovery alone does not establish complete correctness.
+Current parser identity is **3.10.1**.
+
+Hosted run `40038639189` on `e86d8a9` passed seven of eight jobs. Its Windows
+real-browser HTTP 429/session-pause test failed and remains under investigation;
+it is not a passing final CI result.
 
 ## Completed exposed development acceptance and candidate freeze
 
