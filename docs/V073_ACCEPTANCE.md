@@ -56,6 +56,40 @@ Local evidence hashes (SHA-256):
 The legacy delivery used English Tesseract plus image OCR. Its current artifact
 audit is not the future paired holdout run in the locked bilingual configuration.
 
+The literal retrieval baseline was rerun against the delivered corpus: original
+article queries reproduce Top1 **12/32**, Top5 **19/32**; SI **3/4**. The new
+frozen 20 queries give Top1 **13/20**, Top5 **16/20**. These are retrieval hits,
+not complete-answer scores. Candidate results remain pending.
+
+## Source-first holdout seal
+
+On 2026-10-23 at 15:19:42 UTC, before any v0.7.3 product-code change or AN
+parsing of these sources, 60 questions and source oracles were hash-locked:
+16 prose, 20 table, 12 figure and 12 SI questions. The sample contains 12 main
+articles (9 English, 3 Chinese) and 4 associated SI PDFs, **671 pages** retained
+in full. Original pages supporting every answer were rendered and visually
+inspected by the implementing assistant. This is not external independent
+review or double-blind testing. No holdout score is available yet.
+
+The expanded prior-exposure inventory conservatively excludes 312 identities,
+including downloaded but previously unparsed PDFs. No sample hash, DOI or
+parent/SI DOI matched. Two inaccessible initial main-article candidates were
+replaced before parsing; one considered source was rejected for prior exposure.
+An unavailable SI candidate was replaced by publicly available SI associated
+with another selected main article. The original frame and reasons remain in
+the local ledger. Selection used source content and access, never AN results.
+
+Original-source disagreements include catalyst loading/material terminology,
+a table-versus-prose statistic, and a main/SI result/method discrepancy. Their
+oracles require the separate statements and sources to survive; no scientific
+guessing is permitted. Native-only and the locked bilingual optional-OCR run
+will be scored separately after the candidate is stable.
+
+- `protocol/holdout-v1.json` (sources, questions, answers, rules):
+  `2ac6e32b00144aceae120ffe2401987f9aacaaee45b23f52ae25bf71e10fc40e`
+- `protocol/exposed-identities-expanded.json`:
+  `4f178b8930112bc08d107c6b8e1a937b46c54b211b2aedc8a291a1ae027d3c73`
+
 Pending release gates: no-regression checks;
 20-task review comparison; 32+4 legacy and 20 new retrieval queries; new paired
 holdout; scientific-use review; final-commit CI and clean-install use; merged
