@@ -96,6 +96,11 @@ def test_cli_local_research_loop_and_idempotent_export(tmp_path, capsys, monkeyp
     )
     snapshot = json.loads(results.read_text("utf-8"))
     assert snapshot["hits"][0]["number"] == 1
+    hit = snapshot["hits"][0]
+    assert hit["reading_role"] == "primary"
+    assert set(hit["block_ids"]) <= {
+        bid for group in hit["review_locations"] for bid in group["block_ids"]
+    }
     assert (
         entrypoint(
             [

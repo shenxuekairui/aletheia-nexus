@@ -536,7 +536,7 @@ def search_corpus(
     )
     total = len(hits)
     hits = [{"number": n, **hit} for n, hit in enumerate(hits[:limit], 1)]
-    return {
+    report = {
         "schema": "aletheia-nexus/search-results/v1",
         "query": {
             "text": query,
@@ -558,6 +558,29 @@ def search_corpus(
         "hits": hits,
         "interpretation": "No hit means no literal match in the searched content; incomplete coverage is not evidence of absence.",
     }
+    if hits:
+        # Reuse the export's source grouping after ranking. This neither changes
+        # matching/ranking nor turns adjacent text into an experimental answer.
+        # Import here because evidence bundles also consume corpus units.
+        from aletheia_nexus.content.evidence import build_evidence_pack
+
+        pack = build_evidence_pack(
+            loaded,
+            report=report,
+            selectors=[str(hit["number"]) for hit in hits],
+            context_pages=0,
+        )
+        entries = {e["parsed_artifact_id"]: e for e in pack["included"]}
+        for hit in hits:
+            hit["reading_role"] = (
+                "alternative" if hit["id"] in alternative_ids else "primary"
+            )
+            hit["review_locations"] = [
+                group
+                for group in entries[hit["parsed_artifact_id"]]["review_locations"]
+                if set(group["block_ids"]).intersection(hit["block_ids"])
+            ]
+    return report
 
 
 def _contains_reading(primary: list | None, alternative: list | None) -> bool:

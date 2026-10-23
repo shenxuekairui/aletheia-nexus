@@ -185,3 +185,11 @@ counted as a successful regression. An additional existing figure-unit error
 (a printed nm scale read as mm) remains in the boundary ledger with its uncertain
 source-linked figure reading; it is not claimed as corrected or silently assigned
 the unit used by neighbouring panels.
+
+Local development checks after this coverage repair passed 1,940 deterministic
+tests (115 opt-in/platform skips), 119 real browser tests, two normal-browser
+tests and one real OCR test. The later search presentation change separately
+passed 97 focused tests (one opt-in skip); it adds the existing export review
+locations after ranking and prints primary/alternative status, matched observed
+rows, local gaps and differences. These are development checks, not final-head
+release verification or measured review-burden savings.

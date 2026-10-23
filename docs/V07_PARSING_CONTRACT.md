@@ -1,6 +1,14 @@
 # v0.7 scientific content parsing contract
 
 Status: `0.7.3` candidate, `structured-pdf-pipeline/3.9.0`; v2 remains readable.
+
+Search-result v1 adds `reading_role`, `matching_rows`, `interpretation_status`
+and `review_locations` without changing hit identities or legacy selection.
+Review locations reuse the evidence export's primary/alternative block IDs,
+unresolved text differences and local warnings on the hit pages. They are added
+after ranking. Nearby text, observed rows and figure captions remain layout
+context, not interpreted or verified experimental tuples. Selected evidence
+export retains all corresponding readings and original-page anchors.
 Scientific acceptance and publication remain pending in [V073_ACCEPTANCE.md](V073_ACCEPTANCE.md).
 
 The release target is:
