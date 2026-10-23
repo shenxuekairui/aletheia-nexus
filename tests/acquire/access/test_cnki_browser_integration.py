@@ -68,7 +68,11 @@ def test_native_http_429_pauses_session_without_a_visible_error_message(tmp_path
             browser_session=session,
             output_dir=tmp_path / "out",
         )
-    assert first.status == second.status == BrowserAttemptStatus.ACCESS_DENIED
+    assert first.status == second.status == BrowserAttemptStatus.ACCESS_DENIED, (
+        first,
+        second,
+        requests,
+    )
     assert first.error == second.error == "CNKI_RATE_LIMITED"
     assert first.download_started and not second.download_started
     assert any("CNKI_RATE_LIMITED" in r.evidence for r in first.challenge_history)
