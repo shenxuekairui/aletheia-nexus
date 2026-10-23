@@ -271,8 +271,9 @@ def test_crop_consensus_recovers_weak_text_without_changing_confident_numbers():
 @pytest.mark.parametrize(
     ("original", "alternative"), [("500 mm", "500 nm"), ("2.5 nm", "2.5 μm")]
 )
+@pytest.mark.parametrize("crop_score", [0.92, 0.99])
 def test_scale_unit_crop_conflict_is_local_evidence_not_a_replacement(
-    original, alternative
+    original, alternative, crop_score
 ):
     Image = pytest.importorskip("PIL.Image")
 
@@ -280,7 +281,7 @@ def test_scale_unit_crop_conflict_is_local_evidence_not_a_replacement(
 
     image = Image.new("RGB", (400, 100), "white")
     old = r(original, box=(20, 20, 180, 40), score=0.93)
-    readings = iter([(alternative, 0.96), (alternative, 0.92)] * 2)
+    readings = iter([(alternative, crop_score)] * 4)
     out = reread_uncertain_lines([old], image, lambda crop: next(readings))
     assert len(out) == 2 and not old.get("alternative")
     assert out[1]["alternative"] and out[1]["text"] == alternative
