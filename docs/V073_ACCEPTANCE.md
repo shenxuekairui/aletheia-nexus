@@ -254,3 +254,25 @@ three pages add no scale-unit alternatives. The image adapter is 1.5.3. The
 content suite passes 499 tests (three opt-in skips); the deterministic suite
 passes 1,970 tests (115 opt-in/platform skips). A complete extraction with this
 identity is still required before opening the sealed holdout.
+
+The unpublished 0.7.3 development wheel also completed 24 installed-package
+use checks in a fresh Windows/Python 3.14 environment: public DOI acquisition
+and parsing, declared local article/SI import, a real cooperative interruption
+and durable resume, configuration invalidation, unchanged-artifact reuse,
+role-filtered retrieval, three export formats, verified source resolution,
+optional local OCR, old-artifact reading and the separate offline advisory
+example. The imported module is inside the clean environment. Source conflict
+evidence remains unchanged; the example abstains and refuses overwrite. This
+is an engineering/use result, not scientific accuracy or final-commit release
+verification. Its fresh dependencies include pypdf 6.21.2 and fonttools 4.67.0;
+the separately locked paired scientific runtime has not changed.
+
+An initial development harness expected a native-only SI hit for a word absent
+from that artifact. The role filter correctly excluded the article containing
+the word. That failed harness run is preserved; the positive use check now uses
+the source-attested HPLC term. None of the frozen 32+4 or 20 scientific queries
+was changed. Package inspection also found that the new Python advisory example
+was omitted by the existing JSON-only example manifest; the source distribution
+now includes it. Restricted papers and the user's unrelated debug files remain
+outside the packages. Final release artifacts and installation checks are still
+pending.
