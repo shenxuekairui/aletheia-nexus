@@ -428,7 +428,10 @@ def test_scoped_figures_retain_page_context_and_conflicts_but_not_prose(monkeypa
     competing = replace(label, text="Catalyst 8", content_region="ocr-alternative")
     prose = replace(label, text="Clear native method", y0=700, y1=720)
     glyph = replace(label, text="9 μL", x0=400, x1=450, y0=100, y1=120)
-    full = PageLayout(page=1, width=600, height=800, lines=(label, competing, prose))
+    vector_label = replace(label, text="R(−)", x0=60, x1=100, y0=150, y1=170)
+    full = PageLayout(
+        page=1, width=600, height=800, lines=(label, competing, prose, vector_label)
+    )
     text_region = PageRegion("text", (0.6, 0.1, 0.8, 0.2), "damaged glyph")
     calls = []
     backend = TesseractOcrBackend()
@@ -442,9 +445,10 @@ def test_scoped_figures_retain_page_context_and_conflicts_but_not_prose(monkeypa
         None,
         1,
         (PageRegion("figure", (0.08, 0.48, 0.55, 0.55), "image"), text_region),
+        native_layout=replace(full, lines=(prose,)),
     )
     assert calls == [(), (text_region,)]
-    assert result.lines == (label, competing, glyph)
+    assert result.lines == (label, competing, vector_label, glyph)
     assert result.warnings[0]["code"] == "OCR_FIGURE_READINGS_SCOPED"
 
 

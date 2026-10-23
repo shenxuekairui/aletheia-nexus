@@ -174,3 +174,14 @@ and removed the observed cross-column fragment. Another fresh corpus run and
 coverage adjudication are required before candidate freeze. The local failed
 extraction, comparison and probe records remain available; no first score was
 overwritten.
+
+A further original-page check found outlined scheme labels outside raster image
+objects. Restricting page-context OCR to image boxes alone would also lose valid
+content. The selection now retains readings in native-text gaps, using native
+geometry, as well as painted images. The actual source labels and negative case
+(clear native prose) were checked before restarting the full extraction. The
+intermediate `development-c` run was stopped and preserved as incomplete, not
+counted as a successful regression. An additional existing figure-unit error
+(a printed nm scale read as mm) remains in the boundary ledger with its uncertain
+source-linked figure reading; it is not claimed as corrected or silently assigned
+the unit used by neighbouring panels.

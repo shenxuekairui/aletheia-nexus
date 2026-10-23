@@ -104,7 +104,7 @@ def batch_main(argv: list[str]) -> int:
 def search_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus search",
-        description="Search a local corpus. Default AND applies within a paragraph or observed table; quotes preserve a phrase.",
+        description="Search local paragraphs, observed table/figure context and bounded nearby text. Default AND requires all terms in one evidence unit; quotes preserve a phrase. Context is not an interpreted experimental relationship.",
     )
     parser.add_argument("root", type=Path)
     parser.add_argument("query")

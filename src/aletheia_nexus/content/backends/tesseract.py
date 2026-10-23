@@ -430,7 +430,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.7.0",
+            "adapter_version": "1.7.1",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
@@ -587,7 +587,12 @@ class TesseractOcrBackend:
         return self._extract_page(page, page_number)
 
     def extract_regions(
-        self, page: Any, page_number: int, regions: tuple[PageRegion, ...]
+        self,
+        page: Any,
+        page_number: int,
+        regions: tuple[PageRegion, ...],
+        *,
+        native_layout: PageLayout | None = None,
     ) -> PageLayout:
         """Keep figure context; mask isolated damaged text in page coordinates."""
         if not regions or any(
@@ -624,6 +629,21 @@ class TesseractOcrBackend:
                     denominator = min(area, (x1 - x0) * (y1 - y0))
                     if denominator > 0 and overlap / denominator >= 0.35:
                         return True
+                # Vector/out-lined figure lettering has no PDF image object.
+                # It must survive when no native text covers that location.
+                if native_layout is not None and area > 0:
+                    covered = 0.0
+                    for native_line in native_layout.lines:
+                        x0, y0, x1, y1 = (
+                            native_line.x0 / native_layout.width,
+                            native_line.y0 / native_layout.height,
+                            native_line.x1 / native_layout.width,
+                            native_line.y1 / native_layout.height,
+                        )
+                        covered += max(0, min(box[2], x1) - max(box[0], x0)) * max(
+                            0, min(box[3], y1) - max(box[1], y0)
+                        )
+                    return covered / area < 0.35
                 return False
 
             selected = tuple(line for line in full.lines if in_figure(line))
@@ -637,7 +657,7 @@ class TesseractOcrBackend:
                             "code": "OCR_FIGURE_READINGS_SCOPED",
                             "page": page_number,
                             "regions": [list(r.bbox) for r in figures],
-                            "detail": f"Retained {len(selected)} of {len(full.lines)} page-context OCR lines at painted images; readable native prose is not a competing reading.",
+                            "detail": f"Retained {len(selected)} of {len(full.lines)} page-context OCR lines at painted images or native-text gaps; readable native prose is not a competing reading.",
                         },
                     ),
                 )

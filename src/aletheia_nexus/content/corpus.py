@@ -199,7 +199,7 @@ def load_corpus(root: str | Path) -> Corpus:
 
 
 def content_units(document: dict[str, object]) -> list[dict[str, object]]:
-    """Paragraphs and observed tables, with table captions kept in the same unit."""
+    """Direct readings and bounded layout context; no experimental inference."""
     blocks = {block["id"]: block for block in document["blocks"]}
     anchors = {anchor["id"]: anchor for anchor in document.get("anchors", [])}
     units = []

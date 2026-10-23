@@ -168,7 +168,8 @@ def test_local_triggers_route_ink_regions_but_scans_use_full_page(scan):
             calls.append("full")
             return page()
 
-        def extract_regions(self, _page, _number, regions):
+        def extract_regions(self, _page, _number, regions, *, native_layout=None):
+            assert native_layout is native
             calls.extend(regions)
             return page()
 

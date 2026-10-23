@@ -410,7 +410,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.9.2"
+    version = "1.9.3"
 
     def __init__(
         self,
@@ -581,7 +581,10 @@ class AdaptiveOcrBackend:
                     add_optional(
                         backend,
                         lambda extract_regions=extract_regions: extract_regions(
-                            page, page_number, tuple(local_ocr_regions)
+                            page,
+                            page_number,
+                            tuple(local_ocr_regions),
+                            native_layout=native,
                         ),
                     )
                     continue
