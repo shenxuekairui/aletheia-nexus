@@ -4,8 +4,9 @@ Status: **NOT ACCEPTED / NOT RELEASED**. The 0.7 series has not yet met its
 closure conditions. Protocol: [V073_FINAL_PLAN.md](V073_FINAL_PLAN.md).
 
 Baseline: v0.7.2, commit `643094b943c7ab9c7aa7de4ef5897d688617ae6f`.
-Historical first scores remain historical. No v0.7.3 scientific accuracy,
-review-burden reduction, independent review or publication success is claimed.
+Historical first scores remain historical. The exposed development results
+below are complete; sealed first-run accuracy and publication remain pending.
+No independent third-party review or human-time improvement is claimed.
 
 The task-local evidence ledger records baseline hashes, complete historical
 adjudication, frozen tasks/queries/holdout, candidate execution identity, paired
@@ -59,7 +60,7 @@ audit is not the future paired holdout run in the locked bilingual configuration
 The literal retrieval baseline was rerun against the delivered corpus: original
 article queries reproduce Top1 **12/32**, Top5 **19/32**; SI **3/4**. The new
 frozen 20 queries give Top1 **13/20**, Top5 **16/20**. These are retrieval hits,
-not complete-answer scores. Candidate results remain pending.
+not complete-answer scores. The completed candidate comparison is below.
 
 ## Source-first holdout seal
 
@@ -104,10 +105,86 @@ and no human speedup is claimed. Per-task times were not measured.
 - `baseline/tasks/adjudication.json`:
   `b8a5c76ee835868cd7545d71aa30527e5aa888fdd4f0ca01a872c7b787898676`
 
-Pending release gates: no-regression checks;
-20-task review comparison; 32+4 legacy and 20 new retrieval queries; new paired
-holdout; scientific-use review; final-commit CI and clean-install use; merged
-main verification; GitHub/PyPI publication and published-package verification.
+Pending release gates: new paired holdout; final scientific-use review;
+final-commit CI and clean-install use; merged main verification; GitHub/PyPI
+publication and published-package verification.
+
+## Completed exposed development acceptance and candidate freeze
+
+The fresh `development-h` run completed 54 exposed documents / 503 pages, with
+zero parse errors, missing block anchors or optional-backend failures. It used
+two workers and the previously recorded historical configurations; its 3,395.54 s
+extraction wall time is not an isolated paired performance benchmark. Parsing
+used `d0d80acedd5adebac24f7348e242d159ead54170`. Export and local notice
+presentation used `9a6d27d5f874bb3a00bbb4aab26f826d4c97ab96`; all parsing,
+backend, table and retrieval implementation bytes are identical between those
+snapshots. That distinction is preserved in the local execution records.
+
+| Same exposed materials and rubric | v0.7.2 audit | v0.7.3 candidate |
+| --- | ---: | ---: |
+| Original 75, strict complete primary reading | 69/75 | 72/75 |
+| Original 75, historical content rubric | 72/75 | 73/75 |
+| Original confirmed target content retained | 52/52 | 52/52 |
+| Strict failures without adequate local disclosure | 4 | 0 |
+| H / I / J / K regression | 16/16; 8/8; 12/12; 12/12 | Same |
+| Latest exposed 16-question regression | 16/16 | 16/16 |
+| Original literal article Top1 / Top5 | 12/32; 19/32 | 14/32; 24/32 |
+| Original SI Top5 | 3/4 | 4/4 |
+| New frozen 20 queries Top1 / Top5 | 13/20; 16/20 | 14/20; 19/20 |
+| Twenty tasks, complete default answers | 16/20 | 18/20 |
+| Twenty tasks, completion after source checks | 20/20 | 20/20 |
+| Independent source judgments / median per task | 42 / 2 | 21 / 0.5 |
+| Observed assistant review wall time | 245 s | 322 s |
+
+These are exposed regressions, not new blind results. Historical first results
+remain 52/75; H 5/16, I 4/8, J 9/12, K 8/12; and latest 14/16. The original
+52-target preservation is a content test: under the stricter relation rubric,
+51/52 are currently complete, with the pre-existing 18-A2 shared-label gap
+remaining. It is not legitimate to call that strict 52/52.
+
+The three remaining original-question failures are 12-A3 (four panel identities
+still require source interpretation), 18-A2 (two shared R/S labels lack supported
+spans), and 28-A2 (unusable source temperature glyph). They remain failures;
+local disclosure does not repair them. The original separate excluded glyph
+item is still outside the denominator. Source contradictions remain intact.
+
+The task reduction is **50%**, with 25 old independent issues eliminated and
+four new OCR differences counted. Those new differences concern one lost
+decimal point, one electrode-name bracket, and two S/5 configuration readings.
+One source page containing three disagreements still counts three judgments.
+Display folding receives zero reduction credit. The timed session included
+tool latency and context handling; no per-task times were measured. Its longer
+wall time does not establish a speedup. All 20 reviewed exports are byte-identical
+to the completed-run exports, and all requested facts, source conflicts and
+source gaps remain available.
+
+The literal old Top5 misses are 7-A4, 21-A1, 21-A3, 21-A4, 24-A3, 24-A4, 30-A3
+and 38-A3. New Q06 remains a miss: its unchanged literal `Ru2` does not match
+the printed `Ru-2` form. These failures were not removed or rewritten. A hit
+does not certify that the full scientific answer is correct.
+
+All 37 original files / 287 pages remain. Candidate block count is 17,763 versus
+17,023. Native paragraphs sometimes split around new OCR; some assembled graph
+axes become incomplete while their raw readings remain; a few unresolved
+ligatures and uncertain header-rule fragments remain. The source audit records
+these limitations explicitly. In particular, an exposed `500 nm` scale is still
+wrong as primary `500 mm`, with the local unit conflict and alternative retained.
+This is improved disclosure, not an accuracy repair. No whole-library reduction
+in manual burden or universal figure completeness is claimed.
+
+The candidate freeze `protocol/candidate-freeze.json` has SHA-256
+`bee5b85c1fb4c078c4088966ddb4e35204e6a1d8c4322b195cd296e3c916a875`.
+It locks candidate `9a6d27d`, the exact v0.7.2 source, and runtime/models before
+the four sequential, one-worker native/OCR runs of all 671 holdout pages.
+No held-out scientific result is available at this checkpoint.
+
+Local SHA-256 evidence:
+
+- Complete extraction audit: `7247a6c3c04f1afef5db455eb5162166c7e9d444dfaccd6fff11e0213669395c`
+- Current 75 adjudication: `c56d36ac74f95dbfc85c8d22d8943d40be3db907759384d0726c964907271f05`
+- Historical 64-question regression: `af2e3a724c27c1210e0955b6aa44d65a5916b0b998620fc6f9ee19a50cc16181`
+- Source coverage adjudication: `fad59bae1fd16eade1c466a747a6430c186f5975c23109fcee3500386d66ceaa`
+- Actual 20-task review: `96a242da27ab4da950f82178b4ea82c5ae8b720401252213ae421ea9dabae9bd`
 
 ## Development evidence (not acceptance)
 
