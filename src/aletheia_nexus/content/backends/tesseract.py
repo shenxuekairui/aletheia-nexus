@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import math
+import os
 import re
 import subprocess
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from importlib import metadata
 from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
@@ -16,6 +18,7 @@ from typing import Any
 
 from pypdf import PdfWriter
 
+from aletheia_nexus.content.backends.superscripts import raised_glyph_box
 from aletheia_nexus.content.geometry import PageGeometry, raster_bbox_to_canonical
 from aletheia_nexus.content.models import LayoutLine, PageLayout
 
@@ -34,8 +37,12 @@ class TesseractOcrConfig:
     max_raster_pixels: int = 50_000_000
     renderer_command: str = "pdftoppm"
     tesseract_command: str = "tesseract"
+    tessdata_dir: str | None = None
+    image_ocr: str = "tesseract"
 
     def __post_init__(self) -> None:
+        if self.image_ocr not in {"tesseract", "rapidocr"}:
+            raise ValueError("image_ocr must be tesseract or rapidocr")
         if self.dpi < 300:
             raise ValueError("OCR dpi must be at least 300")
         if not self.languages.strip():
@@ -171,6 +178,7 @@ def _orientation_rotation(image_path: Path, config: TesseractOcrConfig) -> int:
             "0",
             "-l",
             "osd",
+            *(["--tessdata-dir", config.tessdata_dir] if config.tessdata_dir else []),
         ],
         timeout=config.timeout_seconds,
     )
@@ -193,7 +201,10 @@ def _parse_tsv(
     deskew_angle: float = 0.0,
 ) -> tuple[LayoutLine, ...]:
     words: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
-    for row in csv.DictReader(io.StringIO(payload), delimiter="\t"):
+    # A literal OCR quote must not swallow subsequent TSV records.
+    for row in csv.DictReader(
+        io.StringIO(payload), delimiter="\t", quoting=csv.QUOTE_NONE
+    ):
         if row.get("level") != "5" or not (row.get("text") or "").strip():
             continue
         try:
@@ -244,10 +255,32 @@ def _parse_tsv(
                 extraction_method="tesseract-tsv-ocr",
                 extraction_confidence=max(0.0, min(1.0, confidence)),
                 source_engines=(engine_id,),
-                uncertain=confidence < 0.85,
+                # A confident sentence must not hide one poorly read number or
+                # unit. Keep line confidence separate from this review flag.
+                uncertain=confidence < 0.85
+                or any(
+                    float(row["conf"]) < 50
+                    and any(c.isalnum() or c in "%‰±−" for c in row["text"])
+                    for row in rows
+                ),
             )
         )
     return tuple(result)
+
+
+def _retry_candidate(line: LayoutLine) -> bool:
+    """Limit retries to short low-confidence measurements, not page numbers."""
+    return (
+        line.content_region == "body"
+        and line.extraction_method != "tesseract-superscript-retry"
+        and line.extraction_confidence < 0.8
+        and len("".join(line.text.split())) <= 40
+        and re.search(
+            r"[%‰]|[0-9]\s*(?:m?[AV]|m?mol|m?[Ll]|[μµu]?[Ag]|[ck]?m|[shK]|°[CF])(?:\b|(?=[+\-−/²³]))",
+            line.text,
+        )
+        is not None
+    )
 
 
 def _rotate_point(
@@ -344,6 +377,41 @@ class TesseractOcrBackend:
             "-v",
             timeout=timeout,
         )
+        self.traineddata = self._traineddata_identity(timeout)
+        model_id = hashlib.sha256(
+            repr(tuple(sorted(self.traineddata.items()))).encode()
+        ).hexdigest()[:12]
+        self.evidence_engine_id = f"{self.name}@{self.version}+data.{model_id}"
+
+    def _traineddata_identity(self, timeout: int) -> dict[str, str]:
+        directory = self.config.tessdata_dir or os.environ.get("TESSDATA_PREFIX")
+        if not directory:
+            try:
+                result = _run(
+                    [self.config.tesseract_command, "--list-langs"], timeout=timeout
+                )
+                match = re.search(
+                    r'List of available languages in "([^"]+)"',
+                    result.stdout + result.stderr,
+                )
+                directory = match.group(1) if match else None
+            except RuntimeError:
+                pass
+        languages = set(self.config.languages.split("+"))
+        if self.config.detect_orientation:
+            languages.add("osd")
+        identities = {}
+        for language in sorted(languages):
+            try:
+                if not directory:
+                    raise FileNotFoundError
+                with (Path(directory) / f"{language}.traineddata").open("rb") as stream:
+                    identities[language] = hashlib.file_digest(
+                        stream, "sha256"
+                    ).hexdigest()
+            except OSError:
+                identities[language] = "unavailable"
+        return identities
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -353,8 +421,20 @@ class TesseractOcrBackend:
         configuration["tesseract_command"] = _command_name(
             self.config.tesseract_command
         )
+        configuration["tessdata_dir"] = (
+            "explicit" if self.config.tessdata_dir else "default"
+        )
+        image_identity = {}
+        if self.config.image_ocr == "rapidocr":
+            from aletheia_nexus.content.backends.rapid_images import execution_identity
+
+            image_identity = execution_identity()
         return {
+            "adapter_version": "1.5.0",
+            "image_annotation_version": "1.1.0",
             "configuration": configuration,
+            "image_ocr_identity": image_identity,
+            "traineddata_sha256": self.traineddata,
             "runtime_dependencies": {
                 "tesseract": self.version,
                 "poppler": self.renderer_version,
@@ -362,6 +442,146 @@ class TesseractOcrBackend:
                 "pypdf": _package_version("pypdf"),
             },
         }
+
+    def extract_image_annotations(self, page: Any, page_number: int) -> PageLayout:
+        """Read source-resolution footers independently of whole-page OCR."""
+        if self.config.image_ocr == "rapidocr":
+            from aletheia_nexus.content.backends.rapid_images import (
+                extract_image_annotations,
+            )
+
+            return extract_image_annotations(
+                page, page_number, self.config.max_raster_pixels
+            )
+        from PIL import Image, ImageOps
+
+        from aletheia_nexus.content.backends.image_annotations import (
+            footer_band,
+            length_label_words,
+            upright_images,
+        )
+
+        geometry = PageGeometry.from_page(page)
+        lines = []
+        warnings = []
+        with TemporaryDirectory(prefix="an-image-label-") as directory:
+            root = Path(directory)
+            for index, (name, image, bounds) in enumerate(
+                upright_images(page, geometry, self.config.max_raster_pixels)
+            ):
+                band = footer_band(image)
+                if band is None:
+                    continue
+                cropped, box = band
+                prepared = ImageOps.expand(
+                    cropped.resize(
+                        (cropped.width * 4, cropped.height * 4),
+                        Image.Resampling.LANCZOS,
+                    ),
+                    border=20,
+                    fill=255,
+                )
+                path = root / f"label-{index}.png"
+                prepared.save(path)
+                result = _run(
+                    [
+                        self.config.tesseract_command,
+                        str(path),
+                        "stdout",
+                        "-l",
+                        self.config.languages,
+                        *(
+                            ["--tessdata-dir", self.config.tessdata_dir]
+                            if self.config.tessdata_dir
+                            else []
+                        ),
+                        "--psm",
+                        "7",
+                        "-c",
+                        "tessedit_create_tsv=1",
+                    ],
+                    timeout=self.config.timeout_seconds,
+                )
+                rows = [
+                    r
+                    for r in csv.DictReader(
+                        io.StringIO(result.stdout),
+                        delimiter="\t",
+                        quoting=csv.QUOTE_NONE,
+                    )
+                    if r.get("level") == "5" and (r.get("text") or "").strip()
+                ]
+                found = False
+                # A comparison or multi-value legend must not be reduced to
+                # isolated, apparently confident length labels.
+                candidates = length_label_words(rows)
+                for group in candidates:
+                    text = " ".join(word["text"].strip() for word in group)
+                    confidence = min(float(r["conf"]) for r in group) / 100
+                    if confidence < 0.5:
+                        continue
+                    left = min(int(r["left"]) for r in group)
+                    top = min(int(r["top"]) for r in group)
+                    right = max(int(r["left"]) + int(r["width"]) for r in group)
+                    bottom = max(int(r["top"]) + int(r["height"]) for r in group)
+                    sx = (bounds[2] - bounds[0]) / image.width
+                    sy = (bounds[3] - bounds[1]) / image.height
+                    x0 = bounds[0] + (box[0] + (left - 20) / 4) * sx
+                    x1 = bounds[0] + (box[0] + (right - 20) / 4) * sx
+                    y0 = bounds[3] - (box[1] + (bottom - 20) / 4) * sy
+                    y1 = bounds[3] - (box[1] + (top - 20) / 4) * sy
+                    lines.append(
+                        LayoutLine(
+                            text=text,
+                            x0=x0,
+                            y0=y0,
+                            x1=x1,
+                            y1=y1,
+                            font_size=max(y1 - y0, 1),
+                            extraction_method="tesseract-image-label",
+                            extraction_confidence=confidence,
+                            source_engines=(self.evidence_engine_id + "+image-label",),
+                            content_region="figure",
+                            uncertain=confidence < 0.85,
+                        )
+                    )
+                    found = True
+                # A generic footer can be a legend or ordinary prose. Only
+                # flag an observed length reading that failed confidence;
+                # unrecognized image content retains the existing image-wide
+                # completeness warning instead of creating speculative tasks.
+                if candidates and not found:
+                    warnings.append(
+                        {
+                            "code": "IMAGE_LABEL_UNRESOLVED",
+                            "page": page_number,
+                            "bbox": [
+                                bounds[0] / geometry.width,
+                                (
+                                    bounds[3]
+                                    - box[3] / image.height * (bounds[3] - bounds[1])
+                                )
+                                / geometry.height,
+                                bounds[2] / geometry.width,
+                                (
+                                    bounds[3]
+                                    - box[1] / image.height * (bounds[3] - bounds[1])
+                                )
+                                / geometry.height,
+                            ],
+                            "detail": f"page {page_number}: {name}: isolated image footer has no reliable length reading",
+                        }
+                    )
+        return PageLayout(
+            page=page_number,
+            width=geometry.width,
+            height=geometry.height,
+            media_box=geometry.media_box,
+            crop_box=geometry.crop_box,
+            rotation=geometry.rotation,
+            lines=tuple(lines),
+            warnings=tuple(warnings),
+        )
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
         geometry = PageGeometry.from_page(page)
@@ -478,13 +698,23 @@ class TesseractOcrBackend:
                     "stdout",
                     "-l",
                     self.config.languages,
+                    *(
+                        ["--tessdata-dir", self.config.tessdata_dir]
+                        if self.config.tessdata_dir
+                        else []
+                    ),
                     "--psm",
                     str(self.config.page_segmentation_mode),
-                    "tsv",
+                    "-c",
+                    "tessedit_create_tsv=1",
                 ],
                 timeout=self.config.timeout_seconds,
             )
-            engine_id = f"{self.name}@{self.version}"
+            engine_id = self.evidence_engine_id
+            if not result.stdout.startswith("level\tpage_num\t"):
+                raise RuntimeError(
+                    "Tesseract did not return TSV; check the OCR installation and language data"
+                )
             lines = _parse_tsv(
                 result.stdout,
                 page_number=page_number,
@@ -498,6 +728,19 @@ class TesseractOcrBackend:
                 orientation_rotation=rotation,
                 deskew_angle=deskew_angle,
             )
+            lines = self._retry_unit_superscripts(
+                image,
+                result.stdout,
+                lines,
+                root,
+            )
+            # Short scientific lines can be missed by page segmentation
+            # (for example, a percentage at the end of a paragraph). Re-read only
+            # a few low-confidence lines; this is not another full-page model.
+            if not rotation and not deskew_angle:
+                lines = self._retry_short_lines(
+                    image, lines, root, page_width, page_height
+                )
         return PageLayout(
             page=page_number,
             width=page_width,
@@ -508,3 +751,206 @@ class TesseractOcrBackend:
             lines=lines,
             warnings=tuple(warnings),
         )
+
+    def _retry_unit_superscripts(self, image, payload, lines, root):
+        """Re-read visible raised ink after a low-confidence per-length unit."""
+        from PIL import Image, ImageOps
+
+        rows = list(
+            csv.DictReader(io.StringIO(payload), delimiter="\t", quoting=csv.QUOTE_NONE)
+        )
+        groups = {}
+        for row in rows:
+            if row.get("level") == "5" and (row.get("text") or "").strip():
+                try:
+                    if float(row.get("conf", "-1")) >= 0:
+                        key = (row["block_num"], row["par_num"], row["line_num"])
+                        groups.setdefault(key, []).append(row)
+                except (KeyError, TypeError, ValueError):
+                    continue  # Match the records accepted by _parse_tsv.
+        output = list(lines)
+        attempts = 0
+        for index, words in enumerate(groups.values()):
+            if index >= len(lines):
+                break
+            originals = sorted(words, key=lambda r: int(r["left"]))
+            replacement = [r["text"].strip() for r in originals]
+            if " ".join(replacement) != lines[index].text:
+                continue  # A malformed/empty TSV box was dropped during parsing.
+            for position, word in enumerate(originals):
+                if attempts >= 3:
+                    break
+                text = word["text"].strip()
+                if float(word["conf"]) >= 50 or not re.search(
+                    r"[A-Za-zµμΩ]+/[cmnuµμ]?m$", text
+                ):
+                    continue
+                x, y, width, height = (
+                    int(word[k]) for k in ("left", "top", "width", "height")
+                )
+                box = raised_glyph_box(image, (x, y, x + width, y + height))
+                if box is None:
+                    continue
+                attempts += 1
+                cropped = image.crop(box).convert("L")
+                cropped = cropped.resize(
+                    (cropped.width * 3, cropped.height * 3), Image.Resampling.BICUBIC
+                )
+                cropped = ImageOps.expand(cropped, border=20, fill=255)
+                path = root / f"superscript-{attempts}.png"
+                cropped.save(path)
+                try:
+                    result = _run(
+                        [
+                            self.config.tesseract_command,
+                            str(path),
+                            "stdout",
+                            "-l",
+                            self.config.languages,
+                            *(
+                                ["--tessdata-dir", self.config.tessdata_dir]
+                                if self.config.tessdata_dir
+                                else []
+                            ),
+                            "--psm",
+                            "10",
+                            "-c",
+                            "tessedit_create_tsv=1",
+                        ],
+                        timeout=self.config.timeout_seconds,
+                    )
+                    readings = [
+                        r
+                        for r in csv.DictReader(
+                            io.StringIO(result.stdout),
+                            delimiter="\t",
+                            quoting=csv.QUOTE_NONE,
+                        )
+                        if r.get("level") == "5" and (r.get("text") or "").strip()
+                    ]
+                    if len(readings) != 1 or float(readings[0]["conf"]) < 90:
+                        continue
+                    digit = readings[0]["text"].strip()
+                    if not re.fullmatch(r"[0-9]", digit):
+                        continue
+                except (RuntimeError, ValueError, KeyError):
+                    continue
+                replacement[position] = text + digit.translate(
+                    str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+                )
+            updated = " ".join(replacement)
+            original = lines[index]
+            if updated != original.text:
+                output[index] = replace(
+                    original,
+                    text=updated,
+                    extraction_method="tesseract-superscript-retry",
+                    source_engines=(
+                        *original.source_engines,
+                        self.evidence_engine_id + "+superscript-retry",
+                    ),
+                    uncertain=True,
+                )
+                output.append(
+                    replace(original, content_region="ocr-alternative", uncertain=True)
+                )
+        return tuple(output)
+
+    def _retry_short_lines(self, image, lines, root, page_width, page_height):
+        from PIL import Image, ImageOps
+
+        candidates = sorted(
+            (i for i, line in enumerate(lines) if _retry_candidate(line)),
+            key=lambda i: lines[i].extraction_confidence,
+        )[:3]
+        output = list(lines)
+        for index in candidates:
+            original = lines[index]
+            box = (
+                max(0, math.floor(original.x0 / page_width * image.width) - 4),
+                max(0, math.floor((1 - original.y1 / page_height) * image.height) - 4),
+                min(image.width, math.ceil(original.x1 / page_width * image.width) + 4),
+                min(
+                    image.height,
+                    math.ceil((1 - original.y0 / page_height) * image.height) + 4,
+                ),
+            )
+            cropped = image.crop(box).convert("L")
+            cropped = cropped.resize(
+                (cropped.width * 2, cropped.height * 2), Image.Resampling.BICUBIC
+            )
+            cropped = ImageOps.expand(cropped, border=12, fill=255)
+            path = root / f"line-{index}.png"
+            cropped.save(path)
+            try:
+                result = _run(
+                    [
+                        self.config.tesseract_command,
+                        str(path),
+                        "stdout",
+                        "-l",
+                        self.config.languages,
+                        *(
+                            ["--tessdata-dir", self.config.tessdata_dir]
+                            if self.config.tessdata_dir
+                            else []
+                        ),
+                        "--psm",
+                        "7",
+                        "-c",
+                        "tessedit_create_tsv=1",
+                    ],
+                    timeout=self.config.timeout_seconds,
+                )
+                recovered = _parse_tsv(
+                    result.stdout,
+                    page_number=1,
+                    page_width=cropped.width,
+                    page_height=cropped.height,
+                    image_width=cropped.width,
+                    image_height=cropped.height,
+                    engine_id=self.evidence_engine_id + "+line-retry",
+                )
+            except (RuntimeError, ValueError):
+                continue  # The original positioned reading is still available.
+            if len(recovered) != 1:
+                continue
+            candidate = recovered[0]
+            if not any(c.isdigit() for c in candidate.text) or any(
+                sign in original.text and sign not in candidate.text for sign in "%‰"
+            ):
+                continue
+            if (
+                candidate.extraction_confidence < 0.85
+                or candidate.extraction_confidence
+                < original.extraction_confidence + 0.1
+            ):
+                continue
+            # Undo padding and enlargement before mapping into original PDF
+            # coordinates. The retry may recover glyphs outside the first box.
+            x0 = (box[0] + (candidate.x0 - 12) / 2) / image.width * page_width
+            x1 = (box[0] + (candidate.x1 - 12) / 2) / image.width * page_width
+            y0 = (
+                1 - (box[1] + (cropped.height - candidate.y0 - 12) / 2) / image.height
+            ) * page_height
+            y1 = (
+                1 - (box[1] + (cropped.height - candidate.y1 - 12) / 2) / image.height
+            ) * page_height
+            output[index] = replace(
+                original,
+                text=candidate.text,
+                x0=max(0, x0),
+                y0=max(0, y0),
+                x1=min(page_width, x1),
+                y1=min(page_height, y1),
+                font_size=max(y1 - y0, 1.0),
+                extraction_method="tesseract-line-retry",
+                extraction_confidence=candidate.extraction_confidence,
+                source_engines=candidate.source_engines,
+                uncertain=True,
+            )
+            if "".join(candidate.text.split()) != "".join(original.text.split()):
+                output.append(
+                    replace(original, content_region="ocr-alternative", uncertain=True)
+                )
+        return tuple(output)

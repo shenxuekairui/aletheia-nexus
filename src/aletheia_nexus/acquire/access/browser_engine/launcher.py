@@ -10,9 +10,11 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
@@ -72,11 +74,29 @@ class _NoRedirect(HTTPRedirectHandler):
 def _active_endpoint(profile: Path) -> str | None:
     """Match the profile's browser ID, not just a potentially recycled port."""
     try:
-        active_port = profile / "DevToolsActivePort"
-        if active_port.stat().st_size > 1024:
-            return None
-        lines = active_port.read_text(encoding="utf-8").splitlines()
-        port, browser_path = int(lines[0]), lines[1]
+        metadata_path = profile / ".an-normal-browser.json"
+        if metadata_path.is_file():
+            if metadata_path.stat().st_size > 8192:
+                return None
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            registered = urlsplit(metadata["endpoint"])
+            if (
+                registered.scheme != "ws"
+                or registered.hostname != "127.0.0.1"
+                or registered.username
+                or registered.password
+                or registered.query
+                or registered.fragment
+            ):
+                return None
+            port, browser_path = registered.port, registered.path
+        else:
+            # Compatibility with browsers launched with port=0 by older AN.
+            active_port = profile / "DevToolsActivePort"
+            if active_port.stat().st_size > 1024:
+                return None
+            lines = active_port.read_text(encoding="utf-8").splitlines()
+            port, browser_path = int(lines[0]), lines[1]
         if not 1 <= port <= 65535 or not re.fullmatch(
             r"/devtools/browser/[A-Za-z0-9-]{1,128}", browser_path
         ):
@@ -101,6 +121,53 @@ def _active_endpoint(profile: Path) -> str | None:
             return None
         return f"ws://127.0.0.1:{port}{browser_path}"
     except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return None
+
+
+def _available_loopback_port() -> int:
+    """Ask the OS for a free port, but pass the resulting NONZERO port to Chromium."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def _startup_endpoint(port: int, startup_url: str) -> str | None:
+    """Confirm a launch-specific local tab before trusting a newly selected port.
+
+    The port reservation must be released before Chromium can bind it. A random
+    startup marker prevents attaching to another browser that wins that race.
+    Subsequent connections use the recorded browser UUID instead of this tab.
+    """
+    try:
+        opener = build_opener(ProxyHandler({}), _NoRedirect())
+        base = f"http://127.0.0.1:{port}"
+        with opener.open(f"{base}/json/version", timeout=0.5) as response:
+            payload = json.loads(response.read(65536))
+        websocket = urlsplit(payload["webSocketDebuggerUrl"])
+        if (
+            websocket.scheme != "ws"
+            or websocket.hostname not in {"127.0.0.1", "localhost", "::1"}
+            or websocket.port != port
+            or not re.fullmatch(
+                r"/devtools/browser/[A-Za-z0-9-]{1,128}", websocket.path
+            )
+            or websocket.username
+            or websocket.password
+            or websocket.query
+            or websocket.fragment
+        ):
+            return None
+        with opener.open(f"{base}/json/list", timeout=0.5) as response:
+            targets = json.loads(response.read(65536))
+        if not isinstance(targets, list) or not any(
+            isinstance(target, dict)
+            and target.get("type") == "page"
+            and target.get("url") == startup_url
+            for target in targets
+        ):
+            return None
+        return f"ws://127.0.0.1:{port}{websocket.path}"
+    except (OSError, ValueError, KeyError, TypeError):
         return None
 
 
@@ -168,7 +235,7 @@ def normal_browser_endpoint(
     *,
     channel=None,
     executable_path=None,
-    use_system_proxy: bool = False,
+    use_system_proxy: bool = True,
     timeout: float = 20.0,
 ) -> str:
     """Reuse a registered browser, or launch one with ordinary minimal flags.
@@ -204,17 +271,25 @@ def normal_browser_endpoint(
         return endpoint
 
     selected = _executable(chromium, channel=channel, executable_path=executable_path)
+    port = _available_loopback_port()
+    # Edge may discard about:blank arguments during first-run/extension setup.
+    # A unique local file provides an explicit, network-free ownership marker.
+    startup_file = profile / f".an-start-{uuid.uuid4().hex}.html"
+    startup_file.write_text(
+        "<!doctype html><title>AN browser ready</title>", encoding="utf-8"
+    )
+    startup_url = startup_file.resolve().as_uri()
     args = [
         str(selected),
         "--remote-debugging-address=127.0.0.1",
-        "--remote-debugging-port=0",
+        f"--remote-debugging-port={port}",
         f"--user-data-dir={profile.resolve()}",
         "--no-first-run",
         "--no-default-browser-check",
     ]
     if not use_system_proxy:
         args.append("--no-proxy-server")
-    args.append("about:blank")
+    args.append(startup_url)
     options = (
         {"start_new_session": True}
         if os.name != "nt"
@@ -232,7 +307,9 @@ def normal_browser_endpoint(
     )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        endpoint = _active_endpoint(profile)
+        if process.poll() is not None:
+            break
+        endpoint = _startup_endpoint(port, startup_url)
         if endpoint:
             metadata_path.write_text(
                 json.dumps(
@@ -244,10 +321,10 @@ def normal_browser_endpoint(
                 ),
                 encoding="utf-8",
             )
+            startup_file.unlink(missing_ok=True)
             return endpoint
-        if process.poll() is not None:
-            break
         time.sleep(0.1)
+    startup_file.unlink(missing_ok=True)
     raise NormalBrowserError(
         "The normal browser did not expose its local control endpoint. "
         "The profile may already be open in another browser; use --cdp-endpoint "

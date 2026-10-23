@@ -17,7 +17,11 @@ from aletheia_nexus.acquire.access import (
     browser_profile_dir,
 )
 from aletheia_nexus.acquire.access.security import redact_url_for_record
-from aletheia_nexus.cli import _cdp_ready, _start_cdp_browser
+from aletheia_nexus.cli import (
+    _add_browser_network_arguments,
+    _cdp_ready,
+    _start_cdp_browser,
+)
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 DEFAULT_BENCHMARKS = (
@@ -693,11 +697,7 @@ def main() -> int:
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--non-interactive", action="store_true")
     parser.add_argument("--interaction-timeout", type=float, default=180.0)
-    parser.add_argument(
-        "--browser-use-system-proxy",
-        action="store_true",
-        help="Use the OS proxy settings for AN's newly launched browser.",
-    )
+    _add_browser_network_arguments(parser)
     parser.add_argument("--unpaywall-email", default=None)
     parser.add_argument("--openalex-api-key", default=None)
     parser.add_argument("--metadata-mailto", default=None)
@@ -727,6 +727,7 @@ def main() -> int:
         profile_root=args.profile_root,
         channel=args.channel,
         use_system_proxy=args.browser_use_system_proxy,
+        direct_connection=args.direct_connection,
         cdp_endpoint=args.cdp_endpoint,
         cdp_resume_existing_page=not args.cdp_navigate,
         headless=args.headless,
@@ -741,7 +742,7 @@ def main() -> int:
             _start_cdp_browser(
                 args.cdp_endpoint,
                 browser_profile_dir(config),
-                use_system_proxy=config.use_system_proxy,
+                use_system_proxy=config.resolved_use_system_proxy,
             )
             browser_launch_mode = "an_dedicated_cdp"
     source_revision = _source_revision()

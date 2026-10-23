@@ -1,8 +1,10 @@
 # Aletheia Nexus 使用说明书
 
-本手册对应 **v0.7.1**，面向需要获取、核验、整理和解析文献的研究人员。AN 以命令行提供从 DOI/书目输入，到本地 PDF 与来源记录，再到可检索、可导出的结构化内容的工作流。知网还支持无 DOI 的题名获取；解析阶段仍要求真实 DOI。首次使用建议先看 [README](../README.md#快速开始)，升级变化见 [v0.7.1 发布说明](RELEASE_NOTES_v0.7.1.md)；实际可安装版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
+本手册对应 **v0.7.2**，面向需要获取、核验、整理和解析文献的研究人员。AN 以命令行提供从 DOI/书目输入，到本地 PDF 与来源记录，再到可检索、可导出的结构化内容的工作流。支持无 DOI 文献、本地登记、PDF 补充材料、跨文献检索及按结果导出。科研日常操作见 [0.7.2 工作流程](V072_RESEARCH_WORKFLOW.md)。首次使用建议先看 [README](../README.md#快速开始)，升级变化见 [v0.7.2 发布说明](RELEASE_NOTES_v0.7.2.md)；实际可安装版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
 
 AN 尽可能使用公开路径、已授权的官方 API 和用户自己的浏览器会话获取文件；只有 PDF 结构、论文身份和正文角色通过检查，才标记为 `VERIFIED`。AN 不提供订阅权限，也不会代替用户输入密码、MFA 或验证码。
+
+当前解析能力与量化边界见[实际科研验收说明](V072_PRACTICAL_ACCEPTANCE.md)。使用重点是数值、单位、指标和条件对应、检索与原页回查，完整图形重建不作为硬性要求。图内细小化学式仍需核对；原文真实冲突分别保留。`PARSED` 表示解析状态，不表示所有实验数据已核实。
 
 ## 1. 环境与安装
 
@@ -43,7 +45,7 @@ aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir d
 
 以下命令在可见浏览器中顺序处理论文。若登录、MFA 或 CAPTCHA 被识别，AN 会暂停在页面上；用户完成后自动续跑。不传 `--interaction-timeout` 时没有预设等待上限。
 
-通常无需配置调试端口：直接执行 `aletheia-nexus acquire dois.json --output-dir downloads/my-batch` 即可。默认普通启动模式使用 AN 独立配置、直连网络，并在客户端结束后保留窗口与认证。任务结束后可手动关闭该 AN 窗口；下次运行复用同一配置。需要程序托管窗口生命周期时使用 `--browser-launch-mode managed`。以下 CDP 示例保留给明确需要接管本地端口的用户。
+通常无需配置调试端口：直接执行 `aletheia-nexus acquire dois.json --output-dir downloads/my-batch` 即可。默认普通启动模式使用 AN 独立配置、跟随系统代理设置，并在客户端结束后保留窗口与认证；需要绕过浏览器代理时显式使用 `--direct-connection`。任务结束后可手动关闭该 AN 窗口；下次运行复用同一配置。需要程序托管窗口生命周期时使用 `--browser-launch-mode managed`。以下 CDP 示例保留给明确需要接管本地端口的用户。
 
 ```powershell
 aletheia-nexus acquire dois.json `
@@ -52,7 +54,7 @@ aletheia-nexus acquire dois.json `
   --cdp-navigate
 ```
 
-当指定的本机调试端点尚未运行时，CLI 默认自动启动 AN 专用 Edge/Chrome，使用持久配置目录，逐篇打开页面。同一个浏览器会话会复用有效的 cookie 与机构认证状态；AN 不会读取、打印或写入 cookie 值。`--cdp-navigate` 表示批量任务逐篇导航；不加时会优先尝试接管当前已打开的匹配论文标签。专用浏览器默认强制直连；若普通浏览器依靠 Windows 系统代理而 AN 持续落入验证页，可在知晓认证流量也会经过所配置代理后，显式加 `--browser-use-system-proxy`。该选项只影响新启动的 AN 浏览器；附加到已运行的 CDP 浏览器时，网络设置仍由该浏览器决定。
+当指定的本机调试端点尚未运行时，CLI 默认自动启动 AN 专用 Edge/Chrome，使用持久配置目录，逐篇打开页面。同一个浏览器会话会复用有效的 cookie 与机构认证状态；AN 不会读取、打印或写入 cookie 值。`--cdp-navigate` 表示批量任务逐篇导航；不加时会优先尝试接管当前已打开的匹配论文标签。专用浏览器默认跟随系统代理设置，系统没有代理时自然直连。`--direct-connection` 显式绕过浏览器代理，`--browser-use-system-proxy` 显式选择系统模式；两者不能同时使用。选项只影响新启动的 AN 浏览器；附加到已运行的外部 CDP 浏览器时，网络设置仍由该浏览器决定。
 
 Windows 上若 AN 自带的 Playwright 浏览器反复遇到验证、但普通 Edge 能打开同一篇论文，可先用**单篇 DOI**试下面的独立 Edge 路径（仅在信任当前系统代理时保留最后一个参数）：
 
@@ -68,7 +70,7 @@ aletheia-nexus acquire 10.1039/D6TA02244H `
 
 AN 会在该本机端口未被占用时启动独立 Edge，不修改日常 Edge；若端口已有浏览器，则会附加到现有会话，运行前务必确认那是你期望的 AN 浏览器。调试端口只应绑定本机，使用完毕关闭该专用浏览器。这个方式不会绕过验证码或保证出版社放行。
 
-持久下载应使用 Chromium/Edge/Chrome >=155：152–154 有历史下载对象的上游崩溃缺陷，AN 会拒绝开始下载，不清理配置或历史。Windows / Linux x64 可运行 `aletheia-nexus browser-install` 部署官方 Chrome for Testing 到 AN 独立目录，安装版无需源码仓库；旧脚本仍兼容。Windows 默认优先 >=155 的稳定版 Edge/Chrome，否则选择独立运行时，headless 也支持。`--executable-path PATH` 可指定修复版，不与 `--channel` 或 CDP 混用。批量默认配置名 `human-handoff`，目录为用户主目录的 `.aletheia-nexus/browser-profiles/`。隔离不同机构、账号或浏览器引擎时使用不同 `--profile NAME`，自定位置用 `--profile-root DIR`。CDP 已有浏览器时，**单改 `--profile` 不会切换实际配置**。不要上传专用配置。新启动会话默认直连；显式 `--browser-use-system-proxy` 可复用系统代理，但不改变已有 CDP 会话网络。
+持久下载应使用 Chromium/Edge/Chrome >=155：152–154 有历史下载对象的上游崩溃缺陷，AN 会拒绝开始下载，不清理配置或历史。Windows / Linux x64 可运行 `aletheia-nexus browser-install` 部署官方 Chrome for Testing 到 AN 独立目录，安装版无需源码仓库；旧脚本仍兼容。Windows 默认优先 >=155 的稳定版 Edge/Chrome，否则选择独立运行时，headless 也支持。`--executable-path PATH` 可指定修复版，不与 `--channel` 或 CDP 混用。批量默认配置名 `human-handoff`，目录为用户主目录的 `.aletheia-nexus/browser-profiles/`。隔离不同机构、账号或浏览器引擎时使用不同 `--profile NAME`，自定位置用 `--profile-root DIR`。CDP 已有浏览器时，**单改 `--profile` 不会切换实际配置**。不要上传专用配置。新启动会话默认跟随系统代理；显式 `--direct-connection` 选择直连，但不改变已有外部 CDP 会话网络。一次任务内不自动切换模式；普通启动发现现有 AN 窗口模式不同会报错，需要先关闭该专用窗口再应用新模式，或显式沿用原模式。系统模式不冻结用户在操作系统中修改的代理/VPN 设置。
 
 如需无人值守运行（不等待人工登录或验证码）：
 
@@ -82,6 +84,8 @@ aletheia-nexus acquire dois.txt `
 
 当 OpenAlex 候选包含 PMC 记录时，AN 会先查询 PMC Article Datasets 的官方 AWS 公共数据桶，并优先验证其中的 PDF。该路径适配了 PMC 于 2026 年 8 月完成的数据分发迁移，不抓取 PMC 文章网页，也不依赖已下线的旧 OA Web Service。若文章不属于可自动获取的数据集、没有 PDF、已撤回，或元数据 DOI 不一致，AN 不会把该对象当作候选。
 
+常规获取流程还支持按需 Crossref 资源补充：原有公开、官方接口、出版社浏览器和适用的知网路线未取得论文后，才检查 Crossref 登记的全文链接及主资源地址。优先复用本篇已经取得的元数据；尚未查询且允许自动元数据时，最多新增一次 Crossref 请求，之前失败的元数据查询不在此重复。已成功、待登录/验证码、已发起下载或保留待核验文件时不启动补充。仅尝试未访问过的新地址，最多 4 条，并共享剩余浏览器路线限额；不会替换原候选或改变原路线顺序。XML/纯文本接口、仅用于相似性检查的地址不作为 PDF 候选；链接存在不代表开放获取，仍执行原有访问交互与正文核验。`--public-only` 保持原公开获取流程，不额外启动此浏览器补充。
+
 ### 常用开关
 
 | 参数 | 用途 |
@@ -91,7 +95,8 @@ aletheia-nexus acquire dois.txt `
 | `--cdp-navigate` | 为批次逐篇导航，不强行复用当前标签。 |
 | `--profile NAME` / `--profile-root DIR` | 隔离并保存特定机构或账号的浏览器状态。 |
 | `--no-start-browser-if-needed` | 本机 CDP 端点不可用时不自动启动 Edge/Chrome。 |
-| `--browser-use-system-proxy` | 新启动的 AN 浏览器采用操作系统代理设置；默认仍强制直连。代理可能接触站点请求和认证会话，请只在信任当前代理时启用。 |
+| `--browser-use-system-proxy` | 显式跟随操作系统代理设置，也是新启动浏览器的默认行为；不修改系统设置。 |
+| `--direct-connection` | 显式绕过浏览器代理；别名 `--browser-direct-connection`。与系统模式选项互斥，任务内保持选定模式。 |
 | `--interaction-timeout N` | 最多等待人工登录/验证 N 秒；省略则持续等待。 |
 | `--stop-on-interaction` | 当前 DOI 仍需交互时停止整批；默认继续后续 DOI。 |
 | `--non-interactive` | 无人值守，不等待人工登录或验证码。 |
@@ -144,19 +149,26 @@ BrowserAccessConfig(
 
 CNKI 默认在修复版浏览器中原生点击真实 PDF 控件，捕获附件或 PDF 响应，保留页面脚本、网络栈与机构状态。`--cnki-context-request` 可显式选择同 Cookie 的 HTTP 请求；它不等同于浏览器原生网络栈，也不用于绕过认证。机构 IP 自动登录过渡页不会仅因标题而要求个人登录。直接 CNKI CLI 可重复 `--doi` 批量获取，共用一个会话；整批结果返回后交互模式默认保持窗口，关闭窗口或 Ctrl+C 后退出，其间不会重新下载。`--no-keep-browser-open` 恢复自动清理。非交互模式和临时 Python API 正常清理自己持有的资源。
 
+知网文献默认间隔 **5 秒**：同一浏览器会话中，从上一篇知网获取结束计时，下一篇只补足剩余等待时间；首篇、本地 PDF 导入和断点复用不额外等待，其他来源不受此设置影响。统一 CLI 和知网专用脚本均可用 `--cnki-paper-interval 10` 调为 10 秒，`0` 关闭文献间隔；Python API 对应 `BrowserAccessConfig(cnki_paper_interval=10)`，批次需复用 `BrowserSession`。参数必须是有限非负数。
+
+失败的获取同样计入间隔；尚未触发下载时的浏览器上下文重连也须等待。已触发下载的事务不会靠重连或批次重试重复执行。
+
+若检测到知网页面的明确“操作过于频繁”提示，或下载 HTTP 请求返回 429，本会话停止后续知网专用获取并记录 `CNKI_RATE_LIMITED`，不会按文献间隔自动重试；待限制解除后另行启动新的运行。5 秒是 AN 的默认节奏设置，不是知网公布的通用下载限额。
+
 ## 5. 断点续跑与文件核验
 
 每次批次会在输出目录写入：
 
 ```text
 downloads/my-batch/
-  batch-checkpoint.json
-  batch-report.json
   <年份-期刊-标题>--<身份短码>-<文件哈希短码>.pdf
-  <年份-期刊-标题>--<身份短码>-<文件哈希短码>.acquisition.json
+  json/
+    batch-checkpoint.json
+    batch-report.json
+    <年份-期刊-标题>--<身份短码>-<文件哈希短码>.acquisition.json
 ```
 
-文件名中的缺失书目字段会省略；缺题名时回退到标识符。指定 `folder` 时，PDF 和配套文件保存在该分类目录。旧文件不会批量改名。
+文件名中的缺失书目字段会省略；缺题名时回退到标识符。指定 `folder` 时，PDF 保存在该分类目录，获取记录和独立标签 JSON 保存在分类目录的 `json/` 中；批次报告和检查点默认保存在输出根目录的 `json/` 中。显式指定 `--report` 或 `--checkpoint` 时仍使用指定路径。旧文件不会批量搬移或改名：解析、文献库和续跑兼容旧位置，已有旧检查点继续原地使用。
 
 再次执行相同命令时，AN 只直接复用 PDF 与来源记录均存在、且各自 SHA-256 与检查点一致的 `VERIFIED` 文件。旧检查点若缺来源哈希会重新获取，其他未成功状态也会重新尝试。不要手工把未核验 PDF 改名冒充成功文件；检查点不会因此信任它。成功 PDF 的 `.acquisition.json` 保存来源、PDF 结构、DOI/标题匹配与正文/附件判断，但会对短期签名 URL 脱敏。检查点不保存 cookie、token、URL 或异常消息。
 
@@ -196,7 +208,7 @@ ELSEVIER_BEARER_TOKEN    # 可选
 
 ## 7. v0.7 带来源内容解析
 
-解析器只接受已有 `.acquisition.json` 的 `VERIFIED` 正文 PDF。它在运行前重新检查来源记录版本、正文状态、DOI、PDF SHA-256、可读性和页数，不会从检查点猜测证据，也不会在解析阶段重新下载文件：
+解析器接受已有 `.acquisition.json` 的 `VERIFIED` 正文，或通过 `import` 明确登记的本地 PDF。无 DOI 使用记录中的题名和本地身份；SI 必须关联独立的正文。运行前重新检查记录、角色、PDF SHA-256、可读性和页数。`--doi` 仅作可选的一致性检查，不虚构 DOI：
 
 ```powershell
 aletheia-nexus parse downloads\paper.pdf --doi 10.1234/example
@@ -204,9 +216,9 @@ aletheia-nexus parse downloads\paper.pdf --doi 10.1234/example
 
 默认输出与 PDF 同目录、同文件名的 `.parsed.json`，原 PDF 与 `.acquisition.json` 保持不变。需要显式路径时使用 `--sidecar` 和 `--output`。已有输出默认视为冲突，不会静默覆盖；只有明确使用 `--overwrite` 才会替换。批处理或 CI 若不允许降级结果，可加 `--fail-on-partial`；输入门失败退出码为 `5`，`PARTIAL`/`FAILED` 在该选项下退出码为 `6`。
 
-输出 schema 为 `aletheia-nexus/parsed-document/v2`；未发布的 v1 草案不作为兼容承诺。v2 包含路径无关的 source/parsed `artifact_id`、来源 DOI 与哈希、流水线/后端版本、配置与执行指纹、页面 MediaBox/CropBox/旋转、质量覆盖率、章节、合并段落、结构化引用、图表证据及表格单元。每个文本块使用统一的 `pdf-cropbox-display-bottom-left-normalized/v1` 页码/bbox 和文本 span；本机绝对路径不进入工件，安全的相对 locator 只用于重新核验且不参与身份计算。基线框由 PDF 文本矩阵和字体大小估算，明确标为 `bbox_precision: estimated`，不冒充逐字形精确框。状态始终显式为 `PARSED`、`PARTIAL` 或 `FAILED`。
+新输出 schema 为 `aletheia-nexus/parsed-document/v3`，旧 v2 继续可读；v3 增加可空 DOI、题名、身份依据、文档角色和 SI 父文档。未发布的 v1 草案不作为兼容承诺。规范工件包含路径无关的 source/parsed `artifact_id`、来源 DOI 与哈希、流水线/后端版本、配置与执行指纹、页面 MediaBox/CropBox/旋转、质量覆盖率、章节、合并段落、结构化引用、图表证据及表格单元。每个文本块使用统一的 `pdf-cropbox-display-bottom-left-normalized/v1` 页码/bbox 和文本 span；本机绝对路径不进入工件，安全的相对 locator 只用于重新核验且不参与身份计算。默认后端按 PDF 字形实际位置组织行，合并后的块框仍保守标为 `bbox_precision: estimated`。状态始终显式为 `PARSED`、`PARTIAL` 或 `FAILED`。
 
-默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。需要扫描页支持时安装 `aletheia-nexus[ocr]`、安装 Poppler/Tesseract，并使用 `--ocr`。可用 `--ocr-languages` 和 `--ocr-max-raster-pixels` 控制语言与单页内存预算；预算会在渲染前考虑 PDF `/UserUnit`，并在渲染后按实际像素再次检查。OCR 只在原生字符过少、乱码、图像主导或图像区域缺少文本锚点时触发；原生文本与 OCR 重叠时保留原生文本，OCR 仅补空白区域。引擎置信度和多引擎一致性分开记录；失败、超时或无资源会保留 native evidence，并给出稳定的机器可读降级原因。完整配置见[v0.7 OCR](V07_OCR.md)。
+默认后端读取 PDF 原生文本与页面图像资源，不做隐式 OCR；扫描页或文本极少页面会明确输出 `PARTIAL` 与 `PAGE_WITHOUT_TEXT`/`SPARSE_TEXT`，不会伪造坐标。需要扫描页支持时安装 `aletheia-nexus[ocr]`、安装 Poppler/Tesseract，并使用 `--ocr`。可用 `--ocr-languages` 和 `--ocr-max-raster-pixels` 控制语言与单页内存预算；预算会在渲染前考虑 PDF `/UserUnit`，并在渲染后按实际像素再次检查。OCR 只在原生字符过少、乱码、图像主导或图像区域缺少文本锚点时触发；重叠读法一致时记录印证；符号、数字或乱码读法不一致时保留原生文本及独立的 `ocr-alternative`，两者均标为不确定，不把高文本相似度当成数字一致。引擎置信度和多引擎一致性分开记录；失败、超时或无资源会保留 native evidence，并给出稳定的机器可读降级原因。完整配置见[v0.7 OCR](V07_OCR.md)。
 
 解析流水线会合并同栏连续文本行、恢复章节语义与显式未解析引用；图表字段只陈述 `caption-observed`、`caption-and-region-observed` 或 `caption-and-cell-evidence-observed`，并始终写明 `interpretation_status: not-interpreted`。通用 OCR 不等于表格、公式或图表理解，专用解析器须通过区域接口接入。解析成功也不等于论文结论为真。
 
@@ -241,7 +253,7 @@ aletheia-nexus export downloads\paper.parsed.json --format chunks `
 - **Linux 普通启动未能建立连接：** 除配置占用外，还需检查是否有图形会话、浏览器依赖以及系统沙箱支持。Ubuntu 的 AppArmor 策略可能限制单独下载的浏览器；优先选择系统安装且版本受支持的 Chrome（`--channel chrome`），或由管理员按 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md) 配置沙箱支持。不要用关闭沙箱的方式访问出版社或机构账户。
 - **登录完成却未继续：** 确认返回到同一 AN 浏览器会话；若站点在新标签完成认证，AN 会检查新旧出版社标签和仍留空白的身份验证标签。若仍卡住，可安全中断并从检查点重跑，保留现场与报告用于复现。
 - **ScienceDirect / RSC 验证页反复出现：** 等待期间 AN 不主动刷新网页；站点自身可能重定向或重建验证组件。检查页面是否仍显示验证码、是否已返回目标论文，以及当前机构是否有授权。AN 不会把短暂空白当作验证成功；重复验证或超时应记为需人工处理，避免连续对同一 PDF 地址发请求。不要通过增大重试次数来应对站点风控。
-- **普通 Edge 能打开、AN Edge 却循环验证：** 核对两者是否走相同的代理/网络出口。AN 默认强制直连，即使 Windows 系统代理已启用；关闭 TUN 不会自动取消系统代理，也不会改变 AN 的启动参数。信任该代理时，可显式选择 `--browser-use-system-proxy`，并用单篇 DOI 验证；这不保证站点一定接受受控浏览器。
+- **普通 Edge 能打开、AN Edge 却循环验证：** 核对两者的代理模式和网络出口。AN 默认跟随系统，检查是否显式选择了 `--direct-connection`，或仍附加在升级前的直连窗口上。模式不一致时先关闭该 AN 专用窗口再重新启动；不要在同一任务内来回切换代理。系统 VPN/TUN 路由与浏览器代理是不同层次，AN 不修改系统网络设置。
 - **打开了 PDF 却显示 `SUPPLEMENT`：** 查看报告中的 `identity.evidence`、实际 PDF 首页及来源 URL。ACS 正文首页可能含“Supporting Information”导航文字，不能单凭该词判断为附件；当前规则结合首页标题与 Abstract 识别正文。
 - **`EXHAUSTED`：** 先分清 403/挑战、没有 PDF 候选、标题不匹配和实际购买页。单纯增大重试次数通常不能解决订阅缺失。
 - **机构自动选错：** 在出版社提供的机构选择界面切换；AN 不强制改写机构 cookie，也不保证按 IP 跳转的网站永久记住选择。
@@ -265,11 +277,11 @@ python scripts/verify_v07_rc.py --browser-smoke --visible-browser-smoke --ocr-sm
 
 v0.7 检查脚本会优先导入当前仓库的 `src`，避免复用环境时测到其他 checkout。`--browser-smoke` 需要 browser extra 和 Chromium；`--ocr-smoke` 需要 ocr extra、Poppler 与 Tesseract。缺少组件时应补齐环境后重跑，不能把跳过或 `PARTIAL` 写成通过。私有语料资格脚本要求非空输入且每篇都完成 `PARSED`；缺文件、哈希改变或部分解析会使检查失败。
 
-CNKI 的验证 v3、准确分流、无 DOI 的 `PaperRequest` 与批量输入说明见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md)。原 DOI 路径兼容；无 DOI 使用 CNKI ID/书目身份，候选歧义不自动选第一条。未验证 PDF 默认隔离保存，不计为成功；可通过 `--no-cnki-keep-unverified` 关闭。
+当前工作区的 CNKI 书目核验采用 `cnki_bibliographic/v5`。完整的 PDF 题名、作者和出版信息匹配即可通过，输入带 DOI 时也不额外要求确认 DOI；明确的 DOI 或书目冲突仍拒绝。支持刊名结构匹配、前 3 页页边出版信息，以及受约束知网记录与 PDF 的 DOI/文章编号/连续页码交叉核验；不使用论文或刊名白名单。详见 [通用核验规则](CNKI_AUTOMATION.md#通用书目核验规则v5)。原有接入设计与历史结果见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md)。原 DOI 路径兼容；无 DOI 使用 CNKI ID/书目身份，候选歧义不自动选第一条。未验证 PDF 默认隔离保存，不计为成功；后续搜索超时不会抹去已取得文件的事实。可通过 `--no-cnki-keep-unverified` 关闭保留。
 
 ## 10. 合并 main 前的发布检查
 
-v0.7.1 的最终 PR 必须直接面向 `main`；不要把功能分支直接推送到
+v0.7.2 的最终 PR 必须直接面向 `main`；不要把功能分支直接推送到
 `main`，也不要把受版权保护的真实论文、机构配置、Cookie、令牌或带
 签名参数的报告加入提交。维护者应留存最终提交 SHA、测试输出和私有
 报告路径；代码门槛失败或缺证时不合并、不打稳定标签。
@@ -284,14 +296,14 @@ v0.7.1 的最终 PR 必须直接面向 `main`；不要把功能分支直接推�
 3. 对 PMC 云路径至少完成一个公开 DOI 烟测，确认候选来自官方桶、元数据
    DOI 一致、最终 PDF 为 `VERIFIED` 正文且 sidecar 哈希匹配。外部服务烟测
    不能替代确定性测试，也不能解释为通用获取成功率。
-4. 确认 `pyproject.toml` 版本为 `0.7.1`，更新发布说明和历史；从干净
+4. 确认 `pyproject.toml` 版本为 `0.7.2`，更新发布说明和历史；从干净
    提交构建 sdist/wheel，执行依赖检查，并从 wheel 的全新临时环境验证
    `aletheia-nexus --version`、`doctor` 和核心导入。GitHub Release 本身不
    证明 PyPI 已上传，仍须检查项目页和全新安装。
 5. 推送功能分支并更新现有 PR。在**最终提交**上等待 Python 3.11–3.14、
    Linux/Windows Chromium、OCR 和 package jobs 均为实际 `success`；
    `skipped`、取消或旧提交的绿色结果均不能替代。通过评审后由维护者合并
-   PR，再对合并后的 `main` 提交打新的、不可变的 `v0.7.1` 标签并发布。
+   PR，再对合并后的 `main` 提交打新的、不可变的 `v0.7.2` 标签并发布。
    不移动旧版本标签，不重复上传旧版本包；发布成功后再更新文档中的准备状态。
 
 旧版本的机构授权与发布证据继续按[版本与验收记录](RELEASE_HISTORY.md)

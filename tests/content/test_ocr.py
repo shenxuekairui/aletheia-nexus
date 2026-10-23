@@ -118,10 +118,40 @@ def test_adaptive_ocr_disagreement_is_uncertain_and_reviewable():
 
     result = backend.extract_page(object(), 1)
 
-    assert len(result.lines) == 1
-    assert result.lines[0].text == "omega result"
-    assert result.lines[0].uncertain is True
+    assert [line.text for line in result.lines] == ["alpha result", "omega result"]
+    assert all(line.uncertain for line in result.lines)
+    assert result.lines[1].content_region == "ocr-alternative"
     assert "OCR_ENGINE_DISAGREEMENT" in {item["code"] for item in result.warnings}
+
+
+def test_ocr_does_not_treat_a_changed_sign_as_agreement():
+    native = _StaticBackend(
+        "native", (_ocr_line("Potential 1.4 V vs Ag/AgCl", 1.0, "native@1"),)
+    )
+    ocr = _StaticBackend(
+        "ocr", (_ocr_line("Potential -1.4 V vs Ag/AgCl", 0.98, "ocr@1"),)
+    )
+    result = AdaptiveOcrBackend(
+        native_backend=native, ocr_backends=(ocr,)
+    ).extract_page(object(), 1)
+    assert len(result.lines) == 2
+    assert all(line.uncertain for line in result.lines)
+    assert result.lines[1].content_region == "ocr-alternative"
+    assert "-1.4" in result.lines[1].text
+
+
+def test_tesseract_literal_quote_cannot_absorb_following_records():
+    payload = 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t10\t10\t10\t10\t98\t"\n5\t1\t1\t1\t2\t1\t10\t30\t80\t10\t98\t-1.4 V\n'
+    lines = _parse_tsv(
+        payload,
+        page_number=1,
+        page_width=600,
+        page_height=800,
+        image_width=600,
+        image_height=800,
+        engine_id="ocr@1",
+    )
+    assert [line.text for line in lines] == ['"', "-1.4 V"]
 
 
 def test_optional_backend_failure_preserves_native_evidence():
@@ -392,7 +422,7 @@ def test_adaptive_execution_identity_includes_nested_backend_configuration():
 
     identity = backend.execution_identity
 
-    assert identity["native"]["name"] == "pypdf-native-layout"
+    assert identity["native"]["name"] == "pdfminer-native-layout"
     assert "runtime_dependencies" in identity["native"]["components"]
     assert identity["ocr"][0]["name"] == "tesseract-ocr"
     assert (

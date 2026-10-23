@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aletheia-nexus"
-version = "0.7.1"
+version = "0.7.2"
 description = "Local-first, verifiable paper acquisition and source-linked parsing."
 readme = "README.en.md"
 requires-python = ">=3.11"
@@ -25,6 +25,7 @@ dependencies = [
     "fonttools>=4.60.2,<5",
     "httpx>=0.28.1,<1",
     "pypdf[crypto]>=6.19,<7",
+    "pdfminer.six>=20251230,<20270000",
 ]
 
 [project.urls]
@@ -43,6 +44,11 @@ browser = [
 ]
 ocr = [
     "Pillow>=12.3,<13",
+]
+image-ocr = [
+    "Pillow>=12.3,<13",
+    "rapidocr==3.10.0",
+    "onnxruntime>=1.23,<2",
 ]
 dev = [
     "pytest>=8,<10",

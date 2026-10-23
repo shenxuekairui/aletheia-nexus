@@ -8,6 +8,7 @@ from aletheia_nexus.content.backends.base import (
     ExtractionBackend,
     RegionExtractionBackend,
 )
+from aletheia_nexus.content.backends.layout import LayoutPdfBackend
 from aletheia_nexus.content.backends.native import NativePdfBackend
 from aletheia_nexus.content.backends.tesseract import (
     TesseractOcrBackend,
@@ -19,6 +20,7 @@ __all__ = [
     "AdaptiveOcrConfig",
     "ExtractionBackend",
     "NativePdfBackend",
+    "LayoutPdfBackend",
     "RegionExtractionBackend",
     "TesseractOcrBackend",
     "TesseractOcrConfig",

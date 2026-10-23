@@ -8,11 +8,12 @@ from types import SimpleNamespace
 import pytest
 
 from aletheia_nexus import cli
+from aletheia_nexus.acquire.access.audit import audit_verified_pdf
 from aletheia_nexus.acquire.fulltext import FullTextAcquisitionStatus
 
 
-@pytest.fixture
-def acquired_article(tmp_path, monkeypatch):
+@pytest.fixture(params=["json", "legacy"])
+def acquired_article(tmp_path, monkeypatch, request):
     from aletheia_nexus.acquire.access import service
     from aletheia_nexus.acquire.access.browser import BrowserSession
 
@@ -38,15 +39,25 @@ def acquired_article(tmp_path, monkeypatch):
         "--non-interactive",
     ]
     assert cli.entrypoint(command) == 0
-    report = json.loads((output / "batch-report.json").read_text(encoding="utf-8"))
+    report_path = output / "json" / "batch-report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     pdf = next(output.glob("*.pdf"))
+    sidecar = output / "json" / pdf.with_suffix(".acquisition.json").name
+    assert sidecar.is_file()
+    assert not list(output.glob("*.json"))
     assert report["items"][0]["status"] == "VERIFIED"
     assert source.read_bytes() == original == pdf.read_bytes()
+    if request.param == "legacy":
+        # Simulate an existing flat download, including its old checkpoint.
+        sidecar = sidecar.replace(output / sidecar.name)
+        checkpoint = output / "json" / "batch-checkpoint.json"
+        checkpoint.replace(output / checkpoint.name)
     assert cli.entrypoint(command) == 0
-    report = json.loads((output / "batch-report.json").read_text(encoding="utf-8"))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["items"][0]["resumed"]
+    assert audit_verified_pdf(pdf, doi=doi)["status"] == "PASSED"
     assert cli.entrypoint(["parse", str(pdf), "--doi", doi, "--fail-on-partial"]) == 0
-    return pdf, pdf.with_suffix(".acquisition.json"), pdf.with_suffix(".parsed.json")
+    return pdf, sidecar, pdf.with_suffix(".parsed.json")
 
 
 def test_cli_acquire_resume_parse_search_and_export(acquired_article, capsys):
@@ -138,10 +149,16 @@ def test_installed_browser_provisioner_dispatch_without_source_checkout(monkeypa
         ["--cnki-context-request"],
         ["--browser-launch-mode", "normal"],
         ["--browser-launch-mode", "managed"],
+        ["--cnki-paper-interval", "8.5"],
+        ["--cnki-paper-interval", "0"],
+        ["--browser-use-system-proxy"],
+        ["--direct-connection"],
+        ["--browser-direct-connection"],
     ],
 )
+@pytest.mark.parametrize("cdp", [False, True])
 def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
-    monkeypatch, tmp_path, flags
+    monkeypatch, tmp_path, flags, cdp
 ):
     from aletheia_nexus.acquire.access import (
         BatchAcquisitionItem,
@@ -153,6 +170,10 @@ def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
     def acquire(values, **kwargs):
         assert values == [PaperRequest(title="明确的中文题名", authors=("张三",))]
         config = kwargs["browser_config"]
+        assert config.resolved_use_system_proxy is not any(
+            flag in flags
+            for flag in ("--direct-connection", "--browser-direct-connection")
+        )
         assert config.launch_mode == (
             flags[flags.index("--browser-launch-mode") + 1]
             if "--browser-launch-mode" in flags
@@ -162,6 +183,11 @@ def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
         assert config.interaction_callback is None
         assert config.cnki_enabled == ("--no-cnki" not in flags)
         assert config.cnki_context_request == ("--cnki-context-request" in flags)
+        assert config.cnki_paper_interval == (
+            float(flags[flags.index("--cnki-paper-interval") + 1])
+            if "--cnki-paper-interval" in flags
+            else 5.0
+        )
         assert kwargs["stop_on_interaction"] is False
         return BatchAcquisitionResult(
             items=(
@@ -177,6 +203,9 @@ def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
             elapsed_seconds=0,
         )
 
+    launches = []
+    monkeypatch.setattr(cli, "_cdp_ready", lambda endpoint: False)
+    monkeypatch.setattr(cli, "_start_cdp_browser", lambda *a, **kw: launches.append(kw))
     monkeypatch.setattr(cli, "acquire_full_text_batch_maximized", acquire)
     assert (
         cli.entrypoint(
@@ -191,11 +220,20 @@ def test_installed_cli_title_only_request_honors_noninteractive_and_exit_status(
                 "--output-dir",
                 str(tmp_path),
                 *flags,
+                *(["--cdp-endpoint", "http://127.0.0.1:9222"] if cdp else []),
             ]
         )
         == 4
     )
-    report = json.loads((tmp_path / "batch-report.json").read_text(encoding="utf-8"))
+    assert len(launches) == int(cdp)
+    if cdp:
+        assert launches[0]["use_system_proxy"] is not any(
+            flag in flags
+            for flag in ("--direct-connection", "--browser-direct-connection")
+        )
+    report = json.loads(
+        (tmp_path / "json" / "batch-report.json").read_text(encoding="utf-8")
+    )
     assert report["items"][0]["doi"] is None
     assert report["items"][0]["input"]["authors"] == ["张三"]
 
@@ -309,7 +347,7 @@ def test_public_only_rejects_multiple_dois(tmp_path):
     assert exc.value.code == 2
 
 
-@pytest.mark.parametrize("use_system_proxy", [False, True])
+@pytest.mark.parametrize("use_system_proxy", [None, False, True])
 def test_dedicated_cdp_browser_proxy_mode(monkeypatch, tmp_path, use_system_proxy):
     launched = []
     monkeypatch.setattr(cli, "_find_browser", lambda: Path("C:/Edge/msedge.exe"))
@@ -320,12 +358,25 @@ def test_dedicated_cdp_browser_proxy_mode(monkeypatch, tmp_path, use_system_prox
     )
     monkeypatch.setattr(cli, "_cdp_ready", lambda endpoint: True)
 
+    options = {} if use_system_proxy is None else {"use_system_proxy": use_system_proxy}
     cli._start_cdp_browser(
         "http://127.0.0.1:9222",
         tmp_path / "profile",
-        use_system_proxy=use_system_proxy,
+        **options,
     )
 
     assert len(launched) == 1
     assert "--remote-debugging-address=127.0.0.1" in launched[0]
-    assert ("--no-proxy-server" in launched[0]) is not use_system_proxy
+    assert ("--no-proxy-server" in launched[0]) is (use_system_proxy is False)
+
+
+@pytest.mark.parametrize(
+    "direct", ["--direct-connection", "--browser-direct-connection"]
+)
+def test_cli_rejects_conflicting_network_modes(direct, monkeypatch):
+    monkeypatch.setattr(
+        cli, "_start_cdp_browser", lambda *a, **kw: pytest.fail("must not launch")
+    )
+    with pytest.raises(SystemExit) as error:
+        cli.main(["10.1000/conflict", direct, "--browser-use-system-proxy"])
+    assert error.value.code == 2

@@ -11,12 +11,14 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from aletheia_nexus.content.errors import ParserInputError, ParserInputErrorCode
+from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 ACQUISITION_SCHEMAS = frozenset(
     {
         "aletheia-nexus/acquisition-record/v1",
         "aletheia-nexus/access-acquisition-record/v1",
+        "aletheia-nexus/local-document/v1",
     }
 )
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -26,11 +28,16 @@ _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 class ParserInput:
     pdf_path: Path
     sidecar_path: Path
-    doi: str
+    doi: str | None
     pdf_sha256: str
     sidecar_sha256: str
     page_count: int
     acquisition_schema: str
+    title: str | None = None
+    article_id: str | None = None
+    document_role: str = "ARTICLE"
+    identity_basis: str = "acquisition_verified"
+    parent: dict[str, object] | None = None
 
 
 def sha256_file(path: Path) -> str:
@@ -62,7 +69,7 @@ def _mapping(payload: object, key: str) -> dict[str, object]:
 
 def validate_parser_input(
     pdf_path: str | Path,
-    requested_doi: str,
+    requested_doi: str | None = None,
     *,
     sidecar_path: str | Path | None = None,
 ) -> ParserInput:
@@ -80,7 +87,7 @@ def validate_parser_input(
     sidecar = (
         Path(sidecar_path).resolve()
         if sidecar_path is not None
-        else pdf.with_suffix(".acquisition.json")
+        else acquisition_sidecar_path(pdf)
     )
     if not sidecar.is_file():
         raise _error(ParserInputErrorCode.SIDECAR_NOT_FOUND, f"not a file: {sidecar}")
@@ -101,7 +108,8 @@ def validate_parser_input(
             ParserInputErrorCode.UNKNOWN_SIDECAR_SCHEMA,
             f"unsupported acquisition schema: {schema!r}",
         )
-    if payload.get("status") != "VERIFIED":
+    local = schema == "aletheia-nexus/local-document/v1"
+    if payload.get("status") != ("REGISTERED" if local else "VERIFIED"):
         raise _error(
             ParserInputErrorCode.STATUS_NOT_VERIFIED,
             f"recorded status is {payload.get('status')!r}",
@@ -114,12 +122,27 @@ def validate_parser_input(
             "pdf_validation.valid_pdf is not true",
         )
     identity = _mapping(payload, "identity_validation")
-    if identity.get("status") != "MATCH":
+    if identity.get("status") != ("DECLARED" if local else "MATCH"):
         raise _error(
             ParserInputErrorCode.IDENTITY_NOT_MATCHED,
             f"identity status is {identity.get('status')!r}",
         )
-    if identity.get("document_role") != "ARTICLE":
+    role = identity.get("document_role")
+    parent = payload.get("parent")
+    if local and role == "ARTICLE" and parent is not None:
+        raise _error(
+            ParserInputErrorCode.DOCUMENT_NOT_ARTICLE,
+            "an ARTICLE cannot carry a supplement parent",
+        )
+    if role != "ARTICLE" and not (
+        local
+        and role == "SUPPLEMENT"
+        and isinstance(parent, dict)
+        and isinstance(parent.get("pdf_sha256"), str)
+        and _SHA256.fullmatch(parent["pdf_sha256"])
+        and isinstance(parent.get("article_id"), str)
+        and parent["article_id"]
+    ):
         raise _error(
             ParserInputErrorCode.DOCUMENT_NOT_ARTICLE,
             f"document role is {identity.get('document_role')!r}",
@@ -127,14 +150,23 @@ def validate_parser_input(
 
     target = _mapping(payload, "target")
     try:
-        expected_doi = normalize_doi(requested_doi)
-        recorded_doi = normalize_doi(target.get("doi"))
+        recorded_doi = normalize_doi(target["doi"]) if target.get("doi") else None
+        expected_doi = normalize_doi(requested_doi) if requested_doi else recorded_doi
     except (TypeError, ValueError) as exc:
         raise _error(ParserInputErrorCode.DOI_MISMATCH, str(exc)) from exc
     if expected_doi != recorded_doi:
         raise _error(
             ParserInputErrorCode.DOI_MISMATCH,
             f"requested {expected_doi!r}, sidecar records {recorded_doi!r}",
+        )
+    title = target.get("title") or target.get("expected_title")
+    article_id = target.get("article_id") or (
+        "doi:" + recorded_doi if recorded_doi else None
+    )
+    if not recorded_doi and not (isinstance(title, str) and title.strip()):
+        raise _error(
+            ParserInputErrorCode.IDENTITY_NOT_MATCHED,
+            "a document without DOI needs its recorded title",
         )
 
     retrieval = _mapping(payload, "retrieval")
@@ -152,7 +184,11 @@ def validate_parser_input(
         )
 
     recorded_pages = pdf_validation.get("page_count")
-    if isinstance(recorded_pages, bool) or not isinstance(recorded_pages, int):
+    if (
+        isinstance(recorded_pages, bool)
+        or not isinstance(recorded_pages, int)
+        or recorded_pages < 1
+    ):
         raise _error(
             ParserInputErrorCode.INVALID_SIDECAR,
             "pdf_validation.page_count must be an integer",
@@ -191,4 +227,9 @@ def validate_parser_input(
         sidecar_sha256=hashlib.sha256(sidecar_bytes).hexdigest(),
         page_count=actual_pages,
         acquisition_schema=str(schema),
+        title=str(title) if title else None,
+        article_id=str(article_id) if article_id else f"an:source:sha256:{actual_hash}",
+        document_role=str(role),
+        identity_basis="local_declared" if local else "acquisition_verified",
+        parent=parent if role == "SUPPLEMENT" else None,
     )

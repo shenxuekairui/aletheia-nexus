@@ -25,6 +25,9 @@ class LayoutLine:
     content_region: str = "body"
     uncertain: bool = False
     bold: bool = False
+    # Native glyph offsets and horizontal bounds, used only to split a table
+    # line at observed column boundaries. OCR backends may leave these empty.
+    glyph_spans: tuple[tuple[int, int, float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -147,6 +150,17 @@ def validate_page_layout(layout: object, *, expected_page: int | None = None) ->
             raise ValueError(f"lines[{index}] has invalid content region")
         if not isinstance(line.uncertain, bool) or not isinstance(line.bold, bool):
             raise ValueError(f"lines[{index}] has invalid boolean provenance")
+        previous_end = 0
+        for start, end, x0, x1 in line.glyph_spans:
+            if (
+                not isinstance(start, int)
+                or not isinstance(end, int)
+                or not previous_end <= start < end <= len(line.text)
+                or not all(math.isfinite(v) for v in (x0, x1))
+                or not 0 <= x0 <= x1 <= layout.width + 1e-6
+            ):
+                raise ValueError(f"lines[{index}] has invalid glyph spans")
+            previous_end = end
     for index, item in enumerate(layout.objects):
         if (
             not isinstance(item.object_type, str)

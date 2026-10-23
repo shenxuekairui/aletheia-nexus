@@ -28,7 +28,7 @@ class ParseResult:
 
 def parse_document(
     pdf_path: str | Path,
-    requested_doi: str,
+    requested_doi: str | None = None,
     *,
     sidecar_path: str | Path | None = None,
     output_path: str | Path | None = None,

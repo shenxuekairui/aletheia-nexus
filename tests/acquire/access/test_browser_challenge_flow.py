@@ -382,7 +382,7 @@ def test_rsc_direct_pdf_navigates_before_any_extra_request(monkeypatch, tmp_path
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda value, *, config, return_host=None: (
+        lambda value, *, config, return_host=None, completion_check=None: (
             ChallengeReport(kind=ChallengeKind.NONE),
             (),
             False,
@@ -626,7 +626,7 @@ def test_article_route_automatically_enters_institutional_sso(
 
     monkeypatch.setattr(browser_route, "_report_for_page", page_report)
 
-    def handoff(context_value, page_value, *, config):
+    def handoff(context_value, page_value, *, config, completion_check=None):
         handoff_calls.append((context_value, page_value))
         return (
             True,
@@ -642,7 +642,7 @@ def test_article_route_automatically_enters_institutional_sso(
     monkeypatch.setattr(
         browser_route,
         "_resolve_page_challenge",
-        lambda page_value, *, config, return_host=None: (
+        lambda page_value, *, config, return_host=None, completion_check=None: (
             ChallengeReport(kind=ChallengeKind.NONE),
             (ChallengeReport(kind=ChallengeKind.NONE),),
             False,

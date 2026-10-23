@@ -27,6 +27,7 @@ from aletheia_nexus.acquire.access.cnki_metadata import (
 )
 from aletheia_nexus.acquire.access.cnki_routing import cnki_route_reason
 from aletheia_nexus.acquire.access.cnki_runtime import (
+    CNKI_RATE_LIMITED,
     CapturedPDF,
     CNKIFileCapture,
     CNKIFileError,
@@ -35,6 +36,7 @@ from aletheia_nexus.acquire.access.cnki_runtime import (
     CNKIStageTimeout,
     CNKITargetClosed,
     captcha_visible,
+    cnki_rate_limit_report,
     first_visible,
 )
 from aletheia_nexus.acquire.access.models import (
@@ -55,6 +57,7 @@ from aletheia_nexus.acquire.discovery.models import (
     FullTextCandidate,
     HostType,
 )
+from aletheia_nexus.acquire.fulltext.bibliographic import BIBLIOGRAPHIC_POLICY
 from aletheia_nexus.acquire.fulltext.identity import declared_pdf_dois
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionResult,
@@ -667,6 +670,8 @@ def _capture_download(
             )
     except CNKIInteractionRequired as exc:
         preserve_page = exc.page
+        if not gate.history or gate.history[-1] != exc.report:
+            gate.history.append(exc.report)
         raise
     finally:
         if not completed:
@@ -798,7 +803,7 @@ def _finalize_cnki_download(
             transport="cnki_authenticated_browser",
             access_details={
                 "provider": "cnki",
-                "validation_policy": "cnki_bibliographic/v3",
+                "validation_policy": BIBLIOGRAPHIC_POLICY,
                 "observed_bibliography": asdict(observed_identity)
                 if observed_identity
                 else None,
@@ -897,7 +902,9 @@ def _recover_pdf_request(context, page, *, url, detail_url, gate, config):
                         "content-type", "application/pdf"
                     ),
                 ), redirects
-            challenge = _challenge_from_non_pdf_response(response, body)
+            challenge = cnki_rate_limit_report(
+                body.decode("utf-8", errors="replace"), status=response.status
+            ) or _challenge_from_non_pdf_response(response, body)
             handoff_url = validate_browser_network_url(response.url)
         finally:
             response.dispose()
@@ -981,11 +988,27 @@ class CNKIProvider(BaseBrowserProvider):
         preserve_page = None
         files: list[BrowserFileAttempt] = []
         evidence: list[str] = []
+        bibliographic_conflicts: set[str] = set()
         considered = 0
         stage = "metadata"
 
         def attempt(status, *, target=None, error=None):
             target = target or detail_page or page
+            # A later search/navigation failure must not erase a retained PDF.
+            # Keep access challenges authoritative so batch handoff still works.
+            if status in {
+                BrowserAttemptStatus.NAVIGATION_ERROR,
+                BrowserAttemptStatus.ERROR,
+                BrowserAttemptStatus.RETRIEVAL_FAILED,
+                BrowserAttemptStatus.PAGE_MISMATCH,
+                BrowserAttemptStatus.NO_FILE_CANDIDATES,
+            } and any(
+                f.result is not None
+                and f.result.status == AcquisitionStatus.RETRIEVED_UNVERIFIED
+                and f.result.file_path is not None
+                for f in files
+            ):
+                status = BrowserAttemptStatus.RETRIEVED_UNVERIFIED
             return BrowserAccessAttempt(
                 source_candidate=source,
                 final_url=redact_url_for_record(getattr(target, "url", None)),
@@ -998,6 +1021,7 @@ class CNKIProvider(BaseBrowserProvider):
                 error=error,
                 elapsed_seconds=time.perf_counter() - started_at,
                 download_started=gate.download_started,
+                bibliographic_conflicts=tuple(sorted(bibliographic_conflicts)),
             )
 
         try:
@@ -1227,6 +1251,7 @@ class CNKIProvider(BaseBrowserProvider):
                             target_identity.cnki_id
                             and observed_identity.cnki_id != target_identity.cnki_id
                         ):
+                            bibliographic_conflicts.add("cnki_id")
                             evidence.append(
                                 "Requested CNKI record ID not confirmed on detail page"
                             )
@@ -1236,6 +1261,7 @@ class CNKIProvider(BaseBrowserProvider):
                             target_identity, observed_identity
                         )
                         if conflicts:
+                            bibliographic_conflicts.update(conflicts)
                             evidence.append(
                                 "CNKI detail bibliographic conflict: "
                                 + ", ".join(conflicts)
@@ -1509,7 +1535,13 @@ class CNKIProvider(BaseBrowserProvider):
                 ChallengeKind.ENTITLEMENT: BrowserAttemptStatus.ENTITLEMENT_REQUIRED,
                 ChallengeKind.ACCESS_DENIED: BrowserAttemptStatus.ACCESS_DENIED,
             }.get(exc.report.kind, BrowserAttemptStatus.INTERACTION_REQUIRED)
-            return attempt(status, target=exc.page)
+            return attempt(
+                status,
+                target=exc.page,
+                error=CNKI_RATE_LIMITED
+                if CNKI_RATE_LIMITED in exc.report.evidence
+                else None,
+            )
         except CNKIStageTimeout as exc:
             return attempt(
                 BrowserAttemptStatus.NAVIGATION_ERROR,

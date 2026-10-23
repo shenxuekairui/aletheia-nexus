@@ -28,6 +28,7 @@ class BrowserAttemptStatus(StrEnum):
     """Outcome for one browser-backed access attempt."""
 
     VERIFIED = "VERIFIED"
+    AUTH_REQUIRED = "AUTH_REQUIRED"
     RETRIEVED_UNVERIFIED = "RETRIEVED_UNVERIFIED"
     NO_FILE_CANDIDATES = "NO_FILE_CANDIDATES"
     INTERACTION_REQUIRED = "INTERACTION_REQUIRED"
@@ -124,7 +125,9 @@ class BrowserAccessConfig:
     profile_root: Path | None = None
     headless: bool = False
     channel: str | None = None
-    use_system_proxy: bool = False
+    # None follows the OS unless direct_connection is explicitly requested.
+    # Explicit False remains compatible with callers that selected direct mode.
+    use_system_proxy: bool | None = None
 
     executable_path: Path | str | None = None
     direct_connection: bool = False
@@ -155,6 +158,14 @@ class BrowserAccessConfig:
     launch_mode: str = "auto"
     # CNKI only: one bounded refresh outside human gates and active transfers.
     cnki_refresh_retry: bool = True
+    # Minimum quiet time between CNKI acquisitions in one reusable session.
+    cnki_paper_interval: float = 5.0
+
+    @property
+    def resolved_use_system_proxy(self) -> bool:
+        if self.use_system_proxy is not None:
+            return self.use_system_proxy
+        return not self.direct_connection
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +206,8 @@ class BrowserAccessAttempt:
     error: str | None = None
     elapsed_seconds: float = 0.0
     download_started: bool = False
+    # Field names only; safe to expose without titles, URLs or session tokens.
+    bibliographic_conflicts: tuple[str, ...] = ()
 
     @property
     def source_url(self) -> str:

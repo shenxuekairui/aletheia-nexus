@@ -83,3 +83,45 @@ def test_aes_pdf_with_empty_user_password_can_be_inspected(tmp_path):
     assert inspection.report.page_count == 1
     assert inspection.report.warning is None
     assert inspection.metadata_title == "Readable Encrypted Paper"
+
+
+def test_margin_extraction_uses_positions_and_orders_reversed_digit_fragments(tmp_path):
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=600, height=800)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {
+            NameObject("/Font"): DictionaryObject({NameObject("/F1"): font}),
+        }
+    )
+    stream = DecodedStreamObject()
+    stream.set_data(
+        b"\n".join(
+            [
+                b"BT /F1 10 Tf 1 0 0 1 40 770 Tm (Journal of Testing) Tj ET",
+                b"BT /F1 10 Tf 1 0 0 1 40 755 Tm (2024 03) Tj ET",
+                b"BT /F1 10 Tf 1 0 0 1 40 400 Tm (References: Another Journal 2025) Tj ET",
+                b"BT /F1 10 Tf 1 0 0 1 52 30 Tm (1) Tj ET",
+                b"BT /F1 10 Tf 1 0 0 1 46 30 Tm (2) Tj ET",
+                b"BT /F1 10 Tf 1 0 0 1 40 30 Tm (0) Tj ET",
+            ]
+        )
+    )
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    path = tmp_path / "margins.pdf"
+    writer.write(path)
+    inspection = inspect_pdf(path)
+    margins = inspection.page_margins[0]
+    assert margins.page_number == 1
+    assert "Journal of Testing" in margins.header and "2024 03" in margins.header
+    assert margins.footer.replace(" ", "") == "021"
+    assert "Another Journal" not in margins.header + margins.footer
+    assert "Another Journal" in inspection.first_page_text

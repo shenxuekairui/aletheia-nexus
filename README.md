@@ -1,6 +1,6 @@
 # Aletheia Nexus
 
-[English README](README.en.md) · [使用说明](docs/USER_MANUAL.md) · [v0.7.1 发布说明](docs/RELEASE_NOTES_v0.7.1.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
+[English README](README.en.md) · [使用说明](docs/USER_MANUAL.md) · [v0.7.2 发布说明](docs/RELEASE_NOTES_v0.7.2.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
 
 > **从一篇论文的可信获取，走向可积累、可协作、可演化的科研知识基础设施。**
 
@@ -28,7 +28,7 @@ AN 目前以 Python 包和命令行工具提供这些能力，不是带图形界
 
 ## 现在可以做什么
 
-v0.7.1 将文献获取、本地整理和带来源解析连接成一条工作流：
+v0.7.2 将文献获取、本地整理和带来源解析连接成一条工作流：
 
 ```text
 DOI / 文献清单（知网也支持题名）
@@ -37,9 +37,9 @@ DOI / 文献清单（知网也支持题名）
         ↓
 核验目标正文 → 保存 PDF 和来源记录 → 按文件夹与标签整理
         ↓
-解析已验证且有 DOI 的论文 → 保留章节、页码和原文位置
+解析已核验／本地登记的正文与 SI → 保留章节、独立页码和原文位置
         ↓
-检索 / Markdown / JSONL / 带来源的结构化分块
+跨文献检索 → 选择证据及条件页 → Markdown / JSONL / 来源清单
         ↓
 供研究者或下游 LLM、RAG、Workflow、Agent 使用
 ```
@@ -58,7 +58,7 @@ DOI / 文献清单（知网也支持题名）
 
 ## 快速开始
 
-需要 Python 3.11 或更高版本。以下命令均为单行，可在常见终端中运行。本文对应 v0.7.1 源码；实际已发布版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
+需要 Python 3.11 或更高版本。以下命令均为单行，可在常见终端中运行。本文对应 v0.7.2 源码；实际已发布版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
 
 ### 1. 安装并检查环境
 
@@ -86,7 +86,7 @@ python -m playwright install chromium
 aletheia-nexus acquire 10.7503/cjcu20250333 --output-dir downloads/papers
 ```
 
-默认以普通启动方式打开 AN 专用浏览器，优先使用可用的 Chrome/Edge，采用独立配置和直连网络，不读取或改动日常浏览器配置。任务结束后保留窗口；下次使用同一配置可以继续复用会话。结束使用后可手动关闭该 AN 窗口。
+默认以普通启动方式打开 AN 专用浏览器，优先使用可用的 Chrome/Edge，采用独立配置并跟随系统代理设置；需要绕过浏览器代理时显式使用 `--direct-connection`。一次任务内保持选定的连接模式，包括失败后的重连。AN 不读取或改动日常浏览器配置。任务结束后保留窗口；下次使用同一配置可以继续复用会话。结束使用后可手动关闭该 AN 窗口。
 
 机构 IP、校园网或 VPN 已有权限可以直接复用；仍需登录或验证码时，请在这个窗口完成，AN 会等待后继续。**AN 不提供订阅、不绕过付费墙，也不代答验证码。** 浏览器配置无法保证网站不再要求验证。
 
@@ -116,6 +116,8 @@ aletheia-nexus library downloads/library --query "催化"
 
 新文件默认采用 **年份-期刊-标题**，末尾附加身份与内容短码以避免同名覆盖；缺失字段省略，不虚构元数据。可通过 `filename` 自定义可读名称。旧文件不会批量改名，分类也不会由模型自行猜测。
 
+下载生成的获取记录、批次报告和检查点默认收纳在 `json/` 子文件夹；分类目录中的获取记录及标签也各自放入 `json/`。旧目录仍可读取和续跑，显式指定报告或检查点路径时以指定路径为准。
+
 再次执行同一批次时，会先核对文件与来源记录再续跑。标签可以单独修改，不改动 PDF 或原始获取证据：
 
 ```bash
@@ -124,7 +126,7 @@ aletheia-nexus library tag "实际论文路径.pdf" --add "已阅读" --remove "
 
 ### 5. 解析、检索并导出
 
-将下面的 `PAPER.pdf` 换成已获取文件的实际路径，DOI 换成该论文的真实 DOI。解析需要保留同目录的 `.acquisition.json` 来源记录：
+将下面的 `PAPER.pdf` 换成已获取文件的实际路径，DOI 换成该论文的真实 DOI。解析需要保留 `json/` 中的 `.acquisition.json` 来源记录，也兼容旧版与 PDF 同目录的记录：
 
 ```bash
 aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216
@@ -143,7 +145,9 @@ python -m pip install -U "aletheia-nexus[ocr]"
 aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216 --ocr
 ```
 
-OCR 只补充原生文本不足的部分。依赖缺失、超时或版式无法完整处理时会报告降级，不把不完整结果伪装成完整解析。**当前无 DOI 的知网文献可以获取和核验，但还不能进入要求真实 DOI 的解析通道。**
+图内印刷文字可选安装 `aletheia-nexus[image-ocr]` 并使用 `--ocr --image-ocr rapidocr`；模型在本地运行。单篇与批量解析使用同一套 OCR 配置。
+
+无 DOI 的已核验文献可直接解析；本地 PDF 可用 `import` 登记题名，SI 通过 `--parent` 关联正文。OCR 与原生文本冲突时保留两种读法并标记；缺字、超时和不完整覆盖明确报告。完整科研流程见 [0.7.2 使用指南](docs/V072_RESEARCH_WORKFLOW.md)。
 
 ## 可信，不只是“下载成功”
 
@@ -155,13 +159,15 @@ OCR 只补充原生文本不足的部分。依赖缺失、超时或版式无法�
 
 ### 内容与来源
 
-解析前会重新检查 `VERIFIED` 状态、DOI、正文角色、文件与来源记录的哈希及页数。解析后的文本块、引用和图表观测证据保留来源位置；导出的分块也能沿这条链返回原文：
+解析前会重新核对来源记录、文献角色、文件哈希及页数；有 DOI 时核对 DOI。自动获取的文件须为 `VERIFIED / MATCH`，本地导入则保留 `REGISTERED / DECLARED` 身份，不冒充自动核验。正文与已关联的 PDF SI 均可解析，SI 使用自己的页码。解析后的文本块、引用和图表观测证据保留来源位置；导出的分块也能沿这条链返回原文：
 
 ```text
 分块 → 文本块 → 来源锚点 → PDF 页码与位置 → 原始论文
 ```
 
 **`PARSED` 表示完成了相应文档解析，不表示论文结论正确，也不表示系统理解了全部图表和科学含义。** 不完整解析使用 `PARTIAL` 等明确状态。
+
+0.7.2 的最新范围与结果见[实际科研验收说明](docs/V072_PRACTICAL_ACCEPTANCE.md)：重点保证关键数值、单位、指标与实验条件的对应、原页定位和证据导出。两篇新文献的16个科研问题首次14/16，通用表格修复后同组16/16；历史K集回归12/12，原首次8/12保留。图内细小化学式和复杂多阶段示意图仍可能需要局部核对。默认不调用AI，不以回归成绩冒充未知文献的整体准确率。
 
 ### 权限与人工边界
 
@@ -192,7 +198,10 @@ AN 坚持正确性优先于自动化、明确失败优于静默错误；原始�
 | 文档 | 适合何时阅读 |
 | --- | --- |
 | [使用说明书](docs/USER_MANUAL.md) | 安装、输入、批量获取、本地管理、解析、OCR 与故障处理 |
-| [v0.7.1 发布说明](docs/RELEASE_NOTES_v0.7.1.md) | 理解本版本、升级变化与使用边界 |
+| [v0.7.2 发布说明](docs/RELEASE_NOTES_v0.7.2.md) | 理解本版本、升级变化与使用边界 |
+| [独立留出测试](docs/V072_INDEPENDENT_HOLDOUT.md) | 12篇原文核对、修复回归与4篇封存确认，区分实测准确率和适用边界 |
+| [第二批独立验证](docs/V072_SECOND_HOLDOUT.md) | 旧负指数错误修复；新8篇32项完整通过26项，记录未提示错误与原文冲突 |
+| [第三批独立验证](docs/V072_THIRD_HOLDOUT.md) | 上轮6项错误已修复；新8篇32项通过27项，5项失败归并3处，保留真实冲突与漏报记录 |
 | [版本与验收记录](docs/RELEASE_HISTORY.md) | 查阅各版本的测试范围、结果和发布状态 |
 | [CNKI 使用说明](docs/CNKI_AUTOMATION.md) | 知网输入、合法机构访问及限制 |
 | [解析契约](docs/V07_PARSING_CONTRACT.md) · [架构](docs/V07_ARCHITECTURE.md) · [OCR](docs/V07_OCR.md) | 接入解析结果、开发后端或了解技术边界 |

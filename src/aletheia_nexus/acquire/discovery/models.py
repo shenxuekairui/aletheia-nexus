@@ -6,6 +6,7 @@ class DiscoveryProvider(StrEnum):
     """External source that discovered a full-text candidate."""
 
     OPENALEX = "openalex"
+    CROSSREF = "crossref"
     UNPAYWALL = "unpaywall"
     PMC_CLOUD = "pmc_cloud"
     CNKI = "cnki"

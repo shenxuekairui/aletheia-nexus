@@ -18,6 +18,32 @@ from aletheia_nexus.acquire.access.models import (
 from aletheia_nexus.acquire.access.security import redact_url_for_record
 
 _LOGGER = logging.getLogger(__name__)
+CNKI_RATE_LIMITED = "CNKI_RATE_LIMITED"
+
+
+def cnki_rate_limit_report(
+    text: str, *, status: int | None = None
+) -> ChallengeReport | None:
+    """Recognize an explicit throttling response without inferring a safe rate."""
+    normalized = "".join(text.casefold().split())
+    if status == 429 or any(
+        marker in normalized
+        for marker in (
+            "操作太过频繁",
+            "操作过于频繁",
+            "访问太过频繁",
+            "访问过于频繁",
+            "下载过于频繁",
+            "过于频繁，请休息一会儿",
+            "您的ip已被系统禁止",
+            "ip已被禁止下载",
+            "toomanyrequests",
+        )
+    ):
+        return ChallengeReport(
+            kind=ChallengeKind.ACCESS_DENIED, evidence=(CNKI_RATE_LIMITED,)
+        )
+    return None
 
 
 class CNKIStageTimeout(TimeoutError):
@@ -93,11 +119,6 @@ def captcha_visible(page) -> bool:
 def challenge_for_page(page) -> ChallengeReport:
     if page.is_closed():
         raise CNKITargetClosed()
-    if captcha_visible(page):
-        return ChallengeReport(
-            kind=ChallengeKind.CAPTCHA,
-            evidence=("CNKI slider/CAPTCHA control is visible",),
-        )
     try:
         text = page.locator("body").inner_text(timeout=500)[:100_000]
     except Exception:
@@ -108,6 +129,14 @@ def challenge_for_page(page) -> ChallengeReport:
         title = page.title()
     except Exception:
         title = ""
+    rate_limit = cnki_rate_limit_report(f"{title}\n{text}")
+    if rate_limit is not None:
+        return rate_limit
+    if captcha_visible(page):
+        return ChallengeReport(
+            kind=ChallengeKind.CAPTCHA,
+            evidence=("CNKI slider/CAPTCHA control is visible",),
+        )
     report = classify_access_challenge(
         title=title, url=str(page.url or ""), visible_text=text
     )
@@ -264,6 +293,16 @@ class CNKIGate:
             try:
                 current = challenge_for_page(target)
             except CNKITargetClosed:
+                # The popup can close during the DOM read, after is_closed()
+                # above. Re-enter the same opener-resume path on the next poll.
+                if (
+                    target is page
+                    and page.is_closed()
+                    and resume_page is not None
+                    and not resume_page.is_closed()
+                ):
+                    clear_polls = 0
+                    continue
                 raise CNKIInteractionRequired(target, report) from None
             ready = current.kind == ChallengeKind.NONE and _resume_ready(target)
             clear_polls = clear_polls + 1 if ready else 0
@@ -345,6 +384,7 @@ class CNKIFileCapture:
         self._finished_requests: set[int] = set()
         self._failed_requests: set[int] = set()
         self.context_closed = False
+        self._rate_limited_page = None
         self._native = (
             CdpDownloadCapture(context, output_dir) if output_dir is not None else None
         )
@@ -405,6 +445,12 @@ class CNKIFileCapture:
                 self._on_page(owner)
             if owner not in self.pages:
                 return
+            host = (urlsplit(response.url).hostname or "").casefold()
+            if response.status == 429 and (
+                host == "cnki.net" or host.endswith(".cnki.net")
+            ):
+                self._rate_limited_page = owner
+                return
             content_type = response.headers.get("content-type", "").casefold()
             disposition = response.headers.get("content-disposition", "").casefold()
             path = urlsplit(response.url).path.casefold()
@@ -423,6 +469,13 @@ class CNKIFileCapture:
             pass
 
     def next_file(self):
+        if self._rate_limited_page is not None:
+            raise CNKIInteractionRequired(
+                self._rate_limited_page,
+                ChallengeReport(
+                    kind=ChallengeKind.ACCESS_DENIED, evidence=(CNKI_RATE_LIMITED,)
+                ),
+            )
         if self.downloads:
             if self._native is not None and self._native.active:
                 # Browser-domain completion is authoritative after a generic

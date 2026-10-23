@@ -11,9 +11,11 @@ from aletheia_nexus.acquire.access.browser import (
 )
 from aletheia_nexus.acquire.access.cnki_provider import CNKIProvider
 from aletheia_nexus.acquire.access.cnki_routing import cnki_route_reason
+from aletheia_nexus.acquire.access.cnki_runtime import CNKI_RATE_LIMITED
 from aletheia_nexus.acquire.access.elsevier import acquire_elsevier_pdf
 from aletheia_nexus.acquire.access.manual import resolve_user_operated_access
 from aletheia_nexus.acquire.access.models import (
+    BrowserAccessAttempt,
     BrowserAccessConfig,
     BrowserAttemptStatus,
     ElsevierAccessConfig,
@@ -27,6 +29,8 @@ from aletheia_nexus.acquire.access.provider_registry import (
 from aletheia_nexus.acquire.access.publisher_routes import (
     canonical_pdf_route,
 )
+from aletheia_nexus.acquire.discovery.crossref import discover_crossref_supplement
+from aletheia_nexus.acquire.discovery.hosts import refine_host_type
 from aletheia_nexus.acquire.discovery.models import (
     CandidateUrlType,
     DiscoveryResult,
@@ -145,6 +149,9 @@ def browser_recovery_routes(
 
     def add(candidate: FullTextCandidate, *, barrier: bool) -> None:
         nonlocal order
+        candidate = replace(
+            candidate, host_type=refine_host_type(candidate.url, candidate.host_type)
+        )
         key = _url_key(candidate.url)
         score = _browser_route_score(
             candidate,
@@ -234,6 +241,10 @@ def browser_recovery_routes(
     ranked = sorted(
         scored.values(),
         key=lambda item: (
+            # Public repository delivery already ran above. Browser recovery
+            # should reach publisher institutional access before a repository's
+            # unrelated staff/account login, even for an observed file URL.
+            item[2].host_type == HostType.REPOSITORY,
             _url_key(item[2].url) not in observed_pdf_urls,
             -item[0],
             item[1],
@@ -267,6 +278,29 @@ def _should_try_elsevier_api(base_result: MultiRouteAcquisitionResult) -> bool:
     return False
 
 
+def _attempted_urls(base, attempts) -> set[str]:
+    """Include observed redirects and nested files when excluding repeat work."""
+
+    urls = set()
+    for attempt in base.route_attempts:
+        urls.add(attempt.candidate.url)
+        if attempt.result.page is not None:
+            urls.add(attempt.result.page.final_url)
+    for attempt in base.file_attempts:
+        urls.add(attempt.candidate.url)
+        if attempt.result.retrieved is not None:
+            urls.add(attempt.result.retrieved.final_url)
+    for attempt in attempts:
+        urls.add(attempt.source_candidate.url)
+        if attempt.final_url:
+            urls.add(attempt.final_url)
+        for file in attempt.file_attempts:
+            urls.add(file.candidate.url)
+            if file.result is not None and file.result.retrieved is not None:
+                urls.add(file.result.retrieved.final_url)
+    return urls
+
+
 def _final_status_from_browser(
     base_result: MultiRouteAcquisitionResult,
     attempts,
@@ -280,7 +314,25 @@ def _final_status_from_browser(
             MaximizedAcquisitionStatus.AMBIGUOUS,
             "Several candidates remain plausible; provide author/publication fields or a CNKI record ID.",
         )
-    if BrowserAttemptStatus.RETRIEVED_UNVERIFIED in statuses:
+    retained_unverified = any(
+        file.result is not None
+        and file.result.status == AcquisitionStatus.RETRIEVED_UNVERIFIED
+        and file.result.file_path is not None
+        for attempt in attempts
+        for file in attempt.file_attempts
+    )
+    challenge_pending = bool(
+        statuses.intersection(
+            {
+                BrowserAttemptStatus.INTERACTION_REQUIRED,
+                BrowserAttemptStatus.ENTITLEMENT_REQUIRED,
+                BrowserAttemptStatus.ACCESS_DENIED,
+            }
+        )
+    )
+    if BrowserAttemptStatus.RETRIEVED_UNVERIFIED in statuses or (
+        retained_unverified and not challenge_pending
+    ):
         return (
             MaximizedAcquisitionStatus.RETRIEVED_UNVERIFIED,
             "A PDF was retrieved but its requested identity was not verified; inspect the retained evidence.",
@@ -302,6 +354,13 @@ def _final_status_from_browser(
             MaximizedAcquisitionStatus.ACCESS_DENIED,
             "Browser recovery encountered an explicit access-denied boundary "
             "and no route obtained a verified article.",
+        )
+
+    if BrowserAttemptStatus.AUTH_REQUIRED in statuses:
+        return (
+            MaximizedAcquisitionStatus.AUTH_REQUIRED,
+            "A repository requires its own account; no publisher or public route "
+            "obtained a verified article. Repository login was not requested.",
         )
 
     if elsevier_attempt is not None:
@@ -667,6 +726,7 @@ def acquire_full_text_maximized(
                 BrowserAttemptStatus.RETRIEVED_UNVERIFIED,
             }
             or provider_attempt.download_started
+            or provider_attempt.error == CNKI_RATE_LIMITED
         ):
             # Once a site-specific provider issued a download, do not re-enter
             # that transaction through generic routes or hide its transport
@@ -778,6 +838,105 @@ def acquire_full_text_maximized(
         all_attempts,
         elsevier_attempt=elsevier_attempt,
     )
+    # Supplement only after the existing routes have finished. Successful or
+    # pending interactive paths pay no additional network cost and retain their
+    # original order. New routes share, rather than reset, the browser budget.
+    remaining_routes = config.max_source_routes - len(recovery.attempts)
+    pending = (
+        any(
+            attempt.download_started
+            or attempt.status
+            in {
+                BrowserAttemptStatus.INTERACTION_REQUIRED,
+                BrowserAttemptStatus.AMBIGUOUS,
+                BrowserAttemptStatus.RETRIEVED_UNVERIFIED,
+            }
+            or any(
+                file.result is not None
+                and file.result.status == AcquisitionStatus.RETRIEVED_UNVERIFIED
+                for file in attempt.file_attempts
+            )
+            for attempt in all_attempts
+        )
+        or any(
+            attempt.result.status == AcquisitionStatus.RETRIEVED_UNVERIFIED
+            for attempt in base.file_attempts
+        )
+        or (
+            elsevier_attempt is not None
+            and elsevier_attempt.status == ElsevierAccessStatus.RETRIEVED_UNVERIFIED
+        )
+    )
+    if (
+        remaining_routes > 0
+        and not pending
+        and status
+        in {
+            MaximizedAcquisitionStatus.EXHAUSTED,
+            MaximizedAcquisitionStatus.AUTH_REQUIRED,
+            MaximizedAcquisitionStatus.ENTITLEMENT_REQUIRED,
+            MaximizedAcquisitionStatus.ACCESS_DENIED,
+        }
+    ):
+        supplement, supplement_metadata = discover_crossref_supplement(
+            normalized_doi,
+            metadata=base.metadata,
+            metadata_error=base.metadata_error,
+            allow_lookup=auto_metadata,
+            mailto=metadata_mailto,
+            excluded_urls=_attempted_urls(base, all_attempts),
+            limit=remaining_routes,
+        )
+        base = replace(
+            base,
+            discovery=replace(
+                base.discovery,
+                candidates=(*base.discovery.candidates, *supplement.candidates),
+                providers=(*base.discovery.providers, supplement),
+            ),
+            metadata=base.metadata
+            or (supplement_metadata if supplement.candidates else None),
+        )
+        if supplement.candidates:
+            try:
+                with output_metadata(base.metadata):
+                    options = dict(
+                        doi=normalized_doi,
+                        routes=supplement.candidates,
+                        output_dir=output_dir,
+                        expected_title=base.expected_title,
+                    )
+                    if browser_session is not None:
+                        extra = browser_session.acquire(**options)
+                    else:
+                        extra = acquire_with_browser(config=config, **options)
+                all_attempts = (*all_attempts, *extra.attempts)
+                if extra.verified_result is not None:
+                    return MaximizedAcquisitionResult(
+                        doi=normalized_doi,
+                        status=MaximizedAcquisitionStatus.VERIFIED,
+                        base_result=base,
+                        browser_attempts=all_attempts,
+                        elsevier_attempt=elsevier_attempt,
+                        verified_result=extra.verified_result,
+                        elapsed_seconds=time.perf_counter() - started_at,
+                        message="Crossref resource fallback acquired a verified article.",
+                    )
+            except Exception as exc:
+                # Keep the original outcome and a trace of a failed optional
+                # route, rather than replacing it with a discovery error.
+                all_attempts = (
+                    *all_attempts,
+                    BrowserAccessAttempt(
+                        source_candidate=supplement.candidates[0],
+                        final_url=None,
+                        status=BrowserAttemptStatus.ERROR,
+                        error=f"Crossref fallback: {type(exc).__name__}",
+                    ),
+                )
+            status, message = _final_status_from_browser(
+                base, all_attempts, elsevier_attempt=elsevier_attempt
+            )
     return MaximizedAcquisitionResult(
         doi=normalized_doi,
         status=status,

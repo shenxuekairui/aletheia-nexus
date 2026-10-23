@@ -1,4 +1,4 @@
-"""Validation and deterministic persistence for parsed-document v2."""
+"""Validation and persistence for parsed-document v3 and legacy v2."""
 
 from __future__ import annotations
 
@@ -13,13 +13,14 @@ from uuid import uuid4
 
 from aletheia_nexus.content.geometry import CANONICAL_COORDINATE_SYSTEM
 
-PARSED_DOCUMENT_SCHEMA = "aletheia-nexus/parsed-document/v2"
+PARSED_DOCUMENT_SCHEMA = "aletheia-nexus/parsed-document/v3"
+LEGACY_PARSED_DOCUMENT_SCHEMA = "aletheia-nexus/parsed-document/v2"
 PARSED_STATUSES = frozenset({"PARSED", "PARTIAL", "FAILED"})
 BLOCK_KINDS = frozenset(
     {"paragraph", "heading", "caption", "equation", "reference", "other"}
 )
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_ARTIFACT_ID = re.compile(r"^an:(?:source|parsed):(?:v2:)?sha256:[0-9a-f]{64}$")
+_ARTIFACT_ID = re.compile(r"^an:(?:source|parsed):(?:v[23]:)?sha256:[0-9a-f]{64}$")
 
 
 def _is_safe_relative_locator(value: str) -> bool:
@@ -41,15 +42,19 @@ def compute_parsed_artifact_id(document: dict[str, object]) -> str:
     source = payload.get("source")
     if isinstance(source, dict):
         source.pop("locators", None)
-    return f"an:parsed:v2:sha256:{_fingerprint(payload)}"
+    version = "v3" if document.get("schema") == PARSED_DOCUMENT_SCHEMA else "v2"
+    return f"an:parsed:{version}:sha256:{_fingerprint(payload)}"
 
 
 def validate_parsed_document(document: object) -> None:
-    """Validate required v2 fields and all internal identifiers/references."""
+    """Validate versioned fields and all internal identifiers/references."""
 
     if not isinstance(document, dict):
         raise ValueError("parsed document must be an object")
-    if document.get("schema") != PARSED_DOCUMENT_SCHEMA:
+    if document.get("schema") not in {
+        PARSED_DOCUMENT_SCHEMA,
+        LEGACY_PARSED_DOCUMENT_SCHEMA,
+    }:
         raise ValueError("unsupported parsed-document schema")
     if document.get("status") not in PARSED_STATUSES:
         raise ValueError("status must be PARSED, PARTIAL, or FAILED")
@@ -119,8 +124,35 @@ def validate_parsed_document(document: object) -> None:
     ):
         if key not in source:
             raise ValueError(f"source is missing {key}")
-    if not isinstance(source["doi"], str) or not source["doi"]:
+    if not (isinstance(source["doi"], str) and source["doi"]) and not (
+        document["schema"] == PARSED_DOCUMENT_SCHEMA
+        and source["doi"] is None
+        and isinstance(source.get("title"), str)
+        and source["title"].strip()
+    ):
         raise ValueError("source.doi must be a non-empty string")
+    if document["schema"] == PARSED_DOCUMENT_SCHEMA:
+        if source.get("document_role") not in {"ARTICLE", "SUPPLEMENT"}:
+            raise ValueError("source.document_role must be ARTICLE or SUPPLEMENT")
+        if source.get("identity_basis") not in {
+            "acquisition_verified",
+            "local_declared",
+        }:
+            raise ValueError(
+                "source.identity_basis must describe the identity evidence"
+            )
+        if not isinstance(source.get("article_id"), str) or not source["article_id"]:
+            raise ValueError("source.article_id is required")
+        parent = source.get("parent")
+        if source["document_role"] == "SUPPLEMENT" and not (
+            isinstance(parent, dict)
+            and parent.get("article_id")
+            and _SHA256.fullmatch(str(parent.get("pdf_sha256", "")))
+            and parent["pdf_sha256"] != source["pdf_sha256"]
+        ):
+            raise ValueError("a supplement requires a distinct parent PDF identity")
+        if source["document_role"] == "ARTICLE" and parent is not None:
+            raise ValueError("an article cannot carry a supplement parent")
     for key in ("acquisition_schema", "artifact_id"):
         if not isinstance(source[key], str) or not source[key]:
             raise ValueError(f"source.{key} must be a non-empty string")
@@ -484,6 +516,20 @@ def validate_parsed_document(document: object) -> None:
                         raise ValueError(
                             f"tables[{index}].cells[{cell_index}] is out of range"
                         )
+                    for dimension, count in (
+                        ("row", row_count),
+                        ("column", column_count),
+                    ):
+                        span = cell.get(f"{dimension}_span", 1)
+                        if (
+                            isinstance(span, bool)
+                            or not isinstance(span, int)
+                            or span < 1
+                            or cell[dimension] + span - 1 > count
+                        ):
+                            raise ValueError(
+                                f"tables[{index}].cells[{cell_index}] has invalid {dimension} span"
+                            )
     for index, item in enumerate(document["references"]):
         resolved = item.get("resolved")
         if not isinstance(resolved, bool):
@@ -594,6 +640,8 @@ def validate_parsed_document(document: object) -> None:
     if not isinstance(quality.get("stopped_early"), bool):
         raise ValueError("quality.stopped_early must be a boolean")
     informational_warning_codes = {
+        "RASTER_REGION_TEXT_UNVERIFIED",
+        "MARGIN_TEXT_OMITTED",
         "OCR_TRIGGERED",
         "OCR_TEXT_SUPPLEMENTED",
         "OCR_ORIENTATION_CORRECTED",

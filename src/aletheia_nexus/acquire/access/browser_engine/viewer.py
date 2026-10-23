@@ -6,12 +6,49 @@ import re
 import threading
 import time
 from difflib import SequenceMatcher
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from .downloads import CdpDownloadCapture
+from .observation import bounded_read
 
 _PDF_VIEWER_EXTENSION_ID = "mhjfbmdgcfjbbpaeojofohoefgiehjai"
+
+
+class NativeViewerDownloadError(RuntimeError):
+    """A visible save action failed, with an optional observed download URL."""
+
+    def __init__(self, reason: str, url: str | None = None):
+        super().__init__(reason)
+        self.url = url
+
+
+def is_native_pdf_placeholder(body: bytes) -> bool:
+    """Recognize Chromium's replacement document, never by its byte count."""
+    if b"%PDF-" in body[:1024] or not body.lstrip().lower().startswith(
+        (b"<!doctype html", b"<html")
+    ):
+        return False
+
+    class PlaceholderParser(HTMLParser):
+        found = False
+
+        def handle_starttag(self, tag, attrs):
+            values = dict(attrs)
+            if (
+                tag == "embed"
+                and (values.get("type") or "").lower() == "application/pdf"
+                and values.get("src") == "about:blank"
+                and values.get("internalid")
+            ):
+                self.found = True
+
+    parser = PlaceholderParser()
+    parser.feed(body[:16384].decode("utf-8", errors="replace"))
+    return parser.found
+
+
 _PDF_VIEWER_SAVE_EXPRESSION = r"""
 (() => {
   const seen = new Set();
@@ -34,6 +71,28 @@ _PDF_VIEWER_SAVE_EXPRESSION = r"""
   if (!button) return {clicked: false};
   button.click();
   return {clicked: true};
+})()
+"""
+
+# Chromium records the document URL on the PDF plugin even when its frame
+# tree exposes only the extension URL. Read that attribute without fetching.
+_PDF_VIEWER_DOCUMENT_EXPRESSION = r"""
+(() => {
+  const seen = new Set();
+  function find(root, depth) {
+    if (!root || depth > 10 || seen.has(root)) return null;
+    seen.add(root);
+    const plugin = root.querySelector?.('embed[original-url]');
+    if (plugin) return plugin.getAttribute('original-url');
+    for (const el of root.querySelectorAll?.('*') || []) {
+      if (el.shadowRoot) {
+        const url = find(el.shadowRoot, depth + 1);
+        if (url) return url;
+      }
+    }
+    return null;
+  }
+  return find(document, 0);
 })()
 """
 
@@ -244,6 +303,101 @@ def select_pdf_viewer_target(
     return winner if score >= 0.72 else None
 
 
+def _target_command(session, target_session, page, method, params, timeout):
+    """Read one attached viewer target with a bounded response wait."""
+    done = threading.Event()
+    response = {}
+
+    def receive(event):
+        if event.get("sessionId") != target_session:
+            return
+        message = json.loads(event["message"])
+        if message.get("id") == 7:
+            response.update(message)
+            done.set()
+
+    session.on("Target.receivedMessageFromTarget", receive)
+    try:
+        session.send(
+            "Target.sendMessageToTarget",
+            {
+                "sessionId": target_session,
+                "message": json.dumps({"id": 7, "method": method, "params": params}),
+            },
+        )
+        deadline = time.monotonic() + max(0, timeout)
+        while not done.is_set() and time.monotonic() < deadline:
+            page.wait_for_timeout(50)
+        return response.get("result", {})
+    finally:
+        remove = getattr(session, "remove_listener", None)
+        if callable(remove):
+            remove("Target.receivedMessageFromTarget", receive)
+
+
+def _viewer_for_document_url(session, page, targets, *, timeout):
+    """Resolve generic filenames through the browser's actual frame ownership."""
+    expected_url = str(page.url or "").split("#", 1)[0]
+    if not expected_url.startswith(("https://", "http://")):
+        return None
+    deadline = time.monotonic() + max(0, timeout)
+    for target in targets:
+        if target.get("type") != "webview" or _PDF_VIEWER_EXTENSION_ID not in str(
+            target.get("url", "")
+        ):
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        attached = None
+        try:
+            attached = session.send(
+                "Target.attachToTarget",
+                {
+                    "targetId": target["targetId"],
+                    "flatten": False,
+                },
+            )["sessionId"]
+            result = _target_command(
+                session, attached, page, "Page.getFrameTree", {}, min(1, remaining)
+            )
+            pending = [result.get("frameTree", {})]
+            while pending:
+                node = pending.pop()
+                frame = node.get("frame", {})
+                if str(frame.get("url", "")).split("#", 1)[0] == expected_url:
+                    return target
+                pending.extend(node.get("childFrames", []))
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                result = _target_command(
+                    session,
+                    attached,
+                    page,
+                    "Runtime.evaluate",
+                    {
+                        "expression": _PDF_VIEWER_DOCUMENT_EXPRESSION,
+                        "returnByValue": True,
+                    },
+                    min(1, remaining),
+                )
+                document_url = result.get("result", {}).get("value")
+                if (
+                    isinstance(document_url, str)
+                    and document_url.split("#", 1)[0] == expected_url
+                ):
+                    return target
+        except Exception:
+            continue
+        finally:
+            if attached is not None:
+                try:
+                    session.send("Target.detachFromTarget", {"sessionId": attached})
+                except Exception:
+                    pass
+    return None
+
+
 def trigger_pdf_viewer_save(
     context,
     page,
@@ -265,14 +419,26 @@ def trigger_pdf_viewer_save(
     target_session: str | None = None
     keep_staging = False
     try:
-        page_title = page.title()
+        try:
+            page_title = bounded_read(page, "title", timeout=min(2.0, timeout))
+        except Exception:
+            # Recovery may be running precisely because the page DOM cannot
+            # be read. Matching still requires the article title/DOI/URL below.
+            page_title = ""
+        targets = session.send("Target.getTargets").get("targetInfos", [])
         target = select_pdf_viewer_target(
-            session.send("Target.getTargets").get("targetInfos", []),
+            targets,
             doi=doi,
             expected_title=expected_title,
             page_title=page_title,
             page_url=str(page.url or ""),
         )
+        if target is None:
+            # Untitled PDFs can expose only "main.pdf" in the viewer and no
+            # readable top-level title. Never guess from that common filename.
+            target = _viewer_for_document_url(
+                session, page, targets, timeout=min(3.0, timeout)
+            )
         if target is None:
             return None
 
@@ -318,9 +484,19 @@ def trigger_pdf_viewer_save(
         )
         if not isinstance(click_result, dict) or not click_result.get("clicked"):
             return None
-        captured = capture.wait(page, max(0.0, deadline - time.monotonic()))
+        captured = capture.wait(
+            page, max(0.0, deadline - time.monotonic()), wait_for_start=True
+        )
         if captured is None:
-            return None
+            if capture.cancelled_url:
+                raise NativeViewerDownloadError(
+                    "NativeDownloadCanceled", capture.cancelled_url
+                )
+            raise NativeViewerDownloadError(
+                "NativeDownloadIncomplete"
+                if capture.started
+                else "NativeDownloadStartTimeout"
+            )
         saved, _ = captured
         if saved.stat().st_size > max_bytes:
             return None
@@ -329,6 +505,8 @@ def trigger_pdf_viewer_save(
                 return None
         keep_staging = True
         return saved, staging_dir
+    except NativeViewerDownloadError:
+        raise
     except Exception:
         return None
     finally:

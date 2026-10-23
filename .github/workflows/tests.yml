@@ -122,7 +122,7 @@ jobs:
           smoke-venv/bin/python -m pip check
           smoke-venv/bin/aletheia-nexus --version
           smoke-venv/bin/aletheia-nexus doctor
-          smoke-venv/bin/python -m pytest -q tests/test_cli.py tests/test_library.py tests/content
+          smoke-venv/bin/python -m pytest -q tests/test_cli.py tests/test_research_cli.py tests/test_library.py tests/content
 
   browser-extra:
     name: browser-extra
@@ -177,7 +177,7 @@ jobs:
           AN_RUN_BROWSER_SMOKE: "1"
           AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
           CHROME_DEVEL_SANDBOX: /usr/local/libexec/an-chrome-sandbox
-        run: xvfb-run -a python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py
+        run: xvfb-run -a python -m pytest -q tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py tests/acquire/access/test_observation_deadlines.py tests/acquire/access/test_acquisition_timing.py
 
   ocr-extra:
     name: ocr-extra (Poppler + Tesseract)
@@ -201,15 +201,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils tesseract-ocr
-          python -m pip install -e ".[dev,ocr]"
+          python -m pip install -e ".[dev,ocr,image-ocr]"
       - name: Check dependencies and real raster-only OCR path
         env:
           AN_RUN_OCR_SMOKE: "1"
+          AN_RUN_IMAGE_OCR_SMOKE: "1"
         run: |
           python -m pip check
           pdftoppm -v
           tesseract --version
-          python -m pytest -q tests/content/test_ocr_integration.py
+          python -m pytest -q tests/content
 
   windows:
     name: windows (3.11 + Chromium)
@@ -246,4 +247,4 @@ jobs:
         env:
           AN_RUN_BROWSER_SMOKE: "1"
           AN_RUN_VISIBLE_BROWSER_SMOKE: "1"
-        run: python -m pytest -vv -o faulthandler_timeout=120 tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py
+        run: python -m pytest -vv -o faulthandler_timeout=120 tests/acquire/access/test_browser_integration.py tests/acquire/access/test_cnki_browser_integration.py tests/acquire/access/test_normal_browser_integration.py tests/acquire/access/test_observation_deadlines.py tests/acquire/access/test_acquisition_timing.py

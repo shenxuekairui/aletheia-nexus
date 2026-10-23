@@ -16,11 +16,56 @@ def compact_bibliography(value: str) -> str:
     )
 
 
+def journal_aliases(value: str) -> tuple[str, ...]:
+    """Recognize an institutional journal apposition, never arbitrary editions.
+
+    Main title + (institution 大学/学院 学报) is a structural naming form, not
+    a table of known journals. Natural/social science and language editions
+    remain distinct. Two different institutional appositions are not aliases.
+    """
+    normalized = re.sub(r"\s+", "", unicodedata.normalize("NFKC", value))
+    match = re.fullmatch(
+        r"([^()]+)\([\u3400-\u9fff]{2,}(?:大学|学院)学报\)", normalized
+    )
+    if match:
+        return (value, match[1])
+    return (value,)
+
+
 def bibliographic_field_key(field: str, value: object) -> str:
     compact = compact_bibliography(str(value))
     if field in {"volume", "issue"} and compact.isdigit():
         return str(int(compact))
     return compact
+
+
+def bibliographic_fields_match(field: str, wanted: object, actual: object) -> bool:
+    left, right = (
+        bibliographic_field_key(field, wanted),
+        bibliographic_field_key(field, actual),
+    )
+    if left == right:
+        return True
+    if field == "journal":
+        left_names, right_names = (
+            journal_aliases(str(wanted)),
+            journal_aliases(str(actual)),
+        )
+        # One full name and its exact main title may agree. Different full
+        # institutional titles, or different editions, must still conflict.
+        return bool(
+            (
+                len(left_names) == 2
+                and len(right_names) == 1
+                and compact_bibliography(left_names[1]) == right
+            )
+            or (
+                len(right_names) == 2
+                and len(left_names) == 1
+                and compact_bibliography(right_names[1]) == left
+            )
+        )
+    return False
 
 
 @dataclass(frozen=True, slots=True)

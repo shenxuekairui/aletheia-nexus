@@ -21,9 +21,8 @@ from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
 from aletheia_nexus.acquire.fulltext.models import (
     AcquisitionResult,
     AcquisitionStatus,
-    DocumentRole,
-    IdentityStatus,
     RetrievedResource,
+    classify_retrieved,
 )
 from aletheia_nexus.acquire.fulltext.retry import (
     AcquisitionRetryError,
@@ -64,18 +63,6 @@ def _status_for_error(error: AcquisitionError) -> AcquisitionStatus:
     if isinstance(error, AcquisitionServiceError):
         return AcquisitionStatus.SERVICE_ERROR
     return AcquisitionStatus.ERROR
-
-
-def _classify_retrieved(
-    identity_status: IdentityStatus, role: DocumentRole
-) -> AcquisitionStatus:
-    if role == DocumentRole.SUPPLEMENT:
-        return AcquisitionStatus.SUPPLEMENT
-    if identity_status == IdentityStatus.MATCH and role == DocumentRole.ARTICLE:
-        return AcquisitionStatus.VERIFIED
-    if identity_status == IdentityStatus.MISMATCH:
-        return AcquisitionStatus.MISMATCH
-    return AcquisitionStatus.RETRIEVED_UNVERIFIED
 
 
 def _record_payload(
@@ -230,7 +217,7 @@ def acquire_direct_pdf(
             inspection=inspection,
             expected_title=expected_title,
         )
-        status = _classify_retrieved(identity.status, identity.document_role)
+        status = classify_retrieved(identity.status, identity.document_role)
 
         should_persist = status == AcquisitionStatus.VERIFIED or keep_unverified
         sidecar_path: Path | None = None

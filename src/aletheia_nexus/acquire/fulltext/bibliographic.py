@@ -5,12 +5,20 @@ from dataclasses import replace
 
 from aletheia_nexus.acquire.fulltext.identity import validate_paper_identity
 from aletheia_nexus.acquire.fulltext.models import DocumentRole, IdentityStatus
+from aletheia_nexus.acquire.fulltext.publication import (
+    corroborated_cnki_record,
+    journal_in_text,
+    margin_publication_match,
+    year_in_text,
+)
 from aletheia_nexus.core.identifiers.doi import extract_pdf_dois
 from aletheia_nexus.core.paper_request import (
     PaperRequest,
-    bibliographic_field_key,
+    bibliographic_fields_match,
     compact_bibliography,
 )
+
+BIBLIOGRAPHIC_POLICY = "cnki_bibliographic/v5"
 
 
 def validate_bibliographic_identity(
@@ -42,11 +50,25 @@ def validate_bibliographic_identity(
     )
     journal = target.journal or (observed.journal if observed else None)
     year = target.year or (observed.year if observed else None)
-    publication_match = bool(
-        journal
-        and year
-        and compact_bibliography(journal) in compact
-        and str(year) in compact
+    publication_match = journal_in_text(journal, front) and year_in_text(year, front)
+    margin_page = margin_publication_match(inspection, journal, year)
+    record_link = corroborated_cnki_record(
+        target=target,
+        observed=observed,
+        inspection=inspection,
+        front=front,
+        declared_dois=report.declared_dois,
+    )
+    bibliographic_match = bool(
+        exact_title
+        and authors_match
+        and (
+            publication_match
+            or margin_page
+            or record_link
+            or (target.cnki_id and observed and target.cnki_id == observed.cnki_id)
+        )
+        and (observed is None or compact_bibliography(observed.title or "") == title)
     )
     if exact_title:
         evidence.append("Exact requested title found in PDF front matter")
@@ -54,18 +76,21 @@ def validate_bibliographic_identity(
         evidence.append("Expected authors found in PDF front matter")
     if publication_match:
         evidence.append("Journal and year found in PDF front matter")
+    if margin_page:
+        evidence.append(f"Journal and year found in PDF page {margin_page} margin")
+    if record_link and exact_title and authors_match:
+        evidence.append(record_link)
 
     # Caller constraints are hard when both sides provide a field. Missing
     # fields never become positive evidence. Never silently replace the query.
     conflicts = []
     if observed:
-        for field in ("journal", "year", "volume", "issue", "pages", "cnki_id"):
+        for field in ("doi", "journal", "year", "volume", "issue", "pages", "cnki_id"):
             wanted, actual = getattr(target, field), getattr(observed, field)
             if (
                 wanted
                 and actual
-                and bibliographic_field_key(field, wanted)
-                != bibliographic_field_key(field, actual)
+                and not bibliographic_fields_match(field, wanted, actual)
             ):
                 conflicts.append(field)
         if target.authors and observed.authors:
@@ -84,34 +109,31 @@ def validate_bibliographic_identity(
         status = IdentityStatus.MISMATCH
     elif not conflicts:
         if target.doi:
-            # Known DOI is authoritative; title similarity alone cannot pass.
+            # A supplied DOI must not disable the complete bibliographic path.
+            # Missing DOI evidence differs from a conflicting DOI, rejected above.
             doi_in_front = target.doi in extract_pdf_dois(front) and (
                 target.doi in report.declared_dois or exact_title
             )
             detail_doi = observed and observed.doi == target.doi
             if not doi_in_front and not (detail_doi and exact_title and authors_match):
-                status = IdentityStatus.UNKNOWN
-                evidence.append(
-                    "Known DOI requires PDF DOI or matching detail DOI plus exact title and authors"
-                )
-        else:
-            # A DOI discovered from a selected candidate does not prove that
-            # the selected candidate was the requested paper.
-            if not (
-                exact_title
-                and authors_match
-                and (
-                    publication_match
-                    or (
-                        target.cnki_id
-                        and observed
-                        and target.cnki_id == observed.cnki_id
+                if bibliographic_match:
+                    status = IdentityStatus.MATCH
+                    evidence.append(
+                        "Exact PDF title, authors, and publication evidence verify the article without DOI confirmation"
                     )
-                )
-            ):
+                else:
+                    status = IdentityStatus.UNKNOWN
+                    evidence.append(
+                        "Missing DOI confirmation requires exact PDF title, authors, and publication evidence or a corroborated CNKI record"
+                    )
+        else:
+            # A candidate DOI alone is insufficient. A fully constrained record
+            # may instead be linked to exact PDF title/authors with independent
+            # DOI/article-number/pagination evidence when a masthead is graphical.
+            if not bibliographic_match:
                 status = IdentityStatus.UNKNOWN
                 evidence.append(
-                    "Title-only identity requires exact PDF title, authors, and journal/year or an explicit CNKI record"
+                    "Title-only identity requires exact PDF title, authors, and publication evidence or a corroborated CNKI record"
                 )
             elif report.status != IdentityStatus.UNKNOWN or not report.declared_dois:
                 status = IdentityStatus.MATCH
@@ -125,13 +147,15 @@ def validate_bibliographic_identity(
         confirmed_detail = (
             observed
             and getattr(observed, field)
-            and bibliographic_field_key(field, wanted)
-            == bibliographic_field_key(field, getattr(observed, field))
+            and bibliographic_fields_match(field, wanted, getattr(observed, field))
         )
         confirmed_pdf = (
-            field in {"journal", "year"}
-            and compact_bibliography(str(wanted)) in compact
-        )
+            journal_in_text(str(wanted), front)
+            if field == "journal"
+            else year_in_text(wanted, front)
+            if field == "year"
+            else False
+        ) or (field in {"journal", "year"} and bool(margin_page))
         if not (confirmed_detail or confirmed_pdf):
             missing.append(field)
     if missing and status != IdentityStatus.MISMATCH:
@@ -152,6 +176,6 @@ def validate_bibliographic_identity(
         report,
         status=status,
         document_role=role,
-        policy="cnki_bibliographic/v3",
+        policy=BIBLIOGRAPHIC_POLICY,
         evidence=tuple(evidence),
     )

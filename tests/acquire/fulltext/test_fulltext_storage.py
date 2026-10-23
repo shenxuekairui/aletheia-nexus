@@ -107,10 +107,9 @@ def test_sidecar_partial_file_is_cleaned_if_serialization_fails(tmp_path):
     with pytest.raises(TypeError):
         write_json_sidecar(pdf, {"not_json": object()})
 
-    sidecar = pdf.with_suffix(".acquisition.json")
-    partial = sidecar.with_suffix(sidecar.suffix + ".part")
+    sidecar = tmp_path / "json" / "paper.acquisition.json"
     assert not sidecar.exists()
-    assert not partial.exists()
+    assert not list(tmp_path.rglob("*.part"))
 
 
 def test_sidecar_is_valid_json_and_replaces_atomically(tmp_path):
@@ -119,6 +118,8 @@ def test_sidecar_is_valid_json_and_replaces_atomically(tmp_path):
 
     path = write_json_sidecar(pdf, {"status": "VERIFIED", "attempts": 1})
 
+    assert path == tmp_path / "json" / "paper.acquisition.json"
+    assert not pdf.with_suffix(".acquisition.json").exists()
     assert path.exists()
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "attempts": 1,
@@ -130,7 +131,8 @@ def test_sidecar_is_valid_json_and_replaces_atomically(tmp_path):
 def test_sidecar_write_never_truncates_a_preexisting_partial_file(tmp_path):
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"pdf")
-    partial = tmp_path / "paper.acquisition.json.part"
+    (tmp_path / "json").mkdir()
+    partial = tmp_path / "json" / "paper.acquisition.json.part"
     partial.write_bytes(b"another writer owns this")
     write_json_sidecar(pdf, {"status": "VERIFIED"})
     assert partial.read_bytes() == b"another writer owns this"
@@ -141,10 +143,13 @@ def test_incomplete_records_are_never_verified(payload):
     assert not is_verified_record(payload)
 
 
-def test_conflicting_existing_provenance_is_preserved(tmp_path):
+@pytest.mark.parametrize("layout", ["legacy", "json"])
+def test_conflicting_existing_provenance_is_preserved(tmp_path, layout):
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"fixture")
-    sidecar = pdf.with_suffix(".acquisition.json")
+    directory = tmp_path / "json" if layout == "json" else tmp_path
+    directory.mkdir(exist_ok=True)
+    sidecar = directory / "paper.acquisition.json"
     original = b'{"status":"MISMATCH"}'
     sidecar.write_bytes(original)
     with pytest.raises(FileExistsError):

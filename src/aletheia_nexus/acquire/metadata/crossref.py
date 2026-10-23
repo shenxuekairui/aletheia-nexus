@@ -5,7 +5,7 @@ from aletheia_nexus.acquire.metadata.exceptions import (
 )
 from aletheia_nexus.acquire.metadata.transport import get_json
 from aletheia_nexus.core.identifiers.doi import normalize_doi
-from aletheia_nexus.core.models import PaperMetadata
+from aletheia_nexus.core.models import MetadataLink, PaperMetadata
 
 CROSSREF_API = "https://api.crossref.org/v1"
 
@@ -163,6 +163,34 @@ def _publication_date(
     return None, None
 
 
+def _resource_links(work: dict) -> tuple[MetadataLink, ...]:
+    """Keep optional resource evidence without breaking otherwise usable metadata."""
+
+    def text(value: object) -> str | None:
+        return value.strip() or None if isinstance(value, str) else None
+
+    links: list[MetadataLink] = []
+    deposited = work.get("link")
+    if isinstance(deposited, list):
+        for item in deposited:
+            if not isinstance(item, dict) or not (url := text(item.get("URL"))):
+                continue
+            links.append(
+                MetadataLink(
+                    url=url,
+                    source="crossref",
+                    content_type=text(item.get("content-type")),
+                    content_version=text(item.get("content-version")),
+                    intended_application=text(item.get("intended-application")),
+                )
+            )
+    resource = work.get("resource")
+    primary = resource.get("primary") if isinstance(resource, dict) else None
+    if isinstance(primary, dict) and (url := text(primary.get("URL"))):
+        links.append(MetadataLink(url=url, source="crossref", relation="primary"))
+    return tuple(dict.fromkeys(links))
+
+
 def parse_crossref_work(
     work: dict,
 ) -> PaperMetadata:
@@ -206,6 +234,7 @@ def parse_crossref_work(
                 work,
                 "URL",
             ),
+            links=_resource_links(work),
         )
 
     except (

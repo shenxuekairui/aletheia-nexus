@@ -10,6 +10,7 @@ from pathlib import Path
 
 from aletheia_nexus.content import parse_document
 from aletheia_nexus.content.diagnostics import safe_exception_detail
+from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
 
 FIXED_TIME = "2026-09-28T00:00:00+00:00"
 
@@ -41,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
     else:
         inputs = [
-            (pdf, pdf.with_suffix(".acquisition.json"), None, None)
+            (pdf, acquisition_sidecar_path(pdf), None, None)
             for pdf in sorted(args.input_dir.glob("*.pdf"))
         ]
     for pdf, sidecar, expected_pdf_hash, expected_sidecar_hash in inputs:

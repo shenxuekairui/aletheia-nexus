@@ -68,6 +68,39 @@ def test_batch_cli_accepts_mixed_bibliographic_inputs_and_serializes_report(tmp_
     assert saved["status"] == "AMBIGUOUS"
 
 
+def test_batch_report_includes_safe_bibliographic_conflicts():
+    from types import SimpleNamespace
+
+    from aletheia_nexus.cli import _safe_diagnostics
+
+    attempt = BrowserAccessAttempt(
+        source_candidate=_source_candidate(""),
+        final_url="https://cnki.net/?token=secret",
+        status=BrowserAttemptStatus.PAGE_MISMATCH,
+        bibliographic_conflicts=("journal", "year"),
+        evidence=("private https://cnki.net/?token=secret",),
+        elapsed_seconds=3.5,
+    )
+    base = SimpleNamespace(
+        status=SimpleNamespace(value="NO_CANDIDATES"),
+        requested_title=None,
+        expected_title="Expected",
+        title_source=SimpleNamespace(value="NONE"),
+    )
+    item = SimpleNamespace(
+        result=SimpleNamespace(
+            message=None, base_result=base, browser_attempts=(attempt,)
+        )
+    )
+    result = _safe_diagnostics(item)
+    assert result["browser_attempts"][0]["bibliographic_conflicts"] == [
+        "journal",
+        "year",
+    ]
+    assert result["browser_attempts"][0]["elapsed_seconds"] == 3.5
+    assert "secret" not in str(result)
+
+
 @pytest.mark.parametrize(
     "options,keeps_open",
     [
@@ -78,6 +111,11 @@ def test_batch_cli_accepts_mixed_bibliographic_inputs_and_serializes_report(tmp_
         (["--no-keep-browser-open"], False),
         (["--non-interactive"], False),
         (["--cdp-endpoint", "http://127.0.0.1:9222"], False),
+        (["--cnki-paper-interval", "8.5"], False),
+        (["--cnki-paper-interval", "0"], False),
+        (["--browser-use-system-proxy"], False),
+        (["--direct-connection"], False),
+        (["--browser-direct-connection"], False),
     ],
 )
 def test_cli_owns_session_and_preserves_interactive_window(
@@ -106,13 +144,22 @@ def test_cli_owns_session_and_preserves_interactive_window(
     def acquire(**kwargs):
         assert "config" not in kwargs
         config = kwargs["browser_session"].config
-        assert not config.cnki_context_request and not config.direct_connection
+        assert not config.cnki_context_request
+        assert config.resolved_use_system_proxy is not any(
+            flag in options
+            for flag in ("--direct-connection", "--browser-direct-connection")
+        )
         expected_mode = (
             options[options.index("--browser-launch-mode") + 1]
             if "--browser-launch-mode" in options
             else "auto"
         )
         assert config.launch_mode == expected_mode
+        assert config.cnki_paper_interval == (
+            float(options[options.index("--cnki-paper-interval") + 1])
+            if "--cnki-paper-interval" in options
+            else 5.0
+        )
         events.append("acquired")
         return BrowserAccessAttempt(
             source_candidate=_source_candidate("10.1000/target"),
@@ -148,6 +195,16 @@ def test_cli_owns_session_and_preserves_interactive_window(
     "statuses,closed_index,expected_count,expected_code",
     [
         ([BrowserAttemptStatus.VERIFIED] * 3, None, 3, 0),
+        (
+            [
+                BrowserAttemptStatus.VERIFIED,
+                BrowserAttemptStatus.ACCESS_DENIED,
+                BrowserAttemptStatus.VERIFIED,
+            ],
+            None,
+            2,
+            1,
+        ),
         (
             [
                 BrowserAttemptStatus.NO_FILE_CANDIDATES,
@@ -208,6 +265,9 @@ def test_cli_multiple_dois_share_one_session_and_stop_only_on_handoff_or_closure
             status=statuses[index],
             download_started=index == closed_index,
             evidence=("CNKI browser target closed",) if index == closed_index else (),
+            error="CNKI_RATE_LIMITED"
+            if statuses[index] == BrowserAttemptStatus.ACCESS_DENIED
+            else None,
         )
 
     monkeypatch.setattr(cli, "BrowserSession", Session)

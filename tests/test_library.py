@@ -139,7 +139,8 @@ def test_one_doi_can_target_two_folders_and_resume_requires_provenance(
         requests, output_dir=tmp_path / "out", **kwargs
     )
     assert all(item.resumed for item in resumed.items)
-    first.items[0].verified_path.with_suffix(".acquisition.json").unlink()
+    pdf = first.items[0].verified_path
+    (pdf.parent / "json" / pdf.with_suffix(".acquisition.json").name).unlink()
     repaired = acquire_full_text_batch_maximized(
         requests, output_dir=tmp_path / "out", **kwargs
     )
@@ -220,12 +221,14 @@ def test_real_local_import_classification_resume_parse_and_catalog(
     pdf = next((root / "方法/解析").glob("*.pdf"))
     assert pdf.name.startswith("文献解析研究--")
     assert pdf.read_bytes() == source.read_bytes()
-    sidecar = pdf.with_suffix(".acquisition.json")
+    sidecar = pdf.parent / "json" / pdf.with_suffix(".acquisition.json").name
     record = json.loads(sidecar.read_text(encoding="utf-8"))
     assert record["organization"]["tags"] == ["重点"]
     assert record["retrieval"]["sha256"] == hashlib.sha256(pdf.read_bytes()).hexdigest()
     assert cli.entrypoint(command) == 0
-    report = json.loads((root / "batch-report.json").read_text(encoding="utf-8"))
+    report = json.loads(
+        (root / "json" / "batch-report.json").read_text(encoding="utf-8")
+    )
     assert report["items"][0]["resumed"]
     assert Path(report["items"][0]["verified_path"]) == pdf
     assert (
@@ -251,6 +254,8 @@ def test_real_local_import_classification_resume_parse_and_catalog(
     )
     assert scan_library(root, tag="已阅读")["items"][0]["tags"] == ["已阅读"]
     assert not scan_library(root, tag="重点")["items"]
+    assert (pdf.parent / "json" / pdf.with_suffix(".library.json").name).is_file()
+    assert not pdf.with_suffix(".library.json").exists()
     assert all(p.read_bytes() == data for p, data in before.items())
     # Re-acquiring identical bytes must not invalidate already-parsed evidence.
     assert cli.entrypoint([*command, "--no-resume"]) == 0
@@ -269,9 +274,14 @@ def test_real_local_import_classification_resume_parse_and_catalog(
         "aletheia-nexus/access-acquisition-record/v1",
     ],
 )
-def test_catalog_omits_unverified_and_reports_missing_and_bad_records(tmp_path, schema):
+@pytest.mark.parametrize("layout", ["legacy", "json"])
+def test_catalog_omits_unverified_and_reports_missing_and_bad_records(
+    tmp_path, schema, layout
+):
+    records_dir = tmp_path / "json" if layout == "json" else tmp_path
+    records_dir.mkdir(exist_ok=True)
     for status in ("VERIFIED", "RETRIEVED_UNVERIFIED"):
-        (tmp_path / f"{status}.acquisition.json").write_text(
+        (records_dir / f"{status}.acquisition.json").write_text(
             json.dumps(
                 {
                     "schema": schema,
@@ -290,11 +300,12 @@ def test_catalog_omits_unverified_and_reports_missing_and_bad_records(tmp_path, 
                 }
             )
         )
-    (tmp_path / "broken.acquisition.json").write_text("{")
+    (records_dir / "broken.acquisition.json").write_text("{")
     catalog = scan_library(tmp_path)
     assert len(catalog["items"]) == 1 and len(catalog["warnings"]) == 1
     assert catalog["items"][0]["doi"] is None
     assert catalog["items"][0]["integrity"] == "missing"
+    assert Path(catalog["items"][0]["pdf_path"]) == tmp_path / "VERIFIED.pdf"
 
 
 def test_malformed_labels_do_not_hide_verified_papers(tmp_path):

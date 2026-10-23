@@ -10,11 +10,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from aletheia_nexus.content.artifact import ParsedArtifact
+from aletheia_nexus.content.corpus import content_units
 from aletheia_nexus.content.schema import PARSED_DOCUMENT_SCHEMA
 
 AI_EXPORT_SCHEMA = "aletheia-nexus/ai-export/v1"
 EXPORTER_NAME = "canonical-document-exporter"
-EXPORTER_VERSION = "1.1.0"
+EXPORTER_VERSION = "1.2.0"
 
 
 @dataclass(frozen=True)
@@ -79,9 +80,15 @@ def structure_aware_chunks(
         for block_id in section["block_ids"]:
             section_by_block[str(block_id)] = section
     table_by_block: dict[str, dict[str, object]] = {}
-    for table in document["tables"]:
-        for block_id in table["object_block_ids"]:
-            table_by_block[str(block_id)] = table
+    tables = {table["id"]: table for table in document["tables"]}
+    table_groups = {}
+    blocks = {block["id"]: block for block in document["blocks"]}
+    for unit in content_units(document):
+        if unit["kind"] != "table":
+            continue
+        table_groups[unit["id"]] = [blocks[bid] for bid in unit["block_ids"]]
+        for block_id in unit["block_ids"]:
+            table_by_block[str(block_id)] = tables[unit["id"]]
 
     groups: list[list[dict[str, object]]] = []
     current: list[dict[str, object]] = []
@@ -98,12 +105,19 @@ def structure_aware_chunks(
         current_section = None
         current_table = None
 
+    emitted_tables: set[str] = set()
     for block in sorted(document["blocks"], key=lambda item: int(item["order"])):
         block_id = str(block["id"])
         section = section_by_block.get(block_id)
         section_id = str(section["id"]) if section else None
         table = table_by_block.get(block_id)
         table_id = str(table["id"]) if table else None
+        if table_id:
+            flush()
+            if table_id not in emitted_tables:
+                groups.append(table_groups[table_id])
+                emitted_tables.add(table_id)
+            continue
         kind = str(block["kind"])
         text = str(block["text"])
         isolated = kind in {"heading", "caption", "equation", "reference"}
@@ -127,9 +141,8 @@ def structure_aware_chunks(
     chunks: list[dict[str, object]] = []
     for group in groups:
         combined = "\n\n".join(str(block["text"]) for block in group)
-        for part_index, text in enumerate(
-            _split_text(combined, selected.max_characters), start=1
-        ):
+        parts = _split_text(combined, selected.max_characters)
+        for part_index, text in enumerate(parts, start=1):
             evidence = []
             for block in group:
                 anchor = anchors[str(block["anchor_id"])]
@@ -156,6 +169,13 @@ def structure_aware_chunks(
                     "id": f"chunk:{_fingerprint(chunk_payload)[:24]}",
                     "source_artifact_id": document["source"]["artifact_id"],
                     "parsed_artifact_id": document["artifact_id"],
+                    "source": document["source"],
+                    "status": document["status"],
+                    "uncertain": any(block.get("uncertain", False) for block in group)
+                    or table is not None,
+                    "part": part_index,
+                    "part_count": len(parts),
+                    "complete_group": len(parts) == 1,
                     "kind": (
                         "table-content"
                         if table is not None
@@ -178,6 +198,8 @@ def structure_aware_chunks(
                         {
                             "id": table["id"],
                             "label": table["label"],
+                            "caption": table["caption"],
+                            "interpretation_status": "not-interpreted",
                         }
                         if table
                         else None
@@ -196,6 +218,10 @@ def structure_aware_chunks(
         "kind": "structure-aware-chunks",
         "source_artifact_id": document["source"]["artifact_id"],
         "parsed_artifact_id": document["artifact_id"],
+        "source": document["source"],
+        "status": document["status"],
+        "quality": document["quality"],
+        "warnings": document["warnings"],
         "exporter": {
             "name": EXPORTER_NAME,
             "version": EXPORTER_VERSION,
@@ -226,6 +252,13 @@ def export_markdown(
         "",
     ]
     for chunk in export["chunks"]:
+        lines.append(
+            f"[PDF pages {chunk['pages']}; status={chunk['status']}; uncertain={chunk['uncertain']}; context part {chunk['part']}/{chunk['part_count']}]"
+        )
+        if chunk.get("table") and chunk["part_count"] > 1:
+            lines.append(
+                f"Table context: {chunk['table']['caption']}; read all parts before interpreting rows."
+            )
         section = chunk.get("section")
         if section and chunk["kind"] == "heading":
             lines.extend((f"## {chunk['text']}", ""))
@@ -304,6 +337,8 @@ def _existing_target_is_source_of_truth(target: Path) -> bool:
     schema = value.get("schema")
     return schema in {
         PARSED_DOCUMENT_SCHEMA,
+        "aletheia-nexus/parsed-document/v2",
+        "aletheia-nexus/local-document/v1",
         "aletheia-nexus/acquisition-record/v1",
         "aletheia-nexus/access-acquisition-record/v1",
     }

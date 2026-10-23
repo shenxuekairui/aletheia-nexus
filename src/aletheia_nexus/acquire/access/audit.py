@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 
@@ -18,9 +19,7 @@ def audit_verified_pdf(path: str | Path, *, doi: str) -> dict[str, object]:
     pdf = Path(path)
     audit: dict[str, object] = {"status": "FAILED", "checks": {}, "warnings": []}
     try:
-        meta = json.loads(
-            pdf.with_suffix(".acquisition.json").read_text(encoding="utf-8")
-        )
+        meta = json.loads(acquisition_sidecar_path(pdf).read_text(encoding="utf-8"))
         digest = hashlib.sha256()
         with pdf.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):

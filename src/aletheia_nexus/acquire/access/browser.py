@@ -1,3 +1,5 @@
+import logging
+import math
 import re
 import time
 from dataclasses import dataclass, replace
@@ -22,6 +24,7 @@ from aletheia_nexus.acquire.access.browser_route import (
     _report_for_page,
     attempt_browser_route,
 )
+from aletheia_nexus.acquire.access.cnki_runtime import CNKI_RATE_LIMITED
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessAttempt,
     BrowserAccessConfig,
@@ -41,6 +44,7 @@ from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.models import PaperMetadata
 
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_LOGGER = logging.getLogger(__name__)
 _PROFILE_LOCK_MARKERS = (
     "lockfile",
     "SingletonLock",
@@ -97,7 +101,6 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         "keep_unverified",
         "cdp_resume_existing_page",
         "cnki_refresh_retry",
-        "use_system_proxy",
         "cnki_enabled",
         "cnki_search_all_titles",
         "direct_connection",
@@ -106,6 +109,10 @@ def _validate_config(config: BrowserAccessConfig) -> None:
     ):
         if not isinstance(getattr(config, name), bool):
             raise TypeError(f"{name} must be a bool")
+    if config.use_system_proxy is not None and not isinstance(
+        config.use_system_proxy, bool
+    ):
+        raise TypeError("use_system_proxy must be a bool or None")
     if config.channel is not None:
         if not isinstance(config.channel, str):
             raise TypeError("channel must be a string or None")
@@ -151,6 +158,14 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         value = getattr(config, name)
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
             raise ValueError(f"{name} must be a non-negative number")
+    interval = config.cnki_paper_interval
+    if (
+        isinstance(interval, bool)
+        or not isinstance(interval, (int, float))
+        or not math.isfinite(interval)
+        or interval < 0
+    ):
+        raise ValueError("cnki_paper_interval must be a finite non-negative number")
     for name in ("max_source_routes", "max_pdf_candidates", "cnki_max_results"):
         value = getattr(config, name)
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -549,6 +564,7 @@ class BrowserSession:
     def __init__(self, config: BrowserAccessConfig | None = None) -> None:
         self.config = config or BrowserAccessConfig()
         _validate_config(self.config)
+        self._use_system_proxy = self.config.resolved_use_system_proxy
         self.profile_dir = browser_profile_dir(self.config)
         self._manager = None
         self._context = None
@@ -561,6 +577,8 @@ class BrowserSession:
         self._context_closed = False
         self._pending_pages: dict[str, object] = {}
         self._pending_hosts: dict[str, str | None] = {}
+        self._cnki_finished_at: float | None = None
+        self._cnki_rate_limit: BrowserAccessAttempt | None = None
 
     def interaction_ready(self, doi: str) -> bool:
         """True only when this session's retained challenge has visibly cleared."""
@@ -588,6 +606,12 @@ class BrowserSession:
         return False
 
     def _ensure_started(self):
+        _validate_config(self.config)
+        if self.config.resolved_use_system_proxy != self._use_system_proxy:
+            raise BrowserCapabilityUnavailable(
+                "Browser network mode cannot change during a session. "
+                "Create a new BrowserSession for a different network mode."
+            )
         if self._context is not None:
             return self._context
 
@@ -621,7 +645,7 @@ class BrowserSession:
                     self.profile_dir,
                     channel=self.config.channel,
                     executable_path=self.config.executable_path,
-                    use_system_proxy=self.config.use_system_proxy,
+                    use_system_proxy=self._use_system_proxy,
                     timeout=min(20.0, self.config.navigation_timeout),
                 )
             except Exception as exc:
@@ -683,13 +707,10 @@ class BrowserSession:
             "headless": self.config.headless,
             "accept_downloads": True,
             "service_workers": "allow",
-            # Keep the historical direct-connection default. Opting in to the
-            # system proxy only affects this dedicated browser process; it does
-            # not change OS settings or the user's everyday browser profile.
-            "args": [] if self.config.use_system_proxy else ["--no-proxy-server"],
+            # Follow the OS by default; freeze the selected mode for this
+            # session, including reconnects. Never modify the OS proxy settings.
+            "args": [] if self._use_system_proxy else ["--no-proxy-server"],
         }
-        if self.config.direct_connection:
-            launch_kwargs["args"] = ["--no-proxy-server"]
         channel = self.config.channel or (
             None if self.config.headless else _default_browser_channel()
         )
@@ -1030,6 +1051,56 @@ class BrowserSession:
 
         if not isinstance(provider, BaseBrowserProvider):
             raise TypeError("provider must be a BaseBrowserProvider")
+        is_cnki = provider.name == "cnki"
+        if is_cnki and self._cnki_rate_limit is not None:
+            previous = self._cnki_rate_limit
+            return BrowserAccessAttempt(
+                source_candidate=replace(previous.source_candidate, doi=doi),
+                final_url=None,
+                status=BrowserAttemptStatus.ACCESS_DENIED,
+                challenge_history=previous.challenge_history,
+                evidence=("CNKI requests paused for this session after a rate limit",),
+                error=CNKI_RATE_LIMITED,
+            )
+        if is_cnki:
+            self._wait_for_cnki_interval()
+        try:
+            attempt = self._acquire_provider(
+                provider,
+                doi=doi,
+                output_dir=output_dir,
+                metadata=metadata,
+                expected_title=expected_title,
+                metadata_mailto=metadata_mailto,
+            )
+            if is_cnki and attempt.error == CNKI_RATE_LIMITED:
+                self._cnki_rate_limit = attempt
+                _LOGGER.warning(
+                    "CNKI reported a rate limit; further CNKI requests in this "
+                    "session are paused. Resume later in a new run."
+                )
+            return attempt
+        finally:
+            if is_cnki:
+                self._cnki_finished_at = time.monotonic()
+
+    def _wait_for_cnki_interval(self):
+        if self._cnki_finished_at is not None:
+            remaining = self.config.cnki_paper_interval - (
+                time.monotonic() - self._cnki_finished_at
+            )
+            if remaining > 0:
+                _LOGGER.info(
+                    "CNKI: waiting %.1f seconds before the next paper", remaining
+                )
+                time.sleep(remaining)
+
+    def _acquire_provider(
+        self,
+        provider: BaseBrowserProvider,
+        **options,
+    ) -> BrowserAccessAttempt:
+        """Run one provider, with at most one safe context reconnection."""
         for retry in range(2):
             page = None
             attempt = None
@@ -1040,14 +1111,10 @@ class BrowserSession:
                 self._downloads.clear()
                 page = context.new_page()
                 attempt = provider.fetch(
-                    doi=doi,
                     context=context,
                     page=page,
-                    output_dir=output_dir,
                     config=self.config,
-                    metadata=metadata,
-                    expected_title=expected_title,
-                    metadata_mailto=metadata_mailto,
+                    **options,
                 )
                 target_closed = (
                     attempt.status == BrowserAttemptStatus.ERROR
@@ -1087,6 +1154,9 @@ class BrowserSession:
                 # A fresh connection/context uses the same local profile. Never
                 # restart after a manual handoff or repeat an acquired download.
                 self.close()
+                if provider.name == "cnki":
+                    self._cnki_finished_at = time.monotonic()
+                    self._wait_for_cnki_interval()
         raise RuntimeError("Unreachable provider retry state")
 
 

@@ -8,6 +8,10 @@ from contextvars import ContextVar
 from pathlib import Path
 
 from aletheia_nexus.acquire.fulltext.models import RetrievedResource
+from aletheia_nexus.core.artifact_paths import (
+    acquisition_sidecar_path,
+    json_output_path,
+)
 from aletheia_nexus.core.models import PaperMetadata
 from aletheia_nexus.core.organization import filename_stem
 from aletheia_nexus.core.paper_request import PaperRequest
@@ -163,7 +167,7 @@ def write_json_sidecar(
     journal: str | None = None,
     preserve_existing: bool = False,
 ) -> Path:
-    """Atomically write acquisition provenance next to a stored PDF."""
+    """Atomically write acquisition provenance in the PDF's JSON directory."""
 
     pdf = Path(pdf_path)
     organization = _ORGANIZATION.get()
@@ -181,7 +185,11 @@ def write_json_sidecar(
             "year": year,
             "journal": journal,
         }
-    sidecar = pdf.with_suffix(".acquisition.json")
+    sidecar = (
+        acquisition_sidecar_path(pdf)
+        if preserve_existing
+        else json_output_path(pdf.with_suffix(".acquisition.json"))
+    )
     if sidecar.is_symlink():
         raise OSError("Refusing a symbolic link as acquisition provenance")
     if preserve_existing and sidecar.exists():
@@ -202,6 +210,7 @@ def write_json_sidecar(
             "Existing acquisition evidence conflicts; it was not overwritten"
         )
 
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(

@@ -3,10 +3,10 @@
 v0.7 implements one bounded transition:
 
 ```text
-VERIFIED PDF
+VERIFIED or locally REGISTERED PDF (article or linked supplement)
   → source identity and integrity gate
   → native-first extraction with optional OCR
-  → canonical scientific document (`parsed-document/v2`)
+  → canonical scientific document (`parsed-document/v3`, v2 readable)
   → deterministic Markdown / JSONL / structure-aware chunks
 ```
 
@@ -17,21 +17,42 @@ understand scientific facts, figures, formulas, or tables semantically.
 
 | Module | Responsibility |
 | --- | --- |
-| `content.gate` | Revalidate the acquisition schema, `VERIFIED` article role, DOI, PDF hash, readability, and page count. |
+| `content.gate` | Revalidate acquisition or local-registration evidence, article/SI role and parent, recorded DOI, PDF hash, readability, and page count. |
 | `content.geometry` | Convert MediaBox/CropBox coordinates, non-zero origins, page rotation, and raster coordinates into one displayed-CropBox space. |
 | `content.backends` | Produce validated `PageLayout` evidence. Native extraction is authoritative; OCR and specialist backends are optional supplements. |
 | `content.pipeline` / `content.parser` | Assemble ordered blocks, sections, references, caption/region evidence, quality state, and deterministic IDs. |
+| `content.captions` | Recognize captions and retain one caption identity for duplicate source readings. |
+| `content.table_layout` / `content.ruled_tables` | Arrange observed columns/shared cells and painted grid geometry; report local ambiguity without inventing experimental semantics. |
 | `content.schema` | Validate geometry, finite values, confidence/agreement, warning structure, cross-references, fingerprints, and artifact identity before persistence. |
 | `content.artifact` | Navigate/search the canonical artifact and recheck source hashes using portable locators or caller-supplied paths. |
 | `content.export` | Derive deterministic Markdown, JSONL, and structure-aware chunks without reparsing the PDF. |
+| `content.corpus` / `content.evidence` | Search verified local artifacts, select relevant context, group review locations and export attributable evidence packs. |
+| `parsing_cli` | Share parser/OCR option construction between single-file and batch commands. It owns CLI configuration, not scientific parsing rules. |
 
 No parse or export stage performs discovery, network acquisition, entitlement
-decisions, embeddings, model inference, or scientific fact extraction.
+decisions, embeddings, remote AI calls, or scientific fact extraction. Optional
+OCR models execute locally. The advisory `EvidenceJudge` interface consumes a
+caller-selected evidence pack and cannot rewrite its canonical source readings.
+
+## Project philosophy in the implementation
+
+The PDF and acquisition record remain original evidence; parsed JSON is the
+canonical downstream representation, not a certificate of scientific truth.
+Stable operations are ordinary Python functions and local files. Both HTTP and
+browser acquisition use the same identity/role outcome policy; both parser
+commands use the same configuration builder. The existing backend/stage
+interfaces stay bounded: no plugin registry, database, agent framework or model
+provider is required for normal use.
+
+The v0.7.2 release cleanup moves caption/table responsibilities out of the parser
+without changing their rules. Replaying 42 captured real-document layouts
+(403 pages) produced identical complete document dictionaries, excluding portable
+file locators only. This checks refactoring equivalence, not fresh OCR accuracy.
 
 ## Identity, portability, and persistence
 
 The source identity is `an:source:sha256:<pdf-sha256>`. The parsed identity is a
-content-derived `an:parsed:v2:sha256:<digest>` that excludes creation time and
+content-derived `an:parsed:v3:sha256:<digest>` that excludes creation time and
 local locators. Moving an unchanged PDF, sidecar, and parsed artifact therefore
 does not change identity. `source.locators` may contain only safe relative paths;
 absolute paths and URLs are rejected. Consumers may instead pass explicit local
@@ -68,7 +89,9 @@ failures are isolated per page/backend and recorded as
 do not erase native lines. Diagnostic text is scrubbed of local paths and URLs
 before persistence.
 
-Native/OCR overlap retains native text. Agreement is recorded separately as
+Native/OCR overlap retains native text and preserves disagreeing OCR as a separate
+`ocr-alternative`; signs and numbers are checked before treating similar text as agreement.
+Agreement is recorded separately as
 `engine_agreement`; it does not manufacture `1.0` extraction confidence. Optional
 failures also record a stable reason category for machine consumers. Conflicts emit
 a review warning. Figures and tables describe only observed caption, painted

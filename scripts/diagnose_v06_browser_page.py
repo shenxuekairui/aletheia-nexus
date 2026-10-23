@@ -4,6 +4,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from aletheia_nexus.acquire.access import BrowserAccessConfig, browser_profile_dir
 from aletheia_nexus.acquire.access.security import redact_url_for_record
+from aletheia_nexus.cli import _add_browser_network_arguments
 
 KEYWORDS = (
     "pdf",
@@ -242,6 +243,7 @@ def main() -> int:
         action="store_true",
         help="Inspect bounded interactive-control metadata without visible-text nodes.",
     )
+    _add_browser_network_arguments(parser)
     args = parser.parse_args()
 
     if args.wait_seconds < 0:
@@ -252,6 +254,8 @@ def main() -> int:
         headless=False,
         interactive=False,
         channel=args.channel,
+        use_system_proxy=args.browser_use_system_proxy,
+        direct_connection=args.direct_connection,
     )
     profile = browser_profile_dir(config)
 
@@ -308,7 +312,7 @@ def main() -> int:
             "headless": False,
             "accept_downloads": True,
             "service_workers": "allow",
-            "args": ["--no-proxy-server"],
+            "args": [] if config.resolved_use_system_proxy else ["--no-proxy-server"],
         }
         if args.channel:
             launch_kwargs["channel"] = args.channel

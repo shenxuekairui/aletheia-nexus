@@ -23,6 +23,59 @@ _TITLE = "银修饰铜纳米阵列用于电催化还原CO2"
 _DOI = "10.1000/cnki-browser-fixture"
 
 
+def test_native_http_429_pauses_session_without_a_visible_error_message(tmp_path):
+    from aletheia_nexus.acquire.access import BrowserSession, acquire_cnki_pdf
+
+    requests = []
+
+    def respond(route):
+        path = urlsplit(route.request.url).path
+        requests.append(path)
+        if path == "/kns8s/":
+            route.fulfill(
+                content_type="text/html; charset=utf-8",
+                body=f"""<input id="txt_SearchText"><button class="search-btn">Search</button><table class="result-table-list"><tbody><tr><td><a class="fz14" target="_blank" href="/detail">{_TITLE}</a></td></tr></tbody></table>""",
+            )
+        elif path == "/detail":
+            route.fulfill(
+                content_type="text/html; charset=utf-8",
+                body=f'''<meta name="citation_doi" content="{_DOI}"><h1>{_TITLE}</h1><a id="pdfDown" onclick="fetch('/download')">PDF下载</a>''',
+            )
+        elif path == "/download":
+            route.fulfill(status=429, body="")
+        else:
+            route.fulfill(status=404, body="fixture")
+
+    config = BrowserAccessConfig(
+        headless=True,
+        interactive=False,
+        navigation_timeout=2,
+        poll_interval=0.02,
+        profile_root=tmp_path / "profiles",
+    )
+    with BrowserSession(config) as session:
+        session._ensure_started().route("**/*", respond)
+        first = acquire_cnki_pdf(
+            doi=_DOI,
+            title=_TITLE,
+            browser_session=session,
+            output_dir=tmp_path / "out",
+        )
+        before = list(requests)
+        second = acquire_cnki_pdf(
+            doi="10.1000/next",
+            title=_TITLE,
+            browser_session=session,
+            output_dir=tmp_path / "out",
+        )
+    assert first.status == second.status == BrowserAttemptStatus.ACCESS_DENIED
+    assert first.error == second.error == "CNKI_RATE_LIMITED"
+    assert first.download_started and not second.download_started
+    assert any("CNKI_RATE_LIMITED" in r.evidence for r in first.challenge_history)
+    assert requests == before
+    assert requests.count("/download") == requests.count("/detail") == 1
+
+
 @pytest.mark.parametrize("enabled", [True, False])
 def test_cnki_real_refresh_recovers_one_inert_pdf_control(tmp_path, enabled):
     from aletheia_nexus.acquire.access import BrowserSession, acquire_cnki_pdf

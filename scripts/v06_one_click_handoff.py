@@ -10,6 +10,7 @@ from aletheia_nexus.acquire.access import (
     acquire_full_text_maximized,
 )
 from aletheia_nexus.acquire.access.security import redact_url_for_record
+from aletheia_nexus.cli import _add_browser_network_arguments
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 CDP_ENDPOINT = "http://127.0.0.1:9222"
@@ -51,7 +52,7 @@ def _wait_for_cdp(timeout: float = 20.0) -> None:
     )
 
 
-def _start_browser(doi: str) -> None:
+def _start_browser(doi: str, *, use_system_proxy: bool = True) -> None:
     browser = _find_browser()
     profile = Path.home() / ".aletheia-nexus" / "browser-profiles" / "human-handoff"
     profile.mkdir(parents=True, exist_ok=True)
@@ -62,7 +63,7 @@ def _start_browser(doi: str) -> None:
             str(browser),
             "--remote-debugging-port=9222",
             f"--user-data-dir={profile}",
-            "--no-proxy-server",
+            *([] if use_system_proxy else ["--no-proxy-server"]),
             "--no-first-run",
             "--no-default-browser-check",
             target,
@@ -88,9 +89,18 @@ def main() -> int:
         type=Path,
         default=Path("downloads/v06-one-click"),
     )
+    _add_browser_network_arguments(parser)
     args = parser.parse_args()
 
     doi = normalize_doi(args.doi)
+    config = BrowserAccessConfig(
+        profile_name="human-handoff",
+        cdp_endpoint=CDP_ENDPOINT,
+        headless=False,
+        interactive=True,
+        use_system_proxy=args.browser_use_system_proxy,
+        direct_connection=args.direct_connection,
+    )
 
     print("=" * 64)
     print("Aletheia Nexus v0.6 one-click browser handoff")
@@ -100,7 +110,7 @@ def main() -> int:
 
     if not _cdp_ready():
         print("1. 正在启动独立的 Edge/Chrome 浏览器……")
-        _start_browser(doi)
+        _start_browser(doi, use_system_proxy=config.resolved_use_system_proxy)
     else:
         print("1. 已发现正在运行的 AN 浏览器。")
 
@@ -115,13 +125,6 @@ def main() -> int:
     print()
     print("3. AN 正在接管当前浏览器页面并尝试获取、验证 PDF……")
     print()
-
-    config = BrowserAccessConfig(
-        profile_name="human-handoff",
-        cdp_endpoint=CDP_ENDPOINT,
-        headless=False,
-        interactive=True,
-    )
 
     result = acquire_full_text_maximized(
         doi,

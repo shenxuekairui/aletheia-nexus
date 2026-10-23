@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,13 @@ _DEFAULT_TEXT_PAGES = 3
 
 
 @dataclass(frozen=True, slots=True)
+class PdfPageMargins:
+    page_number: int
+    header: str = ""
+    footer: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class PdfInspection:
     """Internal PDF details reused by identity validation."""
 
@@ -18,6 +26,51 @@ class PdfInspection:
     metadata_title: str | None
     extracted_text: str
     first_page_text: str = ""
+    page_margins: tuple[PdfPageMargins, ...] = ()
+
+
+def _page_text_and_margins(page, page_number: int):
+    """Collect only positioned, short fragments in the physical page margins.
+
+    Some Form XObjects replay the entire page as one visitor fragment at a
+    stale coordinate. Exclude those replays rather than calling body citations
+    a header. Unhandled rotation/coordinates simply provide no extra evidence.
+    """
+    box = page.cropbox
+    bottom, top = float(box.bottom), float(box.top)
+    height = top - bottom
+    fragments = {"header": [], "footer": []}
+
+    def visitor(text, cm, tm, font, size):
+        if page.rotation or not text.strip() or len(text) > 200:
+            return
+        if len(text.strip().splitlines()) > 3:
+            return
+        x = tm[4] * cm[0] + tm[5] * cm[2] + cm[4]
+        y = tm[4] * cm[1] + tm[5] * cm[3] + cm[5]
+        if not all(math.isfinite(v) for v in (x, y)) or not bottom < y < top:
+            return
+        region = (
+            "header"
+            if y >= top - height * 0.08
+            else "footer"
+            if y <= bottom + height * 0.07
+            else None
+        )
+        if region:
+            fragments[region].append((x, y, text.strip()))
+
+    text = page.extract_text(visitor_text=visitor)
+
+    def lines(region):
+        rows = []
+        for x, y, value in sorted(set(fragments[region]), key=lambda f: (-f[1], f[0])):
+            if not rows or abs(rows[-1][0] - y) > 2:
+                rows.append((y, []))
+            rows[-1][1].append((x, value))
+        return "\n".join(" ".join(value for _, value in sorted(row)) for _, row in rows)
+
+    return text, PdfPageMargins(page_number, lines("header"), lines("footer"))
 
 
 def _clean_text(value: object) -> str | None:
@@ -142,10 +195,12 @@ def inspect_pdf(
 
     text_parts: list[str] = []
     first_page_text = ""
+    page_margins = []
     extraction_failed = False
     for page_index, page in enumerate(reader.pages[: min(text_pages, page_count)]):
         try:
-            text = page.extract_text()
+            text, margins = _page_text_and_margins(page, page_index + 1)
+            page_margins.append(margins)
         except (PdfReadError, KeyError, TypeError, ValueError):
             extraction_failed = True
             continue
@@ -169,4 +224,5 @@ def inspect_pdf(
         metadata_title=metadata_title,
         extracted_text="\n".join(text_parts),
         first_page_text=first_page_text,
+        page_margins=tuple(page_margins),
     )

@@ -1,6 +1,6 @@
 # Aletheia Nexus
 
-[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.1 Release Notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.7.1.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
+[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.2 Release Notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.7.2.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
 
 > **From one verified paper to scientific knowledge infrastructure that can grow with research.**
 
@@ -24,7 +24,7 @@ Human scientific judgment remains at the center of that system.
 
 ## What you can do today
 
-v0.7.1 connects acquisition, local organization, and source-linked parsing:
+v0.7.2 connects acquisition, local organization, and source-linked parsing:
 
 ```text
 DOI / bibliography (CNKI also accepts titles)
@@ -33,9 +33,9 @@ Discover sources → acquire through public or already authorized access
         ↓
 Verify the main article → save PDF and provenance → organize folders and tags
         ↓
-Parse verified papers with a DOI → retain structure and source locations
+Parse verified or locally registered articles and supplements → retain structure and source locations
         ↓
-Search / Markdown / JSONL / source-linked chunks
+Cross-paper search → select evidence and condition pages → Markdown / JSONL / source manifests
         ↓
 Use in your own research, LLM, RAG, workflow, or agent tools
 ```
@@ -54,7 +54,7 @@ This is not universal coverage or a promise to download every paper. Online acqu
 
 ## Quick start
 
-Requires Python 3.11+. Commands below are single-line examples for common shells. This README describes the v0.7.1 source; check [PyPI](https://pypi.org/project/aletheia-nexus/) for the currently published version.
+Requires Python 3.11+. Commands below are single-line examples for common shells. This README describes the v0.7.2 source; check [PyPI](https://pypi.org/project/aletheia-nexus/) for the currently published version.
 
 ### 1. Install and check the environment
 
@@ -82,7 +82,7 @@ python -m playwright install chromium
 aletheia-nexus acquire 10.7503/cjcu20250333 --output-dir downloads/papers
 ```
 
-Visible acquisition defaults to an ordinary dedicated browser launch, preferring available Chrome/Edge, with an AN-owned profile and direct networking. It does not read or modify your everyday browser profile. The browser stays open after the task; subsequent tasks can reuse the same session. Close the dedicated window when you finish using it.
+Visible acquisition defaults to an ordinary dedicated browser launch, preferring available Chrome/Edge, with an AN-owned profile and the system proxy settings. Use `--direct-connection` to explicitly bypass browser proxies. The selected network mode stays fixed throughout a task, including reconnects. AN does not read or modify your everyday browser profile. The browser stays open after the task; subsequent tasks can reuse the same session. Close the dedicated window when you finish using it.
 
 AN can reuse existing institutional IP, campus-network or VPN access. If login or a CAPTCHA is still required, complete it in that window while AN waits. **AN does not supply subscriptions, bypass paywalls, or solve CAPTCHAs.** No browser configuration guarantees that a site will waive verification.
 
@@ -112,6 +112,8 @@ TXT files can contain one DOI per line; JSON/CSV also accept titles, authors, jo
 
 New files use **year-journal-title**, followed by short identity/content hashes to avoid collisions. Missing metadata is omitted, not invented. An optional `filename` sets the readable name. Existing files are not renamed, and AN does not guess subject categories with a model.
 
+Generated acquisition records, batch reports and checkpoints default to a `json/` subdirectory. Classified folders keep their acquisition records and labels in their own `json/` directory. Legacy layouts remain readable and resumable; explicit report and checkpoint paths are respected.
+
 Repeating a batch checks the files and provenance before resuming. You can edit tags separately without changing the PDF or acquisition evidence; replace `PAPER.pdf` with the actual path:
 
 ```bash
@@ -120,7 +122,7 @@ aletheia-nexus library tag PAPER.pdf --add "read" --remove "to-read"
 
 ### 5. Parse, search and export
 
-Replace `PAPER.pdf` with the acquired file path and use that paper's real DOI. Keep its `.acquisition.json` provenance file alongside it:
+Replace `PAPER.pdf` with the acquired file path and use that paper's real DOI. Keep its `.acquisition.json` provenance file in `json/`; legacy records beside the PDF are also supported:
 
 ```bash
 aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216
@@ -139,7 +141,9 @@ python -m pip install -U "aletheia-nexus[ocr]"
 aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216 --ocr
 ```
 
-OCR supplements missing native evidence. Missing dependencies, timeouts and incomplete extraction produce explicit diagnostics instead of false completeness. **DOI-less CNKI acquisition and verification are supported, but the current parsing path still requires a real DOI.**
+To supplement printed labels and scale bars inside figures, install `aletheia-nexus[image-ocr]` and add `--ocr --image-ocr rapidocr`. Image models run locally; their identity and source image locations are recorded. Single-paper and batch parsing share model-directory, DPI, pixel-budget and paragraph-merge controls. See the [OCR guide](docs/V07_OCR.md) for setup and limitations.
+
+Verified DOI-less papers can now be parsed. Use `import` to register local PDFs and `--parent` to link PDF supplements. Native/OCR disagreements retain both readings with explicit uncertainty. Corpus search, numbered evidence selection, condition-page expansion and export coverage are described in the [0.7.2 research workflow](docs/V072_RESEARCH_WORKFLOW.md).
 
 ## Trust means more than a successful download
 
@@ -151,13 +155,15 @@ Acquisition routes share the main-document verification boundary. Readable bytes
 
 ### Content and provenance
 
-Before parsing, AN rechecks `VERIFIED` status, DOI, document role, PDF and acquisition-record hashes, and page count. Parsed blocks, references and observed figure/table evidence retain source locations. Exported chunks preserve the chain:
+Before parsing, AN rechecks provenance, document role, file hashes and page count, plus DOI when present. Acquired PDFs require `VERIFIED / MATCH`; local imports retain `REGISTERED / DECLARED` identity without claiming automatic verification. Main articles and linked PDF supplements are supported, each with its own PDF page numbers. Parsed blocks, references and observed figure/table evidence retain source locations. Exported chunks preserve the chain:
 
 ```text
 chunk → block → source anchor → PDF page and position → original paper
 ```
 
 **`PARSED` means the relevant document parsing completed, not that the paper is scientifically true or all figures and scientific meaning are understood.** Incomplete work is marked with states such as `PARTIAL`.
+
+See the [practical research acceptance record](docs/V072_PRACTICAL_ACCEPTANCE.md) for the current scope: key values, units, metrics and experimental conditions, with source-page traceability and evidence export. Two previously untuned papers scored 14/16 practical questions on their first run and 16/16 on exposed regression after a generic table-layout fix. Historical K regression is 12/12; its first 8/12 remains unchanged. Small raster chemical formulae and complex multistage schemes may still need local source review. These convenience samples do not establish population accuracy; default parsing does not call AI.
 
 ### Access and human boundaries
 
@@ -186,7 +192,8 @@ Entities, methods, experimental conditions, measurements, claims and their evide
 The project uses deterministic regression tests, real-browser fixtures, parser benchmarks and package checks. Live publisher evidence is recorded separately. Results from a particular environment are neither a universal download rate nor a scientific-semantic accuracy score.
 
 - [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md): installation, input, batches, organization, parsing, OCR and troubleshooting.
-- [v0.7.1 Release Notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.7.1.md): release overview, upgrade behavior and boundaries.
+- [v0.7.2 Release Notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.7.2.md): release overview, upgrade behavior and boundaries.
+- [Practical research acceptance](docs/V072_PRACTICAL_ACCEPTANCE.md): current research tasks, first-run and regression results, source traceability, review workload and remaining limits.
 - [Release History](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md): version-specific evidence and release status.
 - [CNKI Guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/CNKI_AUTOMATION.md): inputs, institutional access and limitations.
 - [Parsing Contract](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_PARSING_CONTRACT.md), [Architecture](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_ARCHITECTURE.md), [OCR](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_OCR.md): integration and technical boundaries.

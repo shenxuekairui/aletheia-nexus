@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import json
-import re
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
 from aletheia_nexus.content.gate import sha256_file
+from aletheia_nexus.content.query import match_score, query_terms
 from aletheia_nexus.content.schema import validate_parsed_document
-
-_TOKEN = re.compile(r"[\w.-]+", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -127,14 +125,17 @@ class ParsedArtifact:
         *,
         section_type: str | None = None,
         limit: int = 20,
+        mode: str = "and",
+        exact: bool = False,
     ) -> list[SearchHit]:
         self._validate_integrity()
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query must be a non-empty string")
         if limit < 1:
             raise ValueError("limit must be positive")
-        phrase = " ".join(query.casefold().split())
-        tokens = set(_TOKEN.findall(phrase))
+        terms = query_terms(query, exact=exact)
+        if mode not in {"and", "or"}:
+            raise ValueError("query mode must be and or or")
         hits: list[SearchHit] = []
         for block in self._document["blocks"]:
             section = self._section_by_block.get(str(block["id"]))
@@ -143,14 +144,9 @@ class ParsedArtifact:
             ):
                 continue
             text = str(block["text"])
-            normalized = " ".join(text.casefold().split())
-            block_tokens = set(_TOKEN.findall(normalized))
-            overlap = len(tokens & block_tokens)
-            if phrase not in normalized and overlap == 0:
+            score = match_score(text, terms, mode=mode)
+            if score is None:
                 continue
-            phrase_bonus = 2.0 if phrase in normalized else 0.0
-            coverage = overlap / len(tokens) if tokens else 0.0
-            density = overlap / len(block_tokens) if block_tokens else 0.0
             anchor = self._anchors[str(block["anchor_id"])]
             bbox = anchor["bbox"]
             hits.append(
@@ -162,7 +158,7 @@ class ParsedArtifact:
                     bbox=tuple(bbox) if bbox is not None else None,
                     section_id=str(section["id"]) if section else None,
                     section_heading=str(section["heading"]) if section else None,
-                    score=round(phrase_bonus + coverage + density, 6),
+                    score=score,
                 )
             )
         hits.sort(key=lambda item: (-item.score, item.page, item.block_id))
