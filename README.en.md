@@ -1,6 +1,6 @@
 # Aletheia Nexus
 
-[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.2 Release Notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.7.2.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
+[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.3 Candidate Notes](docs/RELEASE_NOTES_v0.7.3.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
 
 > **From one verified paper to scientific knowledge infrastructure that can grow with research.**
 
@@ -24,7 +24,7 @@ Human scientific judgment remains at the center of that system.
 
 ## What you can do today
 
-v0.7.2 connects acquisition, local organization, and source-linked parsing:
+AN connects acquisition, local organization, and source-linked parsing:
 
 ```text
 DOI / bibliography (CNKI also accepts titles)
@@ -54,7 +54,7 @@ This is not universal coverage or a promise to download every paper. Online acqu
 
 ## Quick start
 
-Requires Python 3.11+. Commands below are single-line examples for common shells. This README describes the v0.7.2 source; check [PyPI](https://pypi.org/project/aletheia-nexus/) for the currently published version.
+Requires Python 3.11+. Commands below are single-line examples for common shells. This README describes the unpublished v0.7.3 candidate source; check [PyPI](https://pypi.org/project/aletheia-nexus/) for the currently published version.
 
 ### 1. Install and check the environment
 
@@ -163,7 +163,7 @@ chunk → block → source anchor → PDF page and position → original paper
 
 **`PARSED` means the relevant document parsing completed, not that the paper is scientifically true or all figures and scientific meaning are understood.** Incomplete work is marked with states such as `PARTIAL`.
 
-See the [practical research acceptance record](docs/V072_PRACTICAL_ACCEPTANCE.md) for the current scope: key values, units, metrics and experimental conditions, with source-page traceability and evidence export. Two previously untuned papers scored 14/16 practical questions on their first run and 16/16 on exposed regression after a generic table-layout fix. Historical K regression is 12/12; its first 8/12 remains unchanged. Small raster chemical formulae and complex multistage schemes may still need local source review. These convenience samples do not establish population accuracy; default parsing does not call AI.
+The v0.7.3 candidate addresses links between values, metrics, experiment rows and conditions, OCR fusion, and local source review. See the [current acceptance record](docs/V073_ACCEPTANCE.md) for completed exposed regressions, failures and pending release gates; first-run holdout evaluation is not complete. Small raster chemical formulae, unsupported shared labels and complex multistage schemes still require source review. Tests, anchors and regression results do not establish scientific accuracy. Default parsing does not call AI. The [v0.7.2 historical record](docs/V072_PRACTICAL_ACCEPTANCE.md) retains its first 14/16 and subsequent 16/16 exposed regression unchanged.
 
 ### Access and human boundaries
 
@@ -192,7 +192,7 @@ Entities, methods, experimental conditions, measurements, claims and their evide
 The project uses deterministic regression tests, real-browser fixtures, parser benchmarks and package checks. Live publisher evidence is recorded separately. Results from a particular environment are neither a universal download rate nor a scientific-semantic accuracy score.
 
 - [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md): installation, input, batches, organization, parsing, OCR and troubleshooting.
-- [v0.7.2 Release Notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.7.2.md): release overview, upgrade behavior and boundaries.
+- [v0.7.3 Candidate Notes](docs/RELEASE_NOTES_v0.7.3.md): candidate changes, acceptance status and boundaries.
 - [Practical research acceptance](docs/V072_PRACTICAL_ACCEPTANCE.md): current research tasks, first-run and regression results, source traceability, review workload and remaining limits.
 - [Release History](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md): version-specific evidence and release status.
 - [CNKI Guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/CNKI_AUTOMATION.md): inputs, institutional access and limitations.
