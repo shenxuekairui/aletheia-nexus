@@ -228,3 +228,14 @@ are counterexamples. The parser execution version is now 3.9.1. The content
 suite passes 487 tests with three opt-in skips. Complete extraction and a
 separate structural replay are being checked before candidate freeze; replay
 is explicitly distinguished from fresh OCR and from unseen evaluation.
+
+The same source audit also reproduced a pre-existing image-fusion error outside
+the frozen 75 questions: a corroborated numeric margin crop promoted `0.3` over
+the fuller source reading `>0.3`. The image adapter now retains a fuller
+non-numeric reading as primary when a crop merely repeats its digits; the crop
+remains an anchored alternative. This also protects units, percent signs and
+footnote markers without guessing their meaning. Real source probes retain the
+inequality and preserve previously recovered signed chart ticks. The adapter
+identity changes to 1.5.2. The superseded development-e extraction is preserved
+as incomplete after 22 documents; it is not reported as a completed regression.
+The next full extraction uses the updated identities throughout.

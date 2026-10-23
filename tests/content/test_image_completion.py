@@ -18,6 +18,67 @@ def r(text, box=(30, 30, 110, 50), score=0.99):
     return dict(text=text, box=box, score=score)
 
 
+@pytest.mark.parametrize("original", [">0.4", "≤0.4", "0.4 mA", "0.4%", "0.4a"])
+def test_numeric_margin_crop_cannot_drop_measurement_qualifiers(original):
+    from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
+
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", (2400, 1000), "white")
+    records = [r(str(i), (600, 40 + i * 30, 630, 60 + i * 30)) for i in range(6)]
+    full = r(original, (2100, 300, 2180, 340))
+    records.append(full)
+    # The same source digits are recognized in two right-margin crop scales.
+    reads = iter(
+        [
+            [],
+            [],
+            [],
+            [],
+            [r("0.4", (66, 150, 106, 170))],
+            [r("0.4", (79.2, 180, 127.2, 204))],
+        ]
+    )
+    output = read_tick_margins(records, image, lambda _: next(reads), lambda _: None)
+    assert not full.get("alternative")
+    crop = next(item for item in output if item["text"] == "0.4")
+    assert crop["alternative"]
+    assert crop["box"] == pytest.approx(full["box"], abs=1)
+
+
+def test_numeric_margin_can_add_a_missing_tick_without_replacing_another_number():
+    from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
+
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", (2400, 1000), "white")
+    for old, allowed in [(None, True), ("-0.4", False), ("0.7", False)]:
+        records = [r(str(i), (600, 40 + i * 30, 630, 60 + i * 30)) for i in range(6)]
+        if old is not None:
+            records.append(r(old, (2100, 300, 2180, 340)))
+        reads = iter(
+            [
+                [],
+                [],
+                [],
+                [],
+                [r("0.4", (66, 150, 106, 170))],
+                [r("0.4", (79.2, 180, 127.2, 204))],
+            ]
+        )
+        output = read_tick_margins(
+            records, image, lambda _: next(reads), lambda _: None
+        )
+        assert (
+            any(
+                item["text"] == "0.4" and not item.get("alternative") for item in output
+            )
+            is allowed
+        )
+        if old is not None:
+            assert not next(item for item in output if item["text"] == old).get(
+                "alternative"
+            )
+
+
 @pytest.mark.parametrize("offset", [0, 40])
 def test_panel_corner_requires_real_gutters_scale_and_two_agreeing_readings(
     monkeypatch, offset

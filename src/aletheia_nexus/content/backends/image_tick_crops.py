@@ -140,6 +140,24 @@ def read_tick_margins(records, image, read, recognize):
             digits = re.findall(r"\d+(?:\.\d+)?", candidate["text"])
             if any(re.findall(r"\d+(?:\.\d+)?", r["text"]) != digits for r in near):
                 continue
+            if any(not numeric.fullmatch(r["text"]) for r in near):
+                # A margin crop may omit a printed inequality, unit, footnote
+                # or surrounding label. Agreement on its digits cannot replace
+                # the fuller source reading (tables also have numeric margins).
+                # Keep the crop as a partial alternative, including its box.
+                if not any(
+                    reading_key(r["text"]) == reading_key(candidate["text"])
+                    and overlaps(r["box"], candidate["box"])
+                    for r in records
+                ):
+                    records.append(
+                        {
+                            **candidate,
+                            "alternative": True,
+                            "method": "rapidocr-corroborated-tick-crop",
+                        }
+                    )
+                continue
             if any(
                 numeric.fullmatch(r["text"])
                 and reading_key(r["text"]).startswith(("+", "-"))
