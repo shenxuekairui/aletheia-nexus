@@ -331,6 +331,12 @@ def _native_gap_readings(
     current = []
     for span in line.glyph_spans:
         if uncovered(span[2], span[3]):
+            # OCR line segmentation can bridge table columns or neighbouring
+            # plot panels. Keep physically separated word groups independent;
+            # a wide whitespace gap does not establish an experiment relation.
+            if current and span[2] - current[-1][3] > line.font_size * 2.5:
+                groups.append(current)
+                current = []
             current.append(span)
         elif current:
             groups.append(current)
@@ -530,7 +536,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.7.2",
+            "adapter_version": "1.8.0",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,

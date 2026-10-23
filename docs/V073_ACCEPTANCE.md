@@ -192,7 +192,40 @@ The focused suite passes 108 tests. Five exposed real-page probes spanning two
 SI layouts and one main-article table remove the false space-to-equals repairs
 while retaining the source's actual equals signs. These are local regressions,
 not a new scientific accuracy score or a completed full-corpus verification.
-Full tests and scientific revalidation of this later implementation remain due.
+Hosted run `40031072131` subsequently passed all eight jobs on font-repair
+commit `148e1bc26978666932dc6668c261838a0b2c6d76`, including Windows/Chromium,
+optional OCR, browser extras and clean-wheel installation. Scientific
+revalidation of that later implementation remains due.
+
+The opened first set also reveals text converted to painted vector outlines:
+there is neither a native character map nor an embedded raster image, so the
+existing image-only OCR trigger can skip whole experimental regions. This is
+reproduced in two main-article layouts and an SI condition diagram. Native
+extraction now records local runs of aligned filled glyph-sized paths without
+overlapping native text. These regions trigger the existing optional OCR and
+retain bounded `VECTOR_TEXT_UNVERIFIED` notices; no text is inferred from the
+paths and no new recognition engine is added. Straight rules and ordinary
+stroked bonds are excluded. Widely separated OCR word groups retain their own
+positions instead of becoming a single experimental reading.
+
+The focused suite passes 51 tests, including nested/clipped Forms, horizontal
+and vertical runs, readable-native counterexamples and separated versus
+continuous numeric phrases. Five source-page probes locate the previously
+skipped vector runs; a text-only Methods page creates no such region. Two OCR
+probes of the same exposed page recover omitted table values and separate wide
+columns, but still misread some catalyst labels and fail to recover a current
+unit. **These are incomplete local repairs, not passing scientific answers.**
+Those failures remain regression targets. Current identities are native1.19.0,
+adaptive1.10.0, Tesseract adapter1.8.0 and parser3.9.3. Full-corpus regressions,
+burden/retrieval/export checks and a new sealed first evaluation remain due.
+
+The second source frame retains the original 12-main/4-SI and 60-question
+distribution and all gates. It has 673 pages. No PDF hash matches the prior
+exposure inventory or the first opened set. One access-blocked Science article
+was replaced by the prospectively recorded Chemical Science reserve before AN
+parsing. Sources are being inspected to prepare the second seal; no default AN
+output for these new materials has been opened. This remains an implementing
+assistant's source-first evaluation, not external or double-blind review.
 
 ## Completed exposed development acceptance and candidate freeze
 

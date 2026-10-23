@@ -257,6 +257,8 @@ def _trigger_reasons(layout: PageLayout, config: AdaptiveOcrConfig) -> list[str]
         reasons.append("image-dominant-page")
     if _image_regions_without_text(layout, config):
         reasons.append("unanchored-image-text-candidate")
+    if any(obj.object_type == "vector-text" for obj in layout.objects):
+        reasons.append("unmapped-vector-text")
     return reasons
 
 
@@ -434,7 +436,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.9.5"
+    version = "1.10.0"
 
     def __init__(
         self,
@@ -471,6 +473,7 @@ class AdaptiveOcrBackend:
         if reasons and set(reasons) <= {
             "uncertain-native-glyphs",
             "unanchored-image-text-candidate",
+            "unmapped-vector-text",
         }:
             # The trigger is local on a text-rich native page. Mask readable
             # prose *before recognition*, so unrelated OCR errors are never
@@ -479,7 +482,7 @@ class AdaptiveOcrBackend:
             local_ocr_regions.extend(
                 PageRegion("figure", item.bbox, "painted image needs local OCR")
                 for item in native.objects
-                if item.object_type == "image"
+                if item.object_type in {"image", "vector-text"}
                 and item.bbox is not None
                 and _area(item.bbox) > 0
             )
@@ -676,6 +679,11 @@ class AdaptiveOcrBackend:
             <= _area(obj.bbox)
             < self.config.image_coverage_trigger
         ]
+        image_regions.extend(
+            obj.bbox
+            for obj in native.objects
+            if obj.object_type == "vector-text" and obj.bbox is not None
+        )
 
         for layout in candidate_layouts:
             for raw_line in layout.lines:

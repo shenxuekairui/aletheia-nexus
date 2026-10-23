@@ -10,7 +10,7 @@ from importlib.metadata import version
 from typing import Any
 
 from pdfminer.converter import PDFPageAggregator
-from pdfminer.layout import LAParams, LTChar, LTContainer, LTFigure
+from pdfminer.layout import LAParams, LTChar, LTContainer, LTCurve, LTFigure
 from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 from pdfminer.pdfpage import PDFPage
 from pypdf import PdfWriter
@@ -25,6 +25,7 @@ from aletheia_nexus.content.backends.font_symbols import (
 )
 from aletheia_nexus.content.backends.glyph_readings import encoded_glyph_readings
 from aletheia_nexus.content.backends.native import _page_objects
+from aletheia_nexus.content.backends.vector_text import vector_text_regions
 from aletheia_nexus.content.backends.vertical_text import vertical_lines
 from aletheia_nexus.content.geometry import PageGeometry
 from aletheia_nexus.content.models import LayoutLine, PageLayout
@@ -238,7 +239,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.18.0"
+    version = "1.19.0"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -279,6 +280,7 @@ class LayoutPdfBackend:
         interpreter.process_page(next(PDFPage.get_pages(stream)))
         layout = device.get_result()
         glyphs = []
+        vector_shapes = []
         clipped_glyphs = 0
         degree_originals = {}
 
@@ -306,6 +308,23 @@ class LayoutPdfBackend:
                     clipped_glyphs += 1
                     return
                 glyphs.append(item)
+            elif isinstance(item, LTCurve) and item.fill:
+                box = item.bbox
+                if clip:
+                    box = (
+                        max(box[0], clip[0]),
+                        max(box[1], clip[1]),
+                        min(box[2], clip[2]),
+                        min(box[3], clip[3]),
+                    )
+                box = (
+                    max(0, box[0]),
+                    max(0, box[1]),
+                    min(geometry.width, box[2]),
+                    min(geometry.height, box[3]),
+                )
+                if box[2] > box[0] and box[3] > box[1]:
+                    vector_shapes.append((box, len(item.pts) >= 6))
             elif isinstance(item, LTContainer):
                 for child in item:
                     visit(child, clip)
@@ -786,6 +805,20 @@ class LayoutPdfBackend:
                 }
             )
         objects = _page_objects(copied, geometry)
+        outlined_text = vector_text_regions(
+            vector_shapes, lines, geometry.width, geometry.height
+        )
+        objects = (*objects, *outlined_text)
+        for obj in outlined_text:
+            warnings.append(
+                {
+                    "code": "VECTOR_TEXT_UNVERIFIED",
+                    "page": page_number,
+                    "bbox": list(obj.bbox),
+                    "source_object": obj.name,
+                    "detail": "Aligned painted outlines have no native text mapping. Their values, symbols and units need local OCR or source review; geometry alone does not establish a reading.",
+                }
+            )
         if any(
             o.object_type == "image"
             and o.bbox
