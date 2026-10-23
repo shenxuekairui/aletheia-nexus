@@ -22,6 +22,7 @@ from aletheia_nexus.content.backends.font_symbols import (
     _outline_symbol,
     _OutlineContours,
     _type1_font,
+    font_resource_id,
 )
 
 
@@ -234,7 +235,7 @@ def encoded_glyph_readings(page):
 
     for font in fonts(page.get("/Resources", {})):
         try:
-            name = str(font["/BaseFont"]).lstrip("/")
+            name = font_resource_id(font)
             if font.get("/Subtype") == "/Type0":
                 descendant = font["/DescendantFonts"][0].get_object()
                 program = TTFont(

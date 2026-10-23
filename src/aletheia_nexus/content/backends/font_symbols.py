@@ -22,7 +22,12 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph
 from pdfminer.cmapdb import CMapParser, FileUnicodeMap
 
 
-def displaced_glyph_bounds(page: Any) -> dict[tuple[str, int], tuple[float, ...]]:
+def font_resource_id(font: Any) -> int | None:
+    """Identify the PDF font resource, not its potentially shared family name."""
+    return getattr(getattr(font, "indirect_reference", None), "idnum", None)
+
+
+def displaced_glyph_bounds(page: Any) -> dict[tuple[int, int], tuple[float, ...]]:
     """Recover vertical ink bounds when a font's em box misses its normal text.
 
     A font-wide descent may include exceptional glyphs far below the baseline.
@@ -95,7 +100,7 @@ def displaced_glyph_bounds(page: Any) -> dict[tuple[str, int], tuple[float, ...]
                     for cid, b in boxes.items():
                         # Keep one text band per font. Ink-sized punctuation
                         # boxes would put decimal points on separate rows.
-                        result[(str(font["/BaseFont"]).lstrip("/"), cid)] = (
+                        result[(font_resource_id(font), cid)] = (
                             b[0],
                             low,
                             b[2],
@@ -154,7 +159,7 @@ def displaced_glyph_bounds(page: Any) -> dict[tuple[str, int], tuple[float, ...]
                 for y0, y1 in normal
             )
             if normal and missed > len(normal) / 2:
-                name = str(font["/BaseFont"]).lstrip("/")
+                name = font_resource_id(font)
                 result.update({(name, cid): box for cid, box in bounds.items()})
         except (KeyError, ValueError, TypeError, IndexError, struct.error, TTLibError):
             # Unsupported/incomplete font data never justify moving a glyph.
@@ -415,7 +420,7 @@ def _mapped_m_outline(operations: list, units: float) -> str | None:
     return None
 
 
-def mapped_unit_m_readings(page: Any) -> dict[str, str]:
+def mapped_unit_m_readings(page: Any) -> dict[int, str]:
     """Read the actual Type 1 glyph for WinAnsi m, without trusting its label."""
     result = {}
     resources = page.get("/Resources", {})
@@ -447,7 +452,7 @@ def mapped_unit_m_readings(page: Any) -> dict[str, str]:
             glyphs["m"].draw(pen)
             reading = _mapped_m_outline(pen.value, 1 / abs(float(matrix[0])))
             if reading:
-                result[str(font.get("/BaseFont", "")).lstrip("/")] = reading
+                result[font_resource_id(font)] = reading
         except Exception:
             continue
     return result
@@ -599,7 +604,7 @@ def _outlined_unit(operations: list, units: float) -> str | None:
     return None
 
 
-def mapped_outline_units(page: Any) -> dict[tuple[str, str], str]:
+def mapped_outline_units(page: Any) -> dict[tuple[int, str], str]:
     """Verify custom Type 1 encodings against unit outlines, per unique mapping."""
     result = {}
     resources = page.get("/Resources", {})
@@ -641,13 +646,13 @@ def mapped_outline_units(page: Any) -> dict[tuple[str, str], str]:
                 glyphs[names[cid]].draw(pen)
                 reading = _outlined_unit(pen.value, 1 / abs(float(matrix[0])))
                 if reading and reading != text:
-                    result[(str(font["/BaseFont"]).lstrip("/"), text)] = reading
+                    result[(font_resource_id(font), text)] = reading
         except (KeyError, ValueError, TypeError, IndexError, psLib.PSError):
             continue
     return result
 
 
-def mapped_degree_readings(page: Any) -> dict[tuple[str, str], tuple[float, ...]]:
+def mapped_degree_readings(page: Any) -> dict[tuple[int, str], tuple[float, ...]]:
     """Verify a wrong explicit CID mapping against a raised-ring glyph.
 
     Read individual simple glyphs: legacy subset fonts can have sparse, invalid
@@ -696,7 +701,7 @@ def mapped_degree_readings(page: Any) -> dict[tuple[str, str], tuple[float, ...]
                         points = [
                             p for _, run in pen.value for p in run if p is not None
                         ]
-                        result[(str(font["/BaseFont"]).lstrip("/"), chr(code))] = (
+                        result[(font_resource_id(font), chr(code))] = (
                             min(p[0] for p in points) / units,
                             min(p[1] for p in points) / units,
                             max(p[0] for p in points) / units,
@@ -750,7 +755,7 @@ def mapped_degree_readings(page: Any) -> dict[tuple[str, str], tuple[float, ...]
                 glyph.draw(pen, None)
                 if _outline_symbol(pen.value, units) == "°":
                     points = [p for _, run in pen.value for p in run if p is not None]
-                    result[(str(font["/BaseFont"]).lstrip("/"), text)] = (
+                    result[(font_resource_id(font), text)] = (
                         min(p[0] for p in points) / units,
                         min(p[1] for p in points) / units,
                         max(p[0] for p in points) / units,
@@ -768,8 +773,8 @@ def unmapped_font_symbols(page: Any) -> tuple[dict, set]:
     ToUnicode does not cover every glyph; its explicit mappings still win. The
     original PDF is never modified. Unsupported/damaged fonts remain uncertain.
     """
-    recovered: dict[tuple[str, str], str] = {}
-    uncertain: set[tuple[str, str]] = set()
+    recovered: dict[tuple[int, str], str] = {}
+    uncertain: set[tuple[int, str]] = set()
     resources = page.get("/Resources", {})
     resources = (
         resources.get_object() if hasattr(resources, "get_object") else resources
@@ -788,7 +793,7 @@ def unmapped_font_symbols(page: Any) -> tuple[dict, set]:
             continue
         candidates = {}
         code = 0
-        name = str(font.get("/BaseFont", "")).lstrip("/")
+        name = font_resource_id(font)
         for entry in (encoding or {}).get("/Differences", []):
             if isinstance(entry, int):
                 code = int(entry)

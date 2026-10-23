@@ -14,6 +14,7 @@ from pdfminer.layout import LAParams, LTChar, LTContainer, LTFigure
 from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 from pdfminer.pdfpage import PDFPage
 from pypdf import PdfWriter
+from pypdf.generic import IndirectObject
 
 from aletheia_nexus.content.backends.font_symbols import (
     displaced_glyph_bounds,
@@ -119,6 +120,36 @@ def _attach_symbols(rows: list[list[LTChar]], symbols: list[LTChar]) -> set[int]
     return ambiguous
 
 
+def _identify_font_resources(writer, page):
+    """Give direct fonts identities in the temporary copy used by both readers.
+
+    PDF font names are not unique: a simple font's byte 32 can be a space while
+    a same-named CID font paints an equals at CID 32. Never share their repairs.
+    The original page and font resources are left untouched.
+    """
+    seen = set()
+
+    def visit(resources):
+        fonts = resources.get("/Font", {})
+        for key, reference in list(fonts.items()):
+            if not isinstance(reference, IndirectObject):
+                fonts[key] = writer._add_object(reference)
+        for reference in resources.get("/XObject", {}).values():
+            obj = reference.get_object()
+            if obj.get("/Subtype") == "/Form" and id(obj) not in seen:
+                seen.add(id(obj))
+                visit(obj.get("/Resources", {}))
+
+    visit(page.get("/Resources", {}))
+
+
+class _FontResourceManager(PDFResourceManager):
+    def get_font(self, objid, spec):
+        font = super().get_font(objid, spec)
+        font.an_resource_id = objid
+        return font
+
+
 class _ClippedPageAggregator(PDFPageAggregator):
     def __init__(
         self,
@@ -141,7 +172,8 @@ class _ClippedPageAggregator(PDFPageAggregator):
             matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate
         )
         char = self.cur_item._objs[-1]
-        program_reading = self.program_readings.get((char.fontname, cid))
+        char.an_resource_id = font.an_resource_id
+        program_reading = self.program_readings.get((char.an_resource_id, cid))
         if (
             program_reading
             and program_reading != char.get_text()
@@ -150,7 +182,7 @@ class _ClippedPageAggregator(PDFPageAggregator):
         ):
             char.original_reading = char.get_text()
             char._text = program_reading
-        reading = self.glyph_readings.get((char.fontname, cid))
+        reading = self.glyph_readings.get((char.an_resource_id, cid))
         if reading in {"α", "△", "□"} and not suspicious_text(char.get_text()):
             reading = None
         if reading in {"−", "-"} and char.get_text() != "±":
@@ -161,7 +193,7 @@ class _ClippedPageAggregator(PDFPageAggregator):
             and char.get_text() not in {"x", "X", "o", "O", "0"}
         ):
             char.outline_reading = reading
-        ink = self.ink_bounds.get((char.fontname, cid))
+        ink = self.ink_bounds.get((char.an_resource_id, cid))
         if ink and not matrix[1] and matrix[3] > 0 and fontsize > 0:
             if len(ink) == 4:
                 char.reading_bbox = char.bbox
@@ -206,7 +238,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.17.0"
+    version = "1.18.0"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -219,26 +251,27 @@ class LayoutPdfBackend:
         }
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
-        geometry = PageGeometry.from_page(page)
-        symbol_readings, unmapped = unmapped_font_symbols(page)
-        unit_readings = mapped_unit_m_readings(page)
-        degree_readings = mapped_degree_readings(page)
-        outline_units = mapped_outline_units(page)
         unit_repairs = []
         recovered_count = 0
         writer = PdfWriter()
         copied = writer.add_page(page)
+        geometry = PageGeometry.from_page(copied)
+        _identify_font_resources(writer, copied)
+        symbol_readings, unmapped = unmapped_font_symbols(copied)
+        unit_readings = mapped_unit_m_readings(copied)
+        degree_readings = mapped_degree_readings(copied)
+        outline_units = mapped_outline_units(copied)
         # pdfminer uses the MediaBox; align its origin with the displayed crop.
         copied.mediabox = copied.cropbox
         stream = io.BytesIO()
         writer.write(stream)
         stream.seek(0)
-        manager = PDFResourceManager()
-        glyph_readings, program_readings = encoded_glyph_readings(page)
+        manager = _FontResourceManager()
+        glyph_readings, program_readings = encoded_glyph_readings(copied)
         device = _ClippedPageAggregator(
             manager,
             laparams=LAParams(all_texts=True, detect_vertical=True),
-            ink_bounds=displaced_glyph_bounds(page),
+            ink_bounds=displaced_glyph_bounds(copied),
             glyph_readings=glyph_readings,
             program_readings=program_readings,
         )
@@ -280,7 +313,7 @@ class LayoutPdfBackend:
         visit(layout)
         for char in glyphs:
             reading = getattr(char, "outline_reading", None)
-            if (char.fontname, char.get_text()) in degree_readings:
+            if (char.an_resource_id, char.get_text()) in degree_readings:
                 continue  # Existing raised-ring recovery also repairs bounds.
             if reading == "∘":
                 # A raised ring followed by C/F is a temperature sign. A
@@ -303,7 +336,7 @@ class LayoutPdfBackend:
                 char.original_reading = char.get_text()
                 char._text = reading
         for char in glyphs:
-            if (char.fontname, char.get_text()) not in degree_readings:
+            if (char.an_resource_id, char.get_text()) not in degree_readings:
                 continue
             if char.matrix[1] or char.matrix[2] or char.matrix[3] <= 0:
                 continue
@@ -320,7 +353,7 @@ class LayoutPdfBackend:
                 for c in neighbours
             ):
                 degree_originals[id(char)] = char.get_text()
-                ink = degree_readings[(char.fontname, char.get_text())]
+                ink = degree_readings[(char.an_resource_id, char.get_text())]
                 char._text = "°"
                 # The defective CID font's descent can place a raised ring on
                 # the next text row. Use its verified ink bounds for this sign.
@@ -484,7 +517,7 @@ class LayoutPdfBackend:
                     original_parts.append(
                         getattr(char, "original_reading", char.get_text())
                     )
-                    key = (char.fontname, char.get_text())
+                    key = (char.an_resource_id, char.get_text())
                     if hasattr(char, "original_reading"):
                         glyph_corrections.append(
                             {"before": char.original_reading, "after": char.get_text()}
@@ -492,9 +525,9 @@ class LayoutPdfBackend:
                     if key in outline_units:
                         outline_positions[sum(map(len, parts))] = outline_units[key]
                     replacement = symbol_readings.get(key)
-                    if char.get_text() == "m" and char.fontname in unit_readings:
+                    if char.get_text() == "m" and char.an_resource_id in unit_readings:
                         unit_positions[sum(map(len, parts))] = unit_readings[
-                            char.fontname
+                            char.an_resource_id
                         ]
                     if (
                         char.get_text() == "m"
@@ -752,7 +785,7 @@ class LayoutPdfBackend:
                     "page": page_number,
                 }
             )
-        objects = _page_objects(page, geometry)
+        objects = _page_objects(copied, geometry)
         if any(
             o.object_type == "image"
             and o.bbox

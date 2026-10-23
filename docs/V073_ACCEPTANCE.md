@@ -168,10 +168,31 @@ relocated to make an answer appear complete.
 The prospectively chosen primary acceptance configuration includes the locked
 optional OCR. That paired run is still in progress, unchanged. Its result must
 be reported separately. This native-only score cannot be substituted for it,
-nor can engineering success establish scientific acceptance. If this set is
-used to repair the implementation, all 60 questions become regression data;
-these first scores remain intact and new independent first results require a
-new source-first seal under the same protocol.
+nor can engineering success establish scientific acceptance.
+
+After recording the complete first native score, this set exposed a reproducible
+font-identity collision. It is now used for repair, so **all 60 questions have
+become regression data for subsequent candidates**. The first native score and
+the unchanged original OCR executions remain intact; they cannot certify the
+repaired implementation. New independent first results require a new source-first
+seal under the same protocol. The promotion record has SHA-256
+`bf1c032e42bcfc08f2325f6c9aa3456b693909ec5a9a265e48251de319936fd8`.
+
+The concrete defect is that a simple font and a CID font can share a font name
+while using character code 32 for different glyphs. Recovery keyed by that name
+mistakenly substituted the CID font's equals sign for ordinary spaces in the
+other resource, corrupting quantities such as value/unit pairs. Native recovery
+now keys glyph, unit and geometry repairs by the actual PDF font resource in
+the temporary extraction copy. Same-named fonts, reversed resource order and
+nested Form resources are covered by self-authored counterexamples; original
+page bytes remain unchanged. Native backend identity is 1.18.0 and parser
+identity is 3.9.2, preventing reuse of stale readings.
+
+The focused suite passes 108 tests. Five exposed real-page probes spanning two
+SI layouts and one main-article table remove the false space-to-equals repairs
+while retaining the source's actual equals signs. These are local regressions,
+not a new scientific accuracy score or a completed full-corpus verification.
+Full tests and scientific revalidation of this later implementation remain due.
 
 ## Completed exposed development acceptance and candidate freeze
 
