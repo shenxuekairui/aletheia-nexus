@@ -249,6 +249,8 @@ def reread_uncertain_lines(records, image, recognize):
     """
     from PIL import ImageOps
 
+    from aletheia_nexus.content.backends.image_panels import length_key
+
     def comparable(text):
         key = re.sub(r"(?<=\d)[_{}]|[_{}](?=\d)", "", reading_key(text))
         return re.sub(r"(?<=[A-Za-z])[Il1](?=[A-Za-z%])", "|", key)
@@ -267,6 +269,8 @@ def reread_uncertain_lines(records, image, recognize):
         if h <= 0 or x1 - x0 < h * 2:
             continue
         candidates = []
+        scale_conflicts = []
+        original_length = length_key(text)
         for vertical_pad in (0, 0.05):
             box = (
                 max(0, int(x0 - h * 0.2)),
@@ -282,23 +286,56 @@ def reread_uncertain_lines(records, image, recognize):
                     if scale == 1
                     else crop.resize((crop.width * scale, crop.height * scale))
                 )
-                if result is None or result[1] < 0.95:
+                if result is None or result[1] < (0.9 if original_length else 0.95):
                     break
                 readings.append(result)
             if len(readings) == 2 and reading_key(readings[0][0]) == reading_key(
                 readings[1][0]
             ):
                 new, score = readings[0][0], min(r[1] for r in readings)
+                new_length = length_key(new)
                 if (
-                    reading_key(new) != reading_key(text)
+                    original_length
+                    and new_length
+                    and original_length[0] == new_length[0]
+                    and original_length[1] != new_length[1]
+                ):
+                    # Two crop resolutions support a substantive unit alternative,
+                    # even when they cannot justify replacing the main reading.
+                    scale_conflicts.append((new, score))
+                if (
+                    score >= 0.95
+                    and reading_key(new) != reading_key(text)
                     and score >= old["score"] + 0.03
                 ):
                     candidates.append((new, score))
-        if len({reading_key(r[0]) for r in candidates}) != 1:
+        candidate = (
+            max(candidates, key=lambda r: r[1])
+            if len({reading_key(r[0]) for r in candidates}) == 1
+            else None
+        )
+        if candidate is None or (
+            old["score"] >= 0.85 and comparable(candidate[0]) != comparable(text)
+        ):
+            for new, score in scale_conflicts:
+                if any(
+                    reading_key(r["text"]) == reading_key(new)
+                    and r["box"] == old["box"]
+                    for r in records
+                ):
+                    continue
+                records.append(
+                    dict(
+                        text=new,
+                        score=score,
+                        box=old["box"],
+                        alternative=True,
+                        method="rapidocr-scale-unit-alternative",
+                        warning="IMAGE_SCALE_UNIT_CONFLICT",
+                    )
+                )
             continue
-        new, score = max(candidates, key=lambda r: r[1])
-        if old["score"] >= 0.85 and comparable(new) != comparable(text):
-            continue
+        new, score = candidate
         old["alternative"] = True
         records.append(
             dict(

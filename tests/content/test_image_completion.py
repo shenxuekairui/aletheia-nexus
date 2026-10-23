@@ -268,6 +268,47 @@ def test_crop_consensus_recovers_weak_text_without_changing_confident_numbers():
     assert out == [ambiguous] and not ambiguous.get("alternative")
 
 
+@pytest.mark.parametrize(
+    ("original", "alternative"), [("500 mm", "500 nm"), ("2.5 nm", "2.5 μm")]
+)
+def test_scale_unit_crop_conflict_is_local_evidence_not_a_replacement(
+    original, alternative
+):
+    Image = pytest.importorskip("PIL.Image")
+
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    image = Image.new("RGB", (400, 100), "white")
+    old = r(original, box=(20, 20, 180, 40), score=0.93)
+    readings = iter([(alternative, 0.96), (alternative, 0.92)] * 2)
+    out = reread_uncertain_lines([old], image, lambda crop: next(readings))
+    assert len(out) == 2 and not old.get("alternative")
+    assert out[1]["alternative"] and out[1]["text"] == alternative
+    assert out[1]["box"] == old["box"]
+    assert out[1]["warning"] == "IMAGE_SCALE_UNIT_CONFLICT"
+
+
+@pytest.mark.parametrize(
+    "readings",
+    [
+        [("600 nm", 0.98)] * 4,  # A different number is not a unit ambiguity.
+        [("500 nm", 0.89)] * 2,  # Weak crop readings cannot establish a conflict.
+        [("500 nm", 0.96), ("500 μm", 0.96)] * 2,
+        [("500 mm", 0.96)] * 4,
+    ],
+)
+def test_scale_crop_disagreement_needs_same_value_and_corroborated_unit(readings):
+    Image = pytest.importorskip("PIL.Image")
+
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    image = Image.new("RGB", (400, 100), "white")
+    old = r("500 mm", box=(20, 20, 180, 40), score=0.93)
+    responses = iter(readings)
+    assert reread_uncertain_lines([old], image, lambda crop: next(responses)) == [old]
+    assert not old.get("alternative")
+
+
 def test_horizontal_dual_y_titles_keep_their_separate_printed_ticks():
     from aletheia_nexus.content.backends.image_axes import associate_axes
 

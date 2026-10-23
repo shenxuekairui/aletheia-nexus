@@ -239,3 +239,18 @@ inequality and preserve previously recovered signed chart ticks. The adapter
 identity changes to 1.5.2. The superseded development-e extraction is preserved
 as incomplete after 22 documents; it is not reported as a completed regression.
 The next full extraction uses the updated identities throughout.
+
+A further source check investigated the existing `500 nm` / `500 mm` scale
+error. The full image and padded crops disagree; changing crop padding changes
+the reading. The parser therefore does not infer the unit from neighbouring
+panels or promote a less certain unit replacement. Two agreeing resolutions of
+a local crop can now retain a same-value, different-unit scale alternative and
+an `IMAGE_SCALE_UNIT_CONFLICT` warning at the actual label. The stricter primary
+replacement criteria are unchanged. This is improved local error disclosure,
+**not a repaired primary answer**. Different numbers, inconsistent/weak crops
+and agreeing units do not establish such a conflict. Four real page probes keep
+all primary readings unchanged and add the demonstrated conflict only; the other
+three pages add no scale-unit alternatives. The image adapter is 1.5.3. The
+content suite passes 499 tests (three opt-in skips); the deterministic suite
+passes 1,970 tests (115 opt-in/platform skips). A complete extraction with this
+identity is still required before opening the sealed holdout.

@@ -59,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.5.2",
+            "adapter_version": "1.5.3",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -113,7 +113,11 @@ def extract_image_annotations(page, page_number, max_pixels):
                             (bounds[0] + x1 * sx) / geometry.width,
                             (bounds[3] - y0 * sy) / geometry.height,
                         ],
-                        "detail": "Observed axis tick readings are not monotonic; inspect the local signs/digits or source axis convention. No value was inferred or corrected.",
+                        "detail": (
+                            "The source-image scale label and two agreeing crop readings differ in unit. Inspect the local glyphs; both readings are retained and no unit was inferred or silently corrected."
+                            if record["warning"] == "IMAGE_SCALE_UNIT_CONFLICT"
+                            else "Observed axis tick readings are not monotonic; inspect the local signs/digits or source axis convention. No value was inferred or corrected."
+                        ),
                     }
                 )
             # Single characters are usually curve markers or atom labels. Keep
