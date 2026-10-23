@@ -168,6 +168,8 @@ def search_main(argv: list[str]) -> int:
                     print(
                         f"   PDF page {location['page']} — {warning['code']}: {warning.get('detail', '')}"
                     )
+                    if warning.get("after"):
+                        print(f"   Source text: {warning['after']}")
                 for difference in location.get("reading_differences", []):
                     if (
                         difference.get("status")

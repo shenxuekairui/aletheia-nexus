@@ -199,6 +199,10 @@ shows primary table/figure readings, observed cell alignment and local differenc
 before expandable alternatives. A row span states the parser's observed layout
 evidence; it is not confirmation of an experiment's scientific interpretation.
 Display grouping and folding never count as resolved independent review issues.
+Evidence exports also retain selected canonical page geometry. Local review
+warnings convert known native glyph boxes from display points to normalized
+anchor coordinates, preserving their original boxes and leaving the canonical
+warning records unchanged. Page-wide warnings are not assigned to every block.
 
 ## Qualification evidence
 

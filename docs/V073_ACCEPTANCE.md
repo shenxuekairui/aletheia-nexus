@@ -296,3 +296,20 @@ in the correct experiment row. The deterministic suite passes 1,977 tests with
 115 opt-in/platform skips. The older development-f and development-g runs are
 preserved as incomplete after 30 and 29 documents respectively. A new complete
 run is required; these probes and test counts do not satisfy scientific gates.
+
+The subsequent installed wheel of `d0d80ac` passed all 24 actual use checks,
+and hosted run `40019005530` passed all eight jobs on that commit. Both are
+development verification, not the final release gate. The full fresh extraction
+continues with that frozen parsing implementation.
+
+Export inspection reproduced a further localization defect: native glyph
+warnings carry PDF display-point boxes, while review blocks use normalized
+anchors. A warning about the unreadable temperature glyph existed in the
+canonical artifact but was absent beside its paragraph. Evidence export now
+retains selected page geometry and converts only known native warning boxes
+for local presentation, preserving the original warning and box. Other
+columns/pages and page-wide notices cannot acquire that local warning. The
+source line is displayed with the notice. This changes neither parsed content
+nor OCR execution; the two page-shape/counterexample tests and 1,979-test
+deterministic run pass (115 opt-in/platform skips). Parsing extraction remains
+valid; retrieval and exports must use and record this later code identity.

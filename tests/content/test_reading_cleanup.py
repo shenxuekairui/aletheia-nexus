@@ -293,6 +293,41 @@ def test_review_groups_preserve_every_block_and_separate_original_conflicts():
     assert groups[0]["alternative_block_ids"] == ["ocr"]
 
 
+@pytest.mark.parametrize("width,height", [(600, 800), (840, 595)])
+def test_native_glyph_warnings_follow_their_local_source_geometry(width, height):
+    system = "pdf-cropbox-display-bottom-left-normalized/v1"
+    original_box = [width * 0.2, height * 0.61, width * 0.4, height * 0.69]
+    warning = dict(
+        code="NATIVE_GLYPH_CONTEXT",
+        page=1,
+        bbox=original_box,
+        after="Unresolved temperature glyph",
+        detail="Inspect the local glyph",
+    )
+    entry = dict(
+        blocks=[
+            block("target", [0.1, 0.6, 0.5, 0.7]),
+            block("other-column", [0.6, 0.6, 0.9, 0.7]),
+            block("other-page", [0.1, 0.6, 0.5, 0.7], page=2),
+        ],
+        pages=[dict(page=1, width=width, height=height, coordinate_system=system)],
+        warnings=[warning, dict(code="PAGE_ONLY", page=1, detail="Not local")],
+    )
+    groups = review_locations(entry)
+    (local,) = groups[0]["local_warnings"]
+    assert local["bbox"] == pytest.approx([0.2, 0.61, 0.4, 0.69])
+    assert local["source_bbox"] == original_box
+    assert local["coordinate_system"] == system
+    assert not groups[1]["local_warnings"] and not groups[2]["local_warnings"]
+    assert warning["bbox"] == original_box and "source_bbox" not in warning
+    # Reusing a normalized warning must not divide the box a second time.
+    entry["warnings"] = [local]
+    assert review_locations(entry)[0]["local_warnings"] == [local]
+    entry.pop("pages")
+    entry["warnings"] = [warning]
+    assert not any(g["local_warnings"] for g in review_locations(entry))
+
+
 @pytest.mark.parametrize(
     "alternative,has_difference", [("5 μL of", False), ("5 pL of", True)]
 )

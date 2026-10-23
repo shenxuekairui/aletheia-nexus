@@ -17,6 +17,39 @@ from aletheia_nexus.content.corpus import (
 )
 
 
+def _review_warning_boxes(entry: dict[str, object]) -> list[dict[str, object]]:
+    """Compare known native point coordinates with normalized source anchors."""
+    pages = {p["page"]: p for p in entry.get("pages", [])}
+    native_point_codes = {
+        "NATIVE_GLYPH_CONTEXT",
+        "NATIVE_GLYPH_MAPPING_CORRECTED",
+        "NATIVE_UNIT_MAPPING_CORRECTED",
+        "NATIVE_DEGREE_MAPPING_CORRECTED",
+    }
+    warnings = []
+    for warning in entry.get("warnings", []):
+        if warning.get("code") in native_point_codes and warning.get("bbox"):
+            page = pages.get(warning.get("page"))
+            if not page:
+                continue  # Keep the original warning; do not guess its scale.
+            if warning.get("coordinate_system") != page["coordinate_system"]:
+                box = warning["bbox"]
+                warning = {
+                    **warning,
+                    "source_bbox": list(box),
+                    "source_bbox_units": "pdf_display_points",
+                    "bbox": [
+                        max(0.0, min(1.0, value / dimension))
+                        for value, dimension in zip(
+                            box, [page["width"], page["height"]] * 2
+                        )
+                    ],
+                    "coordinate_system": page["coordinate_system"],
+                }
+        warnings.append(warning)
+    return warnings
+
+
 def review_locations(entry: dict[str, object]) -> list[dict[str, object]]:
     """Group readings by the source to inspect, without judging their truth.
 
@@ -111,6 +144,7 @@ def review_locations(entry: dict[str, object]) -> list[dict[str, object]]:
         group["block_ids"].append(block["id"])
         group["uncertain"] |= block["uncertain"]
     by_id = {b["id"]: b for b in blocks}
+    warnings = _review_warning_boxes(entry)
     for group in groups.values():
         members = [by_id[bid] for bid in group["block_ids"]]
         primary = [b for b in members if b.get("content_region") not in alternatives]
@@ -166,10 +200,13 @@ def review_locations(entry: dict[str, object]) -> list[dict[str, object]]:
                 )
         group["local_warnings"] = [
             w
-            for w in entry.get("warnings", [])
+            for w in warnings
             if w.get("page") == group["page"]
             and (
-                w.get("anchor_id") in {b.get("anchor_id") for b in members}
+                (
+                    w.get("anchor_id") is not None
+                    and w["anchor_id"] in {b.get("anchor_id") for b in members}
+                )
                 or (
                     w.get("bbox")
                     and any(
@@ -353,6 +390,7 @@ def build_evidence_pack(
                 "warnings": document["warnings"],
                 "errors": document["errors"],
                 "pages_requested": sorted(pages),
+                "pages": [dict(p) for p in document["pages"] if p["page"] in pages],
                 "pages_with_text": sorted({b["page"] for b in blocks}),
                 "pages_without_text": sorted(pages - {b["page"] for b in blocks}),
                 "selected_hit_ids": hit_ids.get(artifact_id, []),
@@ -537,10 +575,12 @@ def evidence_markdown(pack: dict[str, object]) -> str:
             for warning in group.get("local_warnings", []):
                 lines.extend(
                     [
-                        f"Local gap, PDF p. {group['page']}: {warning['code']} — {warning.get('detail', '')}",
+                        f"Source notice, PDF p. {group['page']}: {warning['code']} — {warning.get('detail', '')}",
                         "",
                     ]
                 )
+                if warning.get("after"):
+                    lines.extend([f"Source text: {warning['after']}", ""])
             for difference in group.get("reading_differences", []):
                 if difference.get("status") == "partial-reading-needs-source-alignment":
                     lines.extend(

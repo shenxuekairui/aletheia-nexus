@@ -172,6 +172,7 @@ def test_exported_tables_keep_uncertainty_and_canonical_text(tmp_path):
     before = {b["id"]: b for b in canonical["blocks"]}
     result = build_evidence_pack(tmp_path)
     item = next(i for i in result["included"] if i["pdf"] == main.name)
+    assert item["pages"] == canonical["pages"]
     assert item["tables"]
     table = item["tables"][0]
     assert table["uncertain"] and table["complete_context"]
