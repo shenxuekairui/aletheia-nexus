@@ -276,3 +276,23 @@ was omitted by the existing JSON-only example manifest; the source distribution
 now includes it. Restricted papers and the user's unrelated debug files remain
 outside the packages. Final release artifacts and installation checks are still
 pending.
+
+Task-oriented inspection then found a specific source of unnecessary table OCR:
+the area of a wide OCR line included whitespace between native columns, so it
+was treated as an uncovered source region even when its words were already
+readable in native cells. Tesseract word positions now scope those readings.
+Painted figure words and actual native-text gaps survive; separated gaps are
+not joined across a native experiment. Recognition still uses the full page
+context. Temporary word positions are cleared before native table splitting,
+and partial readings remain uncertain because their confidence came from the
+original OCR line. The adapter identity is 1.7.2.
+
+Twelve exposed source-page probes retain all prior primary text; three table
+layouts drop spurious competing readings. One page additionally exposes two
+uncertain header/logo fragments, which are not claimed as scientific data.
+A separate fresh full extraction of the affected review article retains its
+63 observed cells, five numeric/label columns and complete split catalyst name
+in the correct experiment row. The deterministic suite passes 1,977 tests with
+115 opt-in/platform skips. The older development-f and development-g runs are
+preserved as incomplete after 30 and 29 documents respectively. A new complete
+run is required; these probes and test counts do not satisfy scientific gates.

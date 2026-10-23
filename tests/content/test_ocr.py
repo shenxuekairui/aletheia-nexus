@@ -452,6 +452,119 @@ def test_scoped_figures_retain_page_context_and_conflicts_but_not_prose(monkeypa
     assert result.warnings[0]["code"] == "OCR_FIGURE_READINGS_SCOPED"
 
 
+@pytest.mark.parametrize("left,right", [(40, 260), (10, 500)])
+def test_native_table_whitespace_is_not_an_uncovered_ocr_reading(left, right):
+    from aletheia_nexus.content.backends.tesseract import _native_gap_readings
+
+    payload = (
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+        f"5\t1\t1\t1\t1\t1\t{left}\t100\t10\t10\t80\tI\n"
+        f"5\t1\t1\t1\t1\t2\t{right}\t100\t20\t10\t80\t18%\n"
+    )
+    (line,) = _parse_tsv(
+        payload,
+        page_number=1,
+        page_width=600,
+        page_height=800,
+        image_width=600,
+        image_height=800,
+        engine_id="test-ocr",
+        include_word_positions=True,
+    )
+    native = PageLayout(
+        1,
+        600,
+        800,
+        lines=(
+            LayoutLine("1′", left, 690, left + 10, 700, 10),
+            LayoutLine("18b", right, 690, right + 20, 700, 10),
+        ),
+    )
+    assert line.glyph_spans == ((0, 1, left, left + 10), (2, 5, right, right + 20))
+    assert _native_gap_readings(line, replace(native, lines=(line,)), native) == []
+
+
+def test_native_gap_filter_keeps_separate_vector_words_between_native_cells():
+    from aletheia_nexus.content.backends.tesseract import _native_gap_readings
+
+    line = LayoutLine(
+        "SO2 39 NH 86",
+        40,
+        400,
+        300,
+        410,
+        10,
+        glyph_spans=(
+            (0, 3, 40, 70),
+            (4, 6, 100, 120),
+            (7, 9, 200, 220),
+            (10, 12, 280, 300),
+        ),
+    )
+    native = PageLayout(
+        1,
+        600,
+        800,
+        lines=(
+            LayoutLine("39", 100, 400, 120, 410, 10),
+            LayoutLine("86", 280, 400, 300, 410, 10),
+        ),
+    )
+    readings = _native_gap_readings(line, replace(native, lines=(line,)), native)
+    assert [(r.text, r.x0, r.x1) for r in readings] == [
+        ("SO2", 40, 70),
+        ("NH", 200, 220),
+    ]
+    assert all(not r.glyph_spans for r in readings)
+    assert all(r.uncertain for r in readings)
+    assert all(r.extraction_method == "tesseract-tsv-ocr-word-region" for r in readings)
+
+
+def test_ocr_word_positions_do_not_enter_table_splitting(monkeypatch):
+    from aletheia_nexus.content.models import PageRegion
+
+    line = replace(
+        _ocr_line("14 mA", 0.97, "ocr"), glyph_spans=((0, 2, 60, 85), (3, 5, 90, 115))
+    )
+    layout = PageLayout(1, 600, 800, lines=(line,))
+    backend = TesseractOcrBackend()
+    monkeypatch.setattr(backend, "_extract_page", lambda *args: layout)
+    whole = backend.extract_page(None, 1)
+    image = backend.extract_regions(
+        None, 1, (PageRegion("figure", (0.08, 0.48, 0.55, 0.55), "painted figure"),)
+    )
+    assert whole.lines == image.lines == (replace(line, glyph_spans=()),)
+
+
+def test_figure_word_scope_retains_ink_without_adjacent_native_experiments():
+    from aletheia_nexus.content.backends.tesseract import _native_gap_readings
+    from aletheia_nexus.content.models import PageRegion
+
+    line = LayoutLine(
+        "8 COOH 45",
+        40,
+        400,
+        300,
+        410,
+        10,
+        glyph_spans=((0, 1, 40, 50), (2, 6, 140, 180), (7, 9, 280, 300)),
+    )
+    native = PageLayout(
+        1,
+        600,
+        800,
+        lines=(
+            LayoutLine("8", 40, 400, 50, 410, 10),
+            LayoutLine("COOH", 140, 400, 180, 410, 10),
+            LayoutLine("45", 280, 400, 300, 410, 10),
+        ),
+    )
+    image = PageRegion("figure", (0.2, 0.48, 0.35, 0.55), "painted reaction")
+    selected = _native_gap_readings(line, native, native, (image,))
+    assert [(r.text, r.x0, r.x1) for r in selected] == [("COOH", 140, 180)]
+    assert selected[0].uncertain
+
+
 def test_tesseract_refuses_raster_allocation_over_budget():
     page = PdfReader(FIXTURES / "sparse_scan.pdf").pages[0]
     backend = TesseractOcrBackend(TesseractOcrConfig(max_raster_pixels=1))
