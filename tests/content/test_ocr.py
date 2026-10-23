@@ -376,6 +376,47 @@ def test_tesseract_configuration_and_tsv_coordinates():
     assert lines[0].source_engines == ("tesseract@5",)
 
 
+def test_regional_ocr_masks_ink_without_moving_evidence(monkeypatch):
+    from subprocess import CompletedProcess
+
+    from pypdf import PdfWriter
+
+    from aletheia_nexus.content.backends import tesseract
+    from aletheia_nexus.content.models import PageRegion
+
+    Image = pytest.importorskip("PIL.Image")
+    backend = TesseractOcrBackend(TesseractOcrConfig(binarize=False))
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=100, height=100)
+    seen = []
+
+    def run(command, *, timeout):
+        if command[0] == "pdftoppm":
+            Image.new("L", (400, 400), 0).save(command[-1] + ".png")
+            return CompletedProcess(command, 0, "", "")
+        im = Image.open(command[1])
+        assert im.size == (400, 400)
+        assert im.getpixel((100, 100)) == 0  # canonical top-left requested area
+        assert im.getpixel((100, 300)) == 255
+        assert im.getpixel((350, 100)) == 255
+        seen.append(command)
+        return CompletedProcess(
+            command,
+            0,
+            "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t100\t100\t40\t20\t98\t7.2\n",
+            "",
+        )
+
+    monkeypatch.setattr(tesseract, "_run", run)
+    result = backend.extract_regions(
+        page, 1, (PageRegion("figure", (0.2, 0.6, 0.4, 0.8), "damaged"),)
+    )
+    assert len(seen) == 1  # no orientation/deskew on a masked native page
+    assert result.lines[0].x0 == 25
+    assert result.lines[0].y0 == 70
+    assert result.warnings[0]["code"] == "OCR_REGIONS_SCOPED"
+
+
 def test_tesseract_refuses_raster_allocation_over_budget():
     page = PdfReader(FIXTURES / "sparse_scan.pdf").pages[0]
     backend = TesseractOcrBackend(TesseractOcrConfig(max_raster_pixels=1))

@@ -270,19 +270,19 @@ def _similar(first: str, second: str, threshold: float) -> bool:
         return False
     if _agreement(first, second) < threshold:
         return False
+
     # A nearly identical sentence may still disagree on a unit, sign or '%'.
     # In numeric evidence, only spacing and sentence-ending punctuation may be
     # ignored when suppressing an alternative reading. Preserve case (mA != MA).
-    if any(c.isdigit() for c in first + second):
+    # Unit-only headers, chemical labels and negation can be meaningful even
+    # without digits (mA/MA, Co/CO, R/S). Fuzzy spelling is not corroboration.
+    def scientific_text(value: str) -> str:
+        value = unicodedata.normalize("NFKC", value).replace("−", "-")
+        return re.sub(r"\s+", "", value).rstrip(".,;:!。；，！")
 
-        def scientific_text(value: str) -> str:
-            value = unicodedata.normalize("NFKC", value).replace("−", "-")
-            return re.sub(r"\s+", "", value).rstrip(".,;:!。；，！")
-
-        return scientific_text(first) == scientific_text(second) and _number_signature(
-            first
-        ) == _number_signature(second)
-    return True
+    return scientific_text(first) == scientific_text(second) and _number_signature(
+        first
+    ) == _number_signature(second)
 
 
 def _agreement(first: str, second: str) -> float:
@@ -356,11 +356,61 @@ def _optional_failure_reason(exc: Exception) -> str:
     return "BACKEND_ERROR"
 
 
+def _local_glyph_context(
+    line: LayoutLine, layout: PageLayout
+) -> list[tuple[float, float]]:
+    """Use exact native glyph provenance to OCR only the affected word context."""
+    warning = next(
+        (
+            w
+            for w in layout.warnings
+            if w["code"] == "NATIVE_GLYPH_CONTEXT"
+            and w.get("after") == line.text
+            and w.get("bbox") == [line.x0, line.y0, line.x1, line.y1]
+        ),
+        None,
+    )
+    if warning is None or not line.glyph_spans:
+        return []
+    if any(
+        not any(a <= offset < b for a, b, _, _ in line.glyph_spans)
+        for offset in warning["text_offsets"]
+    ):
+        return []  # Missing provenance cannot justify a smaller OCR scope.
+    words = list(re.finditer(r"\S+", line.text))
+    selected = set()
+    for index, word in enumerate(words):
+        if any(
+            word.start() <= offset < word.end() for offset in warning["text_offsets"]
+        ):
+            selected.update(range(max(0, index - 1), min(len(words), index + 2)))
+    runs = []
+    for index in sorted(selected):
+        if runs and index == runs[-1][-1] + 1:
+            runs[-1].append(index)
+        else:
+            runs.append([index])
+    regions = []
+    for run in runs:
+        begin, end = words[run[0]].start(), words[run[-1]].end()
+        glyphs = [
+            (x0, x1) for a, b, x0, x1 in line.glyph_spans if a < end and b > begin
+        ]
+        if glyphs:
+            regions.append(
+                (
+                    min(g[0] for g in glyphs) / layout.width,
+                    max(g[1] for g in glyphs) / layout.width,
+                )
+            )
+    return regions
+
+
 class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.8.1"
+    version = "1.9.1"
 
     def __init__(
         self,
@@ -393,6 +443,40 @@ class AdaptiveOcrBackend:
         # When a localized glyph is the only OCR trigger, compare that region.
         # Sparse, damaged and image-heavy pages still receive full-page OCR.
         glyph_check_only = reasons == ["uncertain-native-glyphs"]
+        local_ocr_regions = []
+        if reasons and set(reasons) <= {
+            "uncertain-native-glyphs",
+            "unanchored-image-text-candidate",
+        }:
+            # The trigger is local on a text-rich native page. Mask readable
+            # prose *before recognition*, so unrelated OCR errors are never
+            # manufactured as competing readings. Keep every painted image,
+            # including images with a few native labels, and every damaged line.
+            local_ocr_regions.extend(
+                PageRegion("figure", item.bbox, "painted image needs local OCR")
+                for item in native.objects
+                if item.object_type == "image"
+                and item.bbox is not None
+                and _area(item.bbox) >= self.config.unanchored_image_min_area
+            )
+            for line in native.lines:
+                if line.uncertain:
+                    x0, y0, x1, y1 = _line_bbox(line, native)
+                    pad = (y1 - y0) * 0.35
+                    spans = _local_glyph_context(line, native)
+                    for left, right in spans or [(x0, x1)]:
+                        local_ocr_regions.append(
+                            PageRegion(
+                                "text",
+                                (
+                                    max(0, left - pad),
+                                    max(0, y0 - pad),
+                                    min(1, right + pad),
+                                    min(1, y1 + pad),
+                                ),
+                                "uncertain native glyphs need local OCR",
+                            )
+                        )
         regions = [
             *_image_regions_without_text(native, self.config),
             *_formula_regions(native),
@@ -492,6 +576,15 @@ class AdaptiveOcrBackend:
                 }
             )
             for backend in self.ocr_backends:
+                extract_regions = getattr(backend, "extract_regions", None)
+                if local_ocr_regions and callable(extract_regions):
+                    add_optional(
+                        backend,
+                        lambda extract_regions=extract_regions: extract_regions(
+                            page, page_number, tuple(local_ocr_regions)
+                        ),
+                    )
+                    continue
                 add_optional(
                     backend,
                     lambda backend=backend: backend.extract_page(page, page_number),

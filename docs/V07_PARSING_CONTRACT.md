@@ -1,6 +1,7 @@
 # v0.7 scientific content parsing contract
 
-Status: updated for `0.7.2` by `structured-pdf-pipeline/3.3.0`; v2 remains readable.
+Status: `0.7.3` candidate, `structured-pdf-pipeline/3.9.0`; v2 remains readable.
+Scientific acceptance and publication remain pending in [V073_ACCEPTANCE.md](V073_ACCEPTANCE.md).
 
 The release target is:
 
@@ -169,6 +170,22 @@ evidence-pack ID, with citations reconstructed from the original evidence.
 It never overwrites parsed text or clears uncertainty, and does not decide that a
 scientific claim is true. Original contradictions remain distinct. The caller
 controls whether any external provider is used and what context it receives.
+
+The runnable [offline integration example](../examples/assess_evidence.py)
+accepts an exported JSON evidence pack and explicit document/location IDs. It
+demonstrates abstention and saves an exclusively created, separate advisory file.
+Replace its judge only when explicitly choosing a provider. Default parsing and
+export never call it. Report AI-assisted results separately from default-reading
+accuracy; an advisory preference does not erase a conflicting source statement.
+
+Evidence-pack v1 remains additive and backwards compatible. Review locations may
+also expose `primary_block_ids`, `alternative_block_ids`, `reading_differences`
+and `local_warnings`. Text differences are comparisons of observed readings, not
+scientific error classifications. Unpaired alternatives remain present. Markdown
+shows primary table/figure readings, observed cell alignment and local differences
+before expandable alternatives. A row span states the parser's observed layout
+evidence; it is not confirmation of an experiment's scientific interpretation.
+Display grouping and folding never count as resolved independent review issues.
 
 ## Qualification evidence
 

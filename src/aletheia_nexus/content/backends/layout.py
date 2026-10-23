@@ -206,7 +206,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.16.0"
+    version = "1.17.0"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -470,6 +470,7 @@ class LayoutPdfBackend:
                 parts = []
                 original_parts = []
                 glyph_spans = []
+                review_offsets = set()
                 right = None
                 uncertain_font = False
                 unit_positions = {}
@@ -523,6 +524,15 @@ class LayoutPdfBackend:
                             value = "μ"
                     offset = sum(map(len, parts))
                     glyph_spans.append((offset, offset + len(value), char.x0, char.x1))
+                    if (
+                        key in unmapped
+                        or replacement is not None
+                        or value != char.get_text()
+                        or hasattr(char, "original_reading")
+                        or suspicious_text(value)
+                        or id(char) in degree_originals
+                    ):
+                        review_offsets.update(range(offset, offset + len(value)))
                     parts.append(value)
                     recovered_count += int(replacement is not None)
                     uncertain_font |= key in unmapped
@@ -564,6 +574,9 @@ class LayoutPdfBackend:
                     ):
                         characters[offset] = reading
                 text = "".join(characters).strip()
+                review_offsets.update(
+                    i for i, (a, b) in enumerate(zip(raw_text, characters)) if a != b
+                )
                 unit_corrected = text != raw_text.strip()
                 degree_corrected = any(id(c) in degree_originals for c in chars)
                 if not text:
@@ -586,6 +599,26 @@ class LayoutPdfBackend:
                     or any(id(c) in ambiguous_glyphs for c in chars)
                     or bool(glyph_corrections)
                 )
+                if (
+                    review_offsets
+                    and row_index not in ambiguous_rows
+                    and not any(id(c) in ambiguous_glyphs for c in chars)
+                ):
+                    left_trim = len(raw_text) - len(raw_text.lstrip())
+                    unit_repairs.append(
+                        {
+                            "code": "NATIVE_GLYPH_CONTEXT",
+                            "page": page_number,
+                            "bbox": [x0, y0, x1, y1],
+                            "after": text,
+                            "text_offsets": sorted(
+                                i - left_trim
+                                for i in review_offsets
+                                if left_trim <= i < left_trim + len(text)
+                            ),
+                            "detail": "These native glyph offsets require local reading; neighbouring decoded text is retained.",
+                        }
+                    )
                 if glyph_corrections:
                     unit_repairs.append(
                         {

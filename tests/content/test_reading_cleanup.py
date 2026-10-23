@@ -124,6 +124,10 @@ def test_ocr_cannot_replace_a_font_verified_unit_due_to_an_unrelated_ligature():
         ("1200 A/m²", "1200 A/m"),
         ("90 mA", "90 MA"),
         ("-1.4 V", "1.4 V"),
+        ("Co", "CO"),
+        ("mA", "MA"),
+        ("(R)-catalyst", "(S)-catalyst"),
+        ("with additive", "without additive"),
     ],
 )
 def test_cleanup_retains_scientific_disagreements(first, second):
@@ -132,6 +136,51 @@ def test_cleanup_retains_scientific_disagreements(first, second):
     )
     assert {r.text for r in merged} == {first, second}
     assert all(r.uncertain for r in merged)
+
+
+@pytest.mark.parametrize("scan", [False, True])
+def test_local_triggers_route_ink_regions_but_scans_use_full_page(scan):
+    from aletheia_nexus.content.models import PageObject
+
+    clean = line("Native method with complete units and enough text. " * 3)
+    damaged = replace(line("Damaged \ufffd glyph", uncertain=True), y0=300, y1=320)
+    native = replace(
+        page(clean, damaged),
+        objects=(
+            PageObject(
+                "image", "chart", bbox=(0, 0, 1, 1) if scan else (0.1, 0.1, 0.8, 0.3)
+            ),
+        ),
+    )
+    calls = []
+
+    class Native:
+        name, version = "native", "1"
+
+        def extract_page(self, _page, _number):
+            return native
+
+    class Ocr:
+        name, version = "ocr", "1"
+
+        def extract_page(self, _page, _number):
+            calls.append("full")
+            return page()
+
+        def extract_regions(self, _page, _number, regions):
+            calls.extend(regions)
+            return page()
+
+    AdaptiveOcrBackend(native_backend=Native(), ocr_backends=(Ocr(),)).extract_page(
+        None, 1
+    )
+    if scan:
+        assert calls == ["full"]
+    else:
+        assert len(calls) == 2
+        assert calls[0].bbox == (0.1, 0.1, 0.8, 0.3)
+        assert calls[1].bbox[1] < 300 / 800 < 320 / 800 < calls[1].bbox[3]
+        assert calls[1].bbox[3] < 400 / 800  # Clean native method is not submitted.
 
 
 def block(id, box, region="body", page=1, text="80.90%"):
@@ -143,6 +192,35 @@ def block(id, box, region="body", page=1, text="80.90%"):
         "content_region": region,
         "evidence": {"bbox": box},
     }
+
+
+def test_glyph_context_does_not_reread_unrelated_clear_numbers():
+    from aletheia_nexus.content.backends.adaptive import _local_glyph_context
+
+    text = "Loading 0.125 was held constant while the measured rate was 8 ± 2 units."
+    reading = replace(
+        line(text, uncertain=True),
+        glyph_spans=tuple((i, i + 1, 20 + i * 5, 25 + i * 5) for i in range(len(text))),
+    )
+    warning = dict(
+        code="NATIVE_GLYPH_CONTEXT",
+        after=text,
+        bbox=[reading.x0, reading.y0, reading.x1, reading.y1],
+        text_offsets=[text.index("±")],
+        detail="Unmapped source glyph",
+    )
+    layout = replace(page(reading), warnings=(warning,))
+    ranges = _local_glyph_context(reading, layout)
+    assert ranges == [
+        (
+            (20 + text.index("8 ± 2") * 5) / 600,
+            (20 + (text.index("8 ± 2") + 5) * 5) / 600,
+        )
+    ]
+    assert ranges[0][0] > (20 + text.index("0.125") * 5) / 600
+    assert _local_glyph_context(replace(reading, glyph_spans=()), layout) == []
+    # Same text elsewhere does not authorize applying this line's coordinates.
+    assert _local_glyph_context(replace(reading, y0=100, y1=120), layout) == []
 
 
 def test_review_groups_preserve_every_block_and_separate_original_conflicts():
@@ -162,6 +240,10 @@ def test_review_groups_preserve_every_block_and_separate_original_conflicts():
     ]
     assert all(g["uncertain"] for g in groups)
     assert entry["blocks"][1]["text"] == "80.85%"
+    difference = groups[0]["reading_differences"][0]
+    assert difference["changes"] == [{"primary": "80.90%", "alternative": "80.85%"}]
+    assert groups[0]["primary_block_ids"] == ["chinese"]
+    assert groups[0]["alternative_block_ids"] == ["ocr"]
 
 
 def test_figure_group_does_not_absorb_prose_or_full_scanned_pages():
@@ -205,3 +287,7 @@ def test_table_review_keeps_headers_cells_and_alternatives_together_per_page():
     assert all(g["uncertain"] for g in groups)
     assert entry["blocks"][1]["text"] == "64"
     assert entry["blocks"][2]["text"] == "84"
+    assert groups[0]["reading_differences"][0]["changes"] == [
+        {"primary": "64", "alternative": "84"}
+    ]
+    assert not groups[2]["reading_differences"]  # real prose conflict stays separate

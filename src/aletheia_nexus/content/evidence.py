@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import quote
 
@@ -109,6 +110,58 @@ def review_locations(entry: dict[str, object]) -> list[dict[str, object]]:
         )
         group["block_ids"].append(block["id"])
         group["uncertain"] |= block["uncertain"]
+    by_id = {b["id"]: b for b in blocks}
+    for group in groups.values():
+        members = [by_id[bid] for bid in group["block_ids"]]
+        primary = [b for b in members if b.get("content_region") not in alternatives]
+        others = [b for b in members if b.get("content_region") in alternatives]
+        group["primary_block_ids"] = [b["id"] for b in primary]
+        group["alternative_block_ids"] = [b["id"] for b in others]
+        group["reading_differences"] = []
+        for other in others:
+            matches = [
+                b
+                for b in primary
+                if _contains_reading(
+                    b["evidence"].get("bbox"), other["evidence"].get("bbox")
+                )
+            ]
+            if len(matches) != 1:
+                continue  # Do not manufacture a comparison across cells/experiments.
+            main = matches[0]
+            a, b = main["text"].split(), other["text"].split()
+            changes = [
+                {"primary": " ".join(a[i:j]), "alternative": " ".join(b[k:end])}
+                for tag, i, j, k, end in SequenceMatcher(
+                    None, a, b, autojunk=False
+                ).get_opcodes()
+                if tag != "equal"
+            ]
+            if changes:
+                group["reading_differences"].append(
+                    {
+                        "primary_block_id": main["id"],
+                        "alternative_block_id": other["id"],
+                        "changes": changes,
+                        "status": "unresolved-text-difference",
+                    }
+                )
+        group["local_warnings"] = [
+            w
+            for w in entry.get("warnings", [])
+            if w.get("page") == group["page"]
+            and (
+                w.get("anchor_id") in {b.get("anchor_id") for b in members}
+                or (
+                    w.get("bbox")
+                    and any(
+                        _contains_reading(w["bbox"], b["evidence"].get("bbox"))
+                        or _contains_reading(b["evidence"].get("bbox"), w["bbox"])
+                        for b in members
+                    )
+                )
+            )
+        ]
     return list(groups.values())
 
 
@@ -392,6 +445,43 @@ def evidence_markdown(pack: dict[str, object]) -> str:
                     "",
                 ]
             )
+            # Display observed alignment with its row/column indices. Empty
+            # cells stay empty; spanning cells are explicitly marked.
+            rows = sorted({c["row"] for c in table["cells"]})
+            columns = range(1, table["column_count"] + 1)
+            if rows and table["column_count"]:
+                lines.append(
+                    "| Observed row | "
+                    + " | ".join(f"Column {c}" for c in columns)
+                    + " |"
+                )
+                lines.append("| --- | " + " | ".join("---" for _ in columns) + " |")
+                for row in rows:
+                    values = []
+                    for column in columns:
+                        cells = [
+                            c
+                            for c in table["cells"]
+                            if c["column"]
+                            <= column
+                            < c["column"] + c.get("column_span", 1)
+                            and c["row"] <= row < c["row"] + c.get("row_span", 1)
+                        ]
+                        values.append(
+                            "<br>".join(
+                                str(c["text"]).replace("|", "&#124;").replace("\n", " ")
+                                + (
+                                    f" [span from row {c['row']}, column {c['column']}]"
+                                    if c.get("row_span", 1) > 1
+                                    or c.get("column_span", 1) > 1
+                                    else ""
+                                )
+                                + f" ({c['block_id']})"
+                                for c in cells
+                            )
+                        )
+                    lines.append(f"| {row} | " + " | ".join(values) + " |")
+                lines.append("")
         for figure in entry.get("figures", []):
             figure_pages = sorted(
                 {obj["page"] for obj in figure.get("source_objects", [])}
@@ -426,6 +516,21 @@ def evidence_markdown(pack: dict[str, object]) -> str:
         )
         for group in locations:
             members = [blocks[bid] for bid in group["block_ids"]]
+            for warning in group.get("local_warnings", []):
+                lines.extend(
+                    [
+                        f"Local gap, PDF p. {group['page']}: {warning['code']} — {warning.get('detail', '')}",
+                        "",
+                    ]
+                )
+            for difference in group.get("reading_differences", []):
+                lines.extend(
+                    [
+                        f"Unresolved local difference, PDF p. {group['page']} ({difference['primary_block_id']} / {difference['alternative_block_id']}): "
+                        + json.dumps(difference["changes"], ensure_ascii=False),
+                        "",
+                    ]
+                )
             if len(members) == 1:
                 append_block(members[0])
                 continue
@@ -440,15 +545,8 @@ def evidence_markdown(pack: dict[str, object]) -> str:
                     [
                         f"{label} region, PDF p. {group['page']}: {len(members)} readings; uncertain={group['uncertain']}. {instruction}",
                         "",
-                        "<details>",
-                        f"<summary>{label} text and alternative readings (all sources retained)</summary>",
-                        "",
                     ]
                 )
-                for block in members:
-                    append_block(block)
-                lines.extend(["</details>", ""])
-                continue
             primary = [
                 b
                 for b in members

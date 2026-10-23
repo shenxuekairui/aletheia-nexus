@@ -7,6 +7,97 @@ from test_table_generalization import cells_from
 
 from aletheia_nexus.content.models import LayoutLine, PageLayout, validate_page_layout
 from aletheia_nexus.content.parser import _prepare_table_lines
+from aletheia_nexus.content.table_layout import (
+    _entry_variant_spans,
+    _table_local_warnings,
+)
+
+
+@pytest.mark.parametrize("prime", ["′", "'"])
+def test_repeated_entry_references_link_only_the_blank_descriptive_cell(prime):
+    cells = [dict(row=1, column=1, text="Entry")]
+    for row, entry, label in [
+        (2, "2", "Modifier-A"),
+        (3, "2" + prime, None),
+        (4, "7", "Modifier-B"),
+        (5, "7" + prime, None),
+    ]:
+        cells.extend(
+            [dict(row=row, column=1, text=entry), dict(row=row, column=3, text="45b")]
+        )
+        if label:
+            cells.append(dict(row=row, column=2, text=label))
+    _entry_variant_spans(cells)
+    labels = [c for c in cells if c["column"] == 2]
+    assert all(
+        c["row_span"] == 2 and c["span_evidence"] == "explicit-entry-variant"
+        for c in labels
+    )
+    assert len(cells) == 11  # No synthetic repeated values or source anchors.
+
+
+@pytest.mark.parametrize(
+    "reason", ["single-pair", "different-entry", "explicit-label", "not-entry-column"]
+)
+def test_primed_reference_never_fills_unrelated_blanks(reason):
+    cells = [
+        dict(row=1, column=1, text="Time" if reason == "not-entry-column" else "Entry")
+    ]
+    for row, entry, label in [
+        (2, "2", "Modifier-A"),
+        (3, "3′" if reason == "different-entry" else "2′", None),
+        (4, "7", "Modifier-B"),
+        (5, "7′", None),
+    ]:
+        if reason == "single-pair" and row >= 4:
+            continue
+        cells += [
+            dict(row=row, column=1, text=entry),
+            dict(row=row, column=3, text="45"),
+        ]
+        if label or reason == "explicit-label":
+            cells.append(dict(row=row, column=2, text=label or "Other"))
+    _entry_variant_spans(cells)
+    assert all("row_span" not in c for c in cells)
+
+
+@pytest.mark.parametrize("value", ["12.4", "− 12.4", "+ 12.4"])
+def test_blank_row_label_is_a_local_gap_not_an_inferred_experiment(value):
+    cells = []
+    blocks, anchors = [], {}
+    for row, label in [
+        (1, "Electrode"),
+        (2, "Group-A"),
+        (3, None),
+        (4, "Group-B"),
+        (5, None),
+    ]:
+        for col, text in [
+            (1, label),
+            (2, "ratio" if row == 1 else "0.07"),
+            (3, "ee" if row == 1 else value),
+        ]:
+            if text is None:
+                continue
+            bid = f"{row}-{col}"
+            box = [col * 0.1, 1 - row * 0.1, col * 0.1 + 0.05, 1 - row * 0.1 + 0.02]
+            cells.append(
+                dict(
+                    row=row,
+                    column=col,
+                    text=text,
+                    block_id=bid,
+                    anchor_id=bid,
+                    bbox=box,
+                )
+            )
+            blocks.append(dict(id=bid, page=1, anchor_id=bid, text=text))
+            anchors[bid] = dict(bbox=box)
+    warnings = _table_local_warnings(dict(id="t1", cells=cells), blocks, anchors)
+    gaps = [w for w in warnings if w["code"] == "TABLE_ROW_CONTEXT_MISSING"]
+    assert [(w["row"], w["columns"]) for w in gaps] == [(3, [1]), (5, [1])]
+    assert all(w["anchor_id"] in anchors and w["page"] == 1 for w in gaps)
+    assert all("row_span" not in c for c in cells)
 
 
 def line(text, x, y, width=18, scale=1):

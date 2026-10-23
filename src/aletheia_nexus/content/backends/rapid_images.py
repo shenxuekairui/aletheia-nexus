@@ -19,6 +19,7 @@ from aletheia_nexus.content.backends.image_panels import (
     associate_scales,
     join_length_fragments,
     length_key,
+    read_panel_markers,
 )
 from aletheia_nexus.content.backends.image_readings import (
     complete_edge_scripts,
@@ -58,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.4.0",
+            "adapter_version": "1.5.1",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -83,6 +84,7 @@ def extract_image_annotations(page, page_number, max_pixels):
     geometry = PageGeometry.from_page(page)
     engine = _engine()
     lines = []
+    warnings = []
     for name, image, bounds in upright_images(page, geometry, max_pixels):
         if image.width < 80 or image.height < 40:
             continue
@@ -100,6 +102,20 @@ def extract_image_annotations(page, page_number, max_pixels):
             }:
                 text = f"Image text ({colour}): {text}"
             x0, y0, x1, y1 = record["box"]
+            if record.get("warning"):
+                warnings.append(
+                    {
+                        "code": record["warning"],
+                        "page": page_number,
+                        "bbox": [
+                            (bounds[0] + x0 * sx) / geometry.width,
+                            (bounds[3] - y1 * sy) / geometry.height,
+                            (bounds[0] + x1 * sx) / geometry.width,
+                            (bounds[3] - y0 * sy) / geometry.height,
+                        ],
+                        "detail": "Observed axis tick readings are not monotonic; inspect the local signs/digits or source axis convention. No value was inferred or corrected.",
+                    }
+                )
             # Single characters are usually curve markers or atom labels. Keep
             # reliable panel letters; do not promote other isolated symbols.
             minimum = (
@@ -140,6 +156,7 @@ def extract_image_annotations(page, page_number, max_pixels):
         crop_box=geometry.crop_box,
         rotation=geometry.rotation,
         lines=tuple(lines),
+        warnings=tuple(warnings),
     )
 
 
@@ -285,4 +302,4 @@ def read_image(engine, image):
             colour = ink_colour(rgb, record["box"])
             if colour:
                 record["ink_colour"] = colour
-    return read_vertical_labels(records, rgb, read)
+    return read_vertical_labels(read_panel_markers(records, rgb, recognize), rgb, read)

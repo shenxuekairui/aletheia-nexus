@@ -43,7 +43,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.8.2"
+PARSER_VERSION = "3.9.0"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -1526,6 +1526,7 @@ class _QualityStage:
             "IMAGE_LABEL_UNRESOLVED",
             "TABLE_COLUMN_COLLISION",
             "TABLE_CONTINUATION_UNRESOLVED",
+            "TABLE_ROW_CONTEXT_MISSING",
             "OCR_ENGINE_DISAGREEMENT",
             "OCR_ORIENTATION_UNCERTAIN",
             "NATIVE_GLYPH_UNCERTAIN",

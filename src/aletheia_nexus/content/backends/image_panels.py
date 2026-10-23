@@ -101,6 +101,77 @@ def panel_boxes(image, box=None, depth=0):
     return [box]
 
 
+def read_panel_markers(records, image, recognize):
+    """Read missing corner labels inside already separated, scaled panels.
+
+    The observed gutters and scale bar trigger a small source crop. Two
+    resolutions must agree at high confidence. No alphabet/order completion
+    is allowed, and an existing conflicting reading is never overwritten.
+    """
+    from PIL import ImageOps
+
+    boxes = panel_boxes(image)
+    if len(boxes) < 2:
+        return records
+    for x0, y0, x1, y1 in boxes:
+        w, h = x1 - x0, y1 - y0
+        if min(w, h) < 80:
+            continue
+        members = [
+            r
+            for r in records
+            if not r.get("alternative")
+            and x0 <= (r["box"][0] + r["box"][2]) / 2 < x1
+            and y0 <= (r["box"][1] + r["box"][3]) / 2 < y1
+        ]
+        if not any(length_key(r["text"]) for r in members):
+            continue
+        corner = (x0, y0, x0 + w * 0.32, y0 + h * 0.28)
+        nearby = [
+            r for r in members if r["box"][0] < corner[2] and r["box"][1] < corner[3]
+        ]
+        if any(
+            re.fullmatch(r"[A-Za-z][).]?", r["text"]) and r["score"] >= 0.9
+            for r in nearby
+        ):
+            continue
+        crop = image.crop(corner)
+        readings = [
+            recognize(
+                ImageOps.expand(
+                    crop.resize((crop.width * scale, crop.height * scale)),
+                    border=8,
+                    fill="white",
+                )
+            )
+            for scale in (1, 2)
+        ]
+        if not all(r and r[1] >= 0.9 for r in readings):
+            continue
+        text = readings[0][0].strip()
+        if text != readings[1][0].strip() or not re.fullmatch(r"[A-Za-z][).]?", text):
+            continue
+        conflicts = [r for r in nearby if r["text"].rstrip(").") != text.rstrip(").")]
+        if conflicts:
+            # A complete printed marker with its delimiter may resolve an
+            # unreliable fragment. Keep that fragment as an alternative.
+            if not text.endswith((")", ".")) or any(
+                r["score"] >= 0.85 for r in conflicts
+            ):
+                continue
+            for old in conflicts:
+                old["alternative"] = True
+        records.append(
+            dict(
+                text=text,
+                score=min(r[1] for r in readings),
+                box=corner,
+                method="rapidocr-panel-corner-reading",
+            )
+        )
+    return records
+
+
 def associate_scales(records, image):
     """Attach observed scale readings to observed panels, without guessing labels.
 
@@ -220,7 +291,9 @@ def associate_scales(records, image):
                     reading["alternative"] = True
             continue
         labels = [
-            r for r in markers if inside(r) and r["box"][3] < y0 + (y1 - y0) * 0.28
+            r
+            for r in markers
+            if inside(r) and (r["box"][1] + r["box"][3]) / 2 < y0 + (y1 - y0) * 0.28
         ]
         if len(labels) == 1:
             label = labels[0]["text"].rstrip(").")

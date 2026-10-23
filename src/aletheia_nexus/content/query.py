@@ -54,7 +54,9 @@ def _contains_term(text: str, term: str) -> bool:
     """Match whole numeric magnitudes; an explicitly supplied sign must match."""
     if not re.fullmatch(r"[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?%?", term):
         return term in text
-    for match in re.finditer(r"(?<![\d.])" + re.escape(term) + r"(?![\d.])", text):
+    # A sentence-ending full stop is punctuation, not another decimal digit.
+    # Continue excluding substrings of decimals (12 inside 0.12 or 12.7).
+    for match in re.finditer(r"(?<![\d.])" + re.escape(term) + r"(?!\d|\.\d)", text):
         before = text[: match.start()]
         if before.endswith(("-", "+")) and term.startswith(("-", "+")):
             continue

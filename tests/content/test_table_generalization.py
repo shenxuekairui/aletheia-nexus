@@ -12,6 +12,74 @@ from aletheia_nexus.content.parser import (
 )
 
 
+@pytest.mark.parametrize("scale", [0.6, 1.0, 1.8])
+@pytest.mark.parametrize("offset", [0, 170])
+def test_two_line_label_straddles_one_numeric_experiment(scale, offset):
+    def line(t, x, y, w=25):
+        return LayoutLine(
+            t,
+            (x + offset) * scale,
+            y * scale,
+            (x + offset + w) * scale,
+            (y + 8) * scale,
+            8 * scale,
+            content_region="table-cell",
+        )
+
+    lines = [line("Table 1. Comparative experiments.", 25, 740, 300)]
+    for y, values in [
+        (720, ["Entry", "Material", "Yield", "ee"]),
+        (685, ["1", "Material-A", "51", "78 (S)"]),
+        (630, ["2", None, "36", "82 (R)"]),
+        (575, ["3", "Material-C", "29", "64 (S)"]),
+    ]:
+        lines.extend(
+            line(t, x, y, 90 if x == 90 else 25)
+            for t, x in zip(values, [25, 90, 240, 300])
+            if t is not None
+        )
+    lines += [line("Ligand-complex", 90, 635, 90), line("@porous-support", 90, 625, 85)]
+    _, tables = cells_from(lines, (600 + offset) * scale, 800 * scale)
+    cells, _, _ = tables[0]
+    row = next(c["row"] for c in cells if c["text"] == "36")
+    assert {c["text"] for c in cells if c["row"] == row} == {
+        "2",
+        "Ligand-complex",
+        "@porous-support",
+        "36",
+        "82 (R)",
+    }
+    assert len({c["anchor_id"] for c in cells if c["row"] == row}) == 5
+    assert next(c["row"] for c in cells if c["text"] == "Material-A") != row
+    assert next(c["row"] for c in cells if c["text"] == "Material-C") != row
+
+
+@pytest.mark.parametrize(
+    "case", ["different-column", "occupied-column", "between-experiments"]
+)
+def test_text_around_a_row_does_not_override_ambiguous_cell_identity(case):
+    def line(t, x, y, w=30):
+        return LayoutLine(t, x, y, x + w, y + 8, 8, content_region="table-cell")
+
+    lines = [line("Table 1. Separate experiments.", 30, 750, 300)]
+    for y, entry in [(710, "1"), (660, "2"), (610, "3")]:
+        lines.extend([line(entry, 30, y), line("53", 300, y), line("71", 420, y)])
+    if case == "different-column":
+        lines += [line("upper", 100, 665), line("lower", 200, 655)]
+    elif case == "occupied-column":
+        lines += [
+            line("existing", 100, 660),
+            line("upper", 100, 665),
+            line("lower", 100, 655),
+        ]
+    else:
+        lines += [line("upper", 100, 690), line("lower", 100, 680)]
+    _, tables = cells_from(lines)
+    cells, _, _ = tables[0]
+    row = next(c["row"] for c in cells if c["text"] == "2")
+    assert not {"upper", "lower"} <= {c["text"] for c in cells if c["row"] == row}
+
+
 def cells_from(lines, width=600, height=800):
     ordered = _order_lines(
         _prepare_table_lines(tuple(lines), width), width, ParserConfig()

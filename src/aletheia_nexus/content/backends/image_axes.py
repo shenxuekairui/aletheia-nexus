@@ -164,15 +164,29 @@ def associate_axes(records):
         for axis, label, values in [("Y", label, ts) for label, ts in axes] + [
             ("X", xlabel, xticks)
         ]:
+            numbers = [float(t["text"].rstrip("-–").replace("−", "-")) for t in values]
+            steps = [b - a for a, b in zip(numbers, numbers[1:])]
+            ambiguous = not (all(d > 0 for d in steps) or all(d < 0 for d in steps))
             output.append(
                 {
                     **label,
-                    "text": f"{axis} axis: {label['text']}; printed ticks: "
+                    "text": f"{axis} axis: {label['text']}; "
+                    + (
+                        "unresolved tick order; observed readings: "
+                        if ambiguous
+                        else "printed ticks: "
+                    )
                     + ", ".join(t["text"].rstrip("-–") for t in values),
                     "score": min(r["score"] for r in [label, *values]),
                     "method": "positioned-axis-label-ticks",
+                    **(
+                        {"warning": "IMAGE_AXIS_TICK_ORDER_CONFLICT"}
+                        if ambiguous
+                        else {}
+                    ),
                 }
             )
-            for original in [label, *values]:
-                original["alternative"] = True
+            if not ambiguous:
+                for original in [label, *values]:
+                    original["alternative"] = True
     return [*records, *output]

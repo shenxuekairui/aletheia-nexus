@@ -20,7 +20,7 @@ from pypdf import PdfWriter
 
 from aletheia_nexus.content.backends.superscripts import raised_glyph_box
 from aletheia_nexus.content.geometry import PageGeometry, raster_bbox_to_canonical
-from aletheia_nexus.content.models import LayoutLine, PageLayout
+from aletheia_nexus.content.models import LayoutLine, PageLayout, PageRegion
 
 
 @dataclass(frozen=True)
@@ -430,7 +430,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.5.0",
+            "adapter_version": "1.6.0",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
@@ -584,6 +584,26 @@ class TesseractOcrBackend:
         )
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
+        return self._extract_page(page, page_number)
+
+    def extract_regions(
+        self, page: Any, page_number: int, regions: tuple[PageRegion, ...]
+    ) -> PageLayout:
+        """Recognize only requested ink, preserving the full-page coordinate frame."""
+        if not regions or any(
+            not all(math.isfinite(v) for v in region.bbox)
+            or not (
+                0 <= region.bbox[0] < region.bbox[2] <= 1
+                and 0 <= region.bbox[1] < region.bbox[3] <= 1
+            )
+            for region in regions
+        ):
+            raise ValueError("OCR regions require nonempty normalized page boxes")
+        return self._extract_page(page, page_number, regions)
+
+    def _extract_page(
+        self, page: Any, page_number: int, regions: tuple[PageRegion, ...] = ()
+    ) -> PageLayout:
         geometry = PageGeometry.from_page(page)
         page_width = geometry.width
         page_height = geometry.height
@@ -644,9 +664,32 @@ class TesseractOcrBackend:
                 )
             image = rendered_image.convert("L")
             rendered_image.close()
+            if regions:
+                masked = Image.new("L", image.size, 255)
+                for region in regions:
+                    x0, y0, x1, y1 = region.bbox
+                    box = (
+                        math.floor(x0 * image.width),
+                        math.floor((1 - y1) * image.height),
+                        math.ceil(x1 * image.width),
+                        math.ceil((1 - y0) * image.height),
+                    )
+                    masked.paste(image.crop(box), box)
+                image.close()
+                image = masked
+                warnings.append(
+                    {
+                        "code": "OCR_REGIONS_SCOPED",
+                        "page": page_number,
+                        "regions": [
+                            {"bbox": list(r.bbox), "reason": r.reason} for r in regions
+                        ],
+                        "detail": "Only requested image/damaged-text ink was submitted to OCR; native page coordinates retained.",
+                    }
+                )
 
             rotation = 0
-            if self.config.detect_orientation:
+            if self.config.detect_orientation and not regions:
                 try:
                     rotation = _orientation_rotation(rendered, self.config)
                 except RuntimeError as exc:
@@ -666,7 +709,7 @@ class TesseractOcrBackend:
                     )
 
             deskew_angle = 0.0
-            if self.config.deskew:
+            if self.config.deskew and not regions:
                 proposed_angle = _deskew_angle(image)
                 if abs(proposed_angle) >= 0.25:
                     deskew_angle = proposed_angle

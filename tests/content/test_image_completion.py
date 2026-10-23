@@ -18,6 +18,58 @@ def r(text, box=(30, 30, 110, 50), score=0.99):
     return dict(text=text, box=box, score=score)
 
 
+@pytest.mark.parametrize("offset", [0, 40])
+def test_panel_corner_requires_real_gutters_scale_and_two_agreeing_readings(
+    monkeypatch, offset
+):
+    from aletheia_nexus.content.backends import image_panels as panels
+
+    Image = pytest.importorskip("PIL.Image")
+    im = Image.new("RGB", (440, 240), "gray")
+    monkeypatch.setattr(
+        panels,
+        "panel_boxes",
+        lambda _: [(offset, 0, offset + 180, 200), (240, 0, 420, 200)],
+    )
+    records = [
+        r("40 nm", (offset + 100, 170, offset + 170, 190)),
+        r("O", (offset + 5, 5, offset + 35, 40), 0.65),
+    ]
+    panels.read_panel_markers(records, im, lambda _: ("b)", 0.98))
+    assert records[1]["alternative"]
+    assert records[-1]["text"] == "b)"
+    associated = panels.associate_scales(records, im)
+    assert any(x["text"] == "Panel (b): scale 40 nm" for x in associated)
+    # The unscaled second panel gets no invented sequential marker.
+    assert sum(x.get("method") == "rapidocr-panel-corner-reading" for x in records) == 1
+
+
+@pytest.mark.parametrize(
+    "readings",
+    [
+        [("b)", 0.98), ("d)", 0.98)],
+        [("b)", 0.98), ("b)", 0.7)],
+        [("3)", 0.99), ("3)", 0.99)],
+    ],
+)
+def test_panel_corner_abstains_on_confidence_or_reading_conflict(monkeypatch, readings):
+    from aletheia_nexus.content.backends import image_panels as panels
+
+    Image = pytest.importorskip("PIL.Image")
+    monkeypatch.setattr(
+        panels, "panel_boxes", lambda _: [(0, 0, 200, 200), (210, 0, 410, 200)]
+    )
+    records = [r("40 nm", (100, 170, 170, 190))]
+    responses = iter(readings)
+    assert (
+        panels.read_panel_markers(
+            records, Image.new("RGB", (420, 200)), lambda _: next(responses)
+        )
+        == records
+    )
+    assert len(records) == 1
+
+
 def test_completion_preserves_conflicting_digits_units_and_exponents():
     for original, complete, allowed in [
         ("18 h", "18 h-1", True),
@@ -92,6 +144,24 @@ def test_two_y_axes_keep_titles_and_all_printed_ticks():
     # Competing vertical titles do not authorize choosing one silently.
     ambiguous = associate_axes([*deepcopy(records), r("flux", (11, 60, 21, 100))])
     assert not any(x.get("method") == "positioned-axis-label-ticks" for x in ambiguous)
+
+
+def test_nonmonotonic_y_ticks_get_a_local_gap_without_guessing_signs():
+    records = [r("rate", (10, 60, 20, 100)), r("concentration", (60, 185, 160, 200))]
+    records += [
+        r(str(v), (30, y, 45, y + 10))
+        for v, y in [(40, 30), (30, 65), (-10, 100), (0, 135)]
+    ]
+    records += [
+        r(str(v), (x, 165, x + 15, 175)) for v, x in [(1, 60), (2, 100), (3, 140)]
+    ]
+    output = associate_axes(records)
+    warning = next(x for x in output if x.get("warning"))
+    assert warning["warning"] == "IMAGE_AXIS_TICK_ORDER_CONFLICT"
+    assert "40, 30, -10, 0" in warning["text"]
+    assert "unresolved tick order" in warning["text"]
+    original = next(x for x in output if x["text"] == "-10")
+    assert not original.get("alternative")
 
 
 def test_formula_markup_needs_repeated_source_confirmation():

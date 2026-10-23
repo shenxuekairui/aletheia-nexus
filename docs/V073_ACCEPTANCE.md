@@ -108,3 +108,47 @@ Pending release gates: no-regression checks;
 20-task review comparison; 32+4 legacy and 20 new retrieval queries; new paired
 holdout; scientific-use review; final-commit CI and clean-install use; merged
 main verification; GitHub/PyPI publication and published-package verification.
+
+## Development evidence (not acceptance)
+
+The first 37-document fresh development extraction completed without parse-run
+errors. Subsequent code changes require another extraction; these artifacts are
+not a frozen release candidate. The six-page diagnostic probes also retained the
+original primary text while changing OCR alternatives, but counts alone do not
+establish accuracy or coverage.
+
+On the unchanged v0.7.2 delivery artifacts, the revised retrieval code obtained
+article Top1 **15/32**, Top5 **24/32**, SI **4/4**, and new-query Top5 **19/20**.
+Queries and denominators were not changed. A temporary lost caption hit was
+restored by retaining direct captions alongside region contexts. These are
+development ranking results, not new parse accuracy or final acceptance scores.
+
+Implemented mechanisms under review:
+
+- Geometric association of a two-line description straddling a numeric table
+  row; repeated explicit primed entry references for blank descriptive cells.
+  Unsupported blank row labels receive local gaps instead of copied conditions.
+- Region-limited OCR on native text pages. A whole-line mask was found to create
+  an unrelated numeric error; native glyph provenance now narrows it to affected
+  words and neighbouring context. Sparse/scanned pages retain whole-page OCR.
+- Exact scientific-text agreement, including case-sensitive unit-only labels;
+  high-confidence repeated corner readings for missing scaled-panel labels;
+  an explicit local warning for nonmonotonic observed axis ticks. No tick value
+  is repaired from an expected progression.
+- Primary row/header/footnote search, separately searchable alternatives, direct
+  figure captions, and bounded nearby-text retrieval. Repeated windows are
+  deferred, not deleted or treated as interpreted experimental relationships.
+- Visible primary table/figure evidence, observed cell alignment, local gaps and
+  reading differences, with all alternative readings retained. Display changes
+  are not credited as fewer independent source judgments.
+
+Source checks confirmed the primed-label and split-description repairs. Four
+additional microscope panel identities were read from actual corner glyphs;
+four other missing letters still require review. A local Tesseract corner probe
+did not provide reliable additional labels and was not added to the product.
+
+The deterministic suite at this development checkpoint passed **1,938** tests
+with **115** opt-in/platform skips. The frozen parser fixture evaluation retained
+all 886 gold characters, 18/18 structural assertions and 32/32 anchored blocks.
+These checks do not replace the pending real OCR/browser/platform release gate
+or scientific evaluation. The holdout remains unopened.
