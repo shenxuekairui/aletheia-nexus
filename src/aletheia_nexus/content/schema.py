@@ -432,6 +432,7 @@ def validate_parsed_document(document: object) -> None:
                 "caption-observed",
                 "caption-and-region-observed",
                 "caption-and-cell-evidence-observed",
+                "rule-and-cell-evidence-observed",
             }:
                 raise ValueError(f"{label}[{index}] has invalid evidence status")
             if label == "figures":

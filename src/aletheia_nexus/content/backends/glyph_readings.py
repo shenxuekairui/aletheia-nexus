@@ -308,6 +308,25 @@ def encoded_glyph_readings(page):
                             if toUnicode(g) == text
                         }
                     )
+                    # PDF WinAnsi is not Python's cp1252: its unused codes
+                    # above octal 040 select the bullet glyph (ISO 32000-1,
+                    # Annex D, Latin character-set table note 3). Require that
+                    # the embedded program actually paints that glyph, then
+                    # let explicit Differences below override the base map.
+                    if base == "WinAnsiEncoding" and "bullet" in glyphs:
+                        painted = RecordingPen()
+                        glyphs["bullet"].draw(painted)
+                        if any(
+                            op in {"lineTo", "curveTo", "qCurveTo"}
+                            for op, _ in painted.value
+                        ):
+                            names.update(
+                                {
+                                    code: "bullet"
+                                    for code in range(33, 256)
+                                    if code not in chars
+                                }
+                            )
                 code = 0
                 for item in diff:
                     if isinstance(item, int):

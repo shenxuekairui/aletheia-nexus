@@ -17,6 +17,11 @@ from aletheia_nexus.content.captions import (
     _deduplicate_caption_blocks,
 )
 from aletheia_nexus.content.diagnostics import safe_exception_detail
+from aletheia_nexus.content.embedded_tables import (
+    append_embedded_tables,
+    prepare_embedded_tables,
+)
+from aletheia_nexus.content.figure_labels import associate_keyed_labels
 from aletheia_nexus.content.gate import ParserInput
 from aletheia_nexus.content.geometry import PageGeometry
 from aletheia_nexus.content.models import (
@@ -43,7 +48,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.9.3"
+PARSER_VERSION = "3.10.0"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -777,6 +782,8 @@ class _NativeExtractionStage:
             ordinary = prepare_ruled_tables(
                 ordinary, layout, _caption_match, _aligned_table_fragments
             )
+            ordinary = prepare_embedded_tables(ordinary, layout)
+            ordinary = associate_keyed_labels(ordinary)
             alternatives = tuple(
                 line
                 for line in prepared_lines
@@ -1448,6 +1455,7 @@ def _objects(
         collection.append(item)
         by_block[str(block["id"])]["object_ref"] = identifier
 
+    append_embedded_tables(tables, blocks, anchor_by_id, layouts)
     meaningful_images = {
         (page_number, image.name)
         for page_number, layout in layouts.items()

@@ -58,6 +58,15 @@ default 1), with `span_evidence` describing the geometric observation. Centered,
 repeated group labels can cover multiple rows; multilevel headers can cover
 their observed child columns. Empty cells are not filled with invented values.
 These spans remain uncertain evidence, not verified scientific relationships.
+Captionless tables bounded by three painted horizontal rules can carry
+`evidence_status: rule-and-cell-evidence-observed` and
+`association: painted-rules+positioned-cells`. Their caption and label are empty;
+`caption_source: header-anchor-no-caption` states that the existing
+`caption_block_id` reference is a real header anchor, not an invented caption.
+Repeated numeric columns and unique row proximity are required. These additive
+v3 fields retain the same source blocks, anchors and cell schema; current readers
+continue to accept earlier v3 and v2 artifacts. Older strict v3 validators may
+need updating for the additional evidence-status value.
 Evidence packs retain the cell fields; text chunks provide table context but
 are not a structured measurement export. A numeric fragment that straddles rows
 is retained and flagged rather than silently discarded or assigned a guessed row.

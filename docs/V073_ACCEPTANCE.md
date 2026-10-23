@@ -215,7 +215,7 @@ skipped vector runs; a text-only Methods page creates no such region. Two OCR
 probes of the same exposed page recover omitted table values and separate wide
 columns, but still misread some catalyst labels and fail to recover a current
 unit. **These are incomplete local repairs, not passing scientific answers.**
-Those failures remain regression targets. Current identities are native1.19.0,
+Those failures remain regression targets. At that repair, identities were native1.19.0,
 adaptive1.10.0, Tesseract adapter1.8.0 and parser3.9.3. Full-corpus regressions,
 burden/retrieval/export checks and a new sealed first evaluation remain due.
 
@@ -223,9 +223,47 @@ The second source frame retains the original 12-main/4-SI and 60-question
 distribution and all gates. It has 673 pages. No PDF hash matches the prior
 exposure inventory or the first opened set. One access-blocked Science article
 was replaced by the prospectively recorded Chemical Science reserve before AN
-parsing. Sources are being inspected to prepare the second seal; no default AN
+parsing. The second seal was completed at **2026-10-23 22:58:03 UTC**, before
+any AN execution on these files. Its 60 source-reviewed questions retain the
+16 prose / 20 table / 12 figure / 12 SI distribution and unchanged scoring gates.
+Three table-category questions concern borderless aligned experiment lists
+inside a figure; that subtype will also be reported separately. Main first-page
+DOIs, titles/authors and publisher-linked SI identities were checked. No default AN
 output for these new materials has been opened. This remains an implementing
 assistant's source-first evaluation, not external or double-blind review.
+
+- `protocol/holdout-v2.json`: SHA-256
+  `c765c5034a96625e6324f32646e69e2b2f18a477af20b0392f56fc1457d4ff8b`.
+- Candidate/runtime freeze and execution of this second set remain pending.
+
+Hosted run `40033857056` passed all eight jobs on vector-repair commit
+`6ce904718018488a6439b3152831cdd09694ce2d`. This is development CI, not acceptance.
+
+Further exposed-source checks found a captionless table inside a figure. Its
+three painted rules and repeated numeric columns are now used to retain wrapped
+conditions in their observed rows, preventing paragraph merging across distinct
+experiments. No caption is invented. Repeated, explicitly keyed measurements
+under uniquely aligned figure labels can also retain the label, value and signed
+error together; all displaced fragments remain available as alternatives.
+Competing labels, column crossings, ambiguous row proximity and incomplete
+repeated keys abstain from grouping. These are observed layout associations.
+
+A remaining missing glyph in the same source was traced to PDF WinAnsi's unused
+code aliases, which differ from an ordinary Windows text codec. The embedded
+program contains the actual bullet glyph. Recovery now follows the base encoding
+while honoring explicit Differences and ToUnicode; blank/missing glyph programs
+do not authorize the repair. This follows [ISO 32000-1, Annex D, Latin character
+set note 3](https://opensource.adobe.com/dc-acrobat-sdk-docs/standards/pdfstandards/pdf/PDF32000_2008.pdf),
+without chemical vocabulary or sample-value replacements.
+
+The focused suite passes 106 tests; the content suite passes 536 with three
+existing opt-in skips. Exposed-page probes restore one five-experiment table,
+three separate mass/error label groups, and the missing bullet; three other
+source layouts create no new embedded grid or keyed group. These are regressions,
+not new first scores. Initial fixture failures (a missing required title and a
+counterexample that did not actually cross the neighboring column) are retained
+in the local test logs. Current parser identity is **3.10.0**, native backend
+**1.19.1**; complete scientific regressions and release verification remain due.
 
 ## Completed exposed development acceptance and candidate freeze
 

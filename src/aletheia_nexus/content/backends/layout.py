@@ -239,7 +239,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.0"
+    version = "1.19.1"
 
     @property
     def execution_identity(self) -> dict[str, object]:
