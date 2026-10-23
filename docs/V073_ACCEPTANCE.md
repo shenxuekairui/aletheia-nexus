@@ -5,7 +5,8 @@ closure conditions. Protocol: [V073_FINAL_PLAN.md](V073_FINAL_PLAN.md).
 
 Baseline: v0.7.2, commit `643094b943c7ab9c7aa7de4ef5897d688617ae6f`.
 Historical first scores remain historical. The exposed development results
-below are complete; sealed first-run accuracy and publication remain pending.
+below are complete; the first native-only holdout result is recorded below.
+The locked primary OCR pair and publication remain pending.
 No independent third-party review or human-time improvement is claimed.
 
 The task-local evidence ledger records baseline hashes, complete historical
@@ -70,7 +71,8 @@ parsing of these sources, 60 questions and source oracles were hash-locked:
 articles (9 English, 3 Chinese) and 4 associated SI PDFs, **671 pages** retained
 in full. Original pages supporting every answer were rendered and visually
 inspected by the implementing assistant. This is not external independent
-review or double-blind testing. No holdout score is available yet.
+review or double-blind testing. The first native-only score is now recorded
+below; the primary OCR pair continues with the frozen candidate and settings.
 
 The expanded prior-exposure inventory conservatively excludes 312 identities,
 including downloaded but previously unparsed PDFs. No sample hash, DOI or
@@ -108,6 +110,68 @@ and no human speedup is claimed. Per-task times were not measured.
 Pending release gates: new paired holdout; final scientific-use review;
 final-commit CI and clean-install use; merged main verification; GitHub/PyPI
 publication and published-package verification.
+
+## First holdout result: native-only configuration
+
+Both frozen native-only runs completed all 16 PDFs / 671 pages with zero
+runtime errors. Manual source-page adjudication covers all 60 frozen questions;
+the denominator and required facts are unchanged. These are first results,
+not repaired regressions. The implementing assistant performed the review.
+
+| Native-only measure | v0.7.2 | Frozen v0.7.3 candidate |
+| --- | ---: | ---: |
+| Complete default primary reading | 33/60 (55%) | 33/60 (55%) |
+| Prose | 15/16 | 15/16 |
+| Table | 11/20 | 11/20 |
+| Figure | 2/12 | 2/12 |
+| SI | 5/12 | 5/12 |
+| Questions containing an unflagged critical error | 16 | 15 |
+
+The one disclosure improvement is a localized membrane-name glyph warning;
+the primary name remains wrong and the question still fails. These results
+do not establish a correctness improvement. Native-only parsing leaves
+important image text, table relationships and shared conditions unresolved.
+Some embedded-font recovery also inserts false equals signs into quantities
+and units; a correct original reading retained in a diagnostic does not rescue
+the default primary reading. Original main/SI and table/prose conflicts remain
+separate rather than being reconciled by the parser.
+
+| Source identity | v0.7.2 complete | v0.7.3 complete |
+| --- | ---: | ---: |
+| H01 / H01-SI | 6/8; 1/3 | 6/8; 1/3 |
+| H02 | 3/3 | 3/3 |
+| H03R | 1/3 | 1/3 |
+| H04R | 1/5 | 1/5 |
+| H05 / H05-SI | 2/3; 2/3 | 2/3; 2/3 |
+| H06 / H06-SI | 3/4; 2/3 | 3/4; 2/3 |
+| H07 | 1/4 | 1/4 |
+| H08 / H08-SI | 1/4; 0/3 | 1/4; 0/3 |
+| H09 | 3/3 | 3/3 |
+| H10 | 1/3 | 1/3 |
+| H11 | 3/4 | 3/4 |
+| H12 | 3/4 | 3/4 |
+
+The local adjudication contains every question, failure category, inspected
+primary block, source hash, artifact hash, page and bounding box. The H08
+table caption continuation is explicitly cited on its actual page 8; the
+frozen target table stays on page 6. The source-discrepancy question includes
+both the SI page 11 and related main-article page 3. No source page is silently
+relocated to make an answer appear complete.
+
+- `holdout-native-first-adjudication.json`:
+  `2c20d97444772554416880a7c111f6a284676ce0a37a6043ad944d32645aeb36`
+- Frozen candidate source commit:
+  `9a6d27d5f874bb3a00bbb4aab26f826d4c97ab96`
+- `protocol/candidate-freeze.json`:
+  `bee5b85c1fb4c078c4088966ddb4e35204e6a1d8c4322b195cd296e3c916a875`
+
+The prospectively chosen primary acceptance configuration includes the locked
+optional OCR. That paired run is still in progress, unchanged. Its result must
+be reported separately. This native-only score cannot be substituted for it,
+nor can engineering success establish scientific acceptance. If this set is
+used to repair the implementation, all 60 questions become regression data;
+these first scores remain intact and new independent first results require a
+new source-first seal under the same protocol.
 
 ## Completed exposed development acceptance and candidate freeze
 
