@@ -376,7 +376,8 @@ def test_tesseract_configuration_and_tsv_coordinates():
     assert lines[0].source_engines == ("tesseract@5",)
 
 
-def test_regional_ocr_masks_ink_without_moving_evidence(monkeypatch):
+@pytest.mark.parametrize("psm", [3, 6])
+def test_regional_ocr_masks_ink_without_moving_evidence(monkeypatch, psm):
     from subprocess import CompletedProcess
 
     from pypdf import PdfWriter
@@ -385,7 +386,9 @@ def test_regional_ocr_masks_ink_without_moving_evidence(monkeypatch):
     from aletheia_nexus.content.models import PageRegion
 
     Image = pytest.importorskip("PIL.Image")
-    backend = TesseractOcrBackend(TesseractOcrConfig(binarize=False))
+    backend = TesseractOcrBackend(
+        TesseractOcrConfig(binarize=False, page_segmentation_mode=psm)
+    )
     writer = PdfWriter()
     page = writer.add_blank_page(width=100, height=100)
     seen = []
@@ -395,6 +398,7 @@ def test_regional_ocr_masks_ink_without_moving_evidence(monkeypatch):
             Image.new("L", (400, 400), 0).save(command[-1] + ".png")
             return CompletedProcess(command, 0, "", "")
         im = Image.open(command[1])
+        assert command[command.index("--psm") + 1] == str(11 if psm == 3 else psm)
         assert im.size == (400, 400)
         assert im.getpixel((100, 100)) == 0  # canonical top-left requested area
         assert im.getpixel((100, 300)) == 255
@@ -409,12 +413,39 @@ def test_regional_ocr_masks_ink_without_moving_evidence(monkeypatch):
 
     monkeypatch.setattr(tesseract, "_run", run)
     result = backend.extract_regions(
-        page, 1, (PageRegion("figure", (0.2, 0.6, 0.4, 0.8), "damaged"),)
+        page, 1, (PageRegion("text", (0.2, 0.6, 0.4, 0.8), "damaged"),)
     )
     assert len(seen) == 1  # no orientation/deskew on a masked native page
     assert result.lines[0].x0 == 25
     assert result.lines[0].y0 == 70
     assert result.warnings[0]["code"] == "OCR_REGIONS_SCOPED"
+
+
+def test_scoped_figures_retain_page_context_and_conflicts_but_not_prose(monkeypatch):
+    from aletheia_nexus.content.models import PageRegion
+
+    label = _ocr_line("Catalyst B", 0.98, "ocr")
+    competing = replace(label, text="Catalyst 8", content_region="ocr-alternative")
+    prose = replace(label, text="Clear native method", y0=700, y1=720)
+    glyph = replace(label, text="9 μL", x0=400, x1=450, y0=100, y1=120)
+    full = PageLayout(page=1, width=600, height=800, lines=(label, competing, prose))
+    text_region = PageRegion("text", (0.6, 0.1, 0.8, 0.2), "damaged glyph")
+    calls = []
+    backend = TesseractOcrBackend()
+
+    def extract(_page, _number, regions=()):
+        calls.append(regions)
+        return replace(full, lines=(glyph,)) if regions else full
+
+    monkeypatch.setattr(backend, "_extract_page", extract)
+    result = backend.extract_regions(
+        None,
+        1,
+        (PageRegion("figure", (0.08, 0.48, 0.55, 0.55), "image"), text_region),
+    )
+    assert calls == [(), (text_region,)]
+    assert result.lines == (label, competing, glyph)
+    assert result.warnings[0]["code"] == "OCR_FIGURE_READINGS_SCOPED"
 
 
 def test_tesseract_refuses_raster_allocation_over_budget():

@@ -152,3 +152,25 @@ with **115** opt-in/platform skips. The frozen parser fixture evaluation retaine
 all 886 gold characters, 18/18 structural assertions and 32/32 anchored blocks.
 These checks do not replace the pending real OCR/browser/platform release gate
 or scientific evaluation. The holdout remains unopened.
+
+The full hosted matrix on development commit `c135ef1` subsequently passed all
+eight jobs (Python 3.11–3.14, Windows/Chromium, browser extra, OCR extra and clean
+wheel packaging), run `39992117162`. It is not the final release-commit gate.
+Fresh development extraction with its preceding implementation gave article
+Top1 14/32, Top5 23/32, SI 4/4 and new-query Top5 19/20; the original query
+30-A2 lost its designated hit and remains reported as a failure.
+
+Whole-corpus primary-text comparison then rejected the `c135ef1` OCR masking
+strategy for release: some valid figure labels disappeared when surrounding
+page ink was masked, and isolated damaged words could be joined across columns.
+These failures were outside the frozen question targets and were found before
+opening the holdout. A smaller number of candidates was therefore not credited
+as an acceptance benefit. Figure OCR now retains page segmentation context and
+selects only readings at painted images; masked native-glyph regions use sparse
+text segmentation (an explicitly requested segmentation mode remains respected).
+Original image labels, conflicting readings and page coordinates are checked
+separately from readable prose. Targeted source probes recovered the lost labels
+and removed the observed cross-column fragment. Another fresh corpus run and
+coverage adjudication are required before candidate freeze. The local failed
+extraction, comparison and probe records remain available; no first score was
+overwritten.

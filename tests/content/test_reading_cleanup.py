@@ -150,6 +150,7 @@ def test_local_triggers_route_ink_regions_but_scans_use_full_page(scan):
             PageObject(
                 "image", "chart", bbox=(0, 0, 1, 1) if scan else (0.1, 0.1, 0.8, 0.3)
             ),
+            PageObject("image", "small chemical scheme", bbox=(0.8, 0.1, 0.9, 0.2)),
         ),
     )
     calls = []
@@ -177,10 +178,11 @@ def test_local_triggers_route_ink_regions_but_scans_use_full_page(scan):
     if scan:
         assert calls == ["full"]
     else:
-        assert len(calls) == 2
+        assert len(calls) == 3
         assert calls[0].bbox == (0.1, 0.1, 0.8, 0.3)
-        assert calls[1].bbox[1] < 300 / 800 < 320 / 800 < calls[1].bbox[3]
-        assert calls[1].bbox[3] < 400 / 800  # Clean native method is not submitted.
+        assert calls[1].bbox == (0.8, 0.1, 0.9, 0.2)
+        assert calls[2].bbox[1] < 300 / 800 < 320 / 800 < calls[2].bbox[3]
+        assert calls[2].bbox[3] < 400 / 800  # Clean native method is not submitted.
 
 
 def block(id, box, region="body", page=1, text="80.90%"):

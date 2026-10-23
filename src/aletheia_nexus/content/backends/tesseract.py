@@ -430,7 +430,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.6.0",
+            "adapter_version": "1.7.0",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
@@ -589,7 +589,7 @@ class TesseractOcrBackend:
     def extract_regions(
         self, page: Any, page_number: int, regions: tuple[PageRegion, ...]
     ) -> PageLayout:
-        """Recognize only requested ink, preserving the full-page coordinate frame."""
+        """Keep figure context; mask isolated damaged text in page coordinates."""
         if not regions or any(
             not all(math.isfinite(v) for v in region.bbox)
             or not (
@@ -599,7 +599,56 @@ class TesseractOcrBackend:
             for region in regions
         ):
             raise ValueError("OCR regions require nonempty normalized page boxes")
-        return self._extract_page(page, page_number, regions)
+        figures = tuple(r for r in regions if r.region_type == "figure")
+        text = tuple(r for r in regions if r.region_type != "figure")
+        layouts = []
+        if figures:
+            # Masking surrounding text changes Tesseract's figure segmentation:
+            # labels can vanish or adjacent captions can merge. Retain its
+            # original page context, then select only observed figure readings.
+            full = self._extract_page(page, page_number)
+
+            def in_figure(line):
+                box = (
+                    line.x0 / full.width,
+                    line.y0 / full.height,
+                    line.x1 / full.width,
+                    line.y1 / full.height,
+                )
+                area = (box[2] - box[0]) * (box[3] - box[1])
+                for region in figures:
+                    x0, y0, x1, y1 = region.bbox
+                    overlap = max(0, min(box[2], x1) - max(box[0], x0)) * max(
+                        0, min(box[3], y1) - max(box[1], y0)
+                    )
+                    denominator = min(area, (x1 - x0) * (y1 - y0))
+                    if denominator > 0 and overlap / denominator >= 0.35:
+                        return True
+                return False
+
+            selected = tuple(line for line in full.lines if in_figure(line))
+            layouts.append(
+                replace(
+                    full,
+                    lines=selected,
+                    warnings=full.warnings
+                    + (
+                        {
+                            "code": "OCR_FIGURE_READINGS_SCOPED",
+                            "page": page_number,
+                            "regions": [list(r.bbox) for r in figures],
+                            "detail": f"Retained {len(selected)} of {len(full.lines)} page-context OCR lines at painted images; readable native prose is not a competing reading.",
+                        },
+                    ),
+                )
+            )
+        if text:
+            layouts.append(self._extract_page(page, page_number, text))
+        return replace(
+            layouts[0],
+            lines=tuple(line for layout in layouts for line in layout.lines),
+            warnings=tuple(w for layout in layouts for w in layout.warnings),
+        )
 
     def _extract_page(
         self, page: Any, page_number: int, regions: tuple[PageRegion, ...] = ()
@@ -747,7 +796,13 @@ class TesseractOcrBackend:
                         else []
                     ),
                     "--psm",
-                    str(self.config.page_segmentation_mode),
+                    # Masked word regions are sparse, unrelated text fragments.
+                    # Ordinary page segmentation can join separate columns.
+                    str(
+                        11
+                        if regions and self.config.page_segmentation_mode == 3
+                        else self.config.page_segmentation_mode
+                    ),
                     "-c",
                     "tessedit_create_tsv=1",
                 ],

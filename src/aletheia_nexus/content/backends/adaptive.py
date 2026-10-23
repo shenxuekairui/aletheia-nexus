@@ -410,7 +410,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.9.1"
+    version = "1.9.2"
 
     def __init__(
         self,
@@ -457,7 +457,7 @@ class AdaptiveOcrBackend:
                 for item in native.objects
                 if item.object_type == "image"
                 and item.bbox is not None
-                and _area(item.bbox) >= self.config.unanchored_image_min_area
+                and _area(item.bbox) > 0
             )
             for line in native.lines:
                 if line.uncertain:
