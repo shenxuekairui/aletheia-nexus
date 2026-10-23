@@ -82,7 +82,7 @@ does not rescue a failed primary answer.
 ## Configuration and holdout
 
 Primary acceptance configuration: the shipped CLI defaults with optional local
-OCR enabled, `--ocr --image-ocr rapidocr`, one Tesseract `tessdata_best` model set
+OCR enabled, `--ocr --image-ocr rapidocr --ocr-languages chi_sim+eng`, one Tesseract `tessdata_best` model set
 with `chi_sim+eng`, 300 DPI, standard resource limits and paragraph merging. No
 per-paper backend, model, parameter or output selection. Freeze exact runtime,
 binary/model hashes and CLI-equivalent options before running. Run native-only
@@ -138,3 +138,10 @@ task definitions and query text are separate hash-locked local manifests; their
 public hashes and aggregate results belong in `V073_ACCEPTANCE.md`. Incomplete
 evidence is a pending gate, not a passing result. Failures remain blockers in
 0.7.3; nonblocking limitations are documented without expanding scope.
+
+Before implementation, the 75-question audit additionally distinguishes the
+historical content-preservation rubric (which accepted legible adjacent table
+text) from the strict default-relation rubric above. Blank shared experiment
+labels that require reconstruction fail the latter even when their component
+text is preserved. Both results must be reported; neither rewrites historical
+scores. This clarification does not weaken any release gate.
