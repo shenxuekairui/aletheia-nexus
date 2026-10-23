@@ -43,7 +43,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.9.0"
+PARSER_VERSION = "3.9.1"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"

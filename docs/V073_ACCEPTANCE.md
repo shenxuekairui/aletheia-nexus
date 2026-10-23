@@ -215,3 +215,16 @@ failed in the ledger; it is not relabelled green or weakened. The mandatory full
 RC command in `CI_ARCHITECTURE.md` remains unchanged. Native partial coverage is
 reported as a usage boundary, separately from the locked optional-OCR scientific
 acceptance configuration.
+
+The next structural audit compared table-row relationships, not only retained
+characters. It found an additional blocker in the exposed review table: newly
+retained vector-diagram OCR interrupted grid detection, leaving the numeric
+columns outside the table object. The table detector now continues past short
+OCR fragments only when they lie inside the same empty column interval between
+two aligned numeric experiments. Those fragments remain source blocks; neither
+their text nor experimental conditions are copied into another row. Native
+labels, standalone numbers, changed columns, intervening captions and prose
+are counterexamples. The parser execution version is now 3.9.1. The content
+suite passes 487 tests with three opt-in skips. Complete extraction and a
+separate structural replay are being checked before candidate freeze; replay
+is explicitly distinguished from fresh OCR and from unseen evaluation.

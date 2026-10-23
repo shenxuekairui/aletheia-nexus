@@ -443,6 +443,13 @@ def _prepare_table_lines(
                         grid.extend(row)
                         previous_y = min(item.y0 for item in row)
                         continue
+                if grid and _interstitial_ocr_row(
+                    row, last_dense_row, rows[row_index + 1 : row_index + 5], size
+                ):
+                    # Diagram lettering can sit between experiments in an
+                    # otherwise aligned numeric grid. It remains a source
+                    # block, but cannot terminate or become a numeric row.
+                    continue
                 break
             grid.extend(row)
             last_dense_row = row
@@ -621,6 +628,61 @@ def _prepare_table_lines(
             else (replacements.get(id(item), item),)
         )
     )
+
+
+def _interstitial_ocr_row(row, previous, following, size):
+    """Recognize extra OCR ink only inside a stable gap between data columns."""
+
+    def numeric(item):
+        return bool(
+            _CELL_NUMBER.fullmatch(item.text.strip())
+            or _CELL_ANNOTATED_NUMBER.fullmatch(item.text.strip())
+        )
+
+    if not previous or not all(
+        "ocr" in item.extraction_method
+        and len(item.text) <= 32
+        and any(c.isalpha() for c in item.text)
+        and not numeric(item)
+        and not _caption_match(item.text)
+        for item in row
+    ):
+        return False
+    old_numeric = [item for item in previous if numeric(item)]
+    if len(old_numeric) < 2:
+        return False
+    for candidate in following:
+        if any(len(item.text) > 80 or _caption_match(item.text) for item in candidate):
+            return False
+        values = [item for item in candidate if numeric(item)]
+        if len(values) < 2:
+            continue
+        if (
+            len(values) != len(old_numeric)
+            or max(item.y1 for item in row) - max(item.y1 for item in candidate)
+            > size * 10
+            or not all(
+                abs(a.x0 - b.x0) <= size
+                for a, b in zip(
+                    sorted(old_numeric, key=lambda item: item.x0),
+                    sorted(values, key=lambda item: item.x0),
+                )
+            )
+        ):
+            return False
+
+        # Both experiments must leave the same horizontal interval empty.
+        def within_gap(item, cells):
+            ordered = sorted(cells, key=lambda cell: cell.x0)
+            return any(
+                left.x1 + size < item.x0 and item.x1 < right.x0 - size
+                for left, right in zip(ordered, ordered[1:])
+            )
+
+        return all(
+            within_gap(item, previous) and within_gap(item, candidate) for item in row
+        )
+    return False
 
 
 def _table_cells(
