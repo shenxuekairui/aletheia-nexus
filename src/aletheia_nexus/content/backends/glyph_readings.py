@@ -267,6 +267,9 @@ def encoded_glyph_readings(page):
             elif font.get("/Subtype") == "/Type1":
                 descriptor = font["/FontDescriptor"]
                 quadratic = False
+                cmap = FileUnicodeMap()
+                if "/ToUnicode" in font:
+                    CMapParser(cmap, io.BytesIO(font["/ToUnicode"].get_data())).run()
                 if "/FontFile" in descriptor:
                     glyphs, matrix, encoding = _type1_font(
                         descriptor["/FontFile"].get_data()
@@ -347,6 +350,26 @@ def encoded_glyph_readings(page):
                 glyphs[glyph_name].draw(
                     Qu2CuPen(pen, 1, all_cubic=True) if quadratic else pen
                 )
+                # Some PDFs map an encoded, named capital to its lowercase
+                # Unicode while still painting the capital. Require two actual,
+                # different embedded outlines; no word or chemical dictionary.
+                if (
+                    font.get("/Subtype") == "/Type1"
+                    and len(glyph_name) == 1
+                    and "A" <= glyph_name <= "Z"
+                    and cmap.cid2unichr.get(cid) == glyph_name.lower()
+                    and glyph_name.lower() in glyphs
+                ):
+                    lower = RecordingPen()
+                    glyphs[glyph_name.lower()].draw(lower)
+                    painted = {"lineTo", "curveTo", "qCurveTo"}
+                    if (
+                        any(op in painted for op, _ in pen.value)
+                        and any(op in painted for op, _ in lower.value)
+                        and pen.value != lower.value
+                    ):
+                        result[(name, cid)] = glyph_name
+                        continue
                 if (value := geometric_reading(pen.value, units)) and value not in {
                     "≈",
                 }:

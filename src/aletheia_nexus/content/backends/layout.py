@@ -174,6 +174,12 @@ class _ClippedPageAggregator(PDFPageAggregator):
         )
         char = self.cur_item._objs[-1]
         char.an_resource_id = font.an_resource_id
+        # Text rise (Ts) moves the painted baseline without changing LTChar's
+        # text matrix. Rotated scripts need the actual origin, not only Tm.
+        char.an_text_origin = (
+            matrix[4] + rise * matrix[2],
+            matrix[5] + rise * matrix[3],
+        )
         program_reading = self.program_readings.get((char.an_resource_id, cid))
         if (
             program_reading
@@ -239,7 +245,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.1"
+    version = "1.19.2"
 
     @property
     def execution_identity(self) -> dict[str, object]:

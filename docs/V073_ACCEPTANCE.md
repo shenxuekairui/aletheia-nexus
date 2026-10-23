@@ -290,6 +290,28 @@ Hosted run `40038639189` on `e86d8a9` passed seven of eight jobs. Its Windows
 real-browser HTTP 429/session-pause test failed and remains under investigation;
 it is not a passing final CI result.
 
+The exposed figure-axis audit identified raised rotated numerals separated from
+their base label. Native extraction now uses the actual text origin (including
+PDF text rise), relative glyph size, displacement and unique adjacency to retain
+a short raised number as a superscript. Competing bases, overlapping candidates,
+equal-sized annotations and lower annotations do not acquire an exponent role.
+Both rotation directions and three scales are covered. Three source axis labels
+recover their signed exponents; other inspected native labels stay intact.
+
+Another source font maps encoded capitals to lowercase Unicode despite painting
+named uppercase glyphs. A case-only repair now requires an explicit uppercase
+encoding and two present, different, painted uppercase/lowercase outlines in
+the same embedded Type1 font. Custom encoding overrides, blank or identical
+outlines, and non-case mappings are counterexamples. Original mappings and local
+correction records remain. Source checks restore the table's chemical-label case
+without chemistry lookup. Neither repair changes the original PDF.
+
+The focused combined suite passes 41 tests, and the content suite passes **570**
+with three existing opt-in skips. Initial tests exposed the missing text-rise
+origin and an incorrect test expectation about line-versus-character diagnostic
+fields; their logs are preserved. Native backend identity is now **1.19.2**.
+These source-page probes still require complete fresh scientific regression.
+
 ## Completed exposed development acceptance and candidate freeze
 
 The fresh `development-h` run completed 54 exposed documents / 503 pages, with
