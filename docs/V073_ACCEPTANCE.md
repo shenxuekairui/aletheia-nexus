@@ -38,6 +38,43 @@ access state. These observations do not establish the hosted failures' cause
 or waive them. The original logs remain in the evidence ledger; the final
 commit still requires every hosted job to succeed.
 
+The next hosted run, `40047629818` on `5815223`, passed all eight jobs. Its
+local deterministic suite passed 2,085 tests (115 opt-in/platform skips), real
+browser tests 119 and ordinary-browser tests two. The full local RC report
+remains failed because that invocation omitted the installed OCR executables
+from `PATH`; the unchanged real OCR test passed after setting their paths.
+These are recorded separately, not a rewritten successful RC report.
+
+A complete fresh two-document exposed regression on `5815223` passed **5/8**
+frozen questions. The product/footnote group and indexed experiment rows were
+recovered, but the L7 result group, unreadable membrane-name glyph and bar-chart
+primary fusion still failed. In particular, correct source-image bar relations
+were being demoted by overlapping standalone OCR labels. A successful isolated
+image probe was therefore not credited as a default complete answer.
+
+The subsequent development correction distinguishes a relationship's evidence
+extent from the extent of its source labels. Local OCR disagreements still
+compare with those source readings and remain exported; relationships stay
+uncertain layout evidence. The exposed page now keeps all three printed bar
+groups as primary and the erroneous `435` as a local alternative to `43.5`.
+Percentage-result grouping distinguishes close rows within each repeated
+column and recognizes AN's ink-colour display prefix without deleting it.
+Observed plot-frame strokes prevent false internal panel cuts; actual wide
+gutters and printed parenthesized panel letters are supported. The demonstrated
+false `803 cm`/`800 cm` scale associations disappear without discarding the
+readings or inferring their missing reciprocal-unit signs.
+
+Local OCR may also fill an explicit missing native letter glyph when a unique
+positioned word preserves its surrounding letters, line context and all
+numbers. It does not copy the OCR's other spelling changes. Original native
+text, full OCR and a local substitution record survive. Numeric gaps, case
+conflicts, repeated matches, missing glyph positions and low confidence abstain.
+The exposed source replay recovers the membrane name while preserving the
+native catalyst and unit that OCR misread. This replay is not fresh extraction
+or a new first result. The content suite passes **636** tests (three opt-in
+skips); the complete deterministic suite passes 2,107 (115 opt-in/platform
+skips). Fresh complete regression remains required.
+
 The implementing assistant inspected 36 rendered source pages covering all 75
 historically scorable questions plus the separately excluded source-glyph item.
 This is a current source audit, not a new blind test or third-party review.

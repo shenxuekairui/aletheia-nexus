@@ -59,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.5.6",
+            "adapter_version": "1.5.7",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -141,7 +141,12 @@ def extract_image_annotations(page, page_number, max_pixels):
                     y0=max(bounds[1], bounds[3] - y1 * sy),
                     y1=min(bounds[3], bounds[3] - y0 * sy),
                     font_size=max(1, min((x1 - x0) * sx, (y1 - y0) * sy)),
-                    extraction_method=record.get("method", "rapidocr-source-image"),
+                    extraction_method=record.get("method", "rapidocr-source-image")
+                    + (
+                        "+association-source"
+                        if record.get("association_source")
+                        else ""
+                    ),
                     extraction_confidence=float(score),
                     source_engines=(
                         f"rapidocr@{metadata.version('rapidocr')}+image-label",

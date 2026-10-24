@@ -14,7 +14,10 @@ from aletheia_nexus.content.backends.base import (
     RegionExtractionBackend,
 )
 from aletheia_nexus.content.backends.layout import LayoutPdfBackend
-from aletheia_nexus.content.backends.readings import corroborate_chinese
+from aletheia_nexus.content.backends.readings import (
+    corroborate_chinese,
+    recover_word_glyphs,
+)
 from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.models import (
     LayoutLine,
@@ -24,6 +27,11 @@ from aletheia_nexus.content.models import (
 )
 
 _FORMULA_TEXT = re.compile(r"(?:[=≈≤≥±∑∫√→←]|[αβγδεϵζηθικλμνξοπρστυφχψωΓΔΘΛΞΠΣΦΨΩ])")
+_LAYOUT_ASSOCIATIONS = {
+    "printed-bar-label-association",
+    "positioned-panel-scale",
+    "positioned-axis-label-ticks",
+}
 
 
 @dataclass(frozen=True)
@@ -436,7 +444,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.10.0"
+    version = "1.10.1"
 
     def __init__(
         self,
@@ -704,6 +712,13 @@ class AdaptiveOcrBackend:
                     # merely because it arrived before that reading.
                     supplements.append(line)
                     continue
+                if line.extraction_method in _LAYOUT_ASSOCIATIONS:
+                    # A relationship spans multiple printed labels. Its box is
+                    # evidence scope, not the extent of one competing text line.
+                    # Keep it uncertain and compare OCR against its individual
+                    # source readings below, never against the relationship text.
+                    supplements.append(replace(line, uncertain=True))
+                    continue
                 covering = [
                     existing
                     for existing in native.lines
@@ -810,6 +825,65 @@ class AdaptiveOcrBackend:
                         / max(native_box[2] - native_box[0], 1e-12)
                         >= 0.8
                     )
+                    recovered, substitutions = recover_word_glyphs(existing, line)
+                    if (
+                        substitutions
+                        and existing.uncertain
+                        and confidence >= 0.9
+                        and comparable_area
+                        and covers_native_line
+                        and _number_signature(existing.text)
+                        == _number_signature(line.text)
+                        and _agreement(existing.text, line.text) >= 0.9
+                    ):
+                        native_lines[index] = replace(
+                            existing,
+                            text=recovered,
+                            extraction_method="native-local-ocr-glyph-recovery",
+                            source_engines=tuple(
+                                dict.fromkeys(
+                                    existing.source_engines + line.source_engines
+                                )
+                            ),
+                            glyph_spans=(),
+                            uncertain=True,
+                        )
+                        supplements.extend(
+                            (
+                                replace(
+                                    existing,
+                                    content_region="native-alternative",
+                                    uncertain=True,
+                                ),
+                                replace(
+                                    line,
+                                    content_region="ocr-alternative",
+                                    uncertain=True,
+                                ),
+                            )
+                        )
+                        for start, end, letters in substitutions:
+                            span = next(
+                                s for s in existing.glyph_spans if s[0] <= start < s[1]
+                            )
+                            warnings.append(
+                                {
+                                    "code": "OCR_GLYPH_WORD_RECOVERED",
+                                    "page": native.page,
+                                    "bbox": [
+                                        span[2] / native.width,
+                                        existing.y0 / native.height,
+                                        span[3] / native.width,
+                                        existing.y1 / native.height,
+                                    ],
+                                    "detail": "An explicit missing native letter glyph is filled from one positioned OCR word with unchanged surrounding letters. All other native text is preserved; the original and complete OCR remain alternatives.",
+                                    "before": existing.text[start:end],
+                                    "after": letters,
+                                    "native_text": existing.text,
+                                    "ocr_text": line.text,
+                                }
+                            )
+                        continue
                     if (
                         existing.text != original.text
                         and confidence >= 0.8
@@ -920,7 +994,9 @@ class AdaptiveOcrBackend:
                     (
                         (index, existing)
                         for index, existing in enumerate(supplements)
+                        if existing.extraction_method not in _LAYOUT_ASSOCIATIONS
                         if not existing.content_region.endswith("alternative")
+                        or existing.extraction_method.endswith("+association-source")
                         if _overlap(line_box, _line_bbox(existing, native))
                         >= self.config.bbox_overlap_threshold
                     ),
@@ -964,7 +1040,20 @@ class AdaptiveOcrBackend:
                     )
                     supplements[index] = replace(
                         preferred,
-                        extraction_method="ocr-consensus",
+                        extraction_method=(
+                            existing.extraction_method
+                            if existing.extraction_method.endswith(
+                                "+association-source"
+                            )
+                            else "ocr-consensus"
+                        ),
+                        content_region=(
+                            existing.content_region
+                            if existing.extraction_method.endswith(
+                                "+association-source"
+                            )
+                            else preferred.content_region
+                        ),
                         extraction_confidence=preferred.extraction_confidence,
                         engine_agreement=_agreement(existing.text, line.text),
                         source_engines=tuple(
@@ -976,6 +1065,8 @@ class AdaptiveOcrBackend:
                     warnings.append(
                         {
                             "code": "OCR_ENGINE_DISAGREEMENT",
+                            "page": native.page,
+                            "bbox": list(line_box),
                             "detail": (
                                 f"page {native.page}: OCR engines disagree near bbox "
                                 f"{tuple(round(v, 3) for v in line_box)}"

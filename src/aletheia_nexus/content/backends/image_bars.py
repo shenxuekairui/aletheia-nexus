@@ -275,5 +275,7 @@ def associate_bars(records, image):
             )
             for value, _ in pairs:
                 value["alternative"] = True
+                value["association_source"] = True
             category["alternative"] = True
+            category["association_source"] = True
     return [*records, *extra]

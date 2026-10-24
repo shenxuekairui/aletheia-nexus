@@ -15,6 +15,40 @@ _RESULT = re.compile(
 _RESULT_LABEL = re.compile(r"(?:[A-Za-z]+\d+[A-Za-z]?|\d+[A-Za-z]+)")
 
 
+def _result_text(line):
+    text = line.text.strip()
+    if line.content_region == "figure" and any(
+        e.startswith("rapidocr@") for e in line.source_engines
+    ):
+        # This prefix is AN's observed ink annotation, not printed label text.
+        return re.sub(
+            r"^Image text \((?:red|orange|yellow|green|cyan|blue|magenta)\): ", "", text
+        )
+    return text
+
+
+def _result_row(values, seed):
+    columns = []
+    for line in sorted(
+        (line for line in values if abs(line.y0 - seed.y0) < seed.font_size),
+        key=lambda line: line.x0,
+    ):
+        if columns and line.x0 <= max(r.x1 for r in columns[-1]):
+            columns[-1].append(line)
+        else:
+            columns.append([line])
+    row = []
+    for column in columns:
+        nearest = sorted(column, key=lambda line: abs(line.y0 - seed.y0))
+        if len(nearest) > 1 and (
+            abs(nearest[1].y0 - seed.y0) - abs(nearest[0].y0 - seed.y0)
+            < seed.font_size * 0.2
+        ):
+            return []
+        row.append(nearest[0])
+    return row
+
+
 def associate_percentage_results(lines):
     """Keep printed result lines under a repeated row of short source labels.
 
@@ -27,16 +61,16 @@ def associate_percentage_results(lines):
         if not line.content_region.endswith("alternative")
         and line.content_region != "table-cell"
     ]
-    values = [line for line in available if _RESULT.fullmatch(line.text.strip())]
+    values = sorted(
+        (line for line in available if _RESULT.fullmatch(_result_text(line))),
+        key=lambda line: -line.y0,
+    )
     removed, output = set(), []
     for seed in values:
         if id(seed) in removed:
             continue
         size = seed.font_size
-        row = sorted(
-            (line for line in values if abs(line.y0 - seed.y0) < size),
-            key=lambda line: line.x0,
-        )
+        row = _result_row(values, seed)
         if len(row) < 2 or any(a.x1 >= b.x0 for a, b in zip(row, row[1:])):
             continue
         centers = [(line.x0 + line.x1) / 2 for line in row]
@@ -62,7 +96,7 @@ def associate_percentage_results(lines):
                 for line in available
                 if aligned(line)
                 and -0.2 * size <= line.y0 - value.y1 <= size * 1.5
-                and _RESULT_LABEL.fullmatch(line.text.strip())
+                and _RESULT_LABEL.fullmatch(_result_text(line))
                 and not any(
                     other is not value
                     and other.x0 <= centers[index] <= other.x1
@@ -83,7 +117,7 @@ def associate_percentage_results(lines):
                     and -0.2 * size <= selected[-1].y0 - line.y1 <= size * 1.2
                     and not any(
                         marker not in selected
-                        and _RESULT_LABEL.fullmatch(marker.text.strip())
+                        and _RESULT_LABEL.fullmatch(_result_text(marker))
                         and aligned(marker)
                         and line.y1 - size * 0.2
                         <= marker.y0

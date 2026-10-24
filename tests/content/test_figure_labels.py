@@ -162,3 +162,41 @@ def test_separate_product_rows_cannot_be_joined_as_footnote_variants():
     ]
     assert len(groups) == 4
     assert all(t.count("yield") == 1 for t in groups)
+
+
+def test_overlapping_ocr_boxes_keep_two_result_rows_and_colour_metadata():
+    source = tuple(
+        replace(
+            r,
+            font_size=12,
+            content_region="figure",
+            source_engines=("rapidocr@fixture",),
+        )
+        for r in results()
+    )
+    source = tuple(
+        replace(r, text="Image text (blue): " + r.text) if i in (1, 3, 5) else r
+        for i, r in enumerate(source)
+    )
+    output = associate_percentage_results(source)
+    groups = [
+        r.text
+        for r in output
+        if r.extraction_method == "positioned-percentage-result-labels"
+    ]
+    assert groups == [
+        "K2\n23% yield, 87% ee\n48% yield, 89% ee*",
+        "Image text (blue): K4\nImage text (blue): 41% yield, 93% ee\nImage text (blue): 52% yield, 95% ee*",
+    ]
+    assert [r.text for r in output if r.content_region.endswith("alternative")] == [
+        r.text for r in source
+    ]
+
+
+def test_competing_result_at_same_row_abstains_without_selecting_a_value():
+    source = results()
+    competing = replace(source[3], text="61% yield, 83% ee", y0=111, y1=119)
+    output = associate_percentage_results((*source, competing))
+    assert not any(
+        r.extraction_method == "positioned-percentage-result-labels" for r in output
+    )

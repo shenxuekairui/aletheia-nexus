@@ -6,6 +6,7 @@ import re
 from decimal import Decimal
 
 _LENGTH = re.compile(r"^(\d+(?:\.\d+)?)\s*[-–]?\s*([uμµnpmc]?m)$")
+_MARKER = re.compile(r"(?:[A-Za-z][).]?|\([A-Za-z]\))")
 
 
 def length_key(text):
@@ -67,8 +68,30 @@ def _runs(bits):
             start = None
 
 
+def _crosses_frame(crop, axis, position):
+    """A gutter must not cut two long, separated strokes of a printed frame."""
+    n, other = (crop.width, crop.height) if axis == 0 else (crop.height, crop.width)
+    pixel = crop.load()
+
+    def dark(along, across):
+        return pixel[along, across] < 190 if axis == 0 else pixel[across, along] < 190
+
+    crossings = []
+    for across in range(other):
+        if not dark(position, across):
+            continue
+        left = right = position
+        while left > 0 and dark(left - 1, across):
+            left -= 1
+        while right + 1 < n and dark(right + 1, across):
+            right += 1
+        if left < position < right and right - left >= max(30, n * 0.15):
+            crossings.append(across)
+    return bool(crossings and crossings[-1] - crossings[0] >= max(20, other * 0.1))
+
+
 def panel_boxes(image, box=None, depth=0):
-    """Split only narrow white gutters that cross the complete image region."""
+    """Split white gutters without cutting through an observed plot frame."""
     box = box or (0, 0, image.width, image.height)
     crop = image.crop(box).convert("L")
     w, h = crop.size
@@ -84,7 +107,10 @@ def panel_boxes(image, box=None, depth=0):
         gaps = [
             (a, b)
             for a, b in _runs(bits)
-            if a > n * 0.1 and b < n * 0.9 and 2 <= b - a <= n * 0.03
+            if a > n * 0.1
+            and b < n * 0.9
+            and 2 <= b - a <= n * 0.2
+            and not _crosses_frame(crop, axis, (a + b) // 2)
         ]
         if not gaps:
             continue
@@ -130,10 +156,7 @@ def read_panel_markers(records, image, recognize):
         nearby = [
             r for r in members if r["box"][0] < corner[2] and r["box"][1] < corner[3]
         ]
-        if any(
-            re.fullmatch(r"[A-Za-z][).]?", r["text"]) and r["score"] >= 0.9
-            for r in nearby
-        ):
+        if any(_MARKER.fullmatch(r["text"]) and r["score"] >= 0.9 for r in nearby):
             continue
         crop = image.crop(corner)
         readings = [
@@ -149,9 +172,9 @@ def read_panel_markers(records, image, recognize):
         if not all(r and r[1] >= 0.9 for r in readings):
             continue
         text = readings[0][0].strip()
-        if text != readings[1][0].strip() or not re.fullmatch(r"[A-Za-z][).]?", text):
+        if text != readings[1][0].strip() or not _MARKER.fullmatch(text):
             continue
-        conflicts = [r for r in nearby if r["text"].rstrip(").") != text.rstrip(").")]
+        conflicts = [r for r in nearby if r["text"].strip("().") != text.strip("().")]
         if conflicts:
             # A complete printed marker with its delimiter may resolve an
             # unreliable fragment. Keep that fragment as an alternative.
@@ -182,7 +205,7 @@ def associate_scales(records, image):
     markers = [
         r
         for r in records
-        if re.fullmatch(r"[A-Za-z][).]?", r["text"])
+        if _MARKER.fullmatch(r["text"])
         and r["score"] >= 0.9
         and not r.get("alternative")
     ]
@@ -284,11 +307,12 @@ def associate_scales(records, image):
                     extra.append(
                         {
                             **reading,
-                            "text": f"Panel ({marker['text'].rstrip(').')}): scale {reading['text']}",
+                            "text": f"Panel ({marker['text'].strip('().')}): scale {reading['text']}",
                             "method": "positioned-panel-scale",
                         }
                     )
                     reading["alternative"] = True
+                    reading["association_source"] = True
             continue
         labels = [
             r
@@ -296,7 +320,7 @@ def associate_scales(records, image):
             if inside(r) and (r["box"][1] + r["box"][3]) / 2 < y0 + (y1 - y0) * 0.28
         ]
         if len(labels) == 1:
-            label = labels[0]["text"].rstrip(").")
+            label = labels[0]["text"].strip("().")
         else:
             row = grid_index(y0, 1)
             col = grid_index(x0, 0)
@@ -311,4 +335,5 @@ def associate_scales(records, image):
         )
         for reading in lengths:
             reading["alternative"] = True
+            reading["association_source"] = True
     return [*records, *extra]

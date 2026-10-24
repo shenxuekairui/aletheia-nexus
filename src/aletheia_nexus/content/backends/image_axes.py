@@ -244,4 +244,5 @@ def associate_axes(records, image=None):
             if not ambiguous:
                 for original in [label, *values]:
                     original["alternative"] = True
+                    original["association_source"] = True
     return [*records, *output]
