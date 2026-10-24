@@ -73,6 +73,25 @@ distant diagram labels remain excluded. The parser/native identities are now
 empty-row, ambiguity, split-header and unrelated-label counterexamples. Full
 document recovery and final scientific/release verification remain required.
 
+The complete fresh recovery of historical document 14 now has no runtime
+errors. The 1af85ec native structural replay scores **46/60**, with two
+unflagged critical omissions, versus the immutable first native **33/60**.
+It retains the original captured extraction identity and is explicitly not a
+fresh whole-corpus extraction. The two remaining unflagged omissions share a
+real raster region inside a table: existing region notices only covered figure
+objects. A new notice is bounded by the actual image between the table caption
+and observed cells. Other columns, intervening captions, small decorations and
+already covered figure resources are excluded. The exposed audit finds this
+region and two additional historical table diagrams; the implementing assistant
+checked those diagrams on their original page. No text or answer is filled in.
+
+A complete fresh native rerun of the affected ten-page article has no runtime
+errors and exports the exact image boundary beside the table. The 652-test
+content suite passes with three opt-in skips. Parser identity 3.10.8 records
+this disclosure change. Correct-answer counts do not increase because a warning
+was added. Complete final regression and the unopened second holdout remain
+required; native and optional-OCR results remain separate.
+
 Hosted run `40044049727` on `0b09ebe` did **not** pass the full gate: seven jobs
 passed, but Windows browser attempt 1 failed an initial bounded page read.
 Attempt 2 passed that case but failed navigation/startup/CDP timeouts in three

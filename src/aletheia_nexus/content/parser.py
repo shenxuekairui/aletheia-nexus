@@ -56,7 +56,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.10.7"
+PARSER_VERSION = "3.10.8"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -1320,6 +1320,50 @@ def _positioned_image_groups(layout):
     return result
 
 
+def _table_raster_warnings(table, blocks, anchors, layout, associated):
+    """Disclose actual image regions between a table caption and its cells."""
+    caption = anchors[table["anchor_id"]]
+    boxes = [
+        anchors[cell["anchor_id"]]["bbox"]
+        for cell in table.get("cells", [])
+        if anchors[cell["anchor_id"]]["page"] == caption["page"]
+    ]
+    if not boxes or not caption["bbox"]:
+        return []
+    grid = union_box(boxes)
+    bottom, top = grid[3], caption["bbox"][1]
+    left = min(grid[0], caption["bbox"][0])
+    right = max(grid[2], caption["bbox"][2])
+    if bottom >= top or any(
+        block["page"] == caption["page"]
+        and block["kind"] == "caption"
+        and block["id"] != table["caption_block_id"]
+        and (box := anchors[block["anchor_id"]]["bbox"])
+        and bottom < (box[1] + box[3]) / 2 < top
+        for block in blocks
+    ):
+        return []
+    regions = [
+        list(region.bbox)
+        for region, members in _positioned_image_groups(layout)
+        if not any((caption["page"], image.name) in associated for image in members)
+        and left <= region.bbox[0] < region.bbox[2] <= right
+        and bottom <= region.bbox[1] < region.bbox[3] <= top
+    ]
+    if not regions:
+        return []
+    return [
+        {
+            "code": "RASTER_REGION_TEXT_UNVERIFIED",
+            "page": caption["page"],
+            "anchor_id": table["anchor_id"],
+            "object_id": table["id"],
+            "regions": regions,
+            "detail": "Raster regions between this table caption and its observed cells may contain untranscribed experimental conditions or results. Recognized cells and partial image labels do not establish image-text coverage; inspect these original regions.",
+        }
+    ]
+
+
 def _objects(
     blocks: list[dict[str, object]],
     anchors: list[dict[str, object]],
@@ -1510,9 +1554,23 @@ class _StructureStage:
             context.unassociated_image_resources,
         ) = _objects(context.blocks, context.anchors, context.layouts)
         anchors = {a["id"]: a for a in context.anchors}
+        associated = {
+            (obj["page"], obj["name"])
+            for figure in context.figures
+            for obj in figure.get("source_objects", [])
+        }
         for table in context.tables:
             context.warnings.extend(
                 _table_local_warnings(table, context.blocks, anchors)
+            )
+            context.warnings.extend(
+                _table_raster_warnings(
+                    table,
+                    context.blocks,
+                    anchors,
+                    context.layouts[anchors[table["anchor_id"]]["page"]],
+                    associated,
+                )
             )
         for figure in context.figures:
             objects = figure.get("source_objects", [])
