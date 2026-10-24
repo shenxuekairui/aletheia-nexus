@@ -199,7 +199,7 @@ def load_corpus(root: str | Path) -> Corpus:
 
 
 def content_units(document: dict[str, object]) -> list[dict[str, object]]:
-    """Paragraphs and observed tables, with table captions kept in the same unit."""
+    """Direct readings and bounded layout context; no experimental inference."""
     blocks = {block["id"]: block for block in document["blocks"]}
     anchors = {anchor["id"]: anchor for anchor in document.get("anchors", [])}
     units = []
@@ -212,57 +212,68 @@ def content_units(document: dict[str, object]) -> list[dict[str, object]]:
         )
         if len(ids) < 2:
             continue
-        selected = [blocks[bid] for bid in ids if bid in blocks]
+        selected = [
+            blocks[bid]
+            for bid in ids
+            if bid in blocks
+            and not blocks[bid].get("content_region", "").endswith("alternative")
+        ]
+        ids = [b["id"] for b in selected]
         if selected:
             last = max(b["order"] for b in selected)
             page = max(b["page"] for b in selected)
             following = [
                 b
                 for b in document["blocks"]
-                if b["page"] in {page, page + 1} and b["order"] > last
-            ][:3]
+                if b["page"] in {page, page + 1}
+                and b["order"] > last
+                and not b.get("content_region", "").endswith("alternative")
+            ][:6]
             # Include an immediately following table footnote and its continuation.
             if following and re.match(
-                r"^(?:[a-z*†‡]\s*)?(?:reaction conditions?|conditions?|notes?|NMR|yields?\s+(?:were|are)|\w*determined)\b",
+                r"^(?:[a-z*†‡](?=[A-Z])|(?i:(?:[a-z*†‡]\s*)?(?:reaction conditions?|conditions?|notes?|NMR|yields?\s+(?:were|are)|\w*determined)\b))",
                 following[0]["text"],
-                re.IGNORECASE,
             ):
                 for block in following:
                     if block["kind"] in {"heading", "caption"}:
                         break
+                    if (
+                        block is not following[0]
+                        and selected[-1]["text"].rstrip().endswith((".", "。"))
+                        and not re.match(r"^[a-z*†‡](?=[A-Z])", block["text"])
+                    ):
+                        break
                     selected.append(block)
                     ids.append(block["id"])
-                    if "standard" in block["text"] or "NMR" in block["text"]:
-                        break
         selected.sort(key=lambda block: block["order"])
         if not selected:
             continue
-        boxes = [
-            anchors[b["anchor_id"]]["bbox"]
-            for b in selected
-            if b.get("anchor_id") in anchors
-            and anchors[b["anchor_id"]]["bbox"] is not None
-        ]
-        if boxes:
-            bottom, top = min(box[1] for box in boxes), max(box[3] for box in boxes)
-            left, right = min(box[0] for box in boxes), max(box[2] for box in boxes)
-            pages = {b["page"] for b in selected}
-            for block in document["blocks"]:
-                if (
-                    block.get("content_region") != "ocr-alternative"
-                    or block["page"] not in pages
-                    or block["id"] in ids
-                ):
-                    continue
-                box = anchors[block["anchor_id"]]["bbox"]
-                if (
-                    box
-                    and bottom <= (box[1] + box[3]) / 2 <= top
-                    and box[0] < right
-                    and box[2] > left
-                ):
-                    selected.append(block)
-                    ids.append(block["id"])
+        cells = table.get("cells", [])
+        numeric_counts = Counter(
+            c["row"] for c in cells if re.match(r"^[−+±\-]?\s*\d", c["text"])
+        )
+        numeric_rows = {row for row, count in numeric_counts.items() if count >= 2}
+        first_data = min(numeric_rows, default=0)
+        cell_ids = {c["block_id"] for c in cells}
+        context_ids = {b["id"] for b in selected if b["id"] not in cell_ids}
+        header_ids = {c["block_id"] for c in cells if c["row"] < first_data}
+        segments = []
+        for row in sorted(numeric_rows):
+            row_ids = {
+                c["block_id"]
+                for c in cells
+                if c["row"] <= row < c["row"] + c.get("row_span", 1)
+            }
+            members = [
+                b for b in selected if b["id"] in row_ids | header_ids | context_ids
+            ]
+            segments.append(
+                {
+                    "row": row,
+                    "block_ids": [b["id"] for b in members],
+                    "text": "\n".join(b["text"] for b in members),
+                }
+            )
         units.append(
             {
                 "id": table["id"],
@@ -270,9 +281,53 @@ def content_units(document: dict[str, object]) -> list[dict[str, object]]:
                 "uncertain": table.get("uncertain", True),
                 "block_ids": [b["id"] for b in selected],
                 "text": "\n".join(b["text"] for b in selected),
+                "row_contexts": segments,
             }
         )
         consumed.update(ids)
+    # Associate image text with its existing source-object/caption evidence.
+    # Co-occurrence is useful for retrieval, but does not interpret plotted data.
+    for figure in document.get("figures", []):
+        caption = blocks.get(figure["caption_block_id"])
+        objects = [
+            obj
+            for obj in figure.get("source_objects", [])
+            if obj.get("bbox")
+            and (obj["bbox"][2] - obj["bbox"][0]) * (obj["bbox"][3] - obj["bbox"][1])
+            < 0.65
+        ]
+        if caption is None or not objects:
+            continue
+        members = [caption]
+        for block in document["blocks"]:
+            if (
+                block["id"] == caption["id"]
+                or block["id"] in consumed
+                or block.get("content_region", "").endswith("alternative")
+            ):
+                continue
+            anchor = anchors.get(block.get("anchor_id"), {})
+            if any(
+                obj.get("page") == block["page"]
+                and _contains_reading(obj.get("bbox"), anchor.get("bbox"))
+                for obj in objects
+            ):
+                members.append(block)
+        if len(members) < 2:
+            continue
+        members.sort(key=lambda b: b["order"])
+        units.append(
+            {
+                "id": figure["id"],
+                "kind": "figure",
+                "uncertain": True,
+                "block_ids": [b["id"] for b in members],
+                "text": "\n".join(b["text"] for b in members),
+                "interpretation_status": "source-region-not-interpreted",
+            }
+        )
+        # A caption or an individual image label remains a direct search unit.
+        # The region provides additional context without replacing that hit.
     units.extend(
         {
             "id": block["id"],
@@ -283,6 +338,37 @@ def content_units(document: dict[str, object]) -> list[dict[str, object]]:
         for block in document["blocks"]
         if block["id"] not in consumed
     )
+    # Bounded nearby prose helps find conditions split across paragraph blocks.
+    # Do not cross pages, headings or table/image regions, and do not combine
+    # OCR alternatives with primary text to manufacture an AND match.
+    primary = [
+        b
+        for b in document["blocks"]
+        if not b.get("content_region", "").endswith("alternative")
+    ]
+    for index, start in enumerate(primary):
+        members = []
+        for block in primary[index : index + 4]:
+            if (
+                block["page"] != start["page"]
+                or block["id"] in consumed
+                or block["kind"] not in {"paragraph", "text", "equation"}
+                or block.get("content_region", "body") != "body"
+            ):
+                break
+            if sum(len(b["text"]) for b in members) + len(block["text"]) > 2400:
+                break
+            members.append(block)
+        if len(members) >= 2:
+            units.append(
+                {
+                    "id": f"context:{start['id']}:{members[-1]['id']}",
+                    "kind": "context",
+                    "block_ids": [b["id"] for b in members],
+                    "text": "\n".join(b["text"] for b in members),
+                    "interpretation_status": "nearby-context-not-interpreted",
+                }
+            )
     return units
 
 
@@ -336,6 +422,15 @@ def search_corpus(
             score = match_score(unit["text"], terms, mode=mode)
             if score is None:
                 continue
+            matching_rows = []
+            for row in unit.get("row_contexts", []):
+                row_score = match_score(row["text"], terms, mode=mode)
+                if row_score is not None:
+                    matching_rows.append({**row, "score": row_score})
+            if matching_rows:
+                score = max(r["score"] for r in matching_rows)
+            if unit["kind"] == "context":
+                score -= 0.05  # Prefer a direct match over surrounding prose.
             evidence = [anchors[blocks[bid]["anchor_id"]] for bid in unit["block_ids"]]
             stable = hashlib.sha256(
                 (document["artifact_id"] + ":" + unit["id"]).encode()
@@ -355,6 +450,10 @@ def search_corpus(
                     "pages": sorted({e["page"] for e in evidence}),
                     "evidence": evidence,
                     "score": score,
+                    "matching_rows": matching_rows,
+                    "interpretation_status": unit.get(
+                        "interpretation_status", "not-interpreted"
+                    ),
                     "section": section["heading"] if section else None,
                     "uncertain": unit.get("uncertain", False)
                     or any(
@@ -391,6 +490,30 @@ def search_corpus(
                 ).append(anchor)
     repeated_readings: set[str] = set()
     for hit in hits:
+        if hit["kind"] in {"context", "figure"} and any(
+            other["parsed_artifact_id"] == hit["parsed_artifact_id"]
+            and other["kind"] not in {"context", "figure"}
+            and other["id"] not in alternative_ids
+            and set(other["block_ids"]) <= set(hit["block_ids"])
+            for other in hits
+        ):
+            repeated_readings.add(hit["id"])
+    # Sliding windows of the same passage must not occupy the entire result
+    # page. Keep them available after distinct passages; do not discard text.
+    distinct_contexts = []
+    for hit in sorted(hits, key=lambda h: (-h["score"], h["id"])):
+        if hit["kind"] != "context" or hit["id"] in repeated_readings:
+            continue
+        if any(
+            other["parsed_artifact_id"] == hit["parsed_artifact_id"]
+            and len(set(other["block_ids"]) & set(hit["block_ids"]))
+            >= min(len(other["block_ids"]), len(hit["block_ids"])) / 2
+            for other in distinct_contexts
+        ):
+            repeated_readings.add(hit["id"])
+        else:
+            distinct_contexts.append(hit)
+    for hit in hits:
         if hit["id"] in alternative_ids and all(
             any(
                 _contains_reading(primary.get("bbox"), anchor.get("bbox"))
@@ -413,7 +536,7 @@ def search_corpus(
     )
     total = len(hits)
     hits = [{"number": n, **hit} for n, hit in enumerate(hits[:limit], 1)]
-    return {
+    report = {
         "schema": "aletheia-nexus/search-results/v1",
         "query": {
             "text": query,
@@ -435,6 +558,29 @@ def search_corpus(
         "hits": hits,
         "interpretation": "No hit means no literal match in the searched content; incomplete coverage is not evidence of absence.",
     }
+    if hits:
+        # Reuse the export's source grouping after ranking. This neither changes
+        # matching/ranking nor turns adjacent text into an experimental answer.
+        # Import here because evidence bundles also consume corpus units.
+        from aletheia_nexus.content.evidence import build_evidence_pack
+
+        pack = build_evidence_pack(
+            loaded,
+            report=report,
+            selectors=[str(hit["number"]) for hit in hits],
+            context_pages=0,
+        )
+        entries = {e["parsed_artifact_id"]: e for e in pack["included"]}
+        for hit in hits:
+            hit["reading_role"] = (
+                "alternative" if hit["id"] in alternative_ids else "primary"
+            )
+            hit["review_locations"] = [
+                group
+                for group in entries[hit["parsed_artifact_id"]]["review_locations"]
+                if set(group["block_ids"]).intersection(hit["block_ids"])
+            ]
+    return report
 
 
 def _contains_reading(primary: list | None, alternative: list | None) -> bool:

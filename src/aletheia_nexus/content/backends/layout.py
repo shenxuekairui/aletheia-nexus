@@ -10,10 +10,11 @@ from importlib.metadata import version
 from typing import Any
 
 from pdfminer.converter import PDFPageAggregator
-from pdfminer.layout import LAParams, LTChar, LTContainer, LTFigure
+from pdfminer.layout import LAParams, LTChar, LTContainer, LTCurve, LTFigure
 from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 from pdfminer.pdfpage import PDFPage
 from pypdf import PdfWriter
+from pypdf.generic import IndirectObject
 
 from aletheia_nexus.content.backends.font_symbols import (
     displaced_glyph_bounds,
@@ -24,6 +25,7 @@ from aletheia_nexus.content.backends.font_symbols import (
 )
 from aletheia_nexus.content.backends.glyph_readings import encoded_glyph_readings
 from aletheia_nexus.content.backends.native import _page_objects
+from aletheia_nexus.content.backends.vector_text import vector_text_regions
 from aletheia_nexus.content.backends.vertical_text import vertical_lines
 from aletheia_nexus.content.geometry import PageGeometry
 from aletheia_nexus.content.models import LayoutLine, PageLayout
@@ -67,9 +69,14 @@ def _ordered_glyphs(chars: list[LTChar]) -> list[LTChar]:
     def flush() -> None:
         # A lowered label such as 'cat' and an elevated '-1' share x coordinates.
         # Serialize the complete lower run first, without interleaving letters.
-        ordered.extend(
-            sorted(scripts, key=lambda c: ((c.y0 + c.y1) / 2 > baseline, c.x0))
-        )
+        for elevated in (False, True):
+            group = [c for c in scripts if ((c.y0 + c.y1) / 2 > baseline) == elevated]
+            if group and min(c.size for c in group) < max(c.size for c in group) * 0.85:
+                # A subscript can itself carry a smaller subscript and charge.
+                # Its own baseline, not the outer formula baseline, orders them.
+                ordered.extend(_ordered_glyphs(group))
+            else:
+                ordered.extend(sorted(group, key=lambda c: c.x0))
         scripts.clear()
 
     for char in sorted(chars, key=lambda c: c.x0):
@@ -77,8 +84,13 @@ def _ordered_glyphs(chars: list[LTChar]) -> list[LTChar]:
             flush()
             ordered.append(char)
         else:
-            if scripts and char.x0 > max(c.x1 for c in scripts) + 0.3:
-                flush()
+            if scripts:
+                gap = char.x0 - max(c.x1 for c in scripts)
+                local_size = max(c.size for c in scripts)
+                if gap > 0.3 and not (
+                    char.size < local_size * 0.85 and gap <= local_size * 0.6
+                ):
+                    flush()
             scripts.append(char)
     flush()
     return ordered
@@ -119,6 +131,151 @@ def _attach_symbols(rows: list[list[LTChar]], symbols: list[LTChar]) -> set[int]
     return ambiguous
 
 
+def _attach_inline_glyphs(rows: list[list[LTChar]]) -> set[int]:
+    """Rejoin an isolated letter only between two adjacent baseline neighbours."""
+    moved, ambiguous = [], set()
+    for source in rows:
+        for char in source:
+            text = char.get_text()
+            if (
+                len(text) != 1
+                or not (text.isalpha() or unicodedata.category(text) == "Co")
+                or char.matrix[1]
+                or char.matrix[2]
+            ):
+                continue
+            baseline = getattr(char, "an_text_origin", char.matrix[4:6])[1]
+
+            def same_baseline(other):
+                return (
+                    other is not char
+                    and other.get_text().isalpha()
+                    and abs(other.size - char.size) <= char.size * 0.1
+                    and not other.matrix[1]
+                    and not other.matrix[2]
+                    and abs(
+                        getattr(other, "an_text_origin", other.matrix[4:6])[1]
+                        - baseline
+                    )
+                    < 0.1
+                )
+
+            if any(
+                same_baseline(c)
+                and max(0, c.x0 - char.x1, char.x0 - c.x1) <= char.size * 0.4
+                for c in source
+            ):
+                continue
+            targets = []
+            for target in rows:
+                if target is source:
+                    continue
+                neighbours = [c for c in target if same_baseline(c)]
+                if any(
+                    -0.05 * char.size <= char.x0 - c.x1 <= 0.3 * char.size
+                    for c in neighbours
+                ) and any(
+                    -0.05 * char.size <= c.x0 - char.x1 <= 0.3 * char.size
+                    for c in neighbours
+                ):
+                    targets.append(target)
+            if len(targets) == 1:
+                moved.append((char, source, targets[0]))
+            elif targets:
+                ambiguous.add(id(char))
+    for char, source, target in moved:
+        source.remove(char)
+        target.append(char)
+    return ambiguous
+
+
+def _attach_nested_scripts(rows: list[list[LTChar]]) -> set[int]:
+    """Revisit short numeric fragments after all local script bases exist.
+
+    A lowered multi-letter label may be assembled after its final digit due to
+    differing ink bounds. Only a unique, adjacent alphabetic base in a larger
+    text row can absorb the detached fragment; ordinary numeric rows stay put.
+    """
+    ambiguous = set()
+    moves = []
+    for source, row in enumerate(rows):
+        fragments = [[]]
+        for char in sorted(row, key=lambda c: c.x0):
+            group = fragments[-1]
+            if group and char.x0 - max(c.x1 for c in group) > max(
+                2, max(c.size for c in group) * 0.9
+            ):
+                fragments.append([])
+            fragments[-1].append(char)
+        for fragment in fragments:
+            text = "".join(c.get_text() for c in fragment).strip()
+            if not re.fullmatch(r"[+−\-0-9]{1,4}", text):
+                continue
+            candidates = []
+            for target, base in enumerate(rows):
+                if (
+                    target == source
+                    or not base
+                    or max(c.size for c in fragment) >= max(c.size for c in base) * 0.85
+                ):
+                    continue
+                if all(
+                    any(
+                        c.get_text().isalpha()
+                        and max(0, char.x0 - c.x1, c.x0 - char.x1) <= c.size * 0.8
+                        and (
+                            abs(char.size - c.size) <= char.size * 0.15
+                            and abs(char.an_text_origin[1] - c.an_text_origin[1]) < 0.5
+                            or char.size < c.size * 0.85
+                            and abs((char.y0 + char.y1 - c.y0 - c.y1) / 2)
+                            <= c.size * 0.72
+                        )
+                        for c in base
+                    )
+                    for char in fragment
+                ):
+                    candidates.append(target)
+            if len(candidates) == 1:
+                moves.append((source, candidates[0], fragment))
+            elif candidates:
+                ambiguous.update(id(c) for c in fragment)
+    for source, target, fragment in moves:
+        identities = {id(c) for c in fragment}
+        rows[source][:] = [c for c in rows[source] if id(c) not in identities]
+        rows[target].extend(fragment)
+    return ambiguous
+
+
+def _identify_font_resources(writer, page):
+    """Give direct fonts identities in the temporary copy used by both readers.
+
+    PDF font names are not unique: a simple font's byte 32 can be a space while
+    a same-named CID font paints an equals at CID 32. Never share their repairs.
+    The original page and font resources are left untouched.
+    """
+    seen = set()
+
+    def visit(resources):
+        fonts = resources.get("/Font", {})
+        for key, reference in list(fonts.items()):
+            if not isinstance(reference, IndirectObject):
+                fonts[key] = writer._add_object(reference)
+        for reference in resources.get("/XObject", {}).values():
+            obj = reference.get_object()
+            if obj.get("/Subtype") == "/Form" and id(obj) not in seen:
+                seen.add(id(obj))
+                visit(obj.get("/Resources", {}))
+
+    visit(page.get("/Resources", {}))
+
+
+class _FontResourceManager(PDFResourceManager):
+    def get_font(self, objid, spec):
+        font = super().get_font(objid, spec)
+        font.an_resource_id = objid
+        return font
+
+
 class _ClippedPageAggregator(PDFPageAggregator):
     def __init__(
         self,
@@ -141,7 +298,14 @@ class _ClippedPageAggregator(PDFPageAggregator):
             matrix, font, fontsize, scaling, rise, cid, ncs, graphicstate
         )
         char = self.cur_item._objs[-1]
-        program_reading = self.program_readings.get((char.fontname, cid))
+        char.an_resource_id = font.an_resource_id
+        # Text rise (Ts) moves the painted baseline without changing LTChar's
+        # text matrix. Rotated scripts need the actual origin, not only Tm.
+        char.an_text_origin = (
+            matrix[4] + rise * matrix[2],
+            matrix[5] + rise * matrix[3],
+        )
+        program_reading = self.program_readings.get((char.an_resource_id, cid))
         if (
             program_reading
             and program_reading != char.get_text()
@@ -150,7 +314,7 @@ class _ClippedPageAggregator(PDFPageAggregator):
         ):
             char.original_reading = char.get_text()
             char._text = program_reading
-        reading = self.glyph_readings.get((char.fontname, cid))
+        reading = self.glyph_readings.get((char.an_resource_id, cid))
         if reading in {"α", "△", "□"} and not suspicious_text(char.get_text()):
             reading = None
         if reading in {"−", "-"} and char.get_text() != "±":
@@ -161,7 +325,7 @@ class _ClippedPageAggregator(PDFPageAggregator):
             and char.get_text() not in {"x", "X", "o", "O", "0"}
         ):
             char.outline_reading = reading
-        ink = self.ink_bounds.get((char.fontname, cid))
+        ink = self.ink_bounds.get((char.an_resource_id, cid))
         if ink and not matrix[1] and matrix[3] > 0 and fontsize > 0:
             if len(ink) == 4:
                 char.reading_bbox = char.bbox
@@ -206,7 +370,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.16.0"
+    version = "1.19.5"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -219,26 +383,27 @@ class LayoutPdfBackend:
         }
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
-        geometry = PageGeometry.from_page(page)
-        symbol_readings, unmapped = unmapped_font_symbols(page)
-        unit_readings = mapped_unit_m_readings(page)
-        degree_readings = mapped_degree_readings(page)
-        outline_units = mapped_outline_units(page)
         unit_repairs = []
         recovered_count = 0
         writer = PdfWriter()
         copied = writer.add_page(page)
+        geometry = PageGeometry.from_page(copied)
+        _identify_font_resources(writer, copied)
+        symbol_readings, unmapped = unmapped_font_symbols(copied)
+        unit_readings = mapped_unit_m_readings(copied)
+        degree_readings = mapped_degree_readings(copied)
+        outline_units = mapped_outline_units(copied)
         # pdfminer uses the MediaBox; align its origin with the displayed crop.
         copied.mediabox = copied.cropbox
         stream = io.BytesIO()
         writer.write(stream)
         stream.seek(0)
-        manager = PDFResourceManager()
-        glyph_readings, program_readings = encoded_glyph_readings(page)
+        manager = _FontResourceManager()
+        glyph_readings, program_readings = encoded_glyph_readings(copied)
         device = _ClippedPageAggregator(
             manager,
             laparams=LAParams(all_texts=True, detect_vertical=True),
-            ink_bounds=displaced_glyph_bounds(page),
+            ink_bounds=displaced_glyph_bounds(copied),
             glyph_readings=glyph_readings,
             program_readings=program_readings,
         )
@@ -246,6 +411,7 @@ class LayoutPdfBackend:
         interpreter.process_page(next(PDFPage.get_pages(stream)))
         layout = device.get_result()
         glyphs = []
+        vector_shapes = []
         clipped_glyphs = 0
         degree_originals = {}
 
@@ -273,6 +439,23 @@ class LayoutPdfBackend:
                     clipped_glyphs += 1
                     return
                 glyphs.append(item)
+            elif isinstance(item, LTCurve) and item.fill:
+                box = item.bbox
+                if clip:
+                    box = (
+                        max(box[0], clip[0]),
+                        max(box[1], clip[1]),
+                        min(box[2], clip[2]),
+                        min(box[3], clip[3]),
+                    )
+                box = (
+                    max(0, box[0]),
+                    max(0, box[1]),
+                    min(geometry.width, box[2]),
+                    min(geometry.height, box[3]),
+                )
+                if box[2] > box[0] and box[3] > box[1]:
+                    vector_shapes.append((box, len(item.pts) >= 6))
             elif isinstance(item, LTContainer):
                 for child in item:
                     visit(child, clip)
@@ -280,7 +463,7 @@ class LayoutPdfBackend:
         visit(layout)
         for char in glyphs:
             reading = getattr(char, "outline_reading", None)
-            if (char.fontname, char.get_text()) in degree_readings:
+            if (char.an_resource_id, char.get_text()) in degree_readings:
                 continue  # Existing raised-ring recovery also repairs bounds.
             if reading == "∘":
                 # A raised ring followed by C/F is a temperature sign. A
@@ -303,7 +486,7 @@ class LayoutPdfBackend:
                 char.original_reading = char.get_text()
                 char._text = reading
         for char in glyphs:
-            if (char.fontname, char.get_text()) not in degree_readings:
+            if (char.an_resource_id, char.get_text()) not in degree_readings:
                 continue
             if char.matrix[1] or char.matrix[2] or char.matrix[3] <= 0:
                 continue
@@ -320,7 +503,7 @@ class LayoutPdfBackend:
                 for c in neighbours
             ):
                 degree_originals[id(char)] = char.get_text()
-                ink = degree_readings[(char.fontname, char.get_text())]
+                ink = degree_readings[(char.an_resource_id, char.get_text())]
                 char._text = "°"
                 # The defective CID font's descent can place a raised ring on
                 # the next text row. Use its verified ink bounds for this sign.
@@ -418,6 +601,8 @@ class LayoutPdfBackend:
                 ):
                     ambiguous_glyphs.add(id(char))
                 rows[min(matches)[1]].append(char)
+        ambiguous_glyphs.update(_attach_inline_glyphs(rows))
+        ambiguous_glyphs.update(_attach_nested_scripts(rows))
         # Repair only isolated signs. Leave already connected prose/formulas
         # in their original rows to avoid changing unrelated reading order.
         for row in rows:
@@ -470,6 +655,7 @@ class LayoutPdfBackend:
                 parts = []
                 original_parts = []
                 glyph_spans = []
+                review_offsets = set()
                 right = None
                 uncertain_font = False
                 unit_positions = {}
@@ -483,7 +669,7 @@ class LayoutPdfBackend:
                     original_parts.append(
                         getattr(char, "original_reading", char.get_text())
                     )
-                    key = (char.fontname, char.get_text())
+                    key = (char.an_resource_id, char.get_text())
                     if hasattr(char, "original_reading"):
                         glyph_corrections.append(
                             {"before": char.original_reading, "after": char.get_text()}
@@ -491,9 +677,9 @@ class LayoutPdfBackend:
                     if key in outline_units:
                         outline_positions[sum(map(len, parts))] = outline_units[key]
                     replacement = symbol_readings.get(key)
-                    if char.get_text() == "m" and char.fontname in unit_readings:
+                    if char.get_text() == "m" and char.an_resource_id in unit_readings:
                         unit_positions[sum(map(len, parts))] = unit_readings[
-                            char.fontname
+                            char.an_resource_id
                         ]
                     if (
                         char.get_text() == "m"
@@ -523,6 +709,15 @@ class LayoutPdfBackend:
                             value = "μ"
                     offset = sum(map(len, parts))
                     glyph_spans.append((offset, offset + len(value), char.x0, char.x1))
+                    if (
+                        key in unmapped
+                        or replacement is not None
+                        or value != char.get_text()
+                        or hasattr(char, "original_reading")
+                        or suspicious_text(value)
+                        or id(char) in degree_originals
+                    ):
+                        review_offsets.update(range(offset, offset + len(value)))
                     parts.append(value)
                     recovered_count += int(replacement is not None)
                     uncertain_font |= key in unmapped
@@ -564,6 +759,9 @@ class LayoutPdfBackend:
                     ):
                         characters[offset] = reading
                 text = "".join(characters).strip()
+                review_offsets.update(
+                    i for i, (a, b) in enumerate(zip(raw_text, characters)) if a != b
+                )
                 unit_corrected = text != raw_text.strip()
                 degree_corrected = any(id(c) in degree_originals for c in chars)
                 if not text:
@@ -586,6 +784,26 @@ class LayoutPdfBackend:
                     or any(id(c) in ambiguous_glyphs for c in chars)
                     or bool(glyph_corrections)
                 )
+                if (
+                    review_offsets
+                    and row_index not in ambiguous_rows
+                    and not any(id(c) in ambiguous_glyphs for c in chars)
+                ):
+                    left_trim = len(raw_text) - len(raw_text.lstrip())
+                    unit_repairs.append(
+                        {
+                            "code": "NATIVE_GLYPH_CONTEXT",
+                            "page": page_number,
+                            "bbox": [x0, y0, x1, y1],
+                            "after": text,
+                            "text_offsets": sorted(
+                                i - left_trim
+                                for i in review_offsets
+                                if left_trim <= i < left_trim + len(text)
+                            ),
+                            "detail": "These native glyph offsets require local reading; neighbouring decoded text is retained.",
+                        }
+                    )
                 if glyph_corrections:
                     unit_repairs.append(
                         {
@@ -719,7 +937,21 @@ class LayoutPdfBackend:
                     "page": page_number,
                 }
             )
-        objects = _page_objects(page, geometry)
+        objects = _page_objects(copied, geometry)
+        outlined_text = vector_text_regions(
+            vector_shapes, lines, geometry.width, geometry.height
+        )
+        objects = (*objects, *outlined_text)
+        for obj in outlined_text:
+            warnings.append(
+                {
+                    "code": "VECTOR_TEXT_UNVERIFIED",
+                    "page": page_number,
+                    "bbox": list(obj.bbox),
+                    "source_object": obj.name,
+                    "detail": "Aligned painted outlines have no native text mapping. Their values, symbols and units need local OCR or source review; geometry alone does not establish a reading.",
+                }
+            )
         if any(
             o.object_type == "image"
             and o.bbox

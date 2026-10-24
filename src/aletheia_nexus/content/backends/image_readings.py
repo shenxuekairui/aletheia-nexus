@@ -7,6 +7,8 @@ import re
 import unicodedata
 from collections import Counter
 
+from aletheia_nexus.content.backends.readings import literal_reading_key
+
 
 def reading_key(text):
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text)).replace("−", "-")
@@ -19,7 +21,7 @@ def merge_complete_reading(records, candidate):
     All displaced readings remain as alternatives in the same image region.
     """
     a = candidate["box"]
-    key = reading_key(candidate["text"])
+    key = literal_reading_key(candidate["text"])
     near = []
     for old in records:
         b = old["box"]
@@ -32,14 +34,40 @@ def merge_complete_reading(records, candidate):
             near.append(old)
     if not near:
         return False
-    if len(near) == 1 and reading_key(near[0]["text"]) == key:
+    if len(near) == 1 and literal_reading_key(near[0]["text"]) == key:
         return False
     # Removing ONLY new unit exponents allows an incomplete "12 h" reading
     # to match "12 h-1". A pre-existing exponent must match exactly.
     bare = re.sub(r"(?<=[A-Za-z])[+-]\d{1,2}", "", key)
+
+    def raised_unit_fragment(old):
+        # OCR may detect a raised signed exponent separately, losing its
+        # typography in the fragment string. Require both the complete source
+        # reading and the fragment's position beside an unchanged unit label.
+        suffix = re.fullmatch(r"(.*[A-Za-z])([⁺⁻][⁰¹²³⁴⁵⁶⁷⁸⁹0-9]{1,2})", key)
+        oldkey = literal_reading_key(old["text"])
+        if (
+            suffix is None
+            or not re.fullmatch(r"[+-]\d{1,2}", oldkey)
+            or oldkey != unicodedata.normalize("NFKC", suffix[2]).replace("−", "-")
+        ):
+            return False
+        x0, y0, x1, y1 = old["box"]
+        bases = [r for r in near if literal_reading_key(r["text"]) == suffix[1]]
+        if len(bases) != 1:
+            return False
+        bx0, by0, bx1, by1 = bases[0]["box"]
+        return (
+            (x0 + x1) / 2 >= bx1
+            and by0 <= (y0 + y1) / 2 < (by0 + by1) / 2
+            and y0 < by0
+            and y1 < by1
+        )
+
     if not all(
-        (oldkey := reading_key(old["text"])) in key
+        (oldkey := literal_reading_key(old["text"])) in key
         or (not re.search(r"(?<=[A-Za-z])[+-]\d", oldkey) and oldkey in bare)
+        or raised_unit_fragment(old)
         for old in near
     ):
         return False
@@ -249,8 +277,10 @@ def reread_uncertain_lines(records, image, recognize):
     """
     from PIL import ImageOps
 
+    from aletheia_nexus.content.backends.image_panels import length_key
+
     def comparable(text):
-        key = re.sub(r"(?<=\d)[_{}]|[_{}](?=\d)", "", reading_key(text))
+        key = re.sub(r"(?<=\d)[_{}]|[_{}](?=\d)", "", literal_reading_key(text))
         return re.sub(r"(?<=[A-Za-z])[Il1](?=[A-Za-z%])", "|", key)
 
     for old in list(records):
@@ -267,6 +297,8 @@ def reread_uncertain_lines(records, image, recognize):
         if h <= 0 or x1 - x0 < h * 2:
             continue
         candidates = []
+        scale_conflicts = []
+        original_length = length_key(text)
         for vertical_pad in (0, 0.05):
             box = (
                 max(0, int(x0 - h * 0.2)),
@@ -282,23 +314,56 @@ def reread_uncertain_lines(records, image, recognize):
                     if scale == 1
                     else crop.resize((crop.width * scale, crop.height * scale))
                 )
-                if result is None or result[1] < 0.95:
+                if result is None or result[1] < (0.9 if original_length else 0.95):
                     break
                 readings.append(result)
-            if len(readings) == 2 and reading_key(readings[0][0]) == reading_key(
-                readings[1][0]
-            ):
+            if len(readings) == 2 and literal_reading_key(
+                readings[0][0]
+            ) == literal_reading_key(readings[1][0]):
                 new, score = readings[0][0], min(r[1] for r in readings)
+                new_length = length_key(new)
                 if (
-                    reading_key(new) != reading_key(text)
+                    original_length
+                    and new_length
+                    and original_length[0] == new_length[0]
+                    and original_length[1] != new_length[1]
+                ):
+                    # Two crop resolutions support a substantive unit alternative,
+                    # even when they cannot justify replacing the main reading.
+                    scale_conflicts.append((new, score))
+                if (
+                    score >= 0.95
+                    and literal_reading_key(new) != literal_reading_key(text)
                     and score >= old["score"] + 0.03
                 ):
                     candidates.append((new, score))
-        if len({reading_key(r[0]) for r in candidates}) != 1:
+        candidate = (
+            max(candidates, key=lambda r: r[1])
+            if len({literal_reading_key(r[0]) for r in candidates}) == 1
+            else None
+        )
+        if candidate is None or (
+            old["score"] >= 0.85 and comparable(candidate[0]) != comparable(text)
+        ):
+            for new, score in scale_conflicts:
+                if any(
+                    literal_reading_key(r["text"]) == literal_reading_key(new)
+                    and r["box"] == old["box"]
+                    for r in records
+                ):
+                    continue
+                records.append(
+                    dict(
+                        text=new,
+                        score=score,
+                        box=old["box"],
+                        alternative=True,
+                        method="rapidocr-scale-unit-alternative",
+                        warning="IMAGE_SCALE_UNIT_CONFLICT",
+                    )
+                )
             continue
-        new, score = max(candidates, key=lambda r: r[1])
-        if old["score"] >= 0.85 and comparable(new) != comparable(text):
-            continue
+        new, score = candidate
         old["alternative"] = True
         records.append(
             dict(

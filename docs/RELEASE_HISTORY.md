@@ -4,9 +4,13 @@
 
 为保护原开发仓库的个人提交信息和旧运行记录，本公开仓库从审计后的 v0.6 源码快照开始，**不携带早期 Git 提交和 `v0.5.2` tag**。下文的 v0.5.2 数字是原私有开发仓库冻结时的历史记录，不应被理解为可以在本公开仓库检出的标签或提交。
 
-## 当前版本：v0.7.2
+## v0.7.3：0.7 系列收尾
 
-当前能力和验证口径以 [v0.7.2 发布说明](RELEASE_NOTES_v0.7.2.md)及[实际科研验收](V072_PRACTICAL_ACCEPTANCE.md)为准。发布整理统一解析配置与获取身份判定，分离图表处理职责；42 份、403 页的版式回放保持完整解析文档一致。正式发行提交、云端检查和附件见 [GitHub Release](https://github.com/shenxuekairui/aletheia-nexus/releases/tag/v0.7.2)。
+当前能力及边界见 [v0.7.3 发布说明](RELEASE_NOTES_v0.7.3.md)与[验收记录](V073_ACCEPTANCE.md)。负责人在成绩已知后授权按实际设计目标收敛；原数值目标未达到，未改写首次成绩。第二组 12 篇正文及 4 份 SI 共 673 页，主 OCR 首次完整正确从 25/60 到 35/60，后续暴露回归保留 36/60。原 75 题当前严格完整 70/75；原确认的 52 项内容及 64 项历史关键回归保留。最终二十任务补充台账为 42 到 33 次独立核对，不使用较早阶段 21 次的成绩宣称最终减负 50%。
+
+正式发行身份、最终 CI、PyPI 安装及校验和见 [v0.7.3 Release](https://github.com/shenxuekairui/aletheia-nexus/releases/tag/v0.7.3)。该发布链完成后结束 0.7 系列，不再安排常规 0.7.4 功能版本。关键科学引用仍需原页复核，局部 AI 建议使用既有独立接口，默认解析不调用远程模型。
+
+v0.7.2 的[发布说明](RELEASE_NOTES_v0.7.2.md)、[实际科研验收](V072_PRACTICAL_ACCEPTANCE.md)及[正式发行](https://github.com/shenxuekairui/aletheia-nexus/releases/tag/v0.7.2)保持历史原貌。其发布整理统一解析配置与获取身份判定，分离图表处理职责；当时 42 份、403 页的版式回放保持完整解析文档一致。
 
 以下保留每次开发检查时的原始状态和首次成绩；其中“未提交/未发布/验收未通过”等表述描述当时的快照，不是当前版本结论。
 
@@ -16,7 +20,7 @@
 
 - 2026-10-22：[v0.7.2 最终修复与交付](V072_FINAL_DELIVERY.md)。剩余 4 项已修复，H/I/J 回归 16/16、8/8、12/12；新 K 集 2 篇论文及 1 份 SI 首次 8/12，与旧版相同，4 项失败集中在两个原文位置且缺少局部提示，正式科研验收未通过。本地 Python 3.14 测试 1864 passed、114 skipped，安装包 10 项 CLI 检查通过；未提交、合并或发布。
 - 2026-10-22：[v0.7.2 单位与列切分复验](V072_UNITS_COLUMNS_VALIDATION.md)。上轮剩余 8 项修复 7 项；H/I 回归 16/16、7/8，新 J 集首次 9/12，与旧版相同。77 份 PDF 的双 OCR 复核位置 4223→4078；图片标尺及新表格失败继续阻止正式验收。全量测试 1835 passed、114 skipped，当前改动尚未提交或发布。
-- 当前源码版本：`0.7.2`。增加本地／无 DOI／SI 解析、跨文献检索、批量恢复和选择证据导出；用户入口见 [README](../README.md)，版本概览见 [v0.7.2 发布说明](RELEASE_NOTES_v0.7.2.md)。正式发行和对应提交以 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases) 为准。
+- 当时源码版本：`0.7.2`。增加本地／无 DOI／SI 解析、跨文献检索、批量恢复和选择证据导出；版本概览见 [v0.7.2 发布说明](RELEASE_NOTES_v0.7.2.md)。正式发行和对应提交以 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases) 为准。
 - 上游 `v0.7.0` 已合入 `main` 并打标签；其[发布说明](RELEASE_NOTES_v0.7.0.md)、标签及测试证据保持不变。新版本是否已上传，以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)和全新环境安装验证为准。
 - v0.6.0 源码版本：`0.6.0`。首个公开版按代码正确性与可安装性封板，正式机构授权资格验收不在本次完成范围内。
 - 代码级封板要求最终发布提交的 Python 3.11–3.14、真实 Chromium、真实 OCR 和 clean-wheel 云端 job 均实际 `success`；冻结解析评测还须在 CI 中生成并保存机器可读报告。草稿 PR 的 `skipped` 或零步骤失败不计入通过。具体运行记录随 GitHub Release 提供。

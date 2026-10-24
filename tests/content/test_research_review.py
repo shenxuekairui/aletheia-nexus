@@ -172,6 +172,7 @@ def test_exported_tables_keep_uncertainty_and_canonical_text(tmp_path):
     before = {b["id"]: b for b in canonical["blocks"]}
     result = build_evidence_pack(tmp_path)
     item = next(i for i in result["included"] if i["pdf"] == main.name)
+    assert item["pages"] == canonical["pages"]
     assert item["tables"]
     table = item["tables"][0]
     assert table["uncertain"] and table["complete_context"]
@@ -187,6 +188,17 @@ def test_exported_tables_keep_uncertainty_and_canonical_text(tmp_path):
         if block["id"] in table["block_ids"]:
             assert block["uncertain"] and table["id"] in block["table_ids"]
     assert "row/column meaning not interpreted" in evidence_markdown(result)
+    rendered = evidence_markdown(result)
+    assert "| Observed row |" in rendered
+    assert "Table text and alternative readings" not in rendered
+    for block in item["blocks"]:
+        if block["id"] in table["block_ids"] and not block.get(
+            "content_region", ""
+        ).endswith("alternative"):
+            # Main text has not been put inside a collapsed details element.
+            pos = rendered.index(f", {block['id']}; bbox=")
+            prefix = rendered[:pos]
+            assert prefix.count("<details>") == prefix.count("</details>")
     assert item["figures"]
     assert item["figures"][0]["image_text_completeness"] == "not-verified"
     assert "figure/axis text not guaranteed transcribed" in evidence_markdown(result)

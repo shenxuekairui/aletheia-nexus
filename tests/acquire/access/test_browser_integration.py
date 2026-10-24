@@ -77,7 +77,8 @@ def test_hidden_purchase_control_does_not_gate_an_entitled_article(
     )
     try:
         page.goto("https://publisher.example/article/target")
-        assert browser_route._report_for_page(page).kind == ChallengeKind.NONE
+        report = browser_route._report_for_page(page)
+        assert report.kind == ChallengeKind.NONE, report
     finally:
         context.close()
 

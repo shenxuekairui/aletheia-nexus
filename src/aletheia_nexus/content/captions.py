@@ -36,6 +36,8 @@ _CAPTION_MENTION = re.compile(
     re.IGNORECASE,
 )
 
+_CHINESE_PROSE_REFERENCE = re.compile(r"^为.+?[.。]\s*(?:其中|此外|由此)[,，]")
+
 
 _CAPTION_PANEL_CITATION = re.compile(r"^\([A-Za-z0-9]+\)\s*\[\d")
 
@@ -106,6 +108,10 @@ def _caption_match(text: str) -> re.Match[str] | None:
     if remainder.startswith((",", ";")):
         return None
     description = _caption_description(stripped, match)
+    # Character spacing in a Chinese PDF must not turn a sentence such as
+    # "给 出 了" into a new figure caption. Only recognition sees this view;
+    # original text and source geometry remain unchanged.
+    description = re.sub(r"(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])", "", description)
     if (
         not description
         and "continued" not in stripped.casefold()
@@ -113,7 +119,9 @@ def _caption_match(text: str) -> re.Match[str] | None:
         and not stripped.endswith((".", ":"))
     ):
         return None
-    if _CAPTION_MENTION.match(description):
+    if _CAPTION_MENTION.match(description) or _CHINESE_PROSE_REFERENCE.match(
+        description
+    ):
         return None
     if _CAPTION_PANEL_CITATION.match(description):
         return None

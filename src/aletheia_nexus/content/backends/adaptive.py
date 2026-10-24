@@ -14,7 +14,11 @@ from aletheia_nexus.content.backends.base import (
     RegionExtractionBackend,
 )
 from aletheia_nexus.content.backends.layout import LayoutPdfBackend
-from aletheia_nexus.content.backends.readings import corroborate_chinese
+from aletheia_nexus.content.backends.readings import (
+    corroborate_chinese,
+    literal_reading_key,
+    recover_word_glyphs,
+)
 from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.models import (
     LayoutLine,
@@ -24,6 +28,12 @@ from aletheia_nexus.content.models import (
 )
 
 _FORMULA_TEXT = re.compile(r"(?:[=≈≤≥±∑∫√→←]|[αβγδεϵζηθικλμνξοπρστυφχψωΓΔΘΛΞΠΣΦΨΩ])")
+_LAYOUT_ASSOCIATIONS = {
+    "printed-bar-label-association",
+    "positioned-panel-scale",
+    "positioned-panel-length",
+    "positioned-axis-label-ticks",
+}
 
 
 @dataclass(frozen=True)
@@ -126,6 +136,27 @@ def _overlap(
     )
     denominator = min(_area(first), _area(second))
     return intersection / denominator if denominator else 0.0
+
+
+def _punctuation_overlaps_native_glyph(line, box, existing, native):
+    """Locate a partial glyph reading without promoting it to a new cell.
+
+    Tiny punctuation OCR boxes can include mostly vertical whitespace. Require
+    actual vertical overlap and horizontal containment within one known glyph;
+    spaces between glyphs and detached signs are not matching evidence. The
+    normal disagreement path retains the complete native and raw OCR readings.
+    """
+    if line.text.strip() not in {".", ",", ":", ";"} or existing.uncertain:
+        return False
+    if min(box[3], existing.y1 / native.height) <= max(
+        box[1], existing.y0 / native.height
+    ):
+        return False
+    return any(
+        not existing.text[start:end].isspace()
+        and left / native.width <= box[0] < box[2] <= right / native.width
+        for start, end, left, right in existing.glyph_spans
+    )
 
 
 def _union_area(boxes: Iterable[tuple[float, float, float, float]]) -> float:
@@ -257,6 +288,8 @@ def _trigger_reasons(layout: PageLayout, config: AdaptiveOcrConfig) -> list[str]
         reasons.append("image-dominant-page")
     if _image_regions_without_text(layout, config):
         reasons.append("unanchored-image-text-candidate")
+    if any(obj.object_type == "vector-text" for obj in layout.objects):
+        reasons.append("unmapped-vector-text")
     return reasons
 
 
@@ -270,19 +303,15 @@ def _similar(first: str, second: str, threshold: float) -> bool:
         return False
     if _agreement(first, second) < threshold:
         return False
+
     # A nearly identical sentence may still disagree on a unit, sign or '%'.
     # In numeric evidence, only spacing and sentence-ending punctuation may be
     # ignored when suppressing an alternative reading. Preserve case (mA != MA).
-    if any(c.isdigit() for c in first + second):
-
-        def scientific_text(value: str) -> str:
-            value = unicodedata.normalize("NFKC", value).replace("−", "-")
-            return re.sub(r"\s+", "", value).rstrip(".,;:!。；，！")
-
-        return scientific_text(first) == scientific_text(second) and _number_signature(
-            first
-        ) == _number_signature(second)
-    return True
+    # Unit-only headers, chemical labels and negation can be meaningful even
+    # without digits (mA/MA, Co/CO, R/S). Fuzzy spelling is not corroboration.
+    return literal_reading_key(first).rstrip(".,;:!。；，！") == literal_reading_key(
+        second
+    ).rstrip(".,;:!。；，！") and _number_signature(first) == _number_signature(second)
 
 
 def _agreement(first: str, second: str) -> float:
@@ -311,8 +340,8 @@ def _fits_damaged_native(native: str, reading: str) -> bool:
     This ranks complete OCR readings; it never fills a missing value itself.
     A match supports character count, not the identity of an unknown digit.
     """
-    native = "".join(unicodedata.normalize("NFKC", native).split())
-    reading = "".join(unicodedata.normalize("NFKC", reading).split())
+    native = literal_reading_key(native)
+    reading = literal_reading_key(reading)
     missing = {"\x00", "\ufffd"}
     if (
         not any(c in missing for c in native)
@@ -330,6 +359,23 @@ def _engine_id(backend: object) -> str:
         getattr(backend, "evidence_engine_id", None)
         or f"{getattr(backend, 'name')}@{getattr(backend, 'version')}"
     )
+
+
+def _preserves_visible_native(native: str, reading: str) -> bool:
+    """Require surviving text in order; unknown glyphs are not a spelling rule."""
+    left = literal_reading_key(native)
+    right = literal_reading_key(reading)
+    left, right = left.removesuffix("."), right.removesuffix(".")
+    parts = re.split(r"[\x00\ufffd\ue000-\uf8ff]+", left)
+    cursor = 0
+    for index, part in enumerate(parts):
+        if not part:
+            continue
+        found = right.find(part, cursor)
+        if found < 0 or (index == 0 and found != 0):
+            return False
+        cursor = found + len(part)
+    return not parts[-1] or cursor == len(right)
 
 
 def _backend_execution_identity(backend: object) -> dict[str, object]:
@@ -356,11 +402,68 @@ def _optional_failure_reason(exc: Exception) -> str:
     return "BACKEND_ERROR"
 
 
+def _local_glyph_context(
+    line: LayoutLine, layout: PageLayout
+) -> list[tuple[float, float]]:
+    """Use exact native glyph provenance to OCR only the affected word context."""
+    if any(
+        c == "\ufffd" or unicodedata.category(c) in {"Cc", "Cs", "Co"}
+        for c in line.text
+    ):
+        # This line is still unreadable, unlike a font-verified recovered unit.
+        # A tiny word crop can truncate the only useful OCR reading of it.
+        return []
+    warning = next(
+        (
+            w
+            for w in layout.warnings
+            if w["code"] == "NATIVE_GLYPH_CONTEXT"
+            and w.get("after") == line.text
+            and w.get("bbox") == [line.x0, line.y0, line.x1, line.y1]
+        ),
+        None,
+    )
+    if warning is None or not line.glyph_spans:
+        return []
+    if any(
+        not any(a <= offset < b for a, b, _, _ in line.glyph_spans)
+        for offset in warning["text_offsets"]
+    ):
+        return []  # Missing provenance cannot justify a smaller OCR scope.
+    words = list(re.finditer(r"\S+", line.text))
+    selected = set()
+    for index, word in enumerate(words):
+        if any(
+            word.start() <= offset < word.end() for offset in warning["text_offsets"]
+        ):
+            selected.update(range(max(0, index - 1), min(len(words), index + 2)))
+    runs = []
+    for index in sorted(selected):
+        if runs and index == runs[-1][-1] + 1:
+            runs[-1].append(index)
+        else:
+            runs.append([index])
+    regions = []
+    for run in runs:
+        begin, end = words[run[0]].start(), words[run[-1]].end()
+        glyphs = [
+            (x0, x1) for a, b, x0, x1 in line.glyph_spans if a < end and b > begin
+        ]
+        if glyphs:
+            regions.append(
+                (
+                    min(g[0] for g in glyphs) / layout.width,
+                    max(g[1] for g in glyphs) / layout.width,
+                )
+            )
+    return regions
+
+
 class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.8.1"
+    version = "1.10.5"
 
     def __init__(
         self,
@@ -393,6 +496,41 @@ class AdaptiveOcrBackend:
         # When a localized glyph is the only OCR trigger, compare that region.
         # Sparse, damaged and image-heavy pages still receive full-page OCR.
         glyph_check_only = reasons == ["uncertain-native-glyphs"]
+        local_ocr_regions = []
+        if reasons and set(reasons) <= {
+            "uncertain-native-glyphs",
+            "unanchored-image-text-candidate",
+            "unmapped-vector-text",
+        }:
+            # The trigger is local on a text-rich native page. Mask readable
+            # prose *before recognition*, so unrelated OCR errors are never
+            # manufactured as competing readings. Keep every painted image,
+            # including images with a few native labels, and every damaged line.
+            local_ocr_regions.extend(
+                PageRegion("figure", item.bbox, "painted image needs local OCR")
+                for item in native.objects
+                if item.object_type in {"image", "vector-text"}
+                and item.bbox is not None
+                and _area(item.bbox) > 0
+            )
+            for line in native.lines:
+                if line.uncertain:
+                    x0, y0, x1, y1 = _line_bbox(line, native)
+                    pad = (y1 - y0) * 0.35
+                    spans = _local_glyph_context(line, native)
+                    for left, right in spans or [(x0, x1)]:
+                        local_ocr_regions.append(
+                            PageRegion(
+                                "text",
+                                (
+                                    max(0, left - pad),
+                                    max(0, y0 - pad),
+                                    min(1, right + pad),
+                                    min(1, y1 + pad),
+                                ),
+                                "uncertain native glyphs need local OCR",
+                            )
+                        )
         regions = [
             *_image_regions_without_text(native, self.config),
             *_formula_regions(native),
@@ -492,6 +630,18 @@ class AdaptiveOcrBackend:
                 }
             )
             for backend in self.ocr_backends:
+                extract_regions = getattr(backend, "extract_regions", None)
+                if local_ocr_regions and callable(extract_regions):
+                    add_optional(
+                        backend,
+                        lambda extract_regions=extract_regions: extract_regions(
+                            page,
+                            page_number,
+                            tuple(local_ocr_regions),
+                            native_layout=native,
+                        ),
+                    )
+                    continue
                 add_optional(
                     backend,
                     lambda backend=backend: backend.extract_page(page, page_number),
@@ -556,6 +706,11 @@ class AdaptiveOcrBackend:
             <= _area(obj.bbox)
             < self.config.image_coverage_trigger
         ]
+        image_regions.extend(
+            obj.bbox
+            for obj in native.objects
+            if obj.object_type == "vector-text" and obj.bbox is not None
+        )
 
         for layout in candidate_layouts:
             for raw_line in layout.lines:
@@ -575,6 +730,13 @@ class AdaptiveOcrBackend:
                     # derived reading. Such evidence cannot become a primary
                     # merely because it arrived before that reading.
                     supplements.append(line)
+                    continue
+                if line.extraction_method in _LAYOUT_ASSOCIATIONS:
+                    # A relationship spans multiple printed labels. Its box is
+                    # evidence scope, not the extent of one competing text line.
+                    # Keep it uncertain and compare OCR against its individual
+                    # source readings below, never against the relationship text.
+                    supplements.append(replace(line, uncertain=True))
                     continue
                 covering = [
                     existing
@@ -659,6 +821,9 @@ class AdaptiveOcrBackend:
                         for index, existing in enumerate(native_lines)
                         if _overlap(line_box, _line_bbox(existing, native))
                         >= self.config.bbox_overlap_threshold
+                        or _punctuation_overlaps_native_glyph(
+                            line, line_box, existing, native
+                        )
                     ),
                     key=lambda item: (
                         _overlap(line_box, _line_bbox(item[1], native)),
@@ -673,10 +838,79 @@ class AdaptiveOcrBackend:
                     comparable_area = (
                         0.5 <= _area(line_box) / max(_area(native_box), 1e-12) <= 2
                     )
+                    covers_native_line = (
+                        max(
+                            0,
+                            min(line_box[2], native_box[2])
+                            - max(line_box[0], native_box[0]),
+                        )
+                        / max(native_box[2] - native_box[0], 1e-12)
+                        >= 0.8
+                    )
+                    recovered, substitutions = recover_word_glyphs(existing, line)
+                    if (
+                        substitutions
+                        and existing.uncertain
+                        and confidence >= 0.9
+                        and comparable_area
+                        and covers_native_line
+                        and _number_signature(existing.text)
+                        == _number_signature(line.text)
+                        and _agreement(existing.text, line.text) >= 0.9
+                    ):
+                        native_lines[index] = replace(
+                            existing,
+                            text=recovered,
+                            extraction_method="native-local-ocr-glyph-recovery",
+                            source_engines=tuple(
+                                dict.fromkeys(
+                                    existing.source_engines + line.source_engines
+                                )
+                            ),
+                            glyph_spans=(),
+                            uncertain=True,
+                        )
+                        supplements.extend(
+                            (
+                                replace(
+                                    existing,
+                                    content_region="native-alternative",
+                                    uncertain=True,
+                                ),
+                                replace(
+                                    line,
+                                    content_region="ocr-alternative",
+                                    uncertain=True,
+                                ),
+                            )
+                        )
+                        for start, end, letters in substitutions:
+                            span = next(
+                                s for s in existing.glyph_spans if s[0] <= start < s[1]
+                            )
+                            warnings.append(
+                                {
+                                    "code": "OCR_GLYPH_WORD_RECOVERED",
+                                    "page": native.page,
+                                    "bbox": [
+                                        span[2] / native.width,
+                                        existing.y0 / native.height,
+                                        span[3] / native.width,
+                                        existing.y1 / native.height,
+                                    ],
+                                    "detail": "An explicit missing native letter glyph is filled from one positioned OCR word with unchanged surrounding letters. All other native text is preserved; the original and complete OCR remain alternatives.",
+                                    "before": existing.text[start:end],
+                                    "after": letters,
+                                    "native_text": existing.text,
+                                    "ocr_text": line.text,
+                                }
+                            )
+                        continue
                     if (
                         existing.text != original.text
                         and confidence >= 0.8
                         and comparable_area
+                        and covers_native_line
                         and _fits_damaged_native(original.text, line.text)
                         and not _fits_damaged_native(original.text, existing.text)
                     ):
@@ -704,7 +938,14 @@ class AdaptiveOcrBackend:
                         and _suspicious_character_ratio((line,)) == 0
                         and confidence >= 0.8
                         and comparable_area
+                        and covers_native_line
+                        and (
+                            _number_signature(existing.text)
+                            == _number_signature(line.text)
+                            or _fits_damaged_native(existing.text, line.text)
+                        )
                         and _agreement(existing.text, line.text) >= 0.5
+                        and _preserves_visible_native(existing.text, line.text)
                         and not any(
                             warning.get("code") == "NATIVE_UNIT_MAPPING_CORRECTED"
                             and _normalized_text(str(warning.get("after", "")))
@@ -775,7 +1016,9 @@ class AdaptiveOcrBackend:
                     (
                         (index, existing)
                         for index, existing in enumerate(supplements)
+                        if existing.extraction_method not in _LAYOUT_ASSOCIATIONS
                         if not existing.content_region.endswith("alternative")
+                        or existing.extraction_method.endswith("+association-source")
                         if _overlap(line_box, _line_bbox(existing, native))
                         >= self.config.bbox_overlap_threshold
                     ),
@@ -819,7 +1062,20 @@ class AdaptiveOcrBackend:
                     )
                     supplements[index] = replace(
                         preferred,
-                        extraction_method="ocr-consensus",
+                        extraction_method=(
+                            existing.extraction_method
+                            if existing.extraction_method.endswith(
+                                "+association-source"
+                            )
+                            else "ocr-consensus"
+                        ),
+                        content_region=(
+                            existing.content_region
+                            if existing.extraction_method.endswith(
+                                "+association-source"
+                            )
+                            else preferred.content_region
+                        ),
                         extraction_confidence=preferred.extraction_confidence,
                         engine_agreement=_agreement(existing.text, line.text),
                         source_engines=tuple(
@@ -831,6 +1087,8 @@ class AdaptiveOcrBackend:
                     warnings.append(
                         {
                             "code": "OCR_ENGINE_DISAGREEMENT",
+                            "page": native.page,
+                            "bbox": list(line_box),
                             "detail": (
                                 f"page {native.page}: OCR engines disagree near bbox "
                                 f"{tuple(round(v, 3) for v in line_box)}"

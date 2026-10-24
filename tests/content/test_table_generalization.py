@@ -12,6 +12,74 @@ from aletheia_nexus.content.parser import (
 )
 
 
+@pytest.mark.parametrize("scale", [0.6, 1.0, 1.8])
+@pytest.mark.parametrize("offset", [0, 170])
+def test_two_line_label_straddles_one_numeric_experiment(scale, offset):
+    def line(t, x, y, w=25):
+        return LayoutLine(
+            t,
+            (x + offset) * scale,
+            y * scale,
+            (x + offset + w) * scale,
+            (y + 8) * scale,
+            8 * scale,
+            content_region="table-cell",
+        )
+
+    lines = [line("Table 1. Comparative experiments.", 25, 740, 300)]
+    for y, values in [
+        (720, ["Entry", "Material", "Yield", "ee"]),
+        (685, ["1", "Material-A", "51", "78 (S)"]),
+        (630, ["2", None, "36", "82 (R)"]),
+        (575, ["3", "Material-C", "29", "64 (S)"]),
+    ]:
+        lines.extend(
+            line(t, x, y, 90 if x == 90 else 25)
+            for t, x in zip(values, [25, 90, 240, 300])
+            if t is not None
+        )
+    lines += [line("Ligand-complex", 90, 635, 90), line("@porous-support", 90, 625, 85)]
+    _, tables = cells_from(lines, (600 + offset) * scale, 800 * scale)
+    cells, _, _ = tables[0]
+    row = next(c["row"] for c in cells if c["text"] == "36")
+    assert {c["text"] for c in cells if c["row"] == row} == {
+        "2",
+        "Ligand-complex",
+        "@porous-support",
+        "36",
+        "82 (R)",
+    }
+    assert len({c["anchor_id"] for c in cells if c["row"] == row}) == 5
+    assert next(c["row"] for c in cells if c["text"] == "Material-A") != row
+    assert next(c["row"] for c in cells if c["text"] == "Material-C") != row
+
+
+@pytest.mark.parametrize(
+    "case", ["different-column", "occupied-column", "between-experiments"]
+)
+def test_text_around_a_row_does_not_override_ambiguous_cell_identity(case):
+    def line(t, x, y, w=30):
+        return LayoutLine(t, x, y, x + w, y + 8, 8, content_region="table-cell")
+
+    lines = [line("Table 1. Separate experiments.", 30, 750, 300)]
+    for y, entry in [(710, "1"), (660, "2"), (610, "3")]:
+        lines.extend([line(entry, 30, y), line("53", 300, y), line("71", 420, y)])
+    if case == "different-column":
+        lines += [line("upper", 100, 665), line("lower", 200, 655)]
+    elif case == "occupied-column":
+        lines += [
+            line("existing", 100, 660),
+            line("upper", 100, 665),
+            line("lower", 100, 655),
+        ]
+    else:
+        lines += [line("upper", 100, 690), line("lower", 100, 680)]
+    _, tables = cells_from(lines)
+    cells, _, _ = tables[0]
+    row = next(c["row"] for c in cells if c["text"] == "2")
+    assert not {"upper", "lower"} <= {c["text"] for c in cells if c["row"] == row}
+
+
 def cells_from(lines, width=600, height=800):
     ordered = _order_lines(
         _prepare_table_lines(tuple(lines), width), width, ParserConfig()
@@ -40,6 +108,104 @@ def cells_from(lines, width=600, height=800):
         )
     captions = [b for b in blocks if b["text"].startswith("Table")]
     return blocks, [_table_cells(b, blocks, anchors) for b in captions]
+
+
+@pytest.mark.parametrize("scale", [0.7, 1.0, 1.5])
+@pytest.mark.parametrize("label", ["X—Y", "CH3", "[¢]", "→"])
+def test_diagram_ocr_between_aligned_rows_keeps_the_complete_numeric_table(
+    scale, label
+):
+    def line(text, x, y, w=24, ocr=False):
+        return LayoutLine(
+            text,
+            x * scale,
+            y * scale,
+            (x + w) * scale,
+            (y + 8) * scale,
+            8 * scale,
+            extraction_method="tesseract-tsv-ocr" if ocr else "pdfminer-glyph-layout",
+        )
+
+    lines = [line("Table 3. Material comparisons.", 30, 760, 480)]
+    for y, values in [
+        (740, ["Entry", "Material", "Yield", "ee"]),
+        (705, ["1", "A", "53", "72 (S)"]),
+        (655, ["2", "B", "47", "81 (R)"]),
+        (605, ["3", "C", "34", "69 (S)"]),
+        (555, ["4", "D", "29", "63 (R)"]),
+        (505, ["5", "E", "38", "65 (S)"]),
+    ]:
+        lines.extend(line(t, x, y) for t, x in zip(values, [30, 100, 420, 510]))
+    lines += [line(label, 240, 583, 45, True), line(label, 240, 533, 45, True)]
+    blocks, tables = cells_from(lines, 600 * scale, 800 * scale)
+    cells, _, columns = tables[0]
+    assert columns == 4
+    assert [
+        (c["row"], c["column"], c["text"]) for c in cells if c["text"] == "81 (R)"
+    ] == [(3, 4, "81 (R)")]
+    assert {c["text"] for c in cells if c["row"] == 4} == {"3", "C", "34", "69 (S)"}
+    assert {c["text"] for c in cells if c["row"] == 6} == {"5", "E", "38", "65 (S)"}
+    assert len([b for b in blocks if b["text"] == label]) == 2
+    assert not any(c["text"] == label for c in cells)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "native-label",
+        "number",
+        "aligned-label",
+        "changed-columns",
+        "caption",
+        "paragraph",
+    ],
+)
+def test_interstitial_ocr_exception_does_not_skip_conditions_or_bridge_separate_grids(
+    case,
+):
+    from dataclasses import replace
+
+    from aletheia_nexus.content.table_layout import _interstitial_ocr_row
+
+    def line(t, x, y, width=24):
+        return LayoutLine(
+            t, x, y, x + width, y + 8, 8, extraction_method="tesseract-tsv-ocr"
+        )
+
+    previous = [
+        line(t, x, 700) for t, x in zip(["1", "A", "53", "72 (S)"], [30, 100, 420, 510])
+    ]
+    following = [
+        [
+            line(t, x, 650)
+            for t, x in zip(["2", "B", "47", "81 (R)"], [30, 100, 420, 510])
+        ]
+    ]
+    ink = line("X—Y", 240, 680)
+    if case == "native-label":
+        ink = replace(ink, extraction_method="pdfminer-glyph-layout")
+    elif case == "number":
+        ink = replace(ink, text="25")
+    elif case == "aligned-label":
+        ink = replace(ink, x0=100, x1=124)
+    elif case == "changed-columns":
+        following[0][-1] = replace(following[0][-1], x0=550, x1=574)
+    elif case == "caption":
+        following.insert(0, [line("Table 4. Another experiment.", 30, 670)])
+    else:
+        following.insert(
+            0,
+            [
+                line(
+                    "This paragraph separates the previous experiment from the following measurements. "
+                    * 2,
+                    30,
+                    670,
+                    510,
+                )
+            ],
+        )
+    assert not _interstitial_ocr_row([ink], previous, following, 8)
 
 
 @pytest.mark.parametrize("scale", [0.6, 1.0, 1.8])

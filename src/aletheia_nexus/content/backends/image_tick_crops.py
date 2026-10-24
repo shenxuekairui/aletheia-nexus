@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from aletheia_nexus.content.backends.image_readings import reading_key
+from aletheia_nexus.content.backends.readings import literal_reading_key
 
 
 def read_tick_margins(records, image, read, recognize):
@@ -98,7 +98,7 @@ def read_tick_margins(records, image, read, recognize):
 
         for candidate in passes[0]:
             corroborated = any(
-                reading_key(r["text"]) == reading_key(candidate["text"])
+                literal_reading_key(r["text"]) == literal_reading_key(candidate["text"])
                 and overlaps(r["box"], candidate["box"])
                 for r in passes[1]
             )
@@ -121,7 +121,8 @@ def read_tick_margins(records, image, read, recognize):
                 if (
                     check is None
                     or check[1] < 0.95
-                    or reading_key(check[0]) != reading_key(candidate["text"])
+                    or literal_reading_key(check[0])
+                    != literal_reading_key(candidate["text"])
                 ):
                     continue
             near = [
@@ -132,7 +133,8 @@ def read_tick_margins(records, image, read, recognize):
                 and overlaps(r["box"], candidate["box"])
             ]
             if any(
-                reading_key(r["text"]) == reading_key(candidate["text"]) for r in near
+                literal_reading_key(r["text"]) == literal_reading_key(candidate["text"])
+                for r in near
             ):
                 continue
             # Crop boundaries separate digits from axis strokes and panel labels.
@@ -140,10 +142,30 @@ def read_tick_margins(records, image, read, recognize):
             digits = re.findall(r"\d+(?:\.\d+)?", candidate["text"])
             if any(re.findall(r"\d+(?:\.\d+)?", r["text"]) != digits for r in near):
                 continue
+            if any(not numeric.fullmatch(r["text"]) for r in near):
+                # A margin crop may omit a printed inequality, unit, footnote
+                # or surrounding label. Agreement on its digits cannot replace
+                # the fuller source reading (tables also have numeric margins).
+                # Keep the crop as a partial alternative, including its box.
+                if not any(
+                    literal_reading_key(r["text"])
+                    == literal_reading_key(candidate["text"])
+                    and overlaps(r["box"], candidate["box"])
+                    for r in records
+                ):
+                    records.append(
+                        {
+                            **candidate,
+                            "alternative": True,
+                            "method": "rapidocr-corroborated-tick-crop",
+                        }
+                    )
+                continue
             if any(
                 numeric.fullmatch(r["text"])
-                and reading_key(r["text"]).startswith(("+", "-"))
-                and reading_key(r["text"]) != reading_key(candidate["text"])
+                and literal_reading_key(r["text"]).startswith(("+", "-"))
+                and literal_reading_key(r["text"])
+                != literal_reading_key(candidate["text"])
                 for r in near
             ):
                 continue

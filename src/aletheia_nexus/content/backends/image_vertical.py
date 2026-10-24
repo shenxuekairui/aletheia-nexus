@@ -3,7 +3,37 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from difflib import SequenceMatcher
+
+from aletheia_nexus.content.backends.readings import literal_reading_key
+
+
+def _literal_label(text):
+    # Reference-operator case is typography; unit and material case is not.
+    return literal_reading_key(re.sub(r"\bvs\b", "vs", text, flags=re.IGNORECASE))
+
+
+def _preserves_fragments(reading, fragments):
+    """A crop must not drop observed unit, sign or label characters."""
+
+    def key(text):
+        # The reference operator VS/vs is case-insensitive. Unit and material
+        # spellings remain exact: mV/MV and Cl/CI must still disagree.
+        return "".join(
+            c
+            for c in _literal_label(text)
+            if c.isalnum()
+            or c in "+-/±%°.·×"
+            or unicodedata.decomposition(c).startswith(("<super>", "<sub>"))
+        )
+
+    candidate = key(reading)
+    for order in (fragments, fragments[::-1]):
+        remaining = iter(candidate)
+        if all(c in remaining for c in key(" ".join(order))):
+            return True
+    return False
 
 
 def read_vertical_labels(records, image, read):
@@ -66,6 +96,8 @@ def read_vertical_labels(records, image, read):
             continue
         best = max(readings, key=lambda r: len(text_key(r["text"])) * r["score"])
         ordered = sorted(group, key=lambda r: r["box"][1])
+        if not _preserves_fragments(best["text"], [r["text"] for r in ordered]):
+            continue
         keys = [
             text_key(" ".join(r["text"] for r in order))
             for order in (ordered, ordered[::-1])
@@ -81,7 +113,7 @@ def read_vertical_labels(records, image, read):
         # Competing complete readings with different text stay unresolved.
         if any(
             len(text_key(r["text"])) >= len(text_key(best["text"])) * 0.9
-            and text_key(r["text"]) != text_key(best["text"])
+            and _literal_label(r["text"]) != _literal_label(best["text"])
             for r in readings
         ):
             continue

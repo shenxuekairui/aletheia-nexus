@@ -1,6 +1,6 @@
 # Aletheia Nexus
 
-[English README](README.en.md) · [使用说明](docs/USER_MANUAL.md) · [v0.7.2 发布说明](docs/RELEASE_NOTES_v0.7.2.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
+[English README](README.en.md) · [使用说明](docs/USER_MANUAL.md) · [v0.7.3 发布说明](docs/RELEASE_NOTES_v0.7.3.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
 
 > **从一篇论文的可信获取，走向可积累、可协作、可演化的科研知识基础设施。**
 
@@ -28,7 +28,7 @@ AN 目前以 Python 包和命令行工具提供这些能力，不是带图形界
 
 ## 现在可以做什么
 
-v0.7.2 将文献获取、本地整理和带来源解析连接成一条工作流：
+AN 将文献获取、本地整理和带来源解析连接成一条工作流：
 
 ```text
 DOI / 文献清单（知网也支持题名）
@@ -58,7 +58,7 @@ DOI / 文献清单（知网也支持题名）
 
 ## 快速开始
 
-需要 Python 3.11 或更高版本。以下命令均为单行，可在常见终端中运行。本文对应 v0.7.2 源码；实际已发布版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
+需要 Python 3.11 或更高版本。以下命令均为单行，可在常见终端中运行。本文对应 v0.7.3；正式发行与安装包以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
 
 ### 1. 安装并检查环境
 
@@ -145,7 +145,7 @@ python -m pip install -U "aletheia-nexus[ocr]"
 aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216 --ocr
 ```
 
-图内印刷文字可选安装 `aletheia-nexus[image-ocr]` 并使用 `--ocr --image-ocr rapidocr`；模型在本地运行。单篇与批量解析使用同一套 OCR 配置。
+图内印刷文字可选安装 `aletheia-nexus[image-ocr]` 并使用 `--ocr --image-ocr rapidocr`；模型在本地运行。单篇与批量解析使用同一套 OCR 配置。面板中的长度标签保留文字和位置，其用途仍需核对；长度单位本身不能证明它是标尺。
 
 无 DOI 的已核验文献可直接解析；本地 PDF 可用 `import` 登记题名，SI 通过 `--parent` 关联正文。OCR 与原生文本冲突时保留两种读法并标记；缺字、超时和不完整覆盖明确报告。完整科研流程见 [0.7.2 使用指南](docs/V072_RESEARCH_WORKFLOW.md)。
 
@@ -167,7 +167,7 @@ aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216 --ocr
 
 **`PARSED` 表示完成了相应文档解析，不表示论文结论正确，也不表示系统理解了全部图表和科学含义。** 不完整解析使用 `PARTIAL` 等明确状态。
 
-0.7.2 的最新范围与结果见[实际科研验收说明](docs/V072_PRACTICAL_ACCEPTANCE.md)：重点保证关键数值、单位、指标与实验条件的对应、原页定位和证据导出。两篇新文献的16个科研问题首次14/16，通用表格修复后同组16/16；历史K集回归12/12，原首次8/12保留。图内细小化学式和复杂多阶段示意图仍可能需要局部核对。默认不调用AI，不以回归成绩冒充未知文献的整体准确率。
+0.7.3 重点修复数值、指标、实验行与条件的对应，以及 OCR 融合和局部复核。两组留出评测均已完成，随后用于修复的材料均转为暴露回归集。第二组 12 篇正文及 4 份 SI 共 673 页，主 OCR 配置首次完整正确从 25/60 提高到 35/60；原正确率及零漏报目标未达到，后续回归不能替代首次成绩。项目负责人随后明确允许依据实际设计目标收尾，调整发生在成绩已知后；[验收记录](docs/V073_ACCEPTANCE.md)保留原成绩、剩余错误和最终验证状态。AN 服务于本地证据准备和可追溯复核，关键数据引用仍需核对原页；细小化学式、缺失的实验关系和复杂图示尤其如此。默认不调用 AI，局部 AI 建议接口与原始解析分离。不以测试通过或锚点齐全代替科研准确率。[0.7.2 历史验收](docs/V072_PRACTICAL_ACCEPTANCE.md)的首次14/16、修复后同组16/16保持原貌。
 
 ### 权限与人工边界
 
@@ -198,7 +198,7 @@ AN 坚持正确性优先于自动化、明确失败优于静默错误；原始�
 | 文档 | 适合何时阅读 |
 | --- | --- |
 | [使用说明书](docs/USER_MANUAL.md) | 安装、输入、批量获取、本地管理、解析、OCR 与故障处理 |
-| [v0.7.2 发布说明](docs/RELEASE_NOTES_v0.7.2.md) | 理解本版本、升级变化与使用边界 |
+| [v0.7.3 发布说明](docs/RELEASE_NOTES_v0.7.3.md) | 理解版本变化、验收结果与使用边界 |
 | [独立留出测试](docs/V072_INDEPENDENT_HOLDOUT.md) | 12篇原文核对、修复回归与4篇封存确认，区分实测准确率和适用边界 |
 | [第二批独立验证](docs/V072_SECOND_HOLDOUT.md) | 旧负指数错误修复；新8篇32项完整通过26项，记录未提示错误与原文冲突 |
 | [第三批独立验证](docs/V072_THIRD_HOLDOUT.md) | 上轮6项错误已修复；新8篇32项通过27项，5项失败归并3处，保留真实冲突与漏报记录 |

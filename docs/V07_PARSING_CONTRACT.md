@@ -1,6 +1,20 @@
 # v0.7 scientific content parsing contract
 
-Status: updated for `0.7.2` by `structured-pdf-pipeline/3.3.0`; v2 remains readable.
+Status: `0.7.3` candidate, `structured-pdf-pipeline/3.10.12`; v2 remains readable.
+
+Search-result v1 adds `reading_role`, `matching_rows`, `interpretation_status`
+and `review_locations` without changing hit identities or legacy selection.
+Review locations reuse the evidence export's primary/alternative block IDs,
+unresolved text differences and local warnings on the hit pages. They are added
+after ranking. Nearby text, observed rows and figure captions remain layout
+context, not interpreted or verified experimental tuples. Selected evidence
+export retains all corresponding readings and original-page anchors.
+An agreeing local text fragment remains an alternative source record without a
+false deletion of surrounding prose. A substantially shorter differing reading
+has `status: partial-reading-needs-source-alignment`, its full `alternative_text`
+and empty `changes`; this is an unresolved local reading, not a claimed aligned
+replacement. Complete comparable readings retain explicit token differences.
+Scientific acceptance and publication remain pending in [V073_ACCEPTANCE.md](V073_ACCEPTANCE.md).
 
 The release target is:
 
@@ -44,6 +58,15 @@ default 1), with `span_evidence` describing the geometric observation. Centered,
 repeated group labels can cover multiple rows; multilevel headers can cover
 their observed child columns. Empty cells are not filled with invented values.
 These spans remain uncertain evidence, not verified scientific relationships.
+Captionless tables bounded by three painted horizontal rules can carry
+`evidence_status: rule-and-cell-evidence-observed` and
+`association: painted-rules+positioned-cells`. Their caption and label are empty;
+`caption_source: header-anchor-no-caption` states that the existing
+`caption_block_id` reference is a real header anchor, not an invented caption.
+Repeated numeric columns and unique row proximity are required. These additive
+v3 fields retain the same source blocks, anchors and cell schema; current readers
+continue to accept earlier v3 and v2 artifacts. Older strict v3 validators may
+need updating for the additional evidence-status value.
 Evidence packs retain the cell fields; text chunks provide table context but
 are not a structured measurement export. A numeric fragment that straddles rows
 is retained and flagged rather than silently discarded or assigned a guessed row.
@@ -65,6 +88,15 @@ Positioned figure `source_objects` may carry `text_completeness: not-verified`.
 contain untranscribed values, units or scale bars. Closely aligned image rows can
 belong to one figure; an intervening caption ends that association. Region
 coverage is not image-text recognition or a verified scale-to-panel relationship.
+
+Panel associations marked `positioned-panel-length` describe an observed length
+label and retain the existing uncertainty flag; their scientific role remains
+unverified. Compact `Panel (...): label ...` text does not identify a measurement
+type. A length unit may denote a
+wavelength or displacement, so position alone must not assert a scale bar.
+Literal readings, alternatives and coordinates remain available. Legacy
+`positioned-panel-scale` records remain readable; their label is not independent
+verification of scientific meaning.
 
 With adaptive OCR enabled, upright embedded images may receive a local OCR pass
 on an isolated high-contrast footer band. Literal length labels, their engine
@@ -169,6 +201,26 @@ evidence-pack ID, with citations reconstructed from the original evidence.
 It never overwrites parsed text or clears uncertainty, and does not decide that a
 scientific claim is true. Original contradictions remain distinct. The caller
 controls whether any external provider is used and what context it receives.
+
+The runnable [offline integration example](../examples/assess_evidence.py)
+accepts an exported JSON evidence pack and explicit document/location IDs. It
+demonstrates abstention and saves an exclusively created, separate advisory file.
+Replace its judge only when explicitly choosing a provider. Default parsing and
+export never call it. Report AI-assisted results separately from default-reading
+accuracy; an advisory preference does not erase a conflicting source statement.
+
+Evidence-pack v1 remains additive and backwards compatible. Review locations may
+also expose `primary_block_ids`, `alternative_block_ids`, `reading_differences`
+and `local_warnings`. Text differences are comparisons of observed readings, not
+scientific error classifications. Unpaired alternatives remain present. Markdown
+shows primary table/figure readings, observed cell alignment and local differences
+before expandable alternatives. A row span states the parser's observed layout
+evidence; it is not confirmation of an experiment's scientific interpretation.
+Display grouping and folding never count as resolved independent review issues.
+Evidence exports also retain selected canonical page geometry. Local review
+warnings convert known native glyph boxes from display points to normalized
+anchor coordinates, preserving their original boxes and leaving the canonical
+warning records unchanged. Page-wide warnings are not assigned to every block.
 
 ## Qualification evidence
 

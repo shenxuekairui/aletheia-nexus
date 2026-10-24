@@ -17,8 +17,21 @@ from aletheia_nexus.content.captions import (
     _deduplicate_caption_blocks,
 )
 from aletheia_nexus.content.diagnostics import safe_exception_detail
+from aletheia_nexus.content.embedded_tables import (
+    append_embedded_tables,
+    prepare_embedded_tables,
+)
+from aletheia_nexus.content.figure_labels import (
+    associate_keyed_labels,
+    associate_percentage_results,
+)
 from aletheia_nexus.content.gate import ParserInput
 from aletheia_nexus.content.geometry import PageGeometry
+from aletheia_nexus.content.image_tiles import union_box, vertical_tile_groups
+from aletheia_nexus.content.indexed_tables import (
+    prepare_indexed_tables,
+    repair_indexed_tables,
+)
 from aletheia_nexus.content.models import (
     LayoutLine,
     PageLayout,
@@ -43,7 +56,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.8.2"
+PARSER_VERSION = "3.10.15"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -777,6 +790,10 @@ class _NativeExtractionStage:
             ordinary = prepare_ruled_tables(
                 ordinary, layout, _caption_match, _aligned_table_fragments
             )
+            ordinary = prepare_embedded_tables(ordinary, layout)
+            ordinary = prepare_indexed_tables(ordinary, layout)
+            ordinary = associate_keyed_labels(ordinary)
+            ordinary = associate_percentage_results(ordinary)
             alternatives = tuple(
                 line
                 for line in prepared_lines
@@ -1292,6 +1309,61 @@ def _image_caption_distance(
     return distance if distance <= 0.2 else None
 
 
+def _positioned_image_groups(layout):
+    images = [o for o in layout.objects if o.object_type == "image" and o.bbox]
+    result = []
+    for indices in vertical_tile_groups([i.bbox for i in images], tolerance=2e-6):
+        members = [images[i] for i in indices]
+        region = replace(members[0], bbox=union_box([i.bbox for i in members]))
+        if _meaningful_image(region):
+            result.append((region, members))
+    return result
+
+
+def _table_raster_warnings(table, blocks, anchors, layout, associated):
+    """Disclose actual image regions between a table caption and its cells."""
+    caption = anchors[table["anchor_id"]]
+    boxes = [
+        anchors[cell["anchor_id"]]["bbox"]
+        for cell in table.get("cells", [])
+        if anchors[cell["anchor_id"]]["page"] == caption["page"]
+    ]
+    if not boxes or not caption["bbox"]:
+        return []
+    grid = union_box(boxes)
+    bottom, top = grid[3], caption["bbox"][1]
+    left = min(grid[0], caption["bbox"][0])
+    right = max(grid[2], caption["bbox"][2])
+    if bottom >= top or any(
+        block["page"] == caption["page"]
+        and block["kind"] == "caption"
+        and block["id"] != table["caption_block_id"]
+        and (box := anchors[block["anchor_id"]]["bbox"])
+        and bottom < (box[1] + box[3]) / 2 < top
+        for block in blocks
+    ):
+        return []
+    regions = [
+        list(region.bbox)
+        for region, members in _positioned_image_groups(layout)
+        if not any((caption["page"], image.name) in associated for image in members)
+        and left <= region.bbox[0] < region.bbox[2] <= right
+        and bottom <= region.bbox[1] < region.bbox[3] <= top
+    ]
+    if not regions:
+        return []
+    return [
+        {
+            "code": "RASTER_REGION_TEXT_UNVERIFIED",
+            "page": caption["page"],
+            "anchor_id": table["anchor_id"],
+            "object_id": table["id"],
+            "regions": regions,
+            "detail": "Raster regions between this table caption and its observed cells may contain untranscribed experimental conditions or results. Recognized cells and partial image labels do not establish image-text coverage; inspect these original regions.",
+        }
+    ]
+
+
 def _objects(
     blocks: list[dict[str, object]],
     anchors: list[dict[str, object]],
@@ -1302,6 +1374,9 @@ def _objects(
     anchor_by_id = _anchor_map(anchors)
     associated_images: set[tuple[int, str]] = set()
     by_block = {str(item["id"]): item for item in blocks}
+    image_groups = {
+        page: _positioned_image_groups(layout) for page, layout in layouts.items()
+    }
 
     for block in blocks:
         match = _caption_match(str(block["text"]))
@@ -1325,11 +1400,9 @@ def _objects(
             "interpretation_status": "not-interpreted",
         }
         if is_figure:
-            images = [
-                value
-                for value in layouts[int(block["page"])].objects
-                if value.object_type == "image" and _meaningful_image(value)
-            ]
+            groups = image_groups[int(block["page"])]
+            images = [region for region, _ in groups]
+            members_by_name = {region.name: members for region, members in groups}
             caption_bbox = anchor_by_id[str(block["anchor_id"])]["bbox"]
             positioned = [
                 (distance, image)
@@ -1377,6 +1450,14 @@ def _objects(
                 if not added:
                     break
                 linked_images.extend(added)
+            # A PDF can store one figure as hundreds of adjacent one-pixel
+            # strips. Associate the observed contiguous region, but retain
+            # every original resource and its location in the evidence.
+            linked_images = [
+                member
+                for image in linked_images
+                for member in members_by_name[image.name]
+            ]
             item["source_objects"] = [
                 {
                     "name": image.name,
@@ -1448,11 +1529,13 @@ def _objects(
         collection.append(item)
         by_block[str(block["id"])]["object_ref"] = identifier
 
+    append_embedded_tables(tables, blocks, anchor_by_id, layouts)
+    repair_indexed_tables(tables, blocks, anchor_by_id, layouts)
     meaningful_images = {
         (page_number, image.name)
-        for page_number, layout in layouts.items()
-        for image in layout.objects
-        if image.object_type == "image" and _meaningful_image(image)
+        for page_number, groups in image_groups.items()
+        for _, members in groups
+        for image in members
     }
     return figures, tables, len(meaningful_images - associated_images)
 
@@ -1471,20 +1554,39 @@ class _StructureStage:
             context.unassociated_image_resources,
         ) = _objects(context.blocks, context.anchors, context.layouts)
         anchors = {a["id"]: a for a in context.anchors}
+        associated = {
+            (obj["page"], obj["name"])
+            for figure in context.figures
+            for obj in figure.get("source_objects", [])
+        }
         for table in context.tables:
             context.warnings.extend(
                 _table_local_warnings(table, context.blocks, anchors)
             )
+            context.warnings.extend(
+                _table_raster_warnings(
+                    table,
+                    context.blocks,
+                    anchors,
+                    context.layouts[anchors[table["anchor_id"]]["page"]],
+                    associated,
+                )
+            )
         for figure in context.figures:
             objects = figure.get("source_objects", [])
             if objects:
+                boxes = [obj["bbox"] for obj in objects]
+                regions = [
+                    list(union_box([boxes[i] for i in group]))
+                    for group in vertical_tile_groups(boxes, tolerance=2e-6)
+                ]
                 context.warnings.append(
                     {
                         "code": "RASTER_REGION_TEXT_UNVERIFIED",
                         "page": objects[0]["page"],
                         "anchor_id": figure["anchor_id"],
                         "object_id": figure["id"],
-                        "regions": [obj["bbox"] for obj in objects],
+                        "regions": regions,
                         "detail": "Image regions may contain untranscribed values, units or scale bars. Caption/panel labels do not establish image-text coverage; inspect these original regions.",
                     }
                 )
@@ -1526,11 +1628,13 @@ class _QualityStage:
             "IMAGE_LABEL_UNRESOLVED",
             "TABLE_COLUMN_COLLISION",
             "TABLE_CONTINUATION_UNRESOLVED",
+            "TABLE_ROW_CONTEXT_MISSING",
             "OCR_ENGINE_DISAGREEMENT",
             "OCR_ORIENTATION_UNCERTAIN",
             "NATIVE_GLYPH_UNCERTAIN",
             "IMAGE_DOMINANT_PAGE",
             "RASTER_REGION_TEXT_UNVERIFIED",
+            "VECTOR_TEXT_UNVERIFIED",
         }
         context.quality = {
             "page_coverage": {

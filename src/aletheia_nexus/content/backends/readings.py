@@ -3,13 +3,63 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import replace
 
 from aletheia_nexus.content.models import LayoutLine, PageLayout
 
 
+def literal_reading_key(value: str) -> str:
+    """Fold typography and spacing without flattening scientific scripts."""
+    value = "".join(
+        char
+        if unicodedata.decomposition(char).startswith(("<super>", "<sub>"))
+        else unicodedata.normalize("NFKC", char)
+        for char in unicodedata.normalize("NFC", value)
+    )
+    return "".join(value.split()).replace("−", "-")
+
+
 def _compact(text: str) -> str:
     return re.sub(r"\s+", "", text)
+
+
+def recover_word_glyphs(native: LayoutLine, candidate: LayoutLine):
+    """Fill an explicit missing letter glyph from a unique observed OCR word.
+
+    Keep every surviving native letter, digit and unit. This does not use a
+    vocabulary, repair numbers or accept the OCR's other spelling changes.
+    The caller must establish matching line geometry and sufficient confidence.
+    """
+    changes = []
+    pattern = re.compile(
+        r"(?<![A-Za-z0-9])([A-Za-z]{2,})([\ue000-\uf8ff\ufffd\x00])([A-Za-z]{2,})(?![A-Za-z0-9])"
+    )
+    for match in pattern.finditer(native.text):
+        printed = [
+            span
+            for span in native.glyph_spans
+            if span[0] <= match.start(2) < span[1] and span[2] < span[3]
+        ]
+        if len(printed) != 1:
+            continue
+        observations = list(
+            re.finditer(
+                r"(?<![A-Za-z0-9])"
+                + re.escape(match[1])
+                + r"([A-Za-z]{1,3})"
+                + re.escape(match[3])
+                + r"(?![A-Za-z0-9])",
+                candidate.text,
+            )
+        )
+        if len(observations) != 1:
+            continue
+        changes.append((match.start(2), match.end(2), observations[0][1]))
+    text = native.text
+    for start, end, letters in reversed(changes):
+        text = text[:start] + letters + text[end:]
+    return text, changes
 
 
 def _models(line: LayoutLine) -> set[str]:

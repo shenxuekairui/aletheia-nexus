@@ -376,6 +376,195 @@ def test_tesseract_configuration_and_tsv_coordinates():
     assert lines[0].source_engines == ("tesseract@5",)
 
 
+@pytest.mark.parametrize("psm", [3, 6])
+def test_regional_ocr_masks_ink_without_moving_evidence(monkeypatch, psm):
+    from subprocess import CompletedProcess
+
+    from pypdf import PdfWriter
+
+    from aletheia_nexus.content.backends import tesseract
+    from aletheia_nexus.content.models import PageRegion
+
+    Image = pytest.importorskip("PIL.Image")
+    backend = TesseractOcrBackend(
+        TesseractOcrConfig(binarize=False, page_segmentation_mode=psm)
+    )
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=100, height=100)
+    seen = []
+
+    def run(command, *, timeout):
+        if command[0] == "pdftoppm":
+            Image.new("L", (400, 400), 0).save(command[-1] + ".png")
+            return CompletedProcess(command, 0, "", "")
+        im = Image.open(command[1])
+        assert command[command.index("--psm") + 1] == str(11 if psm == 3 else psm)
+        assert im.size == (400, 400)
+        assert im.getpixel((100, 100)) == 0  # canonical top-left requested area
+        assert im.getpixel((100, 300)) == 255
+        assert im.getpixel((350, 100)) == 255
+        seen.append(command)
+        return CompletedProcess(
+            command,
+            0,
+            "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t100\t100\t40\t20\t98\t7.2\n",
+            "",
+        )
+
+    monkeypatch.setattr(tesseract, "_run", run)
+    result = backend.extract_regions(
+        page, 1, (PageRegion("text", (0.2, 0.6, 0.4, 0.8), "damaged"),)
+    )
+    assert len(seen) == 1  # no orientation/deskew on a masked native page
+    assert result.lines[0].x0 == 25
+    assert result.lines[0].y0 == 70
+    assert result.warnings[0]["code"] == "OCR_REGIONS_SCOPED"
+
+
+def test_scoped_figures_retain_page_context_and_conflicts_but_not_prose(monkeypatch):
+    from aletheia_nexus.content.models import PageRegion
+
+    label = _ocr_line("Catalyst B", 0.98, "ocr")
+    competing = replace(label, text="Catalyst 8", content_region="ocr-alternative")
+    prose = replace(label, text="Clear native method", y0=700, y1=720)
+    glyph = replace(label, text="9 μL", x0=400, x1=450, y0=100, y1=120)
+    vector_label = replace(label, text="R(−)", x0=60, x1=100, y0=150, y1=170)
+    full = PageLayout(
+        page=1, width=600, height=800, lines=(label, competing, prose, vector_label)
+    )
+    text_region = PageRegion("text", (0.6, 0.1, 0.8, 0.2), "damaged glyph")
+    calls = []
+    backend = TesseractOcrBackend()
+
+    def extract(_page, _number, regions=()):
+        calls.append(regions)
+        return replace(full, lines=(glyph,)) if regions else full
+
+    monkeypatch.setattr(backend, "_extract_page", extract)
+    result = backend.extract_regions(
+        None,
+        1,
+        (PageRegion("figure", (0.08, 0.48, 0.55, 0.55), "image"), text_region),
+        native_layout=replace(full, lines=(prose,)),
+    )
+    assert calls == [(), (text_region,)]
+    assert result.lines == (label, competing, vector_label, glyph)
+    assert result.warnings[0]["code"] == "OCR_FIGURE_READINGS_SCOPED"
+
+
+@pytest.mark.parametrize("left,right", [(40, 260), (10, 500)])
+def test_native_table_whitespace_is_not_an_uncovered_ocr_reading(left, right):
+    from aletheia_nexus.content.backends.tesseract import _native_gap_readings
+
+    payload = (
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+        f"5\t1\t1\t1\t1\t1\t{left}\t100\t10\t10\t80\tI\n"
+        f"5\t1\t1\t1\t1\t2\t{right}\t100\t20\t10\t80\t18%\n"
+    )
+    (line,) = _parse_tsv(
+        payload,
+        page_number=1,
+        page_width=600,
+        page_height=800,
+        image_width=600,
+        image_height=800,
+        engine_id="test-ocr",
+        include_word_positions=True,
+    )
+    native = PageLayout(
+        1,
+        600,
+        800,
+        lines=(
+            LayoutLine("1′", left, 690, left + 10, 700, 10),
+            LayoutLine("18b", right, 690, right + 20, 700, 10),
+        ),
+    )
+    assert line.glyph_spans == ((0, 1, left, left + 10), (2, 5, right, right + 20))
+    assert _native_gap_readings(line, replace(native, lines=(line,)), native) == []
+
+
+def test_native_gap_filter_keeps_separate_vector_words_between_native_cells():
+    from aletheia_nexus.content.backends.tesseract import _native_gap_readings
+
+    line = LayoutLine(
+        "SO2 39 NH 86",
+        40,
+        400,
+        300,
+        410,
+        10,
+        glyph_spans=(
+            (0, 3, 40, 70),
+            (4, 6, 100, 120),
+            (7, 9, 200, 220),
+            (10, 12, 280, 300),
+        ),
+    )
+    native = PageLayout(
+        1,
+        600,
+        800,
+        lines=(
+            LayoutLine("39", 100, 400, 120, 410, 10),
+            LayoutLine("86", 280, 400, 300, 410, 10),
+        ),
+    )
+    readings = _native_gap_readings(line, replace(native, lines=(line,)), native)
+    assert [(r.text, r.x0, r.x1) for r in readings] == [
+        ("SO2", 40, 70),
+        ("NH", 200, 220),
+    ]
+    assert all(not r.glyph_spans for r in readings)
+    assert all(r.uncertain for r in readings)
+    assert all(r.extraction_method == "tesseract-tsv-ocr-word-region" for r in readings)
+
+
+def test_ocr_word_positions_do_not_enter_table_splitting(monkeypatch):
+    from aletheia_nexus.content.models import PageRegion
+
+    line = replace(
+        _ocr_line("14 mA", 0.97, "ocr"), glyph_spans=((0, 2, 60, 85), (3, 5, 90, 115))
+    )
+    layout = PageLayout(1, 600, 800, lines=(line,))
+    backend = TesseractOcrBackend()
+    monkeypatch.setattr(backend, "_extract_page", lambda *args: layout)
+    whole = backend.extract_page(None, 1)
+    image = backend.extract_regions(
+        None, 1, (PageRegion("figure", (0.08, 0.48, 0.55, 0.55), "painted figure"),)
+    )
+    assert whole.lines == image.lines == (replace(line, glyph_spans=()),)
+
+
+def test_figure_word_scope_retains_ink_without_adjacent_native_experiments():
+    from aletheia_nexus.content.backends.tesseract import _native_gap_readings
+    from aletheia_nexus.content.models import PageRegion
+
+    line = LayoutLine(
+        "8 COOH 45",
+        40,
+        400,
+        300,
+        410,
+        10,
+        glyph_spans=((0, 1, 40, 50), (2, 6, 140, 180), (7, 9, 280, 300)),
+    )
+    native = PageLayout(
+        1,
+        600,
+        800,
+        lines=(
+            LayoutLine("8", 40, 400, 50, 410, 10),
+            LayoutLine("COOH", 140, 400, 180, 410, 10),
+            LayoutLine("45", 280, 400, 300, 410, 10),
+        ),
+    )
+    image = PageRegion("figure", (0.2, 0.48, 0.35, 0.55), "painted reaction")
+    selected = _native_gap_readings(line, native, native, (image,))
+    assert [(r.text, r.x0, r.x1) for r in selected] == [("COOH", 140, 180)]
+    assert selected[0].uncertain
+
+
 def test_tesseract_refuses_raster_allocation_over_budget():
     page = PdfReader(FIXTURES / "sparse_scan.pdf").pages[0]
     backend = TesseractOcrBackend(TesseractOcrConfig(max_raster_pixels=1))

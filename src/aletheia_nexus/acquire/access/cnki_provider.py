@@ -1210,6 +1210,7 @@ class CNKIProvider(BaseBrowserProvider):
                                 timeout=config.navigation_timeout * 1000,
                             )
                         else:
+                            pages_before_click = tuple(getattr(context, "pages", ()))
                             try:
                                 with context.expect_page(
                                     predicate=lambda opened: opened.opener() is page,
@@ -1220,16 +1221,24 @@ class CNKIProvider(BaseBrowserProvider):
                             except Exception as exc:
                                 if type(exc).__name__ != "TimeoutError":
                                     raise
-                                # Click exactly once: some CNKI deployments navigate
-                                # this tab. Do not repeat the click after popup timeout.
-                                detail_page = page
-                                if page.url == search_url and selected.url:
-                                    detail_page = context.new_page()
-                                    detail_page.goto(
-                                        selected.url,
-                                        wait_until="domcontentloaded",
-                                        timeout=config.navigation_timeout * 1000,
-                                    )
+                                # The click may have opened a page at the timeout
+                                # boundary. Reuse only its new child, never another
+                                # tab or a second request to the selected URL.
+                                opened_pages = [
+                                    opened
+                                    for opened in getattr(context, "pages", ())
+                                    if opened not in pages_before_click
+                                    and not opened.is_closed()
+                                    and opened.opener() is page
+                                ]
+                                if len(opened_pages) == 1:
+                                    detail_page = opened_pages[0]
+                                elif not opened_pages and page.url != search_url:
+                                    detail_page = page
+                                else:
+                                    raise CNKIStageTimeout(
+                                        "detail navigation after result click"
+                                    ) from exc
                         try:
                             detail_page.wait_for_load_state("domcontentloaded")
                         except Exception as exc:

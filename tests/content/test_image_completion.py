@@ -18,6 +18,134 @@ def r(text, box=(30, 30, 110, 50), score=0.99):
     return dict(text=text, box=box, score=score)
 
 
+@pytest.mark.parametrize("original", [">0.4", "≤0.4", "0.4 mA", "0.4%", "0.4a"])
+def test_numeric_margin_crop_cannot_drop_measurement_qualifiers(original):
+    from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
+
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", (2400, 1000), "white")
+    records = [r(str(i), (600, 40 + i * 30, 630, 60 + i * 30)) for i in range(6)]
+    full = r(original, (2100, 300, 2180, 340))
+    records.append(full)
+    # The same source digits are recognized in two right-margin crop scales.
+    reads = iter(
+        [
+            [],
+            [],
+            [],
+            [],
+            [r("0.4", (66, 150, 106, 170))],
+            [r("0.4", (79.2, 180, 127.2, 204))],
+        ]
+    )
+    output = read_tick_margins(records, image, lambda _: next(reads), lambda _: None)
+    assert not full.get("alternative")
+    crop = next(item for item in output if item["text"] == "0.4")
+    assert crop["alternative"]
+    assert crop["box"] == pytest.approx(full["box"], abs=1)
+
+
+def test_numeric_margin_can_add_a_missing_tick_without_replacing_another_number():
+    from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
+
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", (2400, 1000), "white")
+    for old, allowed in [(None, True), ("-0.4", False), ("0.7", False)]:
+        records = [r(str(i), (600, 40 + i * 30, 630, 60 + i * 30)) for i in range(6)]
+        if old is not None:
+            records.append(r(old, (2100, 300, 2180, 340)))
+        reads = iter(
+            [
+                [],
+                [],
+                [],
+                [],
+                [r("0.4", (66, 150, 106, 170))],
+                [r("0.4", (79.2, 180, 127.2, 204))],
+            ]
+        )
+        output = read_tick_margins(
+            records, image, lambda _: next(reads), lambda _: None
+        )
+        assert (
+            any(
+                item["text"] == "0.4" and not item.get("alternative") for item in output
+            )
+            is allowed
+        )
+        if old is not None:
+            assert not next(item for item in output if item["text"] == old).get(
+                "alternative"
+            )
+
+
+def test_tick_fallback_cannot_confirm_a_baseline_number_with_a_power():
+    from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
+
+    Image = pytest.importorskip("PIL.Image")
+    records = [r(str(i), (600, 40 + i * 30, 630, 60 + i * 30)) for i in range(6)]
+    reads = iter([[], [], [], [], [r("102", (66, 150, 106, 170))], []])
+    output = read_tick_margins(
+        records,
+        Image.new("RGB", (2400, 1000), "white"),
+        lambda _: next(reads),
+        lambda _: ("10²", 0.99),
+    )
+    assert not any(item["text"] == "102" for item in output)
+
+
+@pytest.mark.parametrize("offset", [0, 40])
+def test_panel_corner_requires_real_gutters_scale_and_two_agreeing_readings(
+    monkeypatch, offset
+):
+    from aletheia_nexus.content.backends import image_panels as panels
+
+    Image = pytest.importorskip("PIL.Image")
+    im = Image.new("RGB", (440, 240), "gray")
+    monkeypatch.setattr(
+        panels,
+        "panel_boxes",
+        lambda _: [(offset, 0, offset + 180, 200), (240, 0, 420, 200)],
+    )
+    records = [
+        r("40 nm", (offset + 100, 170, offset + 170, 190)),
+        r("O", (offset + 5, 5, offset + 35, 40), 0.65),
+    ]
+    panels.read_panel_markers(records, im, lambda _: ("b)", 0.98))
+    assert records[1]["alternative"]
+    assert records[-1]["text"] == "b)"
+    associated = panels.associate_scales(records, im)
+    assert any(x["text"] == "Panel (b): label 40 nm" for x in associated)
+    # The unscaled second panel gets no invented sequential marker.
+    assert sum(x.get("method") == "rapidocr-panel-corner-reading" for x in records) == 1
+
+
+@pytest.mark.parametrize(
+    "readings",
+    [
+        [("b)", 0.98), ("d)", 0.98)],
+        [("b)", 0.98), ("b)", 0.7)],
+        [("3)", 0.99), ("3)", 0.99)],
+    ],
+)
+def test_panel_corner_abstains_on_confidence_or_reading_conflict(monkeypatch, readings):
+    from aletheia_nexus.content.backends import image_panels as panels
+
+    Image = pytest.importorskip("PIL.Image")
+    monkeypatch.setattr(
+        panels, "panel_boxes", lambda _: [(0, 0, 200, 200), (210, 0, 410, 200)]
+    )
+    records = [r("40 nm", (100, 170, 170, 190))]
+    responses = iter(readings)
+    assert (
+        panels.read_panel_markers(
+            records, Image.new("RGB", (420, 200)), lambda _: next(responses)
+        )
+        == records
+    )
+    assert len(records) == 1
+
+
 def test_completion_preserves_conflicting_digits_units_and_exponents():
     for original, complete, allowed in [
         ("18 h", "18 h-1", True),
@@ -27,6 +155,8 @@ def test_completion_preserves_conflicting_digits_units_and_exponents():
         ("76% X (18 h", "76% X (18 h-1), 51 ee%", True),
         ("76% X (18 h", "77% X (18 h-1), 51 ee%", False),
         ("18 h", "18 h", False),
+        ("10² A", "102 A/m", False),
+        ("18 h⁻²", "18 h⁻¹", False),
     ]:
         records = [r(original)]
         assert merge_complete_reading(records, r(complete)) is allowed
@@ -52,6 +182,65 @@ def test_edge_scripts_need_two_matching_crops_and_only_append_scripts():
     records = [r("17 s")]
     complete_edge_scripts(records, im, lambda crop: next(reads))
     assert not records[0].get("alternative")
+
+
+@pytest.mark.parametrize(
+    "fragment, box, allowed",
+    [
+        ("-2", (98, 25, 118, 43), True),
+        ("−2", (98, 25, 118, 43), True),
+        ("-1", (98, 25, 118, 43), False),
+        ("-2", (98, 30, 118, 50), False),  # same baseline
+        ("-2", (98, 38, 118, 56), False),  # subscript
+        ("-2", (50, 25, 70, 43), False),  # another number inside the label
+        ("-2", (98, 10, 118, 38), False),  # overlapping detector, separate line
+    ],
+)
+def test_complete_unit_can_retain_a_separately_detected_raised_exponent(
+    fragment, box, allowed
+):
+    records = [r("47 s", (30, 30, 100, 50)), r(fragment, box)]
+    candidate = r("47 s⁻²", (28, 23, 120, 52))
+    assert merge_complete_reading(records, candidate) is allowed
+    assert all(item.get("alternative", False) == allowed for item in records[:2])
+
+
+def test_raised_fragment_does_not_change_an_existing_complete_unit():
+    records = [r("47 s⁻¹", (30, 30, 100, 50)), r("-2", (98, 25, 118, 43))]
+    assert not merge_complete_reading(records, r("47 s⁻²", (28, 23, 120, 52)))
+
+
+@pytest.mark.parametrize(
+    "readings",
+    [
+        ["10² mA", "102 mA", "10² mA", "102 mA"],
+        ["10² mA", "10² mA", "102 mA", "102 mA"],
+    ],
+)
+def test_line_rereads_cannot_corroborate_different_exponent_positions(readings):
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    Image = pytest.importorskip("PIL.Image")
+    old = r("10³ mA", score=0.84)
+    responses = iter((text, 0.99) for text in readings)
+    output = reread_uncertain_lines(
+        [old], Image.new("RGB", (160, 100), "white"), lambda _: next(responses)
+    )
+    assert output == [old]
+    assert not old.get("alternative")
+
+
+def test_line_rereads_can_agree_on_typographic_micro_signs():
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    Image = pytest.importorskip("PIL.Image")
+    old = r("8 mA", score=0.84)
+    responses = iter([(text, 0.99) for text in ["10 μA", "10 µA"] * 2])
+    output = reread_uncertain_lines(
+        [old], Image.new("RGB", (160, 100), "white"), lambda _: next(responses)
+    )
+    assert old["alternative"]
+    assert output[-1]["text"] == "10 μA"
 
 
 def test_ink_colour_does_not_name_background_or_mix_competing_colours():
@@ -92,6 +281,45 @@ def test_two_y_axes_keep_titles_and_all_printed_ticks():
     # Competing vertical titles do not authorize choosing one silently.
     ambiguous = associate_axes([*deepcopy(records), r("flux", (11, 60, 21, 100))])
     assert not any(x.get("method") == "positioned-axis-label-ticks" for x in ambiguous)
+
+
+def test_nonmonotonic_y_ticks_get_a_local_gap_without_guessing_signs():
+    records = [r("rate", (10, 60, 20, 100)), r("concentration", (60, 185, 160, 200))]
+    records += [
+        r(str(v), (30, y, 45, y + 10))
+        for v, y in [(40, 30), (30, 65), (-10, 100), (0, 135)]
+    ]
+    records += [
+        r(str(v), (x, 165, x + 15, 175)) for v, x in [(1, 60), (2, 100), (3, 140)]
+    ]
+    output = associate_axes(records)
+    warning = next(x for x in output if x.get("warning"))
+    assert warning["warning"] == "IMAGE_AXIS_TICK_ORDER_CONFLICT"
+    assert "40, 30, -10, 0" in warning["text"]
+    assert "unresolved tick order" in warning["text"]
+    original = next(x for x in output if x["text"] == "-10")
+    assert not original.get("alternative")
+
+
+@pytest.mark.parametrize(
+    "titles", [("Current (mA)", "Current (MA)"), ("Current 10⁻⁴ A", "Current 10⁻³ A")]
+)
+def test_competing_axis_units_and_exponents_do_not_corroborate(titles):
+    records = [
+        r(titles[0], (10, 60, 20, 100)),
+        r(titles[1], (11, 60, 21, 100)),
+        r("time", (60, 185, 160, 200)),
+    ]
+    records += [
+        r(str(v), (30, y, 45, y + 10))
+        for v, y in [(30, 30), (20, 65), (10, 100), (0, 135)]
+    ]
+    records += [
+        r(str(v), (x, 165, x + 15, 175)) for v, x in [(1, 60), (2, 100), (3, 140)]
+    ]
+    output = associate_axes(records)
+    assert not any(x.get("method") == "positioned-axis-label-ticks" for x in output)
+    assert all(not x.get("alternative") for x in records)
 
 
 def test_formula_markup_needs_repeated_source_confirmation():
@@ -135,6 +363,48 @@ def test_crop_consensus_recovers_weak_text_without_changing_confident_numbers():
     readings = iter([("88% yield", 0.99), ("83% yield", 0.99)] * 2)
     out = reread_uncertain_lines([ambiguous], image, lambda crop: next(readings))
     assert out == [ambiguous] and not ambiguous.get("alternative")
+
+
+@pytest.mark.parametrize(
+    ("original", "alternative"), [("500 mm", "500 nm"), ("2.5 nm", "2.5 μm")]
+)
+@pytest.mark.parametrize("crop_score", [0.92, 0.99])
+def test_scale_unit_crop_conflict_is_local_evidence_not_a_replacement(
+    original, alternative, crop_score
+):
+    Image = pytest.importorskip("PIL.Image")
+
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    image = Image.new("RGB", (400, 100), "white")
+    old = r(original, box=(20, 20, 180, 40), score=0.93)
+    readings = iter([(alternative, crop_score)] * 4)
+    out = reread_uncertain_lines([old], image, lambda crop: next(readings))
+    assert len(out) == 2 and not old.get("alternative")
+    assert out[1]["alternative"] and out[1]["text"] == alternative
+    assert out[1]["box"] == old["box"]
+    assert out[1]["warning"] == "IMAGE_SCALE_UNIT_CONFLICT"
+
+
+@pytest.mark.parametrize(
+    "readings",
+    [
+        [("600 nm", 0.98)] * 4,  # A different number is not a unit ambiguity.
+        [("500 nm", 0.89)] * 2,  # Weak crop readings cannot establish a conflict.
+        [("500 nm", 0.96), ("500 μm", 0.96)] * 2,
+        [("500 mm", 0.96)] * 4,
+    ],
+)
+def test_scale_crop_disagreement_needs_same_value_and_corroborated_unit(readings):
+    Image = pytest.importorskip("PIL.Image")
+
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    image = Image.new("RGB", (400, 100), "white")
+    old = r("500 mm", box=(20, 20, 180, 40), score=0.93)
+    responses = iter(readings)
+    assert reread_uncertain_lines([old], image, lambda crop: next(responses)) == [old]
+    assert not old.get("alternative")
 
 
 def test_horizontal_dual_y_titles_keep_their_separate_printed_ticks():

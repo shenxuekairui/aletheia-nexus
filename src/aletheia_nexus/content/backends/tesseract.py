@@ -19,8 +19,14 @@ from typing import Any
 from pypdf import PdfWriter
 
 from aletheia_nexus.content.backends.superscripts import raised_glyph_box
+from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.geometry import PageGeometry, raster_bbox_to_canonical
-from aletheia_nexus.content.models import LayoutLine, PageLayout
+from aletheia_nexus.content.models import (
+    LayoutLine,
+    PageLayout,
+    PageRegion,
+    validate_page_layout,
+)
 
 
 @dataclass(frozen=True)
@@ -199,6 +205,7 @@ def _parse_tsv(
     original_image_height: int | None = None,
     orientation_rotation: int = 0,
     deskew_angle: float = 0.0,
+    include_word_positions: bool = False,
 ) -> tuple[LayoutLine, ...]:
     words: dict[tuple[str, str, str], list[dict[str, str]]] = defaultdict(list)
     # A literal OCR quote must not swallow subsequent TSV records.
@@ -244,6 +251,21 @@ def _parse_tsv(
         if x1 <= x0 or y1 <= y0:
             continue
         height_points = max(y1 - y0, 1.0)
+        word_spans = []
+        if include_word_positions and not orientation_rotation and not deskew_angle:
+            offset = 0
+            for row in rows:
+                word = row["text"].strip()
+                start = max(0, int(row["left"]) / image_width * page_width)
+                end = min(
+                    page_width,
+                    (int(row["left"]) + int(row["width"])) / image_width * page_width,
+                )
+                if end <= start:
+                    word_spans = []
+                    break  # Incomplete word geometry cannot justify filtering.
+                word_spans.append((offset, offset + len(word), start, end))
+                offset += len(word) + 1
         result.append(
             LayoutLine(
                 text=text,
@@ -255,6 +277,9 @@ def _parse_tsv(
                 extraction_method="tesseract-tsv-ocr",
                 extraction_confidence=max(0.0, min(1.0, confidence)),
                 source_engines=(engine_id,),
+                # Temporary word positions for native-gap filtering. Public
+                # extraction clears them before native table-splitting logic.
+                glyph_spans=tuple(word_spans),
                 # A confident sentence must not hide one poorly read number or
                 # unit. Keep line confidence separate from this review flag.
                 uncertain=confidence < 0.85
@@ -266,6 +291,93 @@ def _parse_tsv(
             )
         )
     return tuple(result)
+
+
+def _native_gap_readings(
+    line: LayoutLine,
+    layout: PageLayout,
+    native: PageLayout,
+    regions: tuple[PageRegion, ...] = (),
+):
+    """Check observed words, not whitespace between native table columns."""
+
+    def uncovered(x0, x1):
+        box = (
+            x0 / layout.width,
+            line.y0 / layout.height,
+            x1 / layout.width,
+            line.y1 / layout.height,
+        )
+        area = (box[2] - box[0]) * (box[3] - box[1])
+        if area <= 0:
+            return False
+        for region in regions:
+            a, b, c, d = region.bbox
+            overlap = max(0, min(box[2], c) - max(box[0], a)) * max(
+                0, min(box[3], d) - max(box[1], b)
+            )
+            if overlap >= 0.35 * min(area, (c - a) * (d - b)):
+                return True  # Keep observed words inside painted figures.
+        covered = 0.0
+        for other in native.lines:
+            a, b, c, d = (
+                other.x0 / native.width,
+                other.y0 / native.height,
+                other.x1 / native.width,
+                other.y1 / native.height,
+            )
+            covered += max(0, min(box[2], c) - max(box[0], a)) * max(
+                0, min(box[3], d) - max(box[1], b)
+            )
+        return covered / area < 0.35
+
+    if not line.glyph_spans:
+        return [line] if uncovered(line.x0, line.x1) else []
+    groups = []
+    current = []
+    for span in line.glyph_spans:
+        if uncovered(span[2], span[3]):
+            # OCR line segmentation can bridge table columns or neighbouring
+            # plot panels. Keep physically separated word groups independent;
+            # a wide whitespace gap does not establish an experiment relation.
+            if current and span[2] - current[-1][3] > line.font_size * 2.5:
+                groups.append(current)
+                current = []
+            current.append(span)
+        elif current:
+            groups.append(current)
+            current = []
+    if current:
+        groups.append(current)
+    return [
+        replace(
+            line,
+            text=line.text[group[0][0] : group[-1][1]],
+            x0=min(span[2] for span in group),
+            x1=max(span[3] for span in group),
+            glyph_spans=(),
+            # The confidence belongs to the original OCR line, not to a
+            # newly isolated word. Keep partial readings explicitly uncertain.
+            uncertain=line.uncertain
+            or line.text[group[0][0] : group[-1][1]] != line.text,
+            extraction_method=(
+                "tesseract-tsv-ocr-word-region"
+                if line.text[group[0][0] : group[-1][1]] != line.text
+                else line.extraction_method
+            ),
+        )
+        for group in groups
+    ]
+
+
+def _clear_ocr_word_positions(layout: PageLayout) -> PageLayout:
+    return replace(
+        layout,
+        lines=tuple(
+            replace(line, glyph_spans=()) if line.glyph_spans else line
+            for line in layout.lines
+        ),
+    )
 
 
 def _retry_candidate(line: LayoutLine) -> bool:
@@ -430,7 +542,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.5.0",
+            "adapter_version": "1.8.4",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
@@ -584,6 +696,109 @@ class TesseractOcrBackend:
         )
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
+        return _clear_ocr_word_positions(self._extract_page(page, page_number))
+
+    def extract_regions(
+        self,
+        page: Any,
+        page_number: int,
+        regions: tuple[PageRegion, ...],
+        *,
+        native_layout: PageLayout | None = None,
+    ) -> PageLayout:
+        """Keep figure context; mask isolated damaged text in page coordinates."""
+        if not regions or any(
+            not all(math.isfinite(v) for v in region.bbox)
+            or not (
+                0 <= region.bbox[0] < region.bbox[2] <= 1
+                and 0 <= region.bbox[1] < region.bbox[3] <= 1
+            )
+            for region in regions
+        ):
+            raise ValueError("OCR regions require nonempty normalized page boxes")
+        figures = tuple(r for r in regions if r.region_type == "figure")
+        text = tuple(r for r in regions if r.region_type != "figure")
+        layouts = []
+        if figures:
+            # Masking surrounding text changes Tesseract's figure segmentation:
+            # labels can vanish or adjacent captions can merge. Retain its
+            # original page context, then select only observed figure readings.
+            vector_layout = (
+                native_layout
+                if self.config.image_ocr == "rapidocr"
+                and native_layout is not None
+                and any(o.object_type == "vector-text" for o in native_layout.objects)
+                else None
+            )
+            full = (
+                self._extract_page(page, page_number, vector_layout=vector_layout)
+                if vector_layout is not None
+                else self._extract_page(page, page_number)
+            )
+
+            def in_figure(line):
+                box = (
+                    line.x0 / full.width,
+                    line.y0 / full.height,
+                    line.x1 / full.width,
+                    line.y1 / full.height,
+                )
+                area = (box[2] - box[0]) * (box[3] - box[1])
+                for region in figures:
+                    x0, y0, x1, y1 = region.bbox
+                    overlap = max(0, min(box[2], x1) - max(box[0], x0)) * max(
+                        0, min(box[3], y1) - max(box[1], y0)
+                    )
+                    denominator = min(area, (x1 - x0) * (y1 - y0))
+                    if denominator > 0 and overlap / denominator >= 0.35:
+                        return True
+                return False
+
+            selected = []
+            for line in full.lines:
+                if line.glyph_spans and native_layout is not None:
+                    selected.extend(
+                        _native_gap_readings(line, full, native_layout, figures)
+                    )
+                elif in_figure(line):
+                    selected.append(line)
+                elif native_layout is not None:
+                    # Vector lettering has no image object. Preserve its words
+                    # without also importing poorer OCR of adjacent native cells.
+                    selected.extend(_native_gap_readings(line, full, native_layout))
+            layouts.append(
+                replace(
+                    full,
+                    lines=tuple(selected),
+                    warnings=full.warnings
+                    + (
+                        {
+                            "code": "OCR_FIGURE_READINGS_SCOPED",
+                            "page": page_number,
+                            "regions": [list(r.bbox) for r in figures],
+                            "detail": f"Retained {len(selected)} of {len(full.lines)} page-context OCR lines at painted images or native-text gaps; readable native prose is not a competing reading.",
+                        },
+                    ),
+                )
+            )
+        if text:
+            layouts.append(self._extract_page(page, page_number, text))
+        return _clear_ocr_word_positions(
+            replace(
+                layouts[0],
+                lines=tuple(line for layout in layouts for line in layout.lines),
+                warnings=tuple(w for layout in layouts for w in layout.warnings),
+            )
+        )
+
+    def _extract_page(
+        self,
+        page: Any,
+        page_number: int,
+        regions: tuple[PageRegion, ...] = (),
+        *,
+        vector_layout: PageLayout | None = None,
+    ) -> PageLayout:
         geometry = PageGeometry.from_page(page)
         page_width = geometry.width
         page_height = geometry.height
@@ -642,11 +857,62 @@ class TesseractOcrBackend:
                     "OCR raster budget exceeded after rendering: "
                     f"{actual_pixels} pixels > {self.config.max_raster_pixels}"
                 )
+            vector_lines = ()
+            if vector_layout is not None:
+                from aletheia_nexus.content.backends.rapid_vectors import (
+                    read_vector_annotations,
+                )
+
+                try:
+                    candidate_vector_lines = read_vector_annotations(
+                        rendered_image, vector_layout
+                    )
+                    validate_page_layout(
+                        PageLayout(
+                            page=page_number,
+                            width=page_width,
+                            height=page_height,
+                            lines=candidate_vector_lines,
+                        ),
+                        expected_page=page_number,
+                    )
+                    vector_lines = candidate_vector_lines
+                except Exception as exc:
+                    warnings.append(
+                        {
+                            "code": "OCR_BACKEND_FAILED",
+                            "page": page_number,
+                            "detail": f"Local vector OCR failed; the native and Tesseract readings remain available: {safe_exception_detail(exc)}",
+                        }
+                    )
             image = rendered_image.convert("L")
             rendered_image.close()
+            if regions:
+                masked = Image.new("L", image.size, 255)
+                for region in regions:
+                    x0, y0, x1, y1 = region.bbox
+                    box = (
+                        math.floor(x0 * image.width),
+                        math.floor((1 - y1) * image.height),
+                        math.ceil(x1 * image.width),
+                        math.ceil((1 - y0) * image.height),
+                    )
+                    masked.paste(image.crop(box), box)
+                image.close()
+                image = masked
+                warnings.append(
+                    {
+                        "code": "OCR_REGIONS_SCOPED",
+                        "page": page_number,
+                        "regions": [
+                            {"bbox": list(r.bbox), "reason": r.reason} for r in regions
+                        ],
+                        "detail": "Only requested image/damaged-text ink was submitted to OCR; native page coordinates retained.",
+                    }
+                )
 
             rotation = 0
-            if self.config.detect_orientation:
+            if self.config.detect_orientation and not regions:
                 try:
                     rotation = _orientation_rotation(rendered, self.config)
                 except RuntimeError as exc:
@@ -666,7 +932,7 @@ class TesseractOcrBackend:
                     )
 
             deskew_angle = 0.0
-            if self.config.deskew:
+            if self.config.deskew and not regions:
                 proposed_angle = _deskew_angle(image)
                 if abs(proposed_angle) >= 0.25:
                     deskew_angle = proposed_angle
@@ -704,7 +970,13 @@ class TesseractOcrBackend:
                         else []
                     ),
                     "--psm",
-                    str(self.config.page_segmentation_mode),
+                    # Masked word regions are sparse, unrelated text fragments.
+                    # Ordinary page segmentation can join separate columns.
+                    str(
+                        11
+                        if regions and self.config.page_segmentation_mode == 3
+                        else self.config.page_segmentation_mode
+                    ),
                     "-c",
                     "tessedit_create_tsv=1",
                 ],
@@ -727,6 +999,7 @@ class TesseractOcrBackend:
                 original_image_height=original_height,
                 orientation_rotation=rotation,
                 deskew_angle=deskew_angle,
+                include_word_positions=True,
             )
             lines = self._retry_unit_superscripts(
                 image,
@@ -748,7 +1021,7 @@ class TesseractOcrBackend:
             media_box=geometry.media_box,
             crop_box=geometry.crop_box,
             rotation=geometry.rotation,
-            lines=lines,
+            lines=vector_lines + lines,
             warnings=tuple(warnings),
         )
 
@@ -844,6 +1117,7 @@ class TesseractOcrBackend:
                 output[index] = replace(
                     original,
                     text=updated,
+                    glyph_spans=(),
                     extraction_method="tesseract-superscript-retry",
                     source_engines=(
                         *original.source_engines,
@@ -939,6 +1213,7 @@ class TesseractOcrBackend:
             output[index] = replace(
                 original,
                 text=candidate.text,
+                glyph_spans=(),
                 x0=max(0, x0),
                 y0=max(0, y0),
                 x1=min(page_width, x1),

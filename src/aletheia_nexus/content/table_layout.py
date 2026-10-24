@@ -443,6 +443,13 @@ def _prepare_table_lines(
                         grid.extend(row)
                         previous_y = min(item.y0 for item in row)
                         continue
+                if grid and _interstitial_ocr_row(
+                    row, last_dense_row, rows[row_index + 1 : row_index + 5], size
+                ):
+                    # Diagram lettering can sit between experiments in an
+                    # otherwise aligned numeric grid. It remains a source
+                    # block, but cannot terminate or become a numeric row.
+                    continue
                 break
             grid.extend(row)
             last_dense_row = row
@@ -623,6 +630,61 @@ def _prepare_table_lines(
     )
 
 
+def _interstitial_ocr_row(row, previous, following, size):
+    """Recognize extra OCR ink only inside a stable gap between data columns."""
+
+    def numeric(item):
+        return bool(
+            _CELL_NUMBER.fullmatch(item.text.strip())
+            or _CELL_ANNOTATED_NUMBER.fullmatch(item.text.strip())
+        )
+
+    if not previous or not all(
+        "ocr" in item.extraction_method
+        and len(item.text) <= 32
+        and item.text.strip()
+        and not numeric(item)
+        and not _caption_match(item.text)
+        for item in row
+    ):
+        return False
+    old_numeric = [item for item in previous if numeric(item)]
+    if len(old_numeric) < 2:
+        return False
+    for candidate in following:
+        if any(len(item.text) > 80 or _caption_match(item.text) for item in candidate):
+            return False
+        values = [item for item in candidate if numeric(item)]
+        if len(values) < 2:
+            continue
+        if (
+            len(values) != len(old_numeric)
+            or max(item.y1 for item in row) - max(item.y1 for item in candidate)
+            > size * 10
+            or not all(
+                abs(a.x0 - b.x0) <= size
+                for a, b in zip(
+                    sorted(old_numeric, key=lambda item: item.x0),
+                    sorted(values, key=lambda item: item.x0),
+                )
+            )
+        ):
+            return False
+
+        # Both experiments must leave the same horizontal interval empty.
+        def within_gap(item, cells):
+            ordered = sorted(cells, key=lambda cell: cell.x0)
+            return any(
+                left.x1 + size < item.x0 and item.x1 < right.x0 - size
+                for left, right in zip(ordered, ordered[1:])
+            )
+
+        return all(
+            within_gap(item, previous) and within_gap(item, candidate) for item in row
+        )
+    return False
+
+
 def _table_cells(
     caption: dict[str, object],
     blocks: list[dict[str, object]],
@@ -717,6 +779,58 @@ def _table_cells(
             rows.append([(block, anchor)])
         else:
             row.append((block, anchor))
+    # Two lines of a text cell can straddle the numeric baseline of a tall
+    # experiment row. Both fragments must bracket that baseline, occupy an
+    # otherwise empty column, and be closer to it than to any other data row.
+    # Retain both original blocks/anchors; only their row association changes.
+    removed = set()
+    for index in range(1, len(rows) - 1):
+        row = rows[index]
+        if (
+            len(row) < 3
+            or sum(bool(_CELL_NUMBER.fullmatch(str(b["text"]).strip())) for b, _ in row)
+            < 2
+        ):
+            continue
+        above, below = rows[index - 1], rows[index + 1]
+        if len(above) != 1 or len(below) != 1:
+            continue
+        if not all(
+            re.search(r"[A-Za-z\u3400-\u9fff]", str(part[0][0]["text"]))
+            for part in (above, below)
+        ):
+            continue
+        a, b = above[0][1]["bbox"], below[0][1]["bbox"]
+        height = min(a[3] - a[1], b[3] - b[1])
+        mid = statistics.median((p[1]["bbox"][1] + p[1]["bbox"][3]) / 2 for p in row)
+        ay, by = (a[1] + a[3]) / 2, (b[1] + b[3]) / 2
+        if not (
+            by < mid < ay
+            and ay - by <= 2.4 * height
+            and abs((ay + by) / 2 - mid) <= height * 0.35
+            and min(a[2], b[2]) - max(a[0], b[0]) > 0.6 * min(a[2] - a[0], b[2] - b[0])
+            and all(
+                min(box[2], c[1]["bbox"][2]) <= max(box[0], c[1]["bbox"][0])
+                for box in (a, b)
+                for c in row
+            )
+        ):
+            continue
+        other_centers = [
+            statistics.median((p[1]["bbox"][1] + p[1]["bbox"][3]) / 2 for p in other)
+            for other in rows
+            if other is not row and len(other) >= 3
+        ]
+        if any(
+            abs(y - other) <= abs(y - mid) + height * 0.5
+            for y in (ay, by)
+            for other in other_centers
+        ):
+            continue
+        row.extend([*above, *below])
+        removed.update((index - 1, index + 1))
+    rows = [row for index, row in enumerate(rows) if index not in removed]
+
     # A wrapped text header may occupy an otherwise empty line. Join it only
     # to a neighbouring aligned text cell, never combine two dense numeric rows.
     for index in range(len(rows) - 1, -1, -1):
@@ -891,7 +1005,53 @@ def _table_cells(
                 }
             )
     cells, row_count = _table_spans(cells, len(rows), column_boxes)
+    _entry_variant_spans(cells)
     return cells, row_count, column_count
+
+
+def _entry_variant_spans(cells):
+    """Associate a blank label only through repeated explicit primed entry IDs.
+
+    Ordinary blanks, including top-aligned shared-looking conditions, are not
+    sufficient. The source entry reference is recorded; values are never copied.
+    """
+    grouped = {}
+    for cell in cells:
+        grouped.setdefault(cell["row"], []).append(cell)
+    entry_columns = {
+        c["column"]
+        for c in cells
+        if c["row"] <= 2
+        and c["text"].strip().casefold().rstrip(".")
+        in {"entry", "run", "no", "序号", "编号"}
+    }
+    for column in entry_columns:
+        pairs = []
+        for row, group in grouped.items():
+            entries = [c for c in group if c["column"] == column]
+            previous = grouped.get(row - 1, [])
+            if len(entries) != 1:
+                continue
+            match = re.fullmatch(r"(\d+)[′'″]+", entries[0]["text"].strip())
+            if match and any(
+                c["column"] == column and c["text"].strip() == match[1]
+                for c in previous
+            ):
+                pairs.append((previous, group))
+        if len(pairs) < 2:
+            continue
+        for previous, group in pairs:
+            for cell in previous:
+                if (
+                    cell["column"] != column
+                    and cell.get("row_span", 1) == 1
+                    and cell.get("column_span", 1) == 1
+                    and len(cell["text"]) <= 80
+                    and re.search(r"[A-Za-z\u3400-\u9fff]", cell["text"])
+                    and not _CELL_ANNOTATED_NUMBER.fullmatch(cell["text"].strip())
+                    and not any(c["column"] == cell["column"] for c in group)
+                ):
+                    cell.update(row_span=2, span_evidence="explicit-entry-variant")
 
 
 def _table_spans(cells, row_count, column_boxes):
@@ -1050,6 +1210,48 @@ def _table_local_warnings(table, blocks, anchors):
     positioned = [(c, anchors[c["anchor_id"]]["bbox"]) for c in cells]
     positioned = [(c, box) for c, box in positioned if box]
     warnings = []
+    data_rows = {}
+    for c in cells:
+        numeric_text = re.sub(r"(?<=[−+±\-])\s+(?=\d)", "", c["text"].strip())
+        if (
+            _CELL_NUMBER.fullmatch(numeric_text)
+            or _CELL_ANNOTATED_NUMBER.fullmatch(numeric_text)
+            or re.fullmatch(r"\d+[′'″]+", c["text"].strip())
+        ):
+            data_rows.setdefault(c["row"], []).append(c)
+    data_rows = {r: group for r, group in data_rows.items() if len(group) >= 2}
+    label_columns = {
+        c["column"]
+        for c in cells
+        if c["row"] in data_rows
+        and len(c["text"]) <= 80
+        and re.search(r"[A-Za-z\u3400-\u9fff]", c["text"])
+        and not _CELL_ANNOTATED_NUMBER.fullmatch(c["text"].strip())
+    }
+    for row, group in data_rows.items():
+        missing = [
+            col
+            for col in label_columns
+            if not any(
+                c["column"] <= col < c["column"] + c.get("column_span", 1)
+                and c["row"] <= row < c["row"] + c.get("row_span", 1)
+                for c in cells
+            )
+        ]
+        if missing:
+            cell = group[0]
+            warnings.append(
+                {
+                    "code": "TABLE_ROW_CONTEXT_MISSING",
+                    "object_id": table["id"],
+                    "anchor_id": cell["anchor_id"],
+                    "page": by_id[cell["block_id"]]["page"],
+                    "bbox": anchors[cell["anchor_id"]]["bbox"],
+                    "row": row,
+                    "columns": missing,
+                    "detail": "This numeric row has blank label/condition cells without a supported span; do not inherit another experiment's labels automatically.",
+                }
+            )
     for c, box in positioned:
         collision = any(
             other is not c

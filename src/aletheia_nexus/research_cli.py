@@ -104,7 +104,7 @@ def batch_main(argv: list[str]) -> int:
 def search_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus search",
-        description="Search a local corpus. Default AND applies within a paragraph or observed table; quotes preserve a phrase.",
+        description="Search local paragraphs, observed table/figure context and bounded nearby text. Default AND requires all terms in one evidence unit; quotes preserve a phrase. Context is not an interpreted experimental relationship.",
     )
     parser.add_argument("root", type=Path)
     parser.add_argument("query")
@@ -156,6 +156,36 @@ def search_main(argv: list[str]) -> int:
             print(
                 f"   {hit['id']}\n   {hit['text']}\n   Source: {args.root / hit['pdf']}"
             )
+            print(f"   Reading: {hit.get('reading_role', 'primary')}")
+            if hit["kind"] in {"table", "figure", "context"}:
+                print(
+                    "   Observed layout context; experimental relationships are not verified."
+                )
+            for row in hit.get("matching_rows", []):
+                print(f"   Matching observed row {row['row']}: {row['text']}")
+            for location in hit.get("review_locations", []):
+                for warning in location.get("local_warnings", []):
+                    print(
+                        f"   PDF page {location['page']} — {warning['code']}: {warning.get('detail', '')}"
+                    )
+                    if warning.get("after"):
+                        print(f"   Source text: {warning['after']}")
+                for difference in location.get("reading_differences", []):
+                    if (
+                        difference.get("status")
+                        == "partial-reading-needs-source-alignment"
+                    ):
+                        print(
+                            f"   PDF page {location['page']} partial alternative: {difference['alternative_text']!r}; align at the source, without treating surrounding prose as missing."
+                        )
+                    for change in difference["changes"]:
+                        print(
+                            f"   PDF page {location['page']} unresolved reading: {change['primary']!r} / alternative {change['alternative']!r}"
+                        )
+                if location.get("alternative_block_ids"):
+                    print(
+                        f"   Alternatives at {location['id']}: {', '.join(location['alternative_block_ids'])}; retain them in the selected evidence export."
+                    )
         coverage = report["coverage"]
         print(
             f"Hits: {report['returned_hits']}/{report['total_hits']}; documents searched in scope: {report['search_scope']['searched_documents']}/{coverage['searched_documents']}; completed documents in corpus: {coverage['completed']}; partial: {coverage['partial']}; unsearched: {len(coverage['unsearched'])}; duplicates: {len(coverage['duplicates'])}"

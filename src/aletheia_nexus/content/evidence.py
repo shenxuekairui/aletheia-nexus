@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import quote
 
@@ -14,6 +15,39 @@ from aletheia_nexus.content.corpus import (
     content_units,
     load_corpus,
 )
+
+
+def _review_warning_boxes(entry: dict[str, object]) -> list[dict[str, object]]:
+    """Compare known native point coordinates with normalized source anchors."""
+    pages = {p["page"]: p for p in entry.get("pages", [])}
+    native_point_codes = {
+        "NATIVE_GLYPH_CONTEXT",
+        "NATIVE_GLYPH_MAPPING_CORRECTED",
+        "NATIVE_UNIT_MAPPING_CORRECTED",
+        "NATIVE_DEGREE_MAPPING_CORRECTED",
+    }
+    warnings = []
+    for warning in entry.get("warnings", []):
+        if warning.get("code") in native_point_codes and warning.get("bbox"):
+            page = pages.get(warning.get("page"))
+            if not page:
+                continue  # Keep the original warning; do not guess its scale.
+            if warning.get("coordinate_system") != page["coordinate_system"]:
+                box = warning["bbox"]
+                warning = {
+                    **warning,
+                    "source_bbox": list(box),
+                    "source_bbox_units": "pdf_display_points",
+                    "bbox": [
+                        max(0.0, min(1.0, value / dimension))
+                        for value, dimension in zip(
+                            box, [page["width"], page["height"]] * 2
+                        )
+                    ],
+                    "coordinate_system": page["coordinate_system"],
+                }
+        warnings.append(warning)
+    return warnings
 
 
 def review_locations(entry: dict[str, object]) -> list[dict[str, object]]:
@@ -109,6 +143,80 @@ def review_locations(entry: dict[str, object]) -> list[dict[str, object]]:
         )
         group["block_ids"].append(block["id"])
         group["uncertain"] |= block["uncertain"]
+    by_id = {b["id"]: b for b in blocks}
+    warnings = _review_warning_boxes(entry)
+    for group in groups.values():
+        members = [by_id[bid] for bid in group["block_ids"]]
+        primary = [b for b in members if b.get("content_region") not in alternatives]
+        others = [b for b in members if b.get("content_region") in alternatives]
+        group["primary_block_ids"] = [b["id"] for b in primary]
+        group["alternative_block_ids"] = [b["id"] for b in others]
+        group["reading_differences"] = []
+        for other in others:
+            matches = [
+                b
+                for b in primary
+                if _contains_reading(
+                    b["evidence"].get("bbox"), other["evidence"].get("bbox")
+                )
+            ]
+            if len(matches) != 1:
+                continue  # Do not manufacture a comparison across cells/experiments.
+            main = matches[0]
+            a, b = main["text"].split(), other["text"].split()
+            if b and any(a[i : i + len(b)] == b for i in range(len(a) - len(b) + 1)):
+                # An agreeing local crop does not delete the surrounding prose.
+                # The alternative and its source record still remain in full.
+                continue
+            if len(b) * 2 < len(a):
+                # A short OCR crop and a merged paragraph have different scopes.
+                # Without glyph alignment, do not call the omitted paragraph a
+                # disagreement or guess which repeated number the crop belongs to.
+                group["reading_differences"].append(
+                    {
+                        "primary_block_id": main["id"],
+                        "alternative_block_id": other["id"],
+                        "changes": [],
+                        "alternative_text": other["text"],
+                        "status": "partial-reading-needs-source-alignment",
+                    }
+                )
+                continue
+            changes = [
+                {"primary": " ".join(a[i:j]), "alternative": " ".join(b[k:end])}
+                for tag, i, j, k, end in SequenceMatcher(
+                    None, a, b, autojunk=False
+                ).get_opcodes()
+                if tag != "equal"
+            ]
+            if changes:
+                group["reading_differences"].append(
+                    {
+                        "primary_block_id": main["id"],
+                        "alternative_block_id": other["id"],
+                        "changes": changes,
+                        "status": "unresolved-text-difference",
+                    }
+                )
+        group["local_warnings"] = [
+            w
+            for w in warnings
+            if w.get("page") == group["page"]
+            and (
+                (
+                    w.get("anchor_id") is not None
+                    and w["anchor_id"] in {b.get("anchor_id") for b in members}
+                )
+                or (
+                    w.get("bbox")
+                    and any(
+                        _contains_reading(w["bbox"], b["evidence"].get("bbox"))
+                        or _contains_reading(b["evidence"].get("bbox"), w["bbox"])
+                        for b in members
+                    )
+                )
+            )
+        ]
     return list(groups.values())
 
 
@@ -154,6 +262,16 @@ def build_evidence_pack(
             "context pages must be nonnegative and character budget positive"
         )
     loaded = corpus if isinstance(corpus, Corpus) else load_corpus(corpus)
+    unit_cache = {}
+
+    def canonical_units(document):
+        # Multiple selected hits often belong to one document. Reconstruct its
+        # units once per export; never cache caller snapshots or across calls.
+        identity = document["artifact_id"]
+        if identity not in unit_cache:
+            unit_cache[identity] = {u["id"]: u for u in content_units(document)}
+        return unit_cache[identity]
+
     selected = select_hits(report, selectors or []) if report is not None else []
     by_artifact = {entry.document["artifact_id"]: entry for entry in loaded.documents}
     wanted: dict[str, set[int]] = {}
@@ -165,10 +283,7 @@ def build_evidence_pack(
                 f"selected result is stale or its sources cannot be verified: {hit['id']}; rerun search"
             )
         # Reconstruct from canonical content; never trust edited snapshot excerpts.
-        unit = next(
-            (u for u in content_units(entry.document) if u["id"] == hit["unit_id"]),
-            None,
-        )
+        unit = canonical_units(entry.document).get(hit["unit_id"])
         expected_id = (
             "hit:"
             + hashlib.sha256(
@@ -244,7 +359,7 @@ def build_evidence_pack(
         tables = []
         table_membership: dict[str, list[str]] = {}
         observed_tables = {table["id"]: table for table in document["tables"]}
-        for unit in content_units(document):
+        for unit in canonical_units(document).values():
             if unit["kind"] != "table" or not block_ids.intersection(unit["block_ids"]):
                 continue
             table = observed_tables[unit["id"]]
@@ -282,6 +397,7 @@ def build_evidence_pack(
                 "warnings": document["warnings"],
                 "errors": document["errors"],
                 "pages_requested": sorted(pages),
+                "pages": [dict(p) for p in document["pages"] if p["page"] in pages],
                 "pages_with_text": sorted({b["page"] for b in blocks}),
                 "pages_without_text": sorted(pages - {b["page"] for b in blocks}),
                 "selected_hit_ids": hit_ids.get(artifact_id, []),
@@ -392,6 +508,43 @@ def evidence_markdown(pack: dict[str, object]) -> str:
                     "",
                 ]
             )
+            # Display observed alignment with its row/column indices. Empty
+            # cells stay empty; spanning cells are explicitly marked.
+            rows = sorted({c["row"] for c in table["cells"]})
+            columns = range(1, table["column_count"] + 1)
+            if rows and table["column_count"]:
+                lines.append(
+                    "| Observed row | "
+                    + " | ".join(f"Column {c}" for c in columns)
+                    + " |"
+                )
+                lines.append("| --- | " + " | ".join("---" for _ in columns) + " |")
+                for row in rows:
+                    values = []
+                    for column in columns:
+                        cells = [
+                            c
+                            for c in table["cells"]
+                            if c["column"]
+                            <= column
+                            < c["column"] + c.get("column_span", 1)
+                            and c["row"] <= row < c["row"] + c.get("row_span", 1)
+                        ]
+                        values.append(
+                            "<br>".join(
+                                str(c["text"]).replace("|", "&#124;").replace("\n", " ")
+                                + (
+                                    f" [span from row {c['row']}, column {c['column']}]"
+                                    if c.get("row_span", 1) > 1
+                                    or c.get("column_span", 1) > 1
+                                    else ""
+                                )
+                                + f" ({c['block_id']})"
+                                for c in cells
+                            )
+                        )
+                    lines.append(f"| {row} | " + " | ".join(values) + " |")
+                lines.append("")
         for figure in entry.get("figures", []):
             figure_pages = sorted(
                 {obj["page"] for obj in figure.get("source_objects", [])}
@@ -426,6 +579,31 @@ def evidence_markdown(pack: dict[str, object]) -> str:
         )
         for group in locations:
             members = [blocks[bid] for bid in group["block_ids"]]
+            for warning in group.get("local_warnings", []):
+                lines.extend(
+                    [
+                        f"Source notice, PDF p. {group['page']}: {warning['code']} — {warning.get('detail', '')}",
+                        "",
+                    ]
+                )
+                if warning.get("after"):
+                    lines.extend([f"Source text: {warning['after']}", ""])
+            for difference in group.get("reading_differences", []):
+                if difference.get("status") == "partial-reading-needs-source-alignment":
+                    lines.extend(
+                        [
+                            f"Partial alternative reading, PDF p. {group['page']} ({difference['alternative_block_id']}, primary context {difference['primary_block_id']}): {difference['alternative_text']!r}. Align at the source; unobserved surrounding text is not a difference.",
+                            "",
+                        ]
+                    )
+                    continue
+                lines.extend(
+                    [
+                        f"Unresolved local difference, PDF p. {group['page']} ({difference['primary_block_id']} / {difference['alternative_block_id']}): "
+                        + json.dumps(difference["changes"], ensure_ascii=False),
+                        "",
+                    ]
+                )
             if len(members) == 1:
                 append_block(members[0])
                 continue
@@ -440,15 +618,8 @@ def evidence_markdown(pack: dict[str, object]) -> str:
                     [
                         f"{label} region, PDF p. {group['page']}: {len(members)} readings; uncertain={group['uncertain']}. {instruction}",
                         "",
-                        "<details>",
-                        f"<summary>{label} text and alternative readings (all sources retained)</summary>",
-                        "",
                     ]
                 )
-                for block in members:
-                    append_block(block)
-                lines.extend(["</details>", ""])
-                continue
             primary = [
                 b
                 for b in members

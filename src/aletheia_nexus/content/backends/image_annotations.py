@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from aletheia_nexus.content.geometry import PageGeometry
+from aletheia_nexus.content.image_tiles import union_box, vertical_tile_groups
 
 LENGTH_LABEL = re.compile(r"\d+(?:\.\d+)?\s*(?:[uμµnpmck]?m)")
 
@@ -113,4 +114,43 @@ def upright_images(page, geometry: PageGeometry, max_pixels=50_000_000):
             result.append((name, image, bounds))
         except (KeyError, TypeError, ValueError, OSError):
             continue
+    return _join_painted_strips(result, max_pixels)
+
+
+def _join_painted_strips(images, max_pixels):
+    """Paste continuous, equally sampled strips; never resize or invent pixels."""
+    from PIL import Image
+
+    result = []
+    for indices in vertical_tile_groups([i[2] for i in images], tolerance=0.002):
+        group = [images[i] for i in indices]
+        first = group[0][1]
+        width = first.width
+        height = sum(image.height for _, image, _ in group)
+        sx = (group[0][2][2] - group[0][2][0]) / width
+        sy = (group[0][2][3] - group[0][2][1]) / first.height
+        if (
+            len(group) == 1
+            or width * height > max_pixels
+            or any(
+                image.width != width
+                or abs((box[2] - box[0]) / image.width - sx) > sx * 0.005
+                or abs((box[3] - box[1]) / image.height - sy) > sy * 0.005
+                for _, image, box in group
+            )
+        ):
+            result.extend(group)
+            continue
+        combined = Image.new("RGB", (width, height))
+        y = 0
+        for _, image, _ in group:
+            combined.paste(image.convert("RGB"), (0, y))
+            y += image.height
+        result.append(
+            (
+                "+".join(name for name, _, _ in group),
+                combined,
+                union_box([box for _, _, box in group]),
+            )
+        )
     return result

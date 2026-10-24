@@ -76,7 +76,15 @@ def test_browser_mime_distinguishes_native_pdf_from_html_gate(
         monkeypatch.setattr(
             browser_route, "_SNAPSHOT_SCRIPT", "() => new Promise(() => {})"
         )
-        monkeypatch.setattr(browser_route, "_OBSERVATION_TIMEOUT", 0.2)
+        snapshot = browser_route._page_snapshot
+        monkeypatch.setattr(
+            browser_route,
+            "_page_snapshot",
+            lambda target: snapshot(target, timeout=0.2),
+        )
+        # Only the intentionally stalled JS read needs a shortened deadline.
+        # Keep the real CDP fallback at its production budget, including under
+        # load; shrinking both would test unrelated protocol scheduling.
     report = browser_route._report_for_page(page)
     if not pdf:
         assert report.kind == ChallengeKind.AUTHENTICATION

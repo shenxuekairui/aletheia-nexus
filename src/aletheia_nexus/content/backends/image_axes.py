@@ -6,7 +6,41 @@ import re
 from statistics import median
 
 
-def associate_axes(records):
+def _printed_horizontal_limits(image, ticks, *, allow_fill_above=False):
+    """Find the painted horizontal border immediately above observed ticks."""
+    if image is None:
+        return None
+    gray = image.convert("L")
+    pixels = gray.load()
+    left = min((t["box"][0] + t["box"][2]) / 2 for t in ticks)
+    right = max((t["box"][0] + t["box"][2]) / 2 for t in ticks)
+    height = median(t["box"][3] - t["box"][1] for t in ticks)
+    bottom = min(t["box"][1] for t in ticks)
+    for y in range(
+        min(gray.height - 4, int(bottom) - 1), max(2, int(bottom - height * 2.5)), -1
+    ):
+        start = None
+        runs = []
+        for x in range(gray.width + 1):
+            dark = x < gray.width and pixels[x, y] < 190
+            if dark and start is None:
+                start = x
+            elif not dark and start is not None:
+                if start <= left and x >= right:
+                    runs.append((start, x))
+                start = None
+        for a, b in runs:
+            # A filled image background is not a plot border. Require narrow
+            # dark ink with predominantly light pixels on both sides.
+            if all(
+                sum(pixels[x, y + offset] > 220 for x in range(a, b)) / (b - a) >= 0.75
+                for offset in ((3,) if allow_fill_above else (-3, 3))
+            ):
+                return a, b
+    return None
+
+
+def associate_axes(records, image=None):
     ticks = [
         r
         for r in records
@@ -50,6 +84,21 @@ def associate_axes(records):
         rows = [g for g in rows if len(g) >= 3]
         if len(rows) == 1:
             ordered = sorted(rows[0], key=lambda t: center(t, 0))
+            limits = _printed_horizontal_limits(image, ordered)
+            if limits:
+                baseline = median(center(t, 1) for t in ordered)
+                tolerance = median(t["box"][2] - t["box"][0] for t in ordered) * 0.4
+                ordered = sorted(
+                    [
+                        t
+                        for t in ticks
+                        if abs(center(t, 1) - baseline) < h * 0.6
+                        and limits[0] - tolerance
+                        <= center(t, 0)
+                        <= limits[1] + tolerance
+                    ],
+                    key=lambda t: center(t, 0),
+                )
             values = [float(t["text"].rstrip("-–").replace("−", "-")) for t in ordered]
             # A Y-axis zero on the same baseline must not silently become an
             # extra X tick. Competing or repeated numeric sequences abstain.
@@ -144,8 +193,8 @@ def associate_axes(records):
                     i
                     for i, (other, ot) in enumerate(reduced)
                     if {id(t) for t in ts} == {id(t) for t in ot}
-                    and re.sub("[^a-z]", "", label["text"].lower())
-                    == re.sub("[^a-z]", "", other["text"].lower())
+                    and re.sub(r"\s+|\(%\)|%", "", label["text"])
+                    == re.sub(r"\s+|\(%\)|%", "", other["text"])
                 ),
                 None,
             )
@@ -164,15 +213,36 @@ def associate_axes(records):
         for axis, label, values in [("Y", label, ts) for label, ts in axes] + [
             ("X", xlabel, xticks)
         ]:
+            numbers = [float(t["text"].rstrip("-–").replace("−", "-")) for t in values]
+            steps = [b - a for a, b in zip(numbers, numbers[1:])]
+            ambiguous = not (all(d > 0 for d in steps) or all(d < 0 for d in steps))
             output.append(
                 {
                     **label,
-                    "text": f"{axis} axis: {label['text']}; printed ticks: "
+                    "box": (
+                        min(r["box"][0] for r in [label, *values]),
+                        min(r["box"][1] for r in [label, *values]),
+                        max(r["box"][2] for r in [label, *values]),
+                        max(r["box"][3] for r in [label, *values]),
+                    ),
+                    "text": f"{axis} axis: {label['text']}; "
+                    + (
+                        "unresolved tick order; observed readings: "
+                        if ambiguous
+                        else "printed ticks: "
+                    )
                     + ", ".join(t["text"].rstrip("-–") for t in values),
                     "score": min(r["score"] for r in [label, *values]),
                     "method": "positioned-axis-label-ticks",
+                    **(
+                        {"warning": "IMAGE_AXIS_TICK_ORDER_CONFLICT"}
+                        if ambiguous
+                        else {}
+                    ),
                 }
             )
-            for original in [label, *values]:
-                original["alternative"] = True
+            if not ambiguous:
+                for original in [label, *values]:
+                    original["alternative"] = True
+                    original["association_source"] = True
     return [*records, *output]

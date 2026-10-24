@@ -19,17 +19,18 @@ from aletheia_nexus.content.backends.image_panels import (
     associate_scales,
     join_length_fragments,
     length_key,
+    read_panel_markers,
 )
 from aletheia_nexus.content.backends.image_readings import (
     complete_edge_scripts,
     ink_colour,
     merge_complete_reading,
-    reading_key,
     reread_formula_markup,
     reread_uncertain_lines,
 )
 from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
 from aletheia_nexus.content.backends.image_vertical import read_vertical_labels
+from aletheia_nexus.content.backends.readings import literal_reading_key
 from aletheia_nexus.content.geometry import PageGeometry
 from aletheia_nexus.content.models import LayoutLine, PageLayout
 
@@ -58,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.4.0",
+            "adapter_version": "1.5.13",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -83,6 +84,7 @@ def extract_image_annotations(page, page_number, max_pixels):
     geometry = PageGeometry.from_page(page)
     engine = _engine()
     lines = []
+    warnings = []
     for name, image, bounds in upright_images(page, geometry, max_pixels):
         if image.width < 80 or image.height < 40:
             continue
@@ -90,16 +92,35 @@ def extract_image_annotations(page, page_number, max_pixels):
         sx = (bounds[2] - bounds[0]) / image.width
         sy = (bounds[3] - bounds[1]) / image.height
         for record in associate_axes(
-            associate_scales(associate_bars(records, image), image)
+            associate_scales(associate_bars(records, image), image), image
         ):
             text, score = record["text"], record["score"]
             colour = record.get("ink_colour")
             if colour and record.get("method") not in {
                 "positioned-panel-scale",
+                "positioned-panel-length",
                 "positioned-axis-label-ticks",
             }:
                 text = f"Image text ({colour}): {text}"
             x0, y0, x1, y1 = record["box"]
+            if record.get("warning"):
+                warnings.append(
+                    {
+                        "code": record["warning"],
+                        "page": page_number,
+                        "bbox": [
+                            (bounds[0] + x0 * sx) / geometry.width,
+                            (bounds[3] - y1 * sy) / geometry.height,
+                            (bounds[0] + x1 * sx) / geometry.width,
+                            (bounds[3] - y0 * sy) / geometry.height,
+                        ],
+                        "detail": (
+                            "The source-image scale label and two agreeing crop readings differ in unit. Inspect the local glyphs; both readings are retained and no unit was inferred or silently corrected."
+                            if record["warning"] == "IMAGE_SCALE_UNIT_CONFLICT"
+                            else "Observed axis tick readings are not monotonic; inspect the local signs/digits or source axis convention. No value was inferred or corrected."
+                        ),
+                    }
+                )
             # Single characters are usually curve markers or atom labels. Keep
             # reliable panel letters; do not promote other isolated symbols.
             minimum = (
@@ -121,7 +142,12 @@ def extract_image_annotations(page, page_number, max_pixels):
                     y0=max(bounds[1], bounds[3] - y1 * sy),
                     y1=min(bounds[3], bounds[3] - y0 * sy),
                     font_size=max(1, min((x1 - x0) * sx, (y1 - y0) * sy)),
-                    extraction_method=record.get("method", "rapidocr-source-image"),
+                    extraction_method=record.get("method", "rapidocr-source-image")
+                    + (
+                        "+association-source"
+                        if record.get("association_source")
+                        else ""
+                    ),
                     extraction_confidence=float(score),
                     source_engines=(
                         f"rapidocr@{metadata.version('rapidocr')}+image-label",
@@ -140,6 +166,7 @@ def extract_image_annotations(page, page_number, max_pixels):
         crop_box=geometry.crop_box,
         rotation=geometry.rotation,
         lines=tuple(lines),
+        warnings=tuple(warnings),
     )
 
 
@@ -203,17 +230,31 @@ def read_image(engine, image):
             "RGB"
         )
         first = read(mask)
-        second = read(mask, 2) if image.width * image.height < 1_500_000 else first
-        for candidate in first + second:
+        second = read(mask, 2) if image.width * image.height < 1_500_000 else []
+        for candidate, others in [(r, second) for r in first] + [
+            (r, first) for r in second
+        ]:
             if candidate["score"] < 0.85 or not (
                 re.search(r"\d", candidate["text"])
                 and re.search(r"[A-Za-z%]", candidate["text"])
             ):
                 continue
+            a = candidate["box"]
+
+            def same_region(other):
+                b = other["box"]
+                overlap = max(0, min(a[2], b[2]) - max(a[0], b[0])) * max(
+                    0, min(a[3], b[3]) - max(a[1], b[1])
+                )
+                area = max((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+                return area > 0 and overlap >= area * 0.6
+
             if not any(
-                reading_key(other["text"]) == reading_key(candidate["text"])
+                literal_reading_key(other["text"])
+                == literal_reading_key(candidate["text"])
                 and other["score"] >= 0.8
-                for other in (second if candidate in first else first)
+                and same_region(other)
+                for other in others
             ):
                 continue
             candidate["method"] = "rapidocr-colour-completed-reading"
@@ -285,4 +326,4 @@ def read_image(engine, image):
             colour = ink_colour(rgb, record["box"])
             if colour:
                 record["ink_colour"] = colour
-    return read_vertical_labels(records, rgb, read)
+    return read_vertical_labels(read_panel_markers(records, rgb, recognize), rgb, read)
