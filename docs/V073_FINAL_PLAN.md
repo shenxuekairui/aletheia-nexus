@@ -1,8 +1,10 @@
 # v0.7.3 final research and release plan
 
-Frozen protocol date: 2026-10-23 (Asia/Singapore). Status: baseline audit and
-protocol freeze; **not accepted or released**. The version closes the 0.7 series
-only after the gates below pass. There is no planned routine 0.7.4 feature release.
+Original frozen protocol date: 2026-10-23 (Asia/Singapore). The original numerical
+gates and results below remain historical evidence. The owner authorized a
+prospective scope amendment on 2026-10-24, after seeing the results; see the final
+section. **Not yet accepted or released.** There is no planned routine 0.7.4
+feature release.
 
 ## Evidence and scope
 
@@ -145,3 +147,51 @@ text) from the strict default-relation rubric above. Blank shared experiment
 labels that require reconstruction fail the latter even when their component
 text is preserved. Both results must be reported; neither rewrites historical
 scores. This clarification does not weaken any release gate.
+
+## Owner-authorized convergence amendment — 2026-10-24
+
+After the complete second first-score report and bounded repair review, the
+owner instructed: “门槛不是死的，达到设计目标就可以，不需要为了追求达不到的
+指标一直修改，尽可能达到我们的设计目标和设计哲学，符合实际使用需求即可，
+自行判断可以预留AI处理接口”. This explicitly changes the prospective closure
+decision. It is **an amendment made after results were known**, not a claim that
+the original numerical protocol passed or was changed before testing. The
+original plan, all first scores, failures and denominators remain preserved.
+
+The release is assessed as a local evidence preparation tool for research,
+with scientific interpretation and critical data citation subject to source
+review. It is not certified automatic extraction of complete experiments from
+arbitrary figures, chemistry glyphs or source conflicts. Use these closure checks:
+
+1. Keep demonstrated general improvements with bounded complexity. Reject
+   changes whose wider effects outweigh their measured benefit. Do not add
+   engines or rules merely to reach a sample percentage; no further holdout
+   replacement solely to pursue a passing score.
+2. Preserve confirmed core behaviors, original bytes, page identity, substantive
+   alternate readings and source contradictions. Report remaining default errors
+   and missed local notices explicitly; declaring a boundary does not repair a
+   question, lower its denominator or turn its score into a pass.
+3. Check the actual import/acquire, parse, resume, search, source access and export
+   chain, including the original research tasks and retrieval evidence. Retain
+   task-specific gains without claiming lower whole-library review burden.
+4. Keep layout associations distinct from verified scientific facts. Remove
+   demonstrated unsupported semantic assertions using minimal changes; do not
+   build general interpretation machinery to replace expert review.
+5. Reuse `EvidenceJudge` / `assess_reading` for bounded advisory review: cite
+   existing evidence, allow abstention, save suggestions separately and preserve
+   default local parsing without remote AI. Do not claim AI performance without
+   separately measured results.
+6. Complete full CI and clean installed-use checks on the final candidate,
+   document remaining limitations in both user guidance and release notes,
+   and make an explicit fitness-for-use judgment before publication.
+
+The original 90% and zero-unflagged sample requirements are no longer automatic
+vetoes under this owner-approved scope. Their actual failures remain visible.
+No replacement numerical accuracy promise is invented. Engineering, evidence
+integrity and transparent capability boundaries remain required. Formal
+publication remains pending final review and explicit user authorization;
+there is no planned routine 0.7.4 feature version.
+
+The local authorization and prior-plan snapshot are sealed in
+`protocol/owner-convergence-amendment-20261024.json`, SHA-256
+`ec65ef92d03c02a555af9ae150f6471ff2d0a8b1ba960e9138247149ea6e581d`.

@@ -1,8 +1,11 @@
 # v0.7.3 scientific acceptance and publication
 
 Status: **NOT ACCEPTED / NOT RELEASED**. The 0.7 series has not met its
-closure conditions. No routine 0.7.4 feature release is planned. The fixed
-criteria remain in [V073_FINAL_PLAN.md](V073_FINAL_PLAN.md).
+closure checks. No routine 0.7.4 feature release is planned. The owner authorized
+a design-goal-based closure amendment on 2026-10-24 after results were known;
+the original protocol and amendment are both in
+[V073_FINAL_PLAN.md](V073_FINAL_PLAN.md). Original failed numerical gates remain
+failed historical results; they are not retroactively relabelled as passes.
 
 This record distinguishes historical first results, exposed regressions and
 unopened validation. The implementing assistant checks source pages and code;
@@ -19,7 +22,7 @@ complete release delta and end-to-end contracts. It found and tightened
 script-flattening comparisons, false same-location OCR corroboration, axis-unit
 comparison and an unsanitized optional-backend diagnostic; removed repeated
 evidence reconstruction within each export; and corrected exporter identity.
-The latest implementation is `84666bb`, using parser 3.10.14, fusion 1.10.3 and
+The pre-opening frozen implementation is `84666bb`, using parser 3.10.14, fusion 1.10.3 and
 image adapter 1.5.11. All eight hosted CI jobs, ten immutable local RC checks
 and 24 clean installed-use checks pass. Its exposed targeted OCR regression is
 **55/60**, with zero locally undisclosed critical errors in the frozen questions;
@@ -39,7 +42,9 @@ is 25/60 with 26 such errors; candidate OCR is **35/60 with 14**. Ten answers
 improve and none regress relative to baseline OCR. Errors decrease by 28.6%,
 passing the paired-improvement rule, but the 54/60 minimum and zero-unflagged
 gates fail. An unresolved Å/A unit after removal of a false minus remains
-incorrect. No first score or numerical gate changes.
+incorrect. No first score changes. The table below reports the original numerical
+protocol, before the owner's later scope amendment; it is not the amended
+fitness-for-use decision.
 
 | Gate | Required | Current status |
 | --- | --- | --- |
@@ -57,6 +62,40 @@ alternative, manual reconstruction of an experiment, abstention or missing
 context fails complete default-primary correctness. Global PARTIAL is not a
 local warning. Layout groups remain observed layout evidence, not certified
 scientific data.
+
+## Bounded table repair after second-set exposure
+
+Parser 3.10.15 retains the limited indexed-table repair: a separately styled
+label/title reaches the existing grid stages, printed header rules exclude
+adjacent-column prose, and wide left-aligned headers retain short values in
+their columns. Ambiguous overlaps, incomplete rows and broken index sequences
+still abstain. An attempted broader Supplementary-caption/centred-grid expansion
+was rejected: it introduced false directory/diagram table associations and
+disturbed previously correct layouts. Its patch and outputs remain local evidence.
+
+On the exposed second set, the current parser-only replay scores **29/60 native
+and 36/60 OCR**, with **15 and 13** questions containing locally undisclosed
+critical errors. Only V08-Q03 becomes complete: atmosphere/electricity controls
+retain each experiment's yield, metric, temperature and source. The hydrate and
+prime errors in V08-Q02/Q05 remain failed despite restored rows. No first score
+is replaced. This is implementing-assistant regression review, not a new blind
+test or third-party assessment.
+
+All 54 historical documents / 503 pages and the old targeted regression's 671
+pages retain their complete scientific page payloads. Both second-set modes
+replayed all 16 documents / 673 pages; only V08 pages 2 and 5 changed. Its complete
+ten-page file was then freshly extracted in native and fixed OCR modes: no
+runtime errors and exact agreement with the replay. Native took 7.887 seconds
+and OCR 202.277 seconds; this is not a controlled speed comparison. Page 2/5
+exports preserve both tables, original pages, all primary text, alternatives
+and warnings (73 native blocks; 146 OCR blocks including 31 alternatives).
+No task-level burden reduction is claimed from these two table repairs.
+
+Relevant content tests: 727 passed, three skipped; lint passed. Full final-commit
+engineering verification remains pending. The regression, source review,
+rejected trial and fresh extraction evidence are sealed locally under
+`v2-table-probe/table-narrow/adjudication.json`, SHA-256
+`30011204a9e0beda17df75dc5f9a03bb342cdc31e06851488f49a03f398dcc33`.
 
 ## Rechecked v0.7.2 baseline
 
