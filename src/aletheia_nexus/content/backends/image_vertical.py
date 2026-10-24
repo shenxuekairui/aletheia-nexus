@@ -6,6 +6,8 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
+from aletheia_nexus.content.backends.readings import literal_reading_key
+
 
 def _preserves_fragments(reading, fragments):
     """A crop must not drop observed unit, sign or label characters."""
@@ -16,8 +18,10 @@ def _preserves_fragments(reading, fragments):
         text = re.sub(r"\bvs\b", "vs", text, flags=re.IGNORECASE)
         return "".join(
             c
-            for c in unicodedata.normalize("NFKC", text).replace("−", "-")
-            if c.isalnum() or c in "+-/±%°"
+            for c in literal_reading_key(text)
+            if c.isalnum()
+            or c in "+-/±%°"
+            or unicodedata.decomposition(c).startswith(("<super>", "<sub>"))
         )
 
     candidate = key(reading)

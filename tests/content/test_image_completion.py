@@ -140,6 +140,8 @@ def test_completion_preserves_conflicting_digits_units_and_exponents():
         ("76% X (18 h", "76% X (18 h-1), 51 ee%", True),
         ("76% X (18 h", "77% X (18 h-1), 51 ee%", False),
         ("18 h", "18 h", False),
+        ("10² A", "102 A/m", False),
+        ("18 h⁻²", "18 h⁻¹", False),
     ]:
         records = [r(original)]
         assert merge_complete_reading(records, r(complete)) is allowed
@@ -223,6 +225,27 @@ def test_nonmonotonic_y_ticks_get_a_local_gap_without_guessing_signs():
     assert "unresolved tick order" in warning["text"]
     original = next(x for x in output if x["text"] == "-10")
     assert not original.get("alternative")
+
+
+@pytest.mark.parametrize(
+    "titles", [("Current (mA)", "Current (MA)"), ("Current 10⁻⁴ A", "Current 10⁻³ A")]
+)
+def test_competing_axis_units_and_exponents_do_not_corroborate(titles):
+    records = [
+        r(titles[0], (10, 60, 20, 100)),
+        r(titles[1], (11, 60, 21, 100)),
+        r("time", (60, 185, 160, 200)),
+    ]
+    records += [
+        r(str(v), (30, y, 45, y + 10))
+        for v, y in [(30, 30), (20, 65), (10, 100), (0, 135)]
+    ]
+    records += [
+        r(str(v), (x, 165, x + 15, 175)) for v, x in [(1, 60), (2, 100), (3, 140)]
+    ]
+    output = associate_axes(records)
+    assert not any(x.get("method") == "positioned-axis-label-ticks" for x in output)
+    assert all(not x.get("alternative") for x in records)
 
 
 def test_formula_markup_needs_repeated_source_confirmation():

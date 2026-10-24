@@ -19,6 +19,7 @@ from typing import Any
 from pypdf import PdfWriter
 
 from aletheia_nexus.content.backends.superscripts import raised_glyph_box
+from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.geometry import PageGeometry, raster_bbox_to_canonical
 from aletheia_nexus.content.models import (
     LayoutLine,
@@ -541,7 +542,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.8.3",
+            "adapter_version": "1.8.4",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
@@ -881,7 +882,7 @@ class TesseractOcrBackend:
                         {
                             "code": "OCR_BACKEND_FAILED",
                             "page": page_number,
-                            "detail": f"Local vector OCR failed; the native and Tesseract readings remain available: {exc}",
+                            "detail": f"Local vector OCR failed; the native and Tesseract readings remain available: {safe_exception_detail(exc)}",
                         }
                     )
             image = rendered_image.convert("L")

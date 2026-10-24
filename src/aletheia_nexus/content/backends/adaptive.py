@@ -16,6 +16,7 @@ from aletheia_nexus.content.backends.base import (
 from aletheia_nexus.content.backends.layout import LayoutPdfBackend
 from aletheia_nexus.content.backends.readings import (
     corroborate_chinese,
+    literal_reading_key,
     recover_word_glyphs,
 )
 from aletheia_nexus.content.diagnostics import safe_exception_detail
@@ -286,13 +287,9 @@ def _similar(first: str, second: str, threshold: float) -> bool:
     # ignored when suppressing an alternative reading. Preserve case (mA != MA).
     # Unit-only headers, chemical labels and negation can be meaningful even
     # without digits (mA/MA, Co/CO, R/S). Fuzzy spelling is not corroboration.
-    def scientific_text(value: str) -> str:
-        value = unicodedata.normalize("NFKC", value).replace("−", "-")
-        return re.sub(r"\s+", "", value).rstrip(".,;:!。；，！")
-
-    return scientific_text(first) == scientific_text(second) and _number_signature(
-        first
-    ) == _number_signature(second)
+    return literal_reading_key(first).rstrip(".,;:!。；，！") == literal_reading_key(
+        second
+    ).rstrip(".,;:!。；，！") and _number_signature(first) == _number_signature(second)
 
 
 def _agreement(first: str, second: str) -> float:
@@ -321,8 +318,8 @@ def _fits_damaged_native(native: str, reading: str) -> bool:
     This ranks complete OCR readings; it never fills a missing value itself.
     A match supports character count, not the identity of an unknown digit.
     """
-    native = "".join(unicodedata.normalize("NFKC", native).split())
-    reading = "".join(unicodedata.normalize("NFKC", reading).split())
+    native = literal_reading_key(native)
+    reading = literal_reading_key(reading)
     missing = {"\x00", "\ufffd"}
     if (
         not any(c in missing for c in native)
@@ -344,8 +341,8 @@ def _engine_id(backend: object) -> str:
 
 def _preserves_visible_native(native: str, reading: str) -> bool:
     """Require surviving text in order; unknown glyphs are not a spelling rule."""
-    left = "".join(unicodedata.normalize("NFKC", native).split()).replace("−", "-")
-    right = "".join(unicodedata.normalize("NFKC", reading).split()).replace("−", "-")
+    left = literal_reading_key(native)
+    right = literal_reading_key(reading)
     left, right = left.removesuffix("."), right.removesuffix(".")
     parts = re.split(r"[\x00\ufffd\ue000-\uf8ff]+", left)
     cursor = 0
@@ -444,7 +441,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.10.1"
+    version = "1.10.2"
 
     def __init__(
         self,

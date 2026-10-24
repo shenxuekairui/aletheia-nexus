@@ -7,6 +7,8 @@ import re
 import unicodedata
 from collections import Counter
 
+from aletheia_nexus.content.backends.readings import literal_reading_key
+
 
 def reading_key(text):
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text)).replace("−", "-")
@@ -19,7 +21,7 @@ def merge_complete_reading(records, candidate):
     All displaced readings remain as alternatives in the same image region.
     """
     a = candidate["box"]
-    key = reading_key(candidate["text"])
+    key = literal_reading_key(candidate["text"])
     near = []
     for old in records:
         b = old["box"]
@@ -32,13 +34,13 @@ def merge_complete_reading(records, candidate):
             near.append(old)
     if not near:
         return False
-    if len(near) == 1 and reading_key(near[0]["text"]) == key:
+    if len(near) == 1 and literal_reading_key(near[0]["text"]) == key:
         return False
     # Removing ONLY new unit exponents allows an incomplete "12 h" reading
     # to match "12 h-1". A pre-existing exponent must match exactly.
     bare = re.sub(r"(?<=[A-Za-z])[+-]\d{1,2}", "", key)
     if not all(
-        (oldkey := reading_key(old["text"])) in key
+        (oldkey := literal_reading_key(old["text"])) in key
         or (not re.search(r"(?<=[A-Za-z])[+-]\d", oldkey) and oldkey in bare)
         for old in near
     ):

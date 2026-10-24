@@ -15,7 +15,7 @@ from aletheia_nexus.content.schema import PARSED_DOCUMENT_SCHEMA
 
 AI_EXPORT_SCHEMA = "aletheia-nexus/ai-export/v1"
 EXPORTER_NAME = "canonical-document-exporter"
-EXPORTER_VERSION = "1.2.0"
+EXPORTER_VERSION = "1.3.0"
 
 
 @dataclass(frozen=True)

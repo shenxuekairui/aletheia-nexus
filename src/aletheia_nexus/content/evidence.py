@@ -262,6 +262,16 @@ def build_evidence_pack(
             "context pages must be nonnegative and character budget positive"
         )
     loaded = corpus if isinstance(corpus, Corpus) else load_corpus(corpus)
+    unit_cache = {}
+
+    def canonical_units(document):
+        # Multiple selected hits often belong to one document. Reconstruct its
+        # units once per export; never cache caller snapshots or across calls.
+        identity = document["artifact_id"]
+        if identity not in unit_cache:
+            unit_cache[identity] = {u["id"]: u for u in content_units(document)}
+        return unit_cache[identity]
+
     selected = select_hits(report, selectors or []) if report is not None else []
     by_artifact = {entry.document["artifact_id"]: entry for entry in loaded.documents}
     wanted: dict[str, set[int]] = {}
@@ -273,10 +283,7 @@ def build_evidence_pack(
                 f"selected result is stale or its sources cannot be verified: {hit['id']}; rerun search"
             )
         # Reconstruct from canonical content; never trust edited snapshot excerpts.
-        unit = next(
-            (u for u in content_units(entry.document) if u["id"] == hit["unit_id"]),
-            None,
-        )
+        unit = canonical_units(entry.document).get(hit["unit_id"])
         expected_id = (
             "hit:"
             + hashlib.sha256(
@@ -352,7 +359,7 @@ def build_evidence_pack(
         tables = []
         table_membership: dict[str, list[str]] = {}
         observed_tables = {table["id"]: table for table in document["tables"]}
-        for unit in content_units(document):
+        for unit in canonical_units(document).values():
             if unit["kind"] != "table" or not block_ids.intersection(unit["block_ids"]):
                 continue
             table = observed_tables[unit["id"]]

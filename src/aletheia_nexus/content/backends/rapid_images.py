@@ -59,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.5.8",
+            "adapter_version": "1.5.9",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -229,17 +229,30 @@ def read_image(engine, image):
             "RGB"
         )
         first = read(mask)
-        second = read(mask, 2) if image.width * image.height < 1_500_000 else first
-        for candidate in first + second:
+        second = read(mask, 2) if image.width * image.height < 1_500_000 else []
+        for candidate, others in [(r, second) for r in first] + [
+            (r, first) for r in second
+        ]:
             if candidate["score"] < 0.85 or not (
                 re.search(r"\d", candidate["text"])
                 and re.search(r"[A-Za-z%]", candidate["text"])
             ):
                 continue
+            a = candidate["box"]
+
+            def same_region(other):
+                b = other["box"]
+                overlap = max(0, min(a[2], b[2]) - max(a[0], b[0])) * max(
+                    0, min(a[3], b[3]) - max(a[1], b[1])
+                )
+                area = max((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+                return area > 0 and overlap >= area * 0.6
+
             if not any(
                 reading_key(other["text"]) == reading_key(candidate["text"])
                 and other["score"] >= 0.8
-                for other in (second if candidate in first else first)
+                and same_region(other)
+                for other in others
             ):
                 continue
             candidate["method"] = "rapidocr-colour-completed-reading"

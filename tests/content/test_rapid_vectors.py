@@ -140,7 +140,9 @@ def test_vector_recognition_failure_keeps_tesseract_result_and_is_disclosed(
     def read(image, layout):
         assert image.mode == "RGB" and image.size == (400, 600)
         if failure == "exception":
-            raise RuntimeError("local model unavailable")
+            raise RuntimeError(
+                "model C:/Users/private/model.onnx unavailable; https://example.org/model?token=private"
+            )
         return (
             LayoutLine(
                 "−7.4 μA",
@@ -173,3 +175,9 @@ def test_vector_recognition_failure_keeps_tesseract_result_and_is_disclosed(
     assert any(w["code"] == "OCR_BACKEND_FAILED" for w in result.warnings) == bool(
         failure
     )
+    if failure == "exception":
+        detail = next(
+            w["detail"] for w in result.warnings if w["code"] == "OCR_BACKEND_FAILED"
+        )
+        assert "private" not in detail
+        assert "<redacted-local-path>" in detail and "<redacted-url>" in detail

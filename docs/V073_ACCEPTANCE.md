@@ -14,6 +14,14 @@ release certification. Original v0.7.2 records are unchanged.
 
 ## Current gates
 
+The [systematic engineering review](V073_ENGINEERING_REVIEW.md) covers the
+complete release delta and end-to-end contracts. It found and tightened
+script-flattening comparisons, false same-location OCR corroboration, axis-unit
+comparison and an unsanitized optional-backend diagnostic; removed repeated
+evidence reconstruction within each export; and corrected exporter identity.
+These changes require fresh affected-source validation and final-commit checks.
+The new unopened sample and all scientific thresholds remain unchanged.
+
 | Gate | Required | Current status |
 | --- | --- | --- |
 | New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second set sealed, not yet parsed; pending |

@@ -1,6 +1,6 @@
 # v0.7 scientific content parsing contract
 
-Status: `0.7.3` candidate, `structured-pdf-pipeline/3.9.0`; v2 remains readable.
+Status: `0.7.3` candidate, `structured-pdf-pipeline/3.10.12`; v2 remains readable.
 
 Search-result v1 adds `reading_role`, `matching_rows`, `interpretation_status`
 and `review_locations` without changing hit identities or legacy selection.

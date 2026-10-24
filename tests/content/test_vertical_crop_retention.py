@@ -15,6 +15,8 @@ from aletheia_nexus.content.backends.image_vertical import (
         ("Potential vs reference (mV)", ["Potential", "VS reference (MV)"]),
         ("Potential vs Ag/AgCl (mV)", ["Potential", "VS Ag/AgCI (mV)"]),
         ("Current 10 A", ["Current 10−4 A"]),
+        ("Current 102 A", ["Current 10² A"]),
+        ("Current 10⁴ A", ["Current 10⁻⁴ A"]),
     ],
 )
 def test_shorter_crop_cannot_remove_observed_scientific_characters(reading, fragments):

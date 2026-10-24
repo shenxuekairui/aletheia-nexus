@@ -172,6 +172,10 @@ def test_corrupt_ligature_does_not_authorize_changing_conditions_or_unit_case(re
         ("mA", "MA"),
         ("(R)-catalyst", "(S)-catalyst"),
         ("with additive", "without additive"),
+        ("10² A", "102 A"),
+        ("H₂O", "H2O"),
+        ("m²2", "m2²"),
+        ("The measured rate was 12 cm⁻¹", "The measured rate was 12 cm-1"),
     ],
 )
 def test_cleanup_retains_scientific_disagreements(first, second):
@@ -180,6 +184,27 @@ def test_cleanup_retains_scientific_disagreements(first, second):
     )
     assert {r.text for r in merged} == {first, second}
     assert all(r.uncertain for r in merged)
+
+
+def test_corrupt_glyph_does_not_authorize_flattening_a_visible_exponent():
+    original = line("The modi\ue103ed surface measured 10² A.", uncertain=True)
+    candidate = line(
+        "The modified surface measured 102 A.", "ocr", extraction_confidence=0.99
+    )
+    merged, _ = AdaptiveOcrBackend()._merge(page(original), [page(candidate)])
+    assert merged[0].text.endswith("10² A.")
+    assert any(
+        r.text == candidate.text and r.content_region == "ocr-alternative"
+        for r in merged
+    )
+
+
+def test_compatibility_ligatures_and_micro_signs_still_agree():
+    merged, _ = AdaptiveOcrBackend()._merge(
+        page(), [page(line("ﬁlm 2 µA", "best")), page(line("film 2 μA", "fast"))]
+    )
+    assert len(merged) == 1
+    assert set(merged[0].source_engines) == {"best", "fast"}
 
 
 @pytest.mark.parametrize("scan", [False, True])

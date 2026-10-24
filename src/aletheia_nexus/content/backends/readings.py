@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import replace
 
 from aletheia_nexus.content.models import LayoutLine, PageLayout
+
+
+def literal_reading_key(value: str) -> str:
+    """Fold typography and spacing without flattening scientific scripts."""
+    value = "".join(
+        char
+        if unicodedata.decomposition(char).startswith(("<super>", "<sub>"))
+        else unicodedata.normalize("NFKC", char)
+        for char in unicodedata.normalize("NFC", value)
+    )
+    return "".join(value.split()).replace("−", "-")
 
 
 def _compact(text: str) -> str:

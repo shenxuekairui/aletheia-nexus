@@ -193,8 +193,8 @@ def associate_axes(records, image=None):
                     i
                     for i, (other, ot) in enumerate(reduced)
                     if {id(t) for t in ts} == {id(t) for t in ot}
-                    and re.sub("[^a-z]", "", label["text"].lower())
-                    == re.sub("[^a-z]", "", other["text"].lower())
+                    and re.sub(r"\s+|\(%\)|%", "", label["text"])
+                    == re.sub(r"\s+|\(%\)|%", "", other["text"])
                 ),
                 None,
             )
