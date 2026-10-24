@@ -333,6 +333,27 @@ three opt-in skips before adding a further painted-PDF regression; all four
 nested-script tests then passed. The first ordering failure and intermediate
 source probe remain in the local evidence. No original glyph or PDF is replaced.
 
+An additional exposed figure audit found that one PDF stores a complete figure
+as 1,469 touching one-pixel strips, and another as six touching strips. The
+previous per-resource minimum size and positive-gap grouping either omitted the
+figure region or associated only its bottom strip. Contiguous, equal-width,
+non-overlapping strips now form an observed region while every original
+resource remains in `source_objects`. Optional image OCR pastes equally sampled
+strips at native pixel resolution; it does not resize them, fill gaps or infer
+panel contents. Gaps, overlaps, displaced columns, inconsistent sampling and
+the pixel budget all constrain this operation.
+
+The content suite passes **582 tests**, with three opt-in skips. Structural
+replay covers both columns on two exposed source pages, with all original
+resources retained. A fresh OCR page probe recovers separate panel/scale
+relationships previously fragmented across resources, but the difficult
+microscopy question still lacks complete lattice and panel relationships and
+is not reported as passing. Full figure coverage by a local warning is a
+diagnostic correction, not a content correction or a reduction in independent
+review decisions. Parser / Tesseract / image-OCR identities are now **3.10.2 /
+1.8.1 / 1.5.4**. A control-page audit also found an existing prose-as-caption
+association problem; it remains to be corrected and checked before freezing.
+
 ## First holdout result: completed baseline OCR configuration
 
 The locked v0.7.2 OCR run completed all 16 PDFs / 671 pages without runtime

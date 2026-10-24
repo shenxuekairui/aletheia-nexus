@@ -536,7 +536,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.8.0",
+            "adapter_version": "1.8.1",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
