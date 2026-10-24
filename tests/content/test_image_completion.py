@@ -169,6 +169,32 @@ def test_edge_scripts_need_two_matching_crops_and_only_append_scripts():
     assert not records[0].get("alternative")
 
 
+@pytest.mark.parametrize(
+    "fragment, box, allowed",
+    [
+        ("-2", (98, 25, 118, 43), True),
+        ("−2", (98, 25, 118, 43), True),
+        ("-1", (98, 25, 118, 43), False),
+        ("-2", (98, 30, 118, 50), False),  # same baseline
+        ("-2", (98, 38, 118, 56), False),  # subscript
+        ("-2", (50, 25, 70, 43), False),  # another number inside the label
+        ("-2", (98, 10, 118, 38), False),  # overlapping detector, separate line
+    ],
+)
+def test_complete_unit_can_retain_a_separately_detected_raised_exponent(
+    fragment, box, allowed
+):
+    records = [r("47 s", (30, 30, 100, 50)), r(fragment, box)]
+    candidate = r("47 s⁻²", (28, 23, 120, 52))
+    assert merge_complete_reading(records, candidate) is allowed
+    assert all(item.get("alternative", False) == allowed for item in records[:2])
+
+
+def test_raised_fragment_does_not_change_an_existing_complete_unit():
+    records = [r("47 s⁻¹", (30, 30, 100, 50)), r("-2", (98, 25, 118, 43))]
+    assert not merge_complete_reading(records, r("47 s⁻²", (28, 23, 120, 52)))
+
+
 def test_ink_colour_does_not_name_background_or_mix_competing_colours():
     ImageDraw = pytest.importorskip("PIL.ImageDraw")
     Image = pytest.importorskip("PIL.Image")

@@ -25,12 +25,12 @@ from aletheia_nexus.content.backends.image_readings import (
     complete_edge_scripts,
     ink_colour,
     merge_complete_reading,
-    reading_key,
     reread_formula_markup,
     reread_uncertain_lines,
 )
 from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
 from aletheia_nexus.content.backends.image_vertical import read_vertical_labels
+from aletheia_nexus.content.backends.readings import literal_reading_key
 from aletheia_nexus.content.geometry import PageGeometry
 from aletheia_nexus.content.models import LayoutLine, PageLayout
 
@@ -59,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.5.9",
+            "adapter_version": "1.5.10",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -249,7 +249,8 @@ def read_image(engine, image):
                 return area > 0 and overlap >= area * 0.6
 
             if not any(
-                reading_key(other["text"]) == reading_key(candidate["text"])
+                literal_reading_key(other["text"])
+                == literal_reading_key(candidate["text"])
                 and other["score"] >= 0.8
                 and same_region(other)
                 for other in others

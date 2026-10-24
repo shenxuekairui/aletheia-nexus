@@ -39,9 +39,35 @@ def merge_complete_reading(records, candidate):
     # Removing ONLY new unit exponents allows an incomplete "12 h" reading
     # to match "12 h-1". A pre-existing exponent must match exactly.
     bare = re.sub(r"(?<=[A-Za-z])[+-]\d{1,2}", "", key)
+
+    def raised_unit_fragment(old):
+        # OCR may detect a raised signed exponent separately, losing its
+        # typography in the fragment string. Require both the complete source
+        # reading and the fragment's position beside an unchanged unit label.
+        suffix = re.fullmatch(r"(.*[A-Za-z])([⁺⁻][⁰¹²³⁴⁵⁶⁷⁸⁹0-9]{1,2})", key)
+        oldkey = literal_reading_key(old["text"])
+        if (
+            suffix is None
+            or not re.fullmatch(r"[+-]\d{1,2}", oldkey)
+            or oldkey != unicodedata.normalize("NFKC", suffix[2]).replace("−", "-")
+        ):
+            return False
+        x0, y0, x1, y1 = old["box"]
+        bases = [r for r in near if literal_reading_key(r["text"]) == suffix[1]]
+        if len(bases) != 1:
+            return False
+        bx0, by0, bx1, by1 = bases[0]["box"]
+        return (
+            (x0 + x1) / 2 >= bx1
+            and by0 <= (y0 + y1) / 2 < (by0 + by1) / 2
+            and y0 < by0
+            and y1 < by1
+        )
+
     if not all(
         (oldkey := literal_reading_key(old["text"])) in key
         or (not re.search(r"(?<=[A-Za-z])[+-]\d", oldkey) and oldkey in bare)
+        or raised_unit_fragment(old)
         for old in near
     ):
         return False

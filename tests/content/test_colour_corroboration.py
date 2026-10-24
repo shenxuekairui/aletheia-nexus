@@ -7,7 +7,9 @@ import pytest
 from aletheia_nexus.content.backends.rapid_images import read_image
 
 
-@pytest.mark.parametrize("case", ["same-region", "different-region", "single-scale"])
+@pytest.mark.parametrize(
+    "case", ["same-region", "different-region", "single-scale", "script-conflict"]
+)
 def test_colour_completion_needs_two_source_aligned_scales(case):
     Image = pytest.importorskip("PIL.Image")
     ImageDraw = pytest.importorskip("PIL.ImageDraw")
@@ -26,8 +28,11 @@ def test_colour_completion_needs_two_source_aligned_scales(case):
         if len(detections) >= 3 and case == "different-region":
             box = (250, 120, 330, 140)
         x0, y0, x1, y1 = [v * factor for v in box]
+        text = "18 h" if len(detections) == 1 else "18 h-1"
+        if case == "script-conflict":
+            text = ["10", "10² A", "102 A"][min(len(detections), 3) - 1]
         return SimpleNamespace(
-            txts=["18 h" if len(detections) == 1 else "18 h-1"],
+            txts=[text],
             scores=[0.99],
             boxes=[[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]],
         )
@@ -37,6 +42,6 @@ def test_colour_completion_needs_two_source_aligned_scales(case):
         r for r in records if r.get("method") == "rapidocr-colour-completed-reading"
     ]
     assert bool(complete) == (case == "same-region")
-    original = next(r for r in records if r["text"] == "18 h")
+    original = records[0]
     assert original.get("alternative", False) == (case == "same-region")
     assert len(detections) <= 3
