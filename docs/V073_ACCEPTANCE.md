@@ -27,22 +27,22 @@ all scientific page payloads across 671 pages exactly match the preceding
 targeted run. Five failed answers remain failures. This run is not full-file
 default OCR or new sealed-sample acceptance.
 
-The preceding complete historical batch P on `364052f` passes the task and
-retrieval gates but fails two shared-condition relationships. Their bounded
-fusion repair has source-reviewed scoped evidence; the latest full 54-document
-batch must still establish preservation. Earlier engineering results below
-remain checks of their exact implementation. An unresolved Å/A unit after
-removal of a false minus remains incorrect. No first score or numerical gate
-changes; the second sample remains unopened.
+The complete historical batch Q on `84666bb` now preserves all 64 historical
+regressions, including the two shared-condition failures retained in P's 62/64.
+All 54 documents / 503 pages completed; task exports, literal retrieval and
+original75 preservation have been checked. The candidate was frozen before
+opening the second sample for sequential paired execution. Its scientific
+score remains pending. An unresolved Å/A unit after removal of a false minus
+remains incorrect. No first score or numerical gate changes.
 
 | Gate | Required | Current status |
 | --- | --- | --- |
-| New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second set sealed, not yet parsed; pending |
+| New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second set opened after candidate freeze; first paired execution and adjudication pending |
 | Unflagged critical errors | Zero local omissions/errors without adequate notice | Pending second set; exposed native and current targeted OCR regressions have zero in their scored questions |
-| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | P on 364052f: 72/75 strict, 52/52 original contents retained, 62/64 historical regressions; two shared-condition failures block preservation |
-| Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | P on 364052f: 21 checks, median 0.5, 18/20 default completion and 20/20 after source checks; later repair retention pending |
-| Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | P on 364052f: old 13/32 and 24/32; SI 4/4; new Top1 15/20 and Top5 19/20; final candidate retention pending |
-| Source/export/compatibility | Correct original pages, alternate readings and true conflicts retained | Final complete corpus check pending |
+| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | Q on 84666bb: 72/75 strict, 52/52 original contents retained, 64/64 historical regressions |
+| Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | Q evidence retains P's 21 checks, median 0.5, 18/20 default completion and 20/20 after source checks |
+| Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | Q: old 13/32 and 24/32; SI 4/4; new Top1 15/20 and Top5 19/20 |
+| Source/export/compatibility | Correct original pages, alternate readings and true conflicts retained | Complete historical corpus and task exports checked; second-set source review pending |
 | Engineering and actual use | Complete CI and clean installation on final commit | 84666bb: 8 CI jobs, 10 immutable local RC checks and 24 clean installed-use checks pass; final release commit pending |
 | Publication | Verified main, tag, GitHub Release, PyPI and installed distribution | Not published |
 
@@ -276,10 +276,9 @@ reading and all 11 experimental rows, but do not replace O's final scoring.
 O was subsequently stopped as superseded with 33 documents / 228 pages complete;
 no full75, historical64, task or query result is assigned to it. Its two repaired
 documents were visually rechecked and all completed/partial artifacts remain.
-The current full 54-document run is development P on `364052f`, still in progress,
-with both extraction and analysis pinned to that archive. This concentrates the
-remaining verification on the current implementation instead of completing
-redundant older-code jobs.
+Development P then ran all 54 documents with both extraction and analysis
+pinned to `364052f`. Its completed results and the later Q validation are
+recorded below; no complete result is assigned to the interrupted O run.
 
 ## Scoped exposed development regression after the engineering review
 
@@ -295,9 +294,9 @@ outputs from different versions.
 Repeated full OCR of hundreds of unqueried spectra pages was consuming most of
 each small engineering iteration. Restricting this already exposed development
 check reduces that repetition while retaining all question-bearing sources.
-The latest historical corpus still requires complete default-config extraction
-of all 54 PDFs / 503 pages. The second unopened 16-PDF / 673-page paired sample
-also remains a **complete-file** execution in both versions and configurations.
+The historical corpus retains complete default-config extraction of all
+54 PDFs / 503 pages. The second 16-PDF / 673-page paired sample also remains a
+**complete-file** execution in both versions and configurations.
 All numerical release gates, source oracles and first results stay unchanged;
 the targeted regression cannot satisfy the new-holdout gate by itself.
 
@@ -424,6 +423,60 @@ The unpublished wheel SHA-256 is
 sdist SHA-256 is
 `cdbdb7d11f3c66cbbef4db6858bcc71925594406c1e556f06f1ef07314cc7aab`.
 
+The five remaining exposed targeted failures are explicit and locally disclosed:
+
+| Frozen question | Remaining default-reading failure |
+| --- | --- |
+| H01-Q01 | Catalyst table labels confuse iodine I with l; correct spelling in prose does not repair those row labels. |
+| H05-Q03 | Four FTIR annotations retain their numbers but lose the cm⁻¹ exponent. |
+| H06-Q04 | The figure's Fc⁺/⁰ reference is split/misread, despite retaining the other panel's results. |
+| H11-Q04 | A microscopy panel identity and lattice labels/value association remain incomplete. |
+| H12-Q04 | Some scale values lack panel identities and one required scale is absent; a caption alone cannot supply the associations. |
+
+These remain failed answers even with bounded source notices. Correct fragments
+elsewhere, alternate readings and source inspection do not upgrade the default
+score. Full per-question source locations, primary evidence and warning records
+are retained in the hashed local adjudication; no chemical dictionary or
+invented figure relationship is used to complete them.
+
+## Complete Q preservation before the second opening
+
+The immutable `84666bb` archive completed all **54 documents / 503 pages**
+under the fixed historical settings. Source bytes, actual page counts, complete
+page processing and block anchors were checked; no runtime parse errors,
+invalid block anchors or backend-failure warnings occurred. Original PDF/font
+diagnostics remain in the raw logs. Observed extraction wall time was 4,333.288
+seconds with concurrent verification; this is not a controlled speed comparison.
+
+| Same materials and rubric | v0.7.2 audit | Q on 84666bb |
+| --- | ---: | ---: |
+| Original75 strict / historical-content | 69/75; 72/75 | 72/75; 73/75 |
+| Original52 content / strict complete | 52/52; 49/52 | 52/52; 51/52 |
+| Historical H/I/J/K plus latest16 | 64/64 | 64/64 |
+| Old article Top1 / Top5; SI Top5 | 12/32; 19/32; 3/4 | 13/32; 24/32; 4/4 |
+| New query Top1 / Top5 | 13/20; 16/20 | 15/20; 19/20 |
+| Task default / after source checks | 16/20; 20/20 | 18/20; 20/20 |
+| Independent task judgments / median | 42 / 2 | 21 / 0.5 |
+| Article review locations / uncertain blocks | 1,985 / 12,475 | 2,404 / 13,671 |
+
+All 503 scientific page payloads were compared with P, resolving opaque IDs
+without normalizing scientific text. Exactly three pages changed. Fresh complete
+H01/J01 p4 outputs reproduce the source-reviewed shared spans and restore the
+two historical answers; P's 62/64 stays unchanged. On exposed T0 P02-MAIN p4,
+the false dot overlapping “Electric” moves from a table cell to a located OCR
+alternative. All 113 located text readings and all 36 body cells remain. Its
+pre-existing incomplete multilevel header relationships are not awarded a
+correctness improvement. All three changes were checked against original pages.
+
+All original75 question pages remain exactly equal to P, retaining its three
+strict failures, local notices and original52 contents. All twenty complete task
+exports are equal after validating and resolving only their changed parsed
+artifact identities. They therefore retain the prior source judgments: 25 old
+issues eliminated, four new issues, zero display-only credit. This equality
+check is not another manual timing session. Whole-library review counts remain
+worse than the baseline; the task-specific reduction cannot erase that result.
+Literal query failures remain recorded with the unchanged designated-page rubric.
+
 ## Earlier completed development checkpoint
 
 The earlier development-H extraction completed 54 exposed documents / 503 pages
@@ -453,14 +506,19 @@ from 38.5 to 42. The task-specific reduction does **not** establish a reduction
 in whole-library manual burden. Literal query failures, alternative reasonable
 answers and the original designated-page scoring remain in the ledger.
 
-## Unopened validation and final release work
+## Second opening and final release work
 
 The second seal retains the same 12-main/four-SI, 60-question distribution and
 all fixed gates, with 673 pages. It excludes prior development and the complete
 first set. One access-blocked article was replaced by its recorded reserve
-before parsing; the original sampling frame and reason remain. As of this
-record, no AN parsing of this set has occurred. The candidate must first finish
-historical preservation, task/retrieval/export checks and exposed regression.
+before parsing; the original sampling frame and reason remain. The candidate
+freeze records all completed development gates, exact code, runtime, source and
+runner hashes. First execution has begun: v0.7.2 native, v0.7.2 OCR, v0.7.3
+native and v0.7.3 OCR run sequentially with one global document worker and no
+concurrent development extraction. All 16 files / 673 pages run in every mode.
+Review may begin after an entire mode completes; no tuning or replacement is
+allowed while the frozen first paired results are being retained. No score is
+assigned before source adjudication.
 
 On `0f61979`, 2,131 deterministic tests pass, 115 opt-in or platform skips;
 660 content tests pass with three opt-in skips. The complete
@@ -550,4 +608,10 @@ material excludes restricted PDFs, credentials and authentication state.
 | Complete targeted exposed OCR regression on 84666bb | `2397bd8005719d55085e71953def1285a12a807f60b7388953ee1dce5a5fa5c2` |
 | All671 page payloads retained between the targeted runs | `b29fb8f5d726c73d23b18dd73bb22efa20772e11e0cae2d92ce544e1d6fe1783` |
 | Fresh ba7f735 native adjudication | `e5992bff581004989278edbdcb2ab04b3a42b1f5fa9441394d0a99fa5b2f6a02` |
-| Second unopened seal | `c765c5034a96625e6324f32646e69e2b2f18a477af20b0392f56fc1457d4ff8b` |
+| Q complete75 retention | `7d56b2eaf7754f283b9a93bf2aff5a8c618d211b7a00cf24c6274e896fa97b6e` |
+| Q historical64 adjudication, 64/64 | `5e5fad946ebd7bc8ee1565234be59426628471a2b267bbb400d865a94322561f` |
+| Q complete task-export retention | `4f4cb190abfd64436c1dd97d81f31fb6f54452d94a7ae41377ee96fc1a9d742b` |
+| Complete503 P/Q page comparison | `ed03a0d222f6d8b187ad3a8ad9cc857b683430b60a2030cb4b4f73a9c2345156` |
+| Q additional P02 header source review | `35b3637b70f5d001e7aca43ee9f7ae9bf56cf528a2c37b55a528395c4b1474ad` |
+| Second source/question/oracle seal | `c765c5034a96625e6324f32646e69e2b2f18a477af20b0392f56fc1457d4ff8b` |
+| Candidate freeze before second opening | `21c0321acf4e423bd52f4fa41e4349d5465171d7c4ef5f3da87e61a73679afe0` |
