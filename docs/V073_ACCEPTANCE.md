@@ -19,18 +19,22 @@ complete release delta and end-to-end contracts. It found and tightened
 script-flattening comparisons, false same-location OCR corroboration, axis-unit
 comparison and an unsanitized optional-backend diagnostic; removed repeated
 evidence reconstruction within each export; and corrected exporter identity.
-These changes require fresh affected-source validation and final-commit checks.
+On frozen implementation `61d723b`, seven affected-source pages, eight hosted
+CI jobs, ten complete local RC checks and 24 clean installed-use checks have
+passed their respective checks. One source still has an unresolved Å/A unit
+error after removal of a false minus; this is not counted as a correct answer.
+Complete current-corpus scientific validation remains in progress.
 The new unopened sample and all scientific thresholds remain unchanged.
 
 | Gate | Required | Current status |
 | --- | --- | --- |
 | New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second set sealed, not yet parsed; pending |
 | Unflagged critical errors | Zero local omissions/errors without adequate notice | Pending second set; exposed native regression has zero |
-| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | Latest full 54-document extraction running |
+| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | Current 61d723b full extraction running; intermediate N is 69/75 with three recorded new regressions |
 | Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | Current extraction and task review pending |
 | Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | Current corpus execution pending; queries unchanged |
 | Source/export/compatibility | Correct original pages, alternate readings and true conflicts retained | Final complete corpus check pending |
-| Engineering and actual use | Complete CI and clean installation on final commit | Current development CI passes; final commit/use checks pending |
+| Engineering and actual use | Complete CI and clean installation on final commit | Frozen implementation 61d723b: 8 CI jobs, 10 local RC checks, 24 installed-use checks pass; final release commit pending |
 | Publication | Verified main, tag, GitHub Release, PyPI and installed distribution | Not published |
 
 A warning can disclose a failure; it cannot make the answer correct. A correct
@@ -125,7 +129,7 @@ archived record and local adjudication files.
 | H11 | 3/4; 3/4 |
 | H12 | 3/4; 3/4 |
 
-## Current exposed regression
+## Current native and intermediate OCR exposed regression
 
 Commit `0f6197909a9cd3e69129896a6f7e9a74106a0e7a` completed a fresh native
 extraction of all **16 documents / 671 pages**, with zero runtime errors.
@@ -135,6 +139,13 @@ previously source-adjudicated native structural replay. Every cited text and
 position was also checked before transporting those source judgments. This is
 fresh extraction with native backend 1.19.5 and parser 3.10.10, not captured-layout
 replay and not independent blind validation.
+
+Current frozen `61d723b` has now completed another fresh extraction of all
+16 PDFs / 671 pages with zero runtime errors. All scientific fields on **all
+671 pages** match the `0f61979` artifacts exactly: blocks, anchors, pages, tables,
+figures, warnings and errors. Each cited text, page and position was revalidated
+before carrying forward the source judgments below. This strengthens the
+retention check but does not turn a regression into a new blind result.
 
 | Exposed native measure | Current result |
 | --- | ---: |
@@ -192,15 +203,32 @@ real-model probes on three pages from two layouts observe float32 input, pass
 canonical validation and recover the intended primary groups/unit; a Methods
 page triggers no additional vector recognition. The 660-test content suite
 passes with three opt-in skips. Parser/Tesseract identities are 3.10.10/1.8.3.
-Fresh complete regression is running on `0f61979`. Its first reviewed complete
-OCR documents are H01 **7/8** and H08 **4/4**, both with zero unflagged errors.
-H01 recovers the microampere unit but still misreads I/l in a catalyst label;
-that answer fails despite correct numeric rows and a local warning. H08 now
-retains the paired standard/scaled results, footnotes and 10⁻⁴ A axis. These
-12 questions are not a complete 60-question score. Candidate counts, omissions,
-task checks and additional runtime still require full measurement.
+The `0f61979` OCR extraction was explicitly stopped as superseded after all
+12 main articles and H06-SI completed: **13 PDFs / 251 pages**, covering
+**46/51 complete answers and zero unflagged errors in that reviewed subset**.
+The other nine SI questions remain unscored for this run. This is not a 60-item
+score or an estimate of the final candidate. Completed artifacts, partial SI
+layouts, source judgments and the stop reason remain saved. A fresh complete
+16-PDF native/OCR run is executing on frozen `61d723b`; no best-output selection
+across versions is allowed.
 
-The ongoing development-N extraction exposed two further historical regressions.
+| Source | Intermediate OCR complete |
+| --- | ---: |
+| H01 | 7/8 |
+| H02 / H03R / H04R | 3/3; 3/3; 5/5 |
+| H05 / H06 / H06-SI | 2/3; 3/4; 3/3 |
+| H07 / H08 | 4/4; 4/4 |
+| H09 / H10 | 3/3; 3/3 |
+| H11 / H12 | 3/4; 3/4 |
+
+The five failed answers retain catalyst I/l ambiguity, a missing inverse-length
+unit, a damaged reference-electrode label, incomplete microscopy labels/lattice
+values and a missing scale/panel association. Local disclosures do not repair
+them. H06-SI retains the true main/SI differences in yield measurement and ee;
+H12 preserves the conflicting prose claim and tabulated R² values.
+
+The completed development-N extraction exposed regressions in two historical
+documents, affecting three questions.
 In document 04, the complete correct reference-axis label was alternate-only:
 the preservation check rejected the complete crop solely because the operator
 VS/vs changed case. The repair normalizes only that standalone operator during
@@ -217,6 +245,22 @@ now pass; native conditions, numeric cells, separate captions and changed-column
 counterexamples remain protected. All670 content tests pass, with3 opt-in skips.
 Parser/image-adapter identities become3.10.11/1.5.8. Neither probe is a completed
 fresh corpus acceptance; original development-N failures remain unchanged.
+
+Development N's complete strict rescore is **69/75**, with the originally
+excluded source-glyph item kept outside that denominator. The six failures are
+12-A3, 18-A2, 28-A2, 04-A7, 37-A3 and 37-A4. The last two lack a local relation
+notice and count as **two unflagged critical errors**. Originally confirmed
+targets have 50/52 strict-complete readings; key-content retention under the
+older rubric was not separately rescored at this checkpoint. Neither strict
+failure nor an alternate-only answer is hidden by the historical rubric.
+
+N's extraction is locked to `0f61979`, but automatic downstream analysis imported
+the working checkout and lacks a verified import-time code lock. Its query/task
+outputs are diagnostic only. The manual 75-item record is based on hash-verified
+parsed artifacts and remains valid intermediate evidence. Current development O
+locks both extraction and analysis to `61d723b` and is rerunning all 54 PDFs /
+503 pages. The repaired 04/37 full-document probes preserve the reference-axis
+reading and all 11 experimental rows, but do not replace O's final scoring.
 
 ## Earlier completed development checkpoint
 
@@ -276,12 +320,23 @@ remain failed historical records, not rewritten or waived. The hosted matrix on 
 [eight jobs](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40061043717).
 Its local RC used the working checkout and overlapped subsequent source/test
 edits; retain that report only as a diagnostic, not immutable-commit validation.
-The final local RC must run a dedicated archived checkout. The last immutable
-ten-check local RC passed on `ec615bd`. All24 clean installed-use checks pass
+The final local RC must run a dedicated archived checkout. Subsequent immutable
+ten-check local RCs pass on `7954f54` and `61d723b`. All24 clean installed-use checks pass
 on the unpublished `0f61979` wheel, including actual public acquisition and
 source-byte verification;149 Python source files match its archive and only
 the four authored PDF fixtures are packaged. This is not published-package
 or final-commit certification.
+
+On `61d723b`, the [full hosted matrix](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40065089590)
+has eight successful jobs. Its immutable local RC has ten successful checks,
+including 2,167 deterministic tests (117 skips) and 121 real-browser tests.
+Its separately built unpublished wheel passes all 24 installed-use checks;
+149 source files match its archive and the package includes only the four
+authored PDF fixtures. Wheel SHA-256 is
+`ead3733f4c8dd332565f39027c85d39c68ad1cd80e1cf3070774856742bbe3eb`;
+sdist SHA-256 is
+`65a55c876513b8a08be821c42b90f739cda6a5f83de54585858d74180102a0df`.
+These engineering checks do not establish scientific acceptance or publication.
 
 Final work still includes complete scientific adjudication, exact-final-commit
 CI and clean use, PR merge, verified main, v0.7.3 tag, GitHub Release, existing
@@ -303,5 +358,9 @@ material excludes restricted PDFs, credentials and authentication state.
 | First baseline OCR adjudication | `f560cd4c0a3bdf45cff6e9e818606c0b68f981d1f3d84651684321445816b7dc` |
 | First-set promotion to regression | `bf1c032e42bcfc08f2325f6c9aa3456b693909ec5a9a265e48251de319936fd8` |
 | Fresh 0f61979 native adjudication | `a567cef12d2f0b55e98f20a07effc6dd631c430d1282adf95f1b4d4bb685a61f` |
+| Fresh 61d723b native adjudication, all-page comparison | `0eefb9bdecf3b7ff86ba744460f7e0d47f8733c5e5925c8851f984870ff11e77` |
+| Intermediate N complete75 adjudication | `5f6fe5fdf8689656dd827e18c18c652f43d1c0a6faa88cb1a5360e5fc9980622` |
+| Superseded 0f61979 OCR stop and reviewed subset | `89e71017dfe3801452353e82fc188df632bf727409d7f9a41b360a3997462d42` |
+| Engineering source/test/CI review on 61d723b | `6a2bd2f769c10167a91e3b60c5a2678b378c4f2e459212e05421ac32ca30e2ac` |
 | Fresh ba7f735 native adjudication | `e5992bff581004989278edbdcb2ab04b3a42b1f5fa9441394d0a99fa5b2f6a02` |
 | Second unopened seal | `c765c5034a96625e6324f32646e69e2b2f18a477af20b0392f56fc1457d4ff8b` |
