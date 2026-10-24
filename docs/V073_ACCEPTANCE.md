@@ -43,8 +43,8 @@ The new unopened sample and all scientific thresholds remain unchanged.
 | --- | --- | --- |
 | New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second set sealed, not yet parsed; pending |
 | Unflagged critical errors | Zero local omissions/errors without adequate notice | Pending second set; exposed native and current targeted OCR regressions have zero in their scored questions |
-| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | Full development-P extraction on 364052f running; intermediate N is 69/75 with three recorded new regressions |
-| Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | Current extraction and task review pending |
+| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | P on 364052f: 72/75 strict, 52/52 original contents retained; two historical shared-condition regressions block preservation |
+| Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | P on 364052f: 21 checks, median 0.5, 18/20 default completion and 20/20 after source checks; later repair retention pending |
 | Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | Current corpus execution pending; queries unchanged |
 | Source/export/compatibility | Correct original pages, alternate readings and true conflicts retained | Final complete corpus check pending |
 | Engineering and actual use | Complete CI and clean installation on final commit | 364052f: 8 CI jobs, 10 immutable local RC checks and 24 installed-use checks pass; final release commit pending |
@@ -344,6 +344,51 @@ Neither a question pass nor this aggregate certifies every scientific statement
 on those pages. These results do not replace the immutable first 34/60 OCR score
 or establish the paired improvement gate on the new unopened sample.
 
+## Current historical scoring and remaining preservation blocker
+
+Development-P's original library has completed fresh full-document extraction
+under its fixed historical configuration on `364052f`. The complete current
+rescore is **72/75 strict primary answers**, or **73/75** under the separately
+retained historical-content rubric. The original excluded unreadable item is
+still excluded. All original 52 target contents remain, although only 51 satisfy
+the stricter complete-answer rubric: the missing imprint-to-row association in
+18-A2 is still a failure. The other strict failures are 12-A3's four missing
+microscopy panel identities and 28-A2's ambiguous native source glyph. Their
+local limitations remain disclosed; none is promoted to a correct answer by
+its warning. Exact page-payload retention and separately source-reviewed repairs
+support this rescore; this is an exposed implementing-assistant review.
+
+The same 20 frozen tasks were then reviewed from complete document exports,
+including all 40 oracle references and main/SI sources. They require **21
+independent source judgments**, versus 42 at baseline, with median **0.5 versus
+2**. Default completion is 18/20 versus 16/20; completion after checking sources
+remains 20/20. Twenty-five baseline issues are eliminated, four new competing
+readings require checking, and no credit comes from display grouping. Three
+conflicts in one table still count three; four missing panel mappings still
+count four. True source conflicts and the incomplete SI solvent wording remain.
+Observed assistant/tool wall time is 117.157 seconds, including concurrent probe
+polling and prior source knowledge; it is not measured human time or a speedup
+claim. These results belong to `364052f`, before the next repair.
+
+The broader historical64 preservation check found two further regressions:
+H01-4 and J01-3 retain their numbers but lose centered shared-condition spans.
+OCR punctuation over part of a native glyph becomes an independent cell and
+breaks the grouping. Thus current preservation is **not passed**, irrespective
+of the 75-item score, engineering tests or task improvement.
+
+A minimal fusion repair now locates such punctuation using actual overlap and
+containment within a known native glyph. It uses the existing disagreement and
+alternative-reading path; the table algorithm is unchanged. Five preselected
+pages were freshly extracted under their respective unchanged historical
+configurations. The two affected pages retain every line's text and geometry;
+the punctuation becomes an alternative with a local notice. Structure replay
+restores the three four-row current-density groups and two eight-row material
+groups, matching the original pages. The other three PageLayouts are exactly
+unchanged. This is scoped regression evidence, not complete-document acceptance.
+An earlier probe used the holdout configuration by mistake and is retained but
+excluded from paired attribution. The full historical64 review, final candidate
+retention and unopened sample remain required.
+
 ## Earlier completed development checkpoint
 
 The earlier development-H extraction completed 54 exposed documents / 503 pages
@@ -453,6 +498,10 @@ material excludes restricted PDFs, credentials and authentication state.
 | Fresh 0f61979 native adjudication | `a567cef12d2f0b55e98f20a07effc6dd631c430d1282adf95f1b4d4bb685a61f` |
 | Fresh 61d723b native adjudication, all-page comparison | `0eefb9bdecf3b7ff86ba744460f7e0d47f8733c5e5925c8851f984870ff11e77` |
 | Intermediate N complete75 adjudication | `5f6fe5fdf8689656dd827e18c18c652f43d1c0a6faa88cb1a5360e5fc9980622` |
+| P complete75 adjudication on 364052f | `3514eab750ca63ffb2f11f2dbcacc33a4cf652c3ec4047760ebbe56c8a83e4a7` |
+| P twenty-task manual review, metadata correction only | `3ec9d902fd3adb4e30c7d0f434b91a5c04352fc223702d28d224e4a36f7831b4` |
+| Matched five-page punctuation-fragment comparison | `0fe3f644a9beea37a505025a444c1bbb9be9e96f9c92e2f771d5e9875505f9d1` |
+| Two shared-condition source-page reviews | `26030ef4f4bf0510b17c1cc3b430ab2185e9f25a254e063691484ca969904a9c` |
 | Superseded 0f61979 OCR stop and reviewed subset | `89e71017dfe3801452353e82fc188df632bf727409d7f9a41b360a3997462d42` |
 | Engineering source/test/CI review on 61d723b | `6a2bd2f769c10167a91e3b60c5a2678b378c4f2e459212e05421ac32ca30e2ac` |
 | Eight-page consensus-guard source comparison on 364052f | `23836ecad274a984f63d57d82b4642f410e8c74dffc276a183b2e955170d5aae` |

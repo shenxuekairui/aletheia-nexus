@@ -137,6 +137,27 @@ def _overlap(
     return intersection / denominator if denominator else 0.0
 
 
+def _punctuation_overlaps_native_glyph(line, box, existing, native):
+    """Locate a partial glyph reading without promoting it to a new cell.
+
+    Tiny punctuation OCR boxes can include mostly vertical whitespace. Require
+    actual vertical overlap and horizontal containment within one known glyph;
+    spaces between glyphs and detached signs are not matching evidence. The
+    normal disagreement path retains the complete native and raw OCR readings.
+    """
+    if line.text.strip() not in {".", ",", ":", ";"} or existing.uncertain:
+        return False
+    if min(box[3], existing.y1 / native.height) <= max(
+        box[1], existing.y0 / native.height
+    ):
+        return False
+    return any(
+        not existing.text[start:end].isspace()
+        and left / native.width <= box[0] < box[2] <= right / native.width
+        for start, end, left, right in existing.glyph_spans
+    )
+
+
 def _union_area(boxes: Iterable[tuple[float, float, float, float]]) -> float:
     """Calculate clipped rectangle union area without double counting."""
 
@@ -441,7 +462,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.10.2"
+    version = "1.10.3"
 
     def __init__(
         self,
@@ -799,6 +820,9 @@ class AdaptiveOcrBackend:
                         for index, existing in enumerate(native_lines)
                         if _overlap(line_box, _line_bbox(existing, native))
                         >= self.config.bbox_overlap_threshold
+                        or _punctuation_overlaps_native_glyph(
+                            line, line_box, existing, native
+                        )
                     ),
                     key=lambda item: (
                         _overlap(line_box, _line_bbox(item[1], native)),
