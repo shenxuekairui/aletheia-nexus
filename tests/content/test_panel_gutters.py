@@ -60,10 +60,7 @@ def test_real_wide_and_narrow_gutters_keep_printed_panel_names(gutter):
     result = associate_scales(records, image)
     assert {
         r["text"] for r in result if r.get("method") == "positioned-panel-length"
-    } == {
-        f"Panel ({chr(65 + i)}): length label {3 + i} μm; role unverified"
-        for i in range(4)
-    }
+    } == {f"Panel ({chr(65 + i)}): label {3 + i} μm" for i in range(4)}
 
 
 def test_large_white_margin_does_not_invent_a_second_panel():
@@ -90,7 +87,7 @@ def test_detector_wavelength_is_not_promoted_to_a_scale_bar():
     result = associate_scales(deepcopy(records), image)
     derived = [r for r in result if r.get("method") == "positioned-panel-length"]
     assert len(derived) == 1
-    assert derived[0]["text"] == "Panel (a): length label 313 nm; role unverified"
+    assert derived[0]["text"] == "Panel (a): label 313 nm"
     assert not any("scale" in r["text"] for r in result)
     source = next(r for r in result if r["text"] == "313 nm")
     assert source["box"] == records[0]["box"]

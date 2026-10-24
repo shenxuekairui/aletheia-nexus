@@ -308,7 +308,7 @@ def associate_scales(records, image):
                     extra.append(
                         {
                             **reading,
-                            "text": f"Panel ({marker['text'].strip('().')}): length label {reading['text']}; role unverified",
+                            "text": f"Panel ({marker['text'].strip('().')}): label {reading['text']}",
                             "method": "positioned-panel-length",
                         }
                     )
@@ -330,7 +330,7 @@ def associate_scales(records, image):
         extra.append(
             {
                 **best,
-                "text": f"Panel ({label}): length label {best['text']}; role unverified",
+                "text": f"Panel ({label}): label {best['text']}",
                 "method": "positioned-panel-length",
             }
         )

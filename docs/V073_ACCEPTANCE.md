@@ -1,6 +1,6 @@
 # v0.7.3 scientific acceptance and publication
 
-Status: **FINAL VERIFICATION PENDING / NOT RELEASED**. The 0.7 series has not
+Status: **SCIENTIFIC SCOPE REVIEW COMPLETE / FINAL ENGINEERING PENDING / NOT RELEASED**. The 0.7 series has not
 completed its closure checks. No routine 0.7.4 feature release is planned. The owner authorized
 a design-goal-based closure amendment on 2026-10-24 after results were known;
 the original protocol and amendment are both in
@@ -18,10 +18,12 @@ release certification. Original v0.7.2 records are unchanged.
 ## Current gates
 
 The final bounded semantic adjustment changes panel length associations from
-an asserted scale role to `length label; role unverified`. Geometry, literal
+an asserted scale role to a compact `Panel (...): label ...` description.
+Existing uncertainty flags and `positioned-panel-length` identify its unverified
+layout role. Geometry, literal
 values, raw alternatives and confidence stay intact; legacy method identities
 remain readable. Final parser/fusion/image-adapter identities are
-3.10.15 / 1.10.4 / 1.5.12. Content tests pass 729 with three skips. Fresh local
+3.10.15 / 1.10.5 / 1.5.13. Content tests pass 729 with three skips. Fresh local
 OCR on the exposed chromatogram page removes two false scale-role assertions.
 Paired old/new association functions on identical fresh OCR records differ only
 in role wording and method identity. Two real micrograph images retain all nine
@@ -34,11 +36,48 @@ regression below remains explicitly associated with that earlier stage;
 neither old complete scores nor zero-miss claims are automatically transferred
 to the final backend. Original first reports are immutable.
 
-Local evidence: `panel-role-final/source-role-review.json`, SHA-256
-`247ea181126e42088747a9cca7685bca874e426720ba54c31d7660f09a68a0b8`;
-`panel-role-micrograph/source-role-review.json`, SHA-256
-`1265f01ab87418689082ce496e0d0ba8c55c6e2543c779be847201c6b7bc27bb`.
+Local evidence: `panel-role-compact-source/source-role-review.json`, SHA-256
+`68baf5aa3313fb5f4b0d54017b579413b16fd5cefdc5da65773d78d0043da2e1`;
+`panel-role-compact-micrograph/source-role-review.json`, SHA-256
+`482356a038898ccce1c64d8bee898a992175a7c912895acab5603ba0be9f1d91`.
 Final-commit engineering, clean installed use and publication remain pending.
+
+The longer intermediate wording on `68dab90` changed font-weighted paragraph
+classification on five pages. It is rejected despite passing engineering
+checks. Compact neutral wording avoids this collateral effect without adding
+parser rules. On 86 exposed document executions / 1,847 cached pages, all 229
+generated associations change only the intended wording and method identity;
+the remaining complete page payload is unchanged. This downstream replay does
+not rerun full OCR or constitute a new scientific score. The initial mismatch
+diagnostics and span-aware comparison remain preserved. The final replay is
+`panel-role-compact-replay/summary.json`, SHA-256
+`e4399c384a65bccf13e7d5b9520445fad08c0a288f141a20d4de142a79c71361`.
+
+The same 32+4 old and 20 new literal queries were rerun against the final replay:
+old Top1 13/32, Top5 24/32; SI 4/4; new Top1 15/20, Top5 19/20. Twenty complete
+task packs were re-exported. Removing the unverified scale claim has a real
+review cost: T07 needs twelve length-role confirmations in addition to its four
+unresolved panel identities. All twelve bars were checked on the source page;
+these are separate judgments, not one folded figure. The supplemental ledger
+therefore gives **33 checks versus baseline 42 (21.4% reduction)**, median 0.5;
+18/20 default-complete and 20/20 after review remain the task conclusions.
+Other task judgments are retained from the previous exposed review with the
+same underlying evidence. This is a targeted supplemental review, not a fresh
+twenty-task timing study. The original 25% burden target is no longer met;
+the earlier 21-check result remains a historical stage, not the final claim.
+Evidence: `panel-role-compact-task-supplement.json`, SHA-256
+`969491e6bf27f8530a0a4e3bf1274270de78dcfaf21330ab86758b1a7513da47`.
+
+Under the owner's amended scope, scientific review supports closure as a
+**local evidence preparation and source-review tool**: bounded table and fusion
+improvements, useful retrieval, preserved alternatives/source conflicts, and
+working advisory interfaces justify retaining the release. Critical citation
+and complex figure interpretation require source review; some errors still
+lack local notice. This is not acceptance of the original accuracy, zero-miss
+or final 25% task-burden targets. Further broad parser rules are not justified
+by the observed regressions and complexity. Final engineering/use checks and
+publication authorization remain separate requirements before release and
+closure of the 0.7 series.
 
 The [systematic engineering review](V073_ENGINEERING_REVIEW.md) covers the
 complete release delta and end-to-end contracts. It found and tightened
@@ -721,8 +760,9 @@ regression or a revised acceptance target. Do not replace hard questions or
 repeat new holdouts merely to chase the score. Default and future AI-assisted
 results remain separate; no remote model was used by the parser.
 
-Final work still includes resolving scientific release blockers, exact-final-commit
-CI and clean use, PR merge, verified main, v0.7.3 tag, GitHub Release, existing
+Under the later owner amendment, remaining release work is exact-final-commit
+CI and clean use, PR merge, verified main, explicit publication authorization,
+v0.7.3 tag, GitHub Release, existing
 PyPI publication and fresh published-package installation/checksums. Until these
 actually pass, no release or closure claim is made.
 

@@ -59,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.5.12",
+            "adapter_version": "1.5.13",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {

@@ -463,7 +463,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.10.4"
+    version = "1.10.5"
 
     def __init__(
         self,
