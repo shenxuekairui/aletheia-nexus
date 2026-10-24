@@ -30,6 +30,30 @@ Vertical crop replacement now refuses to discard observed label, sign or unit
 characters. The content suite passes 614 tests (three opt-in skips); full fresh
 scientific regression and final release verification remain required.
 
+Hosted run `40050560113` on `f4b1ff0` passed all eight jobs. Its unpublished
+wheel passed 24 actual-use checks in a fresh environment; wheel/sdist source
+bytes matched that commit and contained only the four authored PDF fixtures.
+This is a development checkpoint, not publication verification.
+
+The complete exposed rerun then found another release blocker: an experiment
+grid could stop before a footnoted index, or put its first marked experiment
+in the header. A numeric product-column header could also be ignored. The
+correction retains literal index suffixes and numeric headers, requires the
+same sequential rows and complete aligned columns, and stops at a spanning
+footnote line. A tentative guard against malformed indexes initially rejected
+two valid tables because wrapped footnotes started with numbers; that behavior
+was rejected and the observed spanning boundary retained instead. Concentration
+text, broken sequences and missing experiment cells remain counterexamples.
+
+The implementing assistant checked the distinct SI and two-column source
+layouts. Replay of 764 exposed captured pages changes seven pages, including
+the original article, its SI and a separate historical article; the other
+candidate grids are unchanged. An earlier fresh native probe recovered all
+ten article experiments, but it predates the complete boundary correction.
+These are diagnostics, not a completed scientific regression or new blind
+score. The parser execution identity is 3.10.6; full candidate verification
+and the unopened second holdout remain pending.
+
 Hosted run `40044049727` on `0b09ebe` did **not** pass the full gate: seven jobs
 passed, but Windows browser attempt 1 failed an initial bounded page read.
 Attempt 2 passed that case but failed navigation/startup/CDP timeouts in three

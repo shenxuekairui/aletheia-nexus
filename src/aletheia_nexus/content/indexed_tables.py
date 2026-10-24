@@ -7,6 +7,13 @@ from dataclasses import replace
 
 from aletheia_nexus.content.captions import _caption_match
 
+_INDEX = re.compile(r"(\d{1,3})(?:\s*[a-z*†‡](?:\s*,\s*[a-z*†‡])*)?")
+
+
+def _index_number(text):
+    match = _INDEX.fullmatch(text.strip())
+    return int(match[1]) if match else None
+
 
 def indexed_grids(lines, layout):
     primary = [
@@ -40,7 +47,10 @@ def indexed_grids(lines, layout):
                 for line in primary
                 if line.x0 >= head.x0 - 1
                 and abs(line.y0 - head.y0) < size * 0.6
-                and re.search(r"[A-Za-z\u3400-\u9fff]", line.text)
+                and (
+                    re.search(r"[A-Za-z\u3400-\u9fff]", line.text)
+                    or re.fullmatch(r"\d{1,3}", line.text.strip())
+                )
             ),
             key=lambda line: line.x0,
         )
@@ -51,13 +61,26 @@ def indexed_grids(lines, layout):
         ):
             continue
         centers = [(line.x0 + line.x1) / 2 for line in headers]
+        # A full-width line below the grid is a boundary, including wrapped
+        # footnotes whose later lines begin with a number or a concentration.
+        bottom = max(
+            (
+                line.y1
+                for line in primary
+                if line.y1 < head.y0
+                and line.x0 <= head.x0 + size
+                and line.x1 > centers[1]
+            ),
+            default=0,
+        )
         indexes = sorted(
             (
                 line
                 for line in primary
                 if line.y1 < head.y0
+                and line.y0 >= bottom
                 and abs(line.x0 - head.x0) < size
-                and re.fullmatch(r"\d{1,3}", line.text.strip())
+                and re.match(r"\d", line.text.strip())
             ),
             key=lambda line: -line.y0,
         )
@@ -69,7 +92,9 @@ def indexed_grids(lines, layout):
                     break
             elif run[-1].y0 - line.y1 > size * 4:
                 break
-            elif int(line.text) != int(run[-1].text) + 1:
+            if _index_number(line.text) is None or (
+                run and _index_number(line.text) != _index_number(run[-1].text) + 1
+            ):
                 discontinuous = True
                 break
             run.append(line)
