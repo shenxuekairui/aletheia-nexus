@@ -32,6 +32,9 @@ the [364052f hosted matrix](https://github.com/shenxuekairui/aletheia-nexus/acti
 pass; its immutable full local RC passes ten checks and the clean wheel passes
 all 24 actual-use checks. Complete historical-corpus scientific checks remain
 in progress.
+The completed exposed, question-page OCR regression on that implementation is
+**55/60**, with zero locally undisclosed critical errors in the frozen questions.
+This scoped development run does not satisfy the new sealed-sample gate.
 The `61d723b` results below remain checks of that exact implementation,
 not certification of the newer code. No first score or numerical gate changes.
 The new unopened sample and all scientific thresholds remain unchanged.
@@ -39,7 +42,7 @@ The new unopened sample and all scientific thresholds remain unchanged.
 | Gate | Required | Current status |
 | --- | --- | --- |
 | New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second set sealed, not yet parsed; pending |
-| Unflagged critical errors | Zero local omissions/errors without adequate notice | Pending second set; exposed native regression has zero |
+| Unflagged critical errors | Zero local omissions/errors without adequate notice | Pending second set; exposed native and current targeted OCR regressions have zero in their scored questions |
 | Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | Full development-P extraction on 364052f running; intermediate N is 69/75 with three recorded new regressions |
 | Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | Current extraction and task review pending |
 | Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | Current corpus execution pending; queries unchanged |
@@ -150,7 +153,7 @@ position was also checked before transporting those source judgments. This is
 fresh extraction with native backend 1.19.5 and parser 3.10.10, not captured-layout
 replay and not independent blind validation.
 
-Current frozen `61d723b` has now completed another fresh extraction of all
+Earlier frozen `61d723b` completed another fresh extraction of all
 16 PDFs / 671 pages with zero runtime errors. All scientific fields on **all
 671 pages** match the `0f61979` artifacts exactly: blocks, anchors, pages, tables,
 figures, warnings and errors. Each cited text, page and position was revalidated
@@ -269,7 +272,7 @@ failure nor an alternate-only answer is hidden by the historical rubric.
 N's extraction is locked to `0f61979`, but automatic downstream analysis imported
 the working checkout and lacks a verified import-time code lock. Its query/task
 outputs are diagnostic only. The manual 75-item record is based on hash-verified
-parsed artifacts and remains valid intermediate evidence. Current development O
+parsed artifacts and remains valid intermediate evidence. Development O
 locked both extraction and analysis to `61d723b` and started rerunning all 54 PDFs /
 503 pages. The repaired 04/37 full-document probes preserve the reference-axis
 reading and all 11 experimental rows, but do not replace O's final scoring.
@@ -277,8 +280,8 @@ reading and all 11 experimental rows, but do not replace O's final scoring.
 O was subsequently stopped as superseded with 33 documents / 228 pages complete;
 no full75, historical64, task or query result is assigned to it. Its two repaired
 documents were visually rechecked and all completed/partial artifacts remain.
-The latest complete 54-document execution is development P on `364052f`, with
-both extraction and analysis pinned to that archive. This concentrates the
+The current full 54-document run is development P on `364052f`, still in progress,
+with both extraction and analysis pinned to that archive. This concentrates the
 remaining verification on the current implementation instead of completing
 redundant older-code jobs.
 
@@ -301,6 +304,45 @@ of all 54 PDFs / 503 pages. The second unopened 16-PDF / 673-page paired sample
 also remains a **complete-file** execution in both versions and configurations.
 All numerical release gates, source oracles and first results stay unchanged;
 the targeted regression cannot satisfy the new-holdout gate by itself.
+
+This run is now complete: 16 files / 671 pages processed, with fresh uniform OCR
+on the 43 fixed pages and native context on the other 628, without runtime errors.
+Observed processing wall time was 2,065.05 seconds; this is not a controlled
+speed comparison or human review time. The 60 questions score **55/60**:
+prose 16/16, table 19/20, figure 8/12 and SI 12/12. Five incomplete answers remain
+failures despite their local disclosures; the count of locally undisclosed
+critical errors in these questions is zero.
+
+| Source | Current targeted OCR regression |
+| --- | ---: |
+| H01 / H01-SI | 7/8; 3/3 |
+| H02 | 3/3 |
+| H03R | 3/3 |
+| H04R | 5/5 |
+| H05 / H05-SI | 2/3; 3/3 |
+| H06 / H06-SI | 3/4; 3/3 |
+| H07 | 4/4 |
+| H08 / H08-SI | 4/4; 3/3 |
+| H09 / H10 | 3/3; 3/3 |
+| H11 / H12 | 3/4; 3/4 |
+
+The failures are H01-Q01 (catalyst I/l ambiguity), H05-Q03 (missing inverse-length
+unit), H06-Q04 (reference-electrode notation), H11-Q04 (missing microscopy
+identity/lattice information) and H12-Q04 (missing scale/panel association).
+Where earlier source judgments were retained, all question-page blocks,
+anchors, table/figure relations and warnings were compared exactly after
+resolving opaque IDs, without Unicode normalization. H07 and H12 each added
+one uncertain non-answer stroke/logo fragment; both differences were inspected
+against the original page, and no accuracy improvement was credited. The nine
+remaining SI questions received fresh source-page adjudication.
+
+The review also records limits outside the requested answers: H08-SI's page-48
+current-axis exponent/unit is incomplete and locally flagged, while its asked
+peak/onset potentials and conditions are complete native prose. H01-SI page 20
+prints different Ni loadings in its diagram and paragraph; both remain separate.
+Neither a question pass nor this aggregate certifies every scientific statement
+on those pages. These results do not replace the immutable first 34/60 OCR score
+or establish the paired improvement gate on the new unopened sample.
 
 ## Earlier completed development checkpoint
 
@@ -416,5 +458,6 @@ material excludes restricted PDFs, credentials and authentication state.
 | Eight-page consensus-guard source comparison on 364052f | `23836ecad274a984f63d57d82b4642f410e8c74dffc276a183b2e955170d5aae` |
 | Engineering/CI/RC/installed-use seal on 364052f | `cf3b1dafeb7022ad4876fc6e7a48c5d5b361976874f85e4d612db64bae270727` |
 | Prospective exposed-development routing method | `7d54fb04370cc06905027929191b0f359b78f511f4dcb6e40b8876dc075f69b1` |
+| Complete targeted exposed OCR regression on 364052f | `1a4368c70e4dc7ff2fb54bb70954f4816c0166e0adbfe7a5cfd994ef03a28b9e` |
 | Fresh ba7f735 native adjudication | `e5992bff581004989278edbdcb2ab04b3a42b1f5fa9441394d0a99fa5b2f6a02` |
 | Second unopened seal | `c765c5034a96625e6324f32646e69e2b2f18a477af20b0392f56fc1457d4ff8b` |
