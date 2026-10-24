@@ -9,8 +9,10 @@ from dataclasses import replace
 _METRIC = re.compile(r"(?P<key>[A-Za-z][A-Za-z /]{0,18})\s*[:=]\s*[−+\-]?\d")
 _RESULT = re.compile(
     r"[<≤>≥−+\-]?\d+(?:\.\d+)?\s*%\s*[A-Za-z]+\s*[,;]\s*"
-    r"[<≤>≥−+\-]?\d+(?:\.\d+)?\s*%\s*[A-Za-z]+\s*[*†‡a-z]?"
+    r"[<≤>≥−+\-]?\d+(?:\.\d+)?\s*%\s*[A-Za-z]+\s*"
+    r"(?:[*†‡a-z](?:\s*,\s*[*†‡a-z]){0,3})?"
 )
+_RESULT_LABEL = re.compile(r"(?:[A-Za-z]+\d+[A-Za-z]?|\d+[A-Za-z]+)")
 
 
 def associate_percentage_results(lines):
@@ -32,7 +34,7 @@ def associate_percentage_results(lines):
             continue
         size = seed.font_size
         row = sorted(
-            (line for line in values if abs(line.y0 - seed.y0) < size * 0.6),
+            (line for line in values if abs(line.y0 - seed.y0) < size),
             key=lambda line: line.x0,
         )
         if len(row) < 2 or any(a.x1 >= b.x0 for a, b in zip(row, row[1:])):
@@ -60,7 +62,7 @@ def associate_percentage_results(lines):
                 for line in available
                 if aligned(line)
                 and -0.2 * size <= line.y0 - value.y1 <= size * 1.5
-                and re.fullmatch(r"[A-Za-z]+\d+[A-Za-z]?", line.text.strip())
+                and _RESULT_LABEL.fullmatch(line.text.strip())
                 and not any(
                     other is not value
                     and other.x0 <= centers[index] <= other.x1
@@ -79,6 +81,15 @@ def associate_percentage_results(lines):
                     if line not in selected
                     and aligned(line)
                     and -0.2 * size <= selected[-1].y0 - line.y1 <= size * 1.2
+                    and not any(
+                        marker not in selected
+                        and _RESULT_LABEL.fullmatch(marker.text.strip())
+                        and aligned(marker)
+                        and line.y1 - size * 0.2
+                        <= marker.y0
+                        <= selected[-1].y0 + size * 0.2
+                        for marker in available
+                    )
                 ]
                 if not following:
                     break

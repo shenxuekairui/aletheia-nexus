@@ -6,7 +6,7 @@ import re
 from statistics import median
 
 
-def _printed_horizontal_limits(image, ticks):
+def _printed_horizontal_limits(image, ticks, *, allow_fill_above=False):
     """Find the painted horizontal border immediately above observed ticks."""
     if image is None:
         return None
@@ -34,7 +34,7 @@ def _printed_horizontal_limits(image, ticks):
             # dark ink with predominantly light pixels on both sides.
             if all(
                 sum(pixels[x, y + offset] > 220 for x in range(a, b)) / (b - a) >= 0.75
-                for offset in (-3, 3)
+                for offset in ((3,) if allow_fill_above else (-3, 3))
             ):
                 return a, b
     return None

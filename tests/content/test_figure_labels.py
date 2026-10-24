@@ -110,3 +110,55 @@ def test_percentage_result_requires_unique_label_and_separate_columns():
     assert associate_percentage_results(crossing) == crossing
     table = tuple(replace(line, content_region="table-cell") for line in source)
     assert associate_percentage_results(table) == table
+
+
+def test_number_first_product_labels_staggered_results_keep_multiple_footnotes():
+    source = list(results())
+    source[0] = replace(source[0], text="7b")
+    source[1] = replace(source[1], text="7cd")
+    for i in [1, 3, 5]:
+        source[i] = replace(source[i], y0=source[i].y0 + 6, y1=source[i].y1 + 6)
+    source[5] = replace(source[5], text="52% yield, 95% ee†,‡")
+    output = associate_percentage_results(tuple(source))
+    groups = [
+        r.text
+        for r in output
+        if r.extraction_method == "positioned-percentage-result-labels"
+    ]
+    assert "7b\n23% yield, 87% ee\n48% yield, 89% ee*" in groups
+    assert "7cd\n41% yield, 93% ee\n52% yield, 95% ee†,‡" in groups
+    assert [r.text for r in output if r.content_region.endswith("alternative")] == [
+        r.text for r in source
+    ]
+
+
+def test_intervening_product_label_stops_following_result_assignment():
+    source = results()
+    intervening = replace(source[0], text="8a", y0=109, y1=117)
+    output = associate_percentage_results((*source, intervening))
+    assert not any("K2\n23% yield, 87% ee\n48%" in r.text for r in output)
+    assert any(
+        r.text == "48% yield, 89% ee*" and not r.content_region.endswith("alternative")
+        for r in output
+    )
+
+
+def test_separate_product_rows_cannot_be_joined_as_footnote_variants():
+    source = results()[:4]
+    next_row = tuple(
+        replace(
+            r,
+            text=r.text.replace("K2", "8a").replace("K4", "8b"),
+            y0=r.y0 - 16,
+            y1=r.y1 - 16,
+        )
+        for r in source
+    )
+    output = associate_percentage_results((*source, *next_row))
+    groups = [
+        r.text
+        for r in output
+        if r.extraction_method == "positioned-percentage-result-labels"
+    ]
+    assert len(groups) == 4
+    assert all(t.count("yield") == 1 for t in groups)

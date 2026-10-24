@@ -18,6 +18,26 @@ public deliverables.
 
 ## Baseline source audit, before product changes
 
+The latest exposed development changes also address numeric-first product
+labels with staggered result rows, multiple literal footnote markers and an
+intervening-product guard. An isolated native ligature can rejoin only a unique
+pair of adjacent letters on the same painted baseline; its reading and bounds
+are preserved, including unresolved private-use glyphs. Numeric bar categories
+require an actual axis, two explicitly printed values per category and distinct
+legend colours that continue through the painted bars. Bar heights never supply
+values. The associated axis-label fragments remain labelled as layout evidence.
+Vertical crop replacement now refuses to discard observed label, sign or unit
+characters. The content suite passes 614 tests (three opt-in skips); full fresh
+scientific regression and final release verification remain required.
+
+Hosted run `40044049727` on `0b09ebe` did **not** pass the full gate: seven jobs
+passed, but Windows browser attempt 1 failed an initial bounded page read.
+Attempt 2 passed that case but failed navigation/startup/CDP timeouts in three
+other browser cases. Eight local cold-browser probes returned the expected
+access state. These observations do not establish the hosted failures' cause
+or waive them. The original logs remain in the evidence ledger; the final
+commit still requires every hosted job to succeed.
+
 The implementing assistant inspected 36 rendered source pages covering all 75
 historically scorable questions plus the separately excluded source-glyph item.
 This is a current source audit, not a new blind test or third-party review.
@@ -479,6 +499,22 @@ these limitations explicitly. In particular, an exposed `500 nm` scale is still
 wrong as primary `500 mm`, with the local unit conflict and alternative retained.
 This is improved disclosure, not an accuracy repair. No whole-library reduction
 in manual burden or universal figure completeness is claimed.
+
+The original whole-library exported burden has now been independently
+reproduced from the preserved files using each checkpoint's own exporter
+(implementation self-audit, not a third party). The 37-document / 287-page
+v0.7.2 delivery yields **1,985** uncertain article review locations and **12,475**
+exported uncertain article blocks, exactly matching its original record. The
+completed development-H extraction with its frozen `9a6d27d` exporter yields
+**1,990** locations and **13,125** blocks; the document median rises from
+**38.5 to 42**. These are exported display/review counts, distinct from raw
+parser uncertainty and from the 20 tasks' independently counted decisions.
+
+The largest H location counts are original documents 35 (238), 27 (187), and
+39 (159). Document 36 drops from 129 to 80 locations, while document 35 rises
+from 220 to 238. Such grouping changes are not automatically resolved scientific
+issues and receive no task-reduction credit. The latest full extraction must
+repeat these measurements; H does not demonstrate a whole-library burden gain.
 
 The candidate freeze `protocol/candidate-freeze.json` has SHA-256
 `bee5b85c1fb4c078c4088966ddb4e35204e6a1d8c4322b195cd296e3c916a875`.

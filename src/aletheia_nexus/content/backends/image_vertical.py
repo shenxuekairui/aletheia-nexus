@@ -3,7 +3,26 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from difflib import SequenceMatcher
+
+
+def _preserves_fragments(reading, fragments):
+    """A crop must not drop observed unit, sign or label characters."""
+
+    def key(text):
+        return "".join(
+            c
+            for c in unicodedata.normalize("NFKC", text).replace("−", "-")
+            if c.isalnum() or c in "+-/±%°"
+        )
+
+    candidate = key(reading)
+    for order in (fragments, fragments[::-1]):
+        remaining = iter(candidate)
+        if all(c in remaining for c in key(" ".join(order))):
+            return True
+    return False
 
 
 def read_vertical_labels(records, image, read):
@@ -66,6 +85,8 @@ def read_vertical_labels(records, image, read):
             continue
         best = max(readings, key=lambda r: len(text_key(r["text"])) * r["score"])
         ordered = sorted(group, key=lambda r: r["box"][1])
+        if not _preserves_fragments(best["text"], [r["text"] for r in ordered]):
+            continue
         keys = [
             text_key(" ".join(r["text"] for r in order))
             for order in (ordered, ordered[::-1])

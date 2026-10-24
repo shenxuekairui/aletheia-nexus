@@ -131,6 +131,64 @@ def _attach_symbols(rows: list[list[LTChar]], symbols: list[LTChar]) -> set[int]
     return ambiguous
 
 
+def _attach_inline_glyphs(rows: list[list[LTChar]]) -> set[int]:
+    """Rejoin an isolated letter only between two adjacent baseline neighbours."""
+    moved, ambiguous = [], set()
+    for source in rows:
+        for char in source:
+            text = char.get_text()
+            if (
+                len(text) != 1
+                or not (text.isalpha() or unicodedata.category(text) == "Co")
+                or char.matrix[1]
+                or char.matrix[2]
+            ):
+                continue
+            baseline = getattr(char, "an_text_origin", char.matrix[4:6])[1]
+
+            def same_baseline(other):
+                return (
+                    other is not char
+                    and other.get_text().isalpha()
+                    and abs(other.size - char.size) <= char.size * 0.1
+                    and not other.matrix[1]
+                    and not other.matrix[2]
+                    and abs(
+                        getattr(other, "an_text_origin", other.matrix[4:6])[1]
+                        - baseline
+                    )
+                    < 0.1
+                )
+
+            if any(
+                same_baseline(c)
+                and max(0, c.x0 - char.x1, char.x0 - c.x1) <= char.size * 0.4
+                for c in source
+            ):
+                continue
+            targets = []
+            for target in rows:
+                if target is source:
+                    continue
+                neighbours = [c for c in target if same_baseline(c)]
+                if any(
+                    -0.05 * char.size <= char.x0 - c.x1 <= 0.3 * char.size
+                    for c in neighbours
+                ) and any(
+                    -0.05 * char.size <= c.x0 - char.x1 <= 0.3 * char.size
+                    for c in neighbours
+                ):
+                    targets.append(target)
+            if len(targets) == 1:
+                moved.append((char, source, targets[0]))
+            elif targets:
+                ambiguous.add(id(char))
+    for char, source, target in moved:
+        source.remove(char)
+        target.append(char)
+    return ambiguous
+
+
 def _attach_nested_scripts(rows: list[list[LTChar]]) -> set[int]:
     """Revisit short numeric fragments after all local script bases exist.
 
@@ -311,7 +369,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.3"
+    version = "1.19.4"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -542,6 +600,7 @@ class LayoutPdfBackend:
                 ):
                     ambiguous_glyphs.add(id(char))
                 rows[min(matches)[1]].append(char)
+        ambiguous_glyphs.update(_attach_inline_glyphs(rows))
         ambiguous_glyphs.update(_attach_nested_scripts(rows))
         # Repair only isolated signs. Leave already connected prose/formulas
         # in their original rows to avoid changing unrelated reading order.
