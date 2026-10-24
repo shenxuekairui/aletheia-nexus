@@ -79,6 +79,21 @@ def test_numeric_margin_can_add_a_missing_tick_without_replacing_another_number(
             )
 
 
+def test_tick_fallback_cannot_confirm_a_baseline_number_with_a_power():
+    from aletheia_nexus.content.backends.image_tick_crops import read_tick_margins
+
+    Image = pytest.importorskip("PIL.Image")
+    records = [r(str(i), (600, 40 + i * 30, 630, 60 + i * 30)) for i in range(6)]
+    reads = iter([[], [], [], [], [r("102", (66, 150, 106, 170))], []])
+    output = read_tick_margins(
+        records,
+        Image.new("RGB", (2400, 1000), "white"),
+        lambda _: next(reads),
+        lambda _: ("10²", 0.99),
+    )
+    assert not any(item["text"] == "102" for item in output)
+
+
 @pytest.mark.parametrize("offset", [0, 40])
 def test_panel_corner_requires_real_gutters_scale_and_two_agreeing_readings(
     monkeypatch, offset
@@ -193,6 +208,39 @@ def test_complete_unit_can_retain_a_separately_detected_raised_exponent(
 def test_raised_fragment_does_not_change_an_existing_complete_unit():
     records = [r("47 s⁻¹", (30, 30, 100, 50)), r("-2", (98, 25, 118, 43))]
     assert not merge_complete_reading(records, r("47 s⁻²", (28, 23, 120, 52)))
+
+
+@pytest.mark.parametrize(
+    "readings",
+    [
+        ["10² mA", "102 mA", "10² mA", "102 mA"],
+        ["10² mA", "10² mA", "102 mA", "102 mA"],
+    ],
+)
+def test_line_rereads_cannot_corroborate_different_exponent_positions(readings):
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    Image = pytest.importorskip("PIL.Image")
+    old = r("10³ mA", score=0.84)
+    responses = iter((text, 0.99) for text in readings)
+    output = reread_uncertain_lines(
+        [old], Image.new("RGB", (160, 100), "white"), lambda _: next(responses)
+    )
+    assert output == [old]
+    assert not old.get("alternative")
+
+
+def test_line_rereads_can_agree_on_typographic_micro_signs():
+    from aletheia_nexus.content.backends.image_readings import reread_uncertain_lines
+
+    Image = pytest.importorskip("PIL.Image")
+    old = r("8 mA", score=0.84)
+    responses = iter([(text, 0.99) for text in ["10 μA", "10 µA"] * 2])
+    output = reread_uncertain_lines(
+        [old], Image.new("RGB", (160, 100), "white"), lambda _: next(responses)
+    )
+    assert old["alternative"]
+    assert output[-1]["text"] == "10 μA"
 
 
 def test_ink_colour_does_not_name_background_or_mix_competing_colours():

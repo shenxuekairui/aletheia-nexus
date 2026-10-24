@@ -280,7 +280,7 @@ def reread_uncertain_lines(records, image, recognize):
     from aletheia_nexus.content.backends.image_panels import length_key
 
     def comparable(text):
-        key = re.sub(r"(?<=\d)[_{}]|[_{}](?=\d)", "", reading_key(text))
+        key = re.sub(r"(?<=\d)[_{}]|[_{}](?=\d)", "", literal_reading_key(text))
         return re.sub(r"(?<=[A-Za-z])[Il1](?=[A-Za-z%])", "|", key)
 
     for old in list(records):
@@ -317,9 +317,9 @@ def reread_uncertain_lines(records, image, recognize):
                 if result is None or result[1] < (0.9 if original_length else 0.95):
                     break
                 readings.append(result)
-            if len(readings) == 2 and reading_key(readings[0][0]) == reading_key(
-                readings[1][0]
-            ):
+            if len(readings) == 2 and literal_reading_key(
+                readings[0][0]
+            ) == literal_reading_key(readings[1][0]):
                 new, score = readings[0][0], min(r[1] for r in readings)
                 new_length = length_key(new)
                 if (
@@ -333,13 +333,13 @@ def reread_uncertain_lines(records, image, recognize):
                     scale_conflicts.append((new, score))
                 if (
                     score >= 0.95
-                    and reading_key(new) != reading_key(text)
+                    and literal_reading_key(new) != literal_reading_key(text)
                     and score >= old["score"] + 0.03
                 ):
                     candidates.append((new, score))
         candidate = (
             max(candidates, key=lambda r: r[1])
-            if len({reading_key(r[0]) for r in candidates}) == 1
+            if len({literal_reading_key(r[0]) for r in candidates}) == 1
             else None
         )
         if candidate is None or (
@@ -347,7 +347,7 @@ def reread_uncertain_lines(records, image, recognize):
         ):
             for new, score in scale_conflicts:
                 if any(
-                    reading_key(r["text"]) == reading_key(new)
+                    literal_reading_key(r["text"]) == literal_reading_key(new)
                     and r["box"] == old["box"]
                     for r in records
                 ):

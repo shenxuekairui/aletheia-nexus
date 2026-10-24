@@ -17,6 +17,8 @@ from aletheia_nexus.content.backends.image_vertical import (
         ("Current 10 A", ["Current 10−4 A"]),
         ("Current 102 A", ["Current 10² A"]),
         ("Current 10⁴ A", ["Current 10⁻⁴ A"]),
+        ("Current 05 mA", ["Current 0.5 mA"]),
+        ("Current 210³ A", ["Current 2×10³ A"]),
     ],
 )
 def test_shorter_crop_cannot_remove_observed_scientific_characters(reading, fragments):
@@ -49,3 +51,27 @@ def test_truncated_crop_keeps_all_original_primary_fragments():
     )
     assert out == records
     assert not any(r.get("alternative") for r in out)
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ("Current (mA)", "Current (MA)"),
+        ("Current 0.5 mA", "Current 05 mA"),
+        ("Current 10⁻⁴ A", "Current 10⁴ A"),
+    ],
+)
+def test_competing_complete_vertical_readings_preserve_scientific_differences(
+    first, second
+):
+    Image = pytest.importorskip("PIL.Image")
+    image = Image.new("RGB", (500, 400), "white")
+    original = dict(text="Current", box=(20, 30, 40, 150), score=0.91)
+    reads = iter([first, second])
+    out = read_vertical_labels(
+        [original],
+        image,
+        lambda _: [dict(text=next(reads), score=0.99, box=(0, 0, 150, 20))],
+    )
+    assert out == [original]
+    assert not original.get("alternative")

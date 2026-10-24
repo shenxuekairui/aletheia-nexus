@@ -9,18 +9,22 @@ from difflib import SequenceMatcher
 from aletheia_nexus.content.backends.readings import literal_reading_key
 
 
+def _literal_label(text):
+    # Reference-operator case is typography; unit and material case is not.
+    return literal_reading_key(re.sub(r"\bvs\b", "vs", text, flags=re.IGNORECASE))
+
+
 def _preserves_fragments(reading, fragments):
     """A crop must not drop observed unit, sign or label characters."""
 
     def key(text):
         # The reference operator VS/vs is case-insensitive. Unit and material
         # spellings remain exact: mV/MV and Cl/CI must still disagree.
-        text = re.sub(r"\bvs\b", "vs", text, flags=re.IGNORECASE)
         return "".join(
             c
-            for c in literal_reading_key(text)
+            for c in _literal_label(text)
             if c.isalnum()
-            or c in "+-/±%°"
+            or c in "+-/±%°.·×"
             or unicodedata.decomposition(c).startswith(("<super>", "<sub>"))
         )
 
@@ -109,7 +113,7 @@ def read_vertical_labels(records, image, read):
         # Competing complete readings with different text stay unresolved.
         if any(
             len(text_key(r["text"])) >= len(text_key(best["text"])) * 0.9
-            and text_key(r["text"]) != text_key(best["text"])
+            and _literal_label(r["text"]) != _literal_label(best["text"])
             for r in readings
         ):
             continue

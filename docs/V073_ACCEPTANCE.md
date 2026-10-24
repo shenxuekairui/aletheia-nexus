@@ -24,6 +24,10 @@ CI jobs, ten complete local RC checks and 24 clean installed-use checks have
 passed their respective checks. One source still has an unresolved Å/A unit
 error after removal of a false minus; this is not counted as a correct answer.
 Complete current-corpus scientific validation remains in progress.
+Further review reproduced false agreement in three remaining crop-rereading
+paths. Their stricter comparison fix is under validation; the `61d723b` results
+below remain checks of that exact implementation, not certification of the
+later parser 3.10.14 / image adapter 1.5.11. No first score or gate changes.
 The new unopened sample and all scientific thresholds remain unchanged.
 
 | Gate | Required | Current status |
