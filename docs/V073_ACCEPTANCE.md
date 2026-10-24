@@ -1,7 +1,10 @@
 # v0.7.3 scientific acceptance and publication
 
-Status: **SCIENTIFIC SCOPE REVIEW COMPLETE / FINAL ENGINEERING PENDING / NOT RELEASED**. The 0.7 series has not
-completed its closure checks. No routine 0.7.4 feature release is planned. The owner authorized
+Conclusion: **ACCEPTED FOR THE AMENDED DESIGN GOALS** as a local evidence
+preparation and source-review tool. Publication and 0.7-series closure take
+effect only with the verified [v0.7.3 release](https://github.com/shenxuekairui/aletheia-nexus/releases/tag/v0.7.3),
+its final commit/CI/package receipts and the corresponding PyPI installation.
+No routine 0.7.4 feature release is planned. The owner authorized
 a design-goal-based closure amendment on 2026-10-24 after results were known;
 the original protocol and amendment are both in
 [V073_FINAL_PLAN.md](V073_FINAL_PLAN.md). Original failed numerical gates remain
@@ -40,7 +43,8 @@ Local evidence: `panel-role-compact-source/source-role-review.json`, SHA-256
 `68baf5aa3313fb5f4b0d54017b579413b16fd5cefdc5da65773d78d0043da2e1`;
 `panel-role-compact-micrograph/source-role-review.json`, SHA-256
 `482356a038898ccce1c64d8bee898a992175a7c912895acab5603ba0be9f1d91`.
-Final-commit engineering, clean installed use and publication remain pending.
+Final publication receipts are linked in the release; candidate checks alone
+must not be mistaken for verification of the published distribution.
 
 The longer intermediate wording on `68dab90` changed font-weighted paragraph
 classification on five pages. It is rejected despite passing engineering
@@ -68,6 +72,22 @@ the earlier 21-check result remains a historical stage, not the final claim.
 Evidence: `panel-role-compact-task-supplement.json`, SHA-256
 `969491e6bf27f8530a0a4e3bf1274270de78dcfaf21330ab86758b1a7513da47`.
 
+The full current75 ledger is **70/75 strict complete**, with the original
+excluded source-glyph item retained outside that historical denominator.
+`7-A4` and `22-A1` change from complete to incomplete: their literal lengths and
+panel positions survive, but the removed scale-role assertion requires source
+confirmation. Existing generic uncertainty is not counted as a specific
+missing-role notice; these two failures are conservatively undisclosed under
+the original local-notice rubric. The earlier 72/75 is retained as a stage
+result. Original52 contents remain 52/52 (51/52 strict); all historical64
+answers remain complete. Three historical questions share a page with a changed
+annotation, but that annotation was already documented as an unrelated false
+scale reading of product 3m. The second-set 36 complete exposed answers do not
+depend on any changed scale-role assertion; no new answer or missed-notice
+improvement is credited. Final retained evidence review:
+`convergence-0931c21/scientific-review.json`, SHA-256
+`806dc511a344d7e48631715f2c79c7116c53d711d8fcfb7e1744fa5b01825784`.
+
 Under the owner's amended scope, scientific review supports closure as a
 **local evidence preparation and source-review tool**: bounded table and fusion
 improvements, useful retrieval, preserved alternatives/source conflicts, and
@@ -75,9 +95,28 @@ working advisory interfaces justify retaining the release. Critical citation
 and complex figure interpretation require source review; some errors still
 lack local notice. This is not acceptance of the original accuracy, zero-miss
 or final 25% task-burden targets. Further broad parser rules are not justified
-by the observed regressions and complexity. Final engineering/use checks and
-publication authorization remain separate requirements before release and
-closure of the 0.7 series.
+by the observed regressions and complexity. Final engineering/use checks remain
+separate requirements before release and closure of the 0.7 series; the owner's
+initial explicit formal-publication authorization remains in force.
+
+The final production-code commit `0931c21f98083f3e3969fb354ab8b2ef8631e346`
+passes [all eight hosted jobs](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40102180937),
+all ten immutable local RC checks and 24 clean installed-use checks. Local RC:
+2,204 deterministic passes / 117 skips; 121 real-browser passes; two normal
+visible-browser passes; one real-OCR pass. Installed use covers import/main-SI
+identity, interruption/resume/reuse, search, three export formats, source access,
+actual local OCR, old artifacts, source conflicts, offline advisory abstention
+with overwrite refusal, and actual public acquisition followed by parsing.
+All 149 package Python sources match the archived commit; only four authored
+PDF fixtures are packaged. These are engineering checks, not accuracy scores.
+
+The final documentation/release commit must rerun the full hosted gate, followed
+by the full main gate after merge. Its exact identity, public distribution
+checksums and clean published-package verification belong to the release's
+`release-validation.json` and `SHA256SUMS.txt`; they cannot be embedded in the
+commit they describe. [PR #10](https://github.com/shenxuekairui/aletheia-nexus/pull/10)
+links the final-head checks. Restricted source PDFs and authentication state
+are excluded from public receipts.
 
 The [systematic engineering review](V073_ENGINEERING_REVIEW.md) covers the
 complete release delta and end-to-end contracts. It found and tightened
@@ -761,7 +800,7 @@ repeat new holdouts merely to chase the score. Default and future AI-assisted
 results remain separate; no remote model was used by the parser.
 
 Under the later owner amendment, remaining release work is exact-final-commit
-CI and clean use, PR merge, verified main, explicit publication authorization,
+CI and clean use, PR merge, verified main under existing explicit publication authorization,
 v0.7.3 tag, GitHub Release, existing
 PyPI publication and fresh published-package installation/checksums. Until these
 actually pass, no release or closure claim is made.

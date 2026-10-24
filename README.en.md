@@ -1,6 +1,6 @@
 # Aletheia Nexus
 
-[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.3 Candidate Notes](docs/RELEASE_NOTES_v0.7.3.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
+[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.3 Release Notes](docs/RELEASE_NOTES_v0.7.3.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
 
 > **From one verified paper to scientific knowledge infrastructure that can grow with research.**
 
@@ -54,7 +54,7 @@ This is not universal coverage or a promise to download every paper. Online acqu
 
 ## Quick start
 
-Requires Python 3.11+. Commands below are single-line examples for common shells. This README describes the unpublished v0.7.3 candidate source; check [PyPI](https://pypi.org/project/aletheia-nexus/) for the currently published version.
+Requires Python 3.11+. Commands below are single-line examples for common shells. This README describes v0.7.3; check [PyPI](https://pypi.org/project/aletheia-nexus/) for the currently published version.
 
 ### 1. Install and check the environment
 
@@ -163,7 +163,7 @@ chunk → block → source anchor → PDF page and position → original paper
 
 **`PARSED` means the relevant document parsing completed, not that the paper is scientifically true or all figures and scientific meaning are understood.** Incomplete work is marked with states such as `PARTIAL`.
 
-The v0.7.3 candidate addresses links between values, metrics, experiment rows and conditions, OCR fusion, and local source review. Both holdout evaluations have completed; material subsequently used for repairs is exposed regression data. The second set contains 12 main articles and four supplements, totaling 673 pages. First complete-answer accuracy with the primary OCR configuration improved from 25/60 to 35/60, but the original accuracy and zero-unflagged-error targets were not met. The owner subsequently authorized closure based on practical design goals; this amendment was made after results were known. The [acceptance record](docs/V073_ACCEPTANCE.md) retains first scores, remaining errors and final verification status. AN supports local evidence preparation and traceable review; critical data citations still require checking the original page, especially small chemical formulae, incomplete experiment relationships and complex figures. Default parsing does not call AI; advisory AI interfaces remain separate from original parsing. Tests and anchors do not establish scientific accuracy. The [v0.7.2 historical record](docs/V072_PRACTICAL_ACCEPTANCE.md) retains its first 14/16 and subsequent 16/16 exposed regression unchanged.
+Version 0.7.3 addresses links between values, metrics, experiment rows and conditions, OCR fusion, and local source review. Both holdout evaluations have completed; material subsequently used for repairs is exposed regression data. The second set contains 12 main articles and four supplements, totaling 673 pages. First complete-answer accuracy with the primary OCR configuration improved from 25/60 to 35/60, but the original accuracy and zero-unflagged-error targets were not met. The owner subsequently authorized closure based on practical design goals; this amendment was made after results were known. The [acceptance record](docs/V073_ACCEPTANCE.md) retains first scores, remaining errors and final verification status. AN supports local evidence preparation and traceable review; critical data citations still require checking the original page, especially small chemical formulae, incomplete experiment relationships and complex figures. Default parsing does not call AI; advisory AI interfaces remain separate from original parsing. Tests and anchors do not establish scientific accuracy. The [v0.7.2 historical record](docs/V072_PRACTICAL_ACCEPTANCE.md) retains its first 14/16 and subsequent 16/16 exposed regression unchanged.
 
 ### Access and human boundaries
 
@@ -192,7 +192,7 @@ Entities, methods, experimental conditions, measurements, claims and their evide
 The project uses deterministic regression tests, real-browser fixtures, parser benchmarks and package checks. Live publisher evidence is recorded separately. Results from a particular environment are neither a universal download rate nor a scientific-semantic accuracy score.
 
 - [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md): installation, input, batches, organization, parsing, OCR and troubleshooting.
-- [v0.7.3 Candidate Notes](docs/RELEASE_NOTES_v0.7.3.md): candidate changes, acceptance status and boundaries.
+- [v0.7.3 Release Notes](docs/RELEASE_NOTES_v0.7.3.md): changes, acceptance results and boundaries.
 - [Practical research acceptance](docs/V072_PRACTICAL_ACCEPTANCE.md): current research tasks, first-run and regression results, source traceability, review workload and remaining limits.
 - [Release History](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md): version-specific evidence and release status.
 - [CNKI Guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/CNKI_AUTOMATION.md): inputs, institutional access and limitations.

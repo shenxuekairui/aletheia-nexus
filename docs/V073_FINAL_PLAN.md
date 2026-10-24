@@ -189,9 +189,17 @@ The original 90% and zero-unflagged sample requirements are no longer automatic
 vetoes under this owner-approved scope. Their actual failures remain visible.
 No replacement numerical accuracy promise is invented. Engineering, evidence
 integrity and transparent capability boundaries remain required. Formal
-publication remains pending final review and explicit user authorization;
+publication requires final review and uses the owner's explicit initial
+authorization for commits, PRs, merging and formal release. The later instruction
+forbids unauthorized publication; it does not revoke that authorization. The
+earlier assistant wording suggesting another approval was needed is corrected;
 there is no planned routine 0.7.4 feature version.
 
 The local authorization and prior-plan snapshot are sealed in
 `protocol/owner-convergence-amendment-20261024.json`, SHA-256
 `ec65ef92d03c02a555af9ae150f6471ff2d0a8b1ba960e9138247149ea6e581d`.
+
+The authorization clarification is preserved in
+`protocol/publication-authorization-clarification.json`, SHA-256
+`57ff48defec794c837bfce7fa71e05efbfbd47d5901d862bb52c4a5ecf944053`.
+It does not waive final code/main CI, installed-use checks or publication receipts.
