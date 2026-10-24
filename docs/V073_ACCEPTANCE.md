@@ -19,35 +19,31 @@ complete release delta and end-to-end contracts. It found and tightened
 script-flattening comparisons, false same-location OCR corroboration, axis-unit
 comparison and an unsanitized optional-backend diagnostic; removed repeated
 evidence reconstruction within each export; and corrected exporter identity.
-On frozen implementation `61d723b`, seven affected-source pages, eight hosted
-CI jobs, ten complete local RC checks and 24 clean installed-use checks have
-passed their respective checks. One source still has an unresolved Å/A unit
-error after removal of a false minus; this is not counted as a correct answer.
-Complete current-corpus scientific validation remains in progress.
-Further review reproduced false agreement in three remaining crop-rereading
-paths. Frozen `364052f` uses parser 3.10.14 / image adapter 1.5.11 and passes
-701 content tests (three opt-in skips). Eight preselected real pages retain
-their entire layouts exactly under the actual local models. All eight jobs in
-the [364052f hosted matrix](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40069504941)
-pass; its immutable full local RC passes ten checks and the clean wheel passes
-all 24 actual-use checks. Complete historical-corpus scientific checks remain
-in progress.
-The completed exposed, question-page OCR regression on that implementation is
-**55/60**, with zero locally undisclosed critical errors in the frozen questions.
-This scoped development run does not satisfy the new sealed-sample gate.
-The `61d723b` results below remain checks of that exact implementation,
-not certification of the newer code. No first score or numerical gate changes.
-The new unopened sample and all scientific thresholds remain unchanged.
+The latest implementation is `84666bb`, using parser 3.10.14, fusion 1.10.3 and
+image adapter 1.5.11. All eight hosted CI jobs, ten immutable local RC checks
+and 24 clean installed-use checks pass. Its exposed targeted OCR regression is
+**55/60**, with zero locally undisclosed critical errors in the frozen questions;
+all scientific page payloads across 671 pages exactly match the preceding
+targeted run. Five failed answers remain failures. This run is not full-file
+default OCR or new sealed-sample acceptance.
+
+The preceding complete historical batch P on `364052f` passes the task and
+retrieval gates but fails two shared-condition relationships. Their bounded
+fusion repair has source-reviewed scoped evidence; the latest full 54-document
+batch must still establish preservation. Earlier engineering results below
+remain checks of their exact implementation. An unresolved Å/A unit after
+removal of a false minus remains incorrect. No first score or numerical gate
+changes; the second sample remains unopened.
 
 | Gate | Required | Current status |
 | --- | --- | --- |
 | New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second set sealed, not yet parsed; pending |
 | Unflagged critical errors | Zero local omissions/errors without adequate notice | Pending second set; exposed native and current targeted OCR regressions have zero in their scored questions |
-| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | P on 364052f: 72/75 strict, 52/52 original contents retained; two historical shared-condition regressions block preservation |
+| Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | P on 364052f: 72/75 strict, 52/52 original contents retained, 62/64 historical regressions; two shared-condition failures block preservation |
 | Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | P on 364052f: 21 checks, median 0.5, 18/20 default completion and 20/20 after source checks; later repair retention pending |
-| Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | Current corpus execution pending; queries unchanged |
+| Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | P on 364052f: old 13/32 and 24/32; SI 4/4; new Top1 15/20 and Top5 19/20; final candidate retention pending |
 | Source/export/compatibility | Correct original pages, alternate readings and true conflicts retained | Final complete corpus check pending |
-| Engineering and actual use | Complete CI and clean installation on final commit | 364052f: 8 CI jobs, 10 immutable local RC checks and 24 installed-use checks pass; final release commit pending |
+| Engineering and actual use | Complete CI and clean installation on final commit | 84666bb: 8 CI jobs, 10 immutable local RC checks and 24 clean installed-use checks pass; final release commit pending |
 | Publication | Verified main, tag, GitHub Release, PyPI and installed distribution | Not published |
 
 A warning can disclose a failure; it cannot make the answer correct. A correct
@@ -373,8 +369,27 @@ claim. These results belong to `364052f`, before the next repair.
 The broader historical64 preservation check found two further regressions:
 H01-4 and J01-3 retain their numbers but lose centered shared-condition spans.
 OCR punctuation over part of a native glyph becomes an independent cell and
-breaks the grouping. Thus current preservation is **not passed**, irrespective
+breaks the grouping. The complete P review is **62/64**: H 15/16, I 8/8,
+J 11/12, K 12/12 and latest 16/16. Required table values, experimental context
+and source conflicts remain in the other 62 questions; unrelated image text
+and unasked content are not certified. Thus preservation is **not passed**, irrespective
 of the 75-item score, engineering tests or task improvement.
+
+The complete P batch finishes 54 documents / 503 pages without parse runtime
+errors. Its final twenty task exports are exactly equal to those manually
+reviewed from the already completed documents. The unchanged 32 article queries
+score Top1 **13/32**, Top5 **24/32**; SI **4/4**; new queries Top1 **15/20**,
+Top5 **19/20**. The new Q06 failure and eight old Top5 failures remain recorded;
+retrieval hits are not complete-answer scores. Across the original 37-document,
+287-page library, article review locations instead rise to **2,404** from 1,985,
+uncertain blocks to **13,671** from 12,475, and median locations to **48.5** from
+38.5. This is an adverse whole-library result, not a burden reduction. The
+frozen-task reduction does not justify hiding these additional candidates.
+Source inspection of the two largest increases (papers 17: +130 and 16: +91)
+finds mixed useful labels and incorrect structural fragments in vector reaction
+diagrams. This does not establish that all extra warnings are necessary. The
+inspected pages remain a local source/multimodal-review boundary; no chemical
+guessing or blanket suppression is introduced to improve the count.
 
 A minimal fusion repair now locates such punctuation using actual overlap and
 containment within a known native glyph. It uses the existing disagreement and
@@ -388,6 +403,26 @@ unchanged. This is scoped regression evidence, not complete-document acceptance.
 An earlier probe used the holdout configuration by mistake and is retained but
 excluded from paired attribution. The full historical64 review, final candidate
 retention and unopened sample remain required.
+
+The repair is committed as `84666bb`, with fusion identity 1.10.3. Its fresh
+complete historical batch is running from an immutable archive. The exposed
+targeted regression completes all 16 documents / 671 pages without runtime
+errors in 1,958.888 seconds of observed wall time, not controlled human or
+performance timing. All 671 scientific page payloads exactly match `364052f`,
+including the 43 frozen OCR pages and their warnings/alternative readings.
+The same 55/60 result and five failures are retained, not replaced by a new blind
+score. All eight jobs in the
+[84666bb hosted matrix](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40074584721)
+pass. All ten immutable local RC checks also pass: 2,190 deterministic tests
+(117 skips), 121 real-browser tests, two normal-browser tests and one real-OCR
+test. These engineering results do not close the scientific preservation gate.
+Its clean installation also passes all 24 actual-use checks, including public
+acquisition, optional OCR, old artifacts and interruption/resume. All 149 Python
+sources match the archive; only the four authored PDF fixtures are packaged.
+The unpublished wheel SHA-256 is
+`3745cdc5e8aa03c062fd1534a8dd00587c2a1ba911d006da32e626bfac8438d6`;
+sdist SHA-256 is
+`cdbdb7d11f3c66cbbef4db6858bcc71925594406c1e556f06f1ef07314cc7aab`.
 
 ## Earlier completed development checkpoint
 
@@ -500,13 +535,19 @@ material excludes restricted PDFs, credentials and authentication state.
 | Intermediate N complete75 adjudication | `5f6fe5fdf8689656dd827e18c18c652f43d1c0a6faa88cb1a5360e5fc9980622` |
 | P complete75 adjudication on 364052f | `3514eab750ca63ffb2f11f2dbcacc33a4cf652c3ec4047760ebbe56c8a83e4a7` |
 | P twenty-task manual review, metadata correction only | `3ec9d902fd3adb4e30c7d0f434b91a5c04352fc223702d28d224e4a36f7831b4` |
+| P complete historical64 review, 62/64 | `44b266bd7b4d1c106a637845a2043634123e430e07d16a88c3108c86c7a1c320` |
+| P twenty reviewed task exports equal final batch exports | `2702394498dd0fba512ce73105e1e21c3616075c4c46ee9f2f15cb2ed61108bb` |
+| P source spot-check of the largest review-count increases | `72e963a52580d63b4922ff7d9898bbd5e495a6b1660a1207465f7d0c13f2c8f5` |
 | Matched five-page punctuation-fragment comparison | `0fe3f644a9beea37a505025a444c1bbb9be9e96f9c92e2f771d5e9875505f9d1` |
 | Two shared-condition source-page reviews | `26030ef4f4bf0510b17c1cc3b430ab2185e9f25a254e063691484ca969904a9c` |
 | Superseded 0f61979 OCR stop and reviewed subset | `89e71017dfe3801452353e82fc188df632bf727409d7f9a41b360a3997462d42` |
 | Engineering source/test/CI review on 61d723b | `6a2bd2f769c10167a91e3b60c5a2678b378c4f2e459212e05421ac32ca30e2ac` |
 | Eight-page consensus-guard source comparison on 364052f | `23836ecad274a984f63d57d82b4642f410e8c74dffc276a183b2e955170d5aae` |
 | Engineering/CI/RC/installed-use seal on 364052f | `cf3b1dafeb7022ad4876fc6e7a48c5d5b361976874f85e4d612db64bae270727` |
+| Engineering/CI/RC/installed-use seal on 84666bb | `abb054e260c29860d0e3afa81a0117bc8ef2fc4a228abe7a377dfabe3d2a2dc3` |
 | Prospective exposed-development routing method | `7d54fb04370cc06905027929191b0f359b78f511f4dcb6e40b8876dc075f69b1` |
 | Complete targeted exposed OCR regression on 364052f | `1a4368c70e4dc7ff2fb54bb70954f4816c0166e0adbfe7a5cfd994ef03a28b9e` |
+| Complete targeted exposed OCR regression on 84666bb | `2397bd8005719d55085e71953def1285a12a807f60b7388953ee1dce5a5fa5c2` |
+| All671 page payloads retained between the targeted runs | `b29fb8f5d726c73d23b18dd73bb22efa20772e11e0cae2d92ce544e1d6fe1783` |
 | Fresh ba7f735 native adjudication | `e5992bff581004989278edbdcb2ab04b3a42b1f5fa9441394d0a99fa5b2f6a02` |
 | Second unopened seal | `c765c5034a96625e6324f32646e69e2b2f18a477af20b0392f56fc1457d4ff8b` |
