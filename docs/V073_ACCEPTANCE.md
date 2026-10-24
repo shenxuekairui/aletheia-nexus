@@ -31,22 +31,24 @@ The complete historical batch Q on `84666bb` now preserves all 64 historical
 regressions, including the two shared-condition failures retained in P's 62/64.
 All 54 documents / 503 pages completed; task exports, literal retrieval and
 original75 preservation have been checked. The candidate was frozen before
-opening the second sample for sequential paired execution. Its scientific
-primary OCR score remains pending. The second-set native first scores are now
+opening the second sample for sequential paired execution. All four first
+adjudications are now sealed. The second-set native first scores are
 sealed at 24/60 for v0.7.2 and 28/60 for the candidate; critical errors without
 adequate local notice are 27 and 16 respectively. The baseline OCR first score
-is 25/60 with 26 such errors. These incomplete paired results do not establish
-acceptance. An unresolved Å/A unit after removal of a false minus remains
+is 25/60 with 26 such errors; candidate OCR is **35/60 with 14**. Ten answers
+improve and none regress relative to baseline OCR. Errors decrease by 28.6%,
+passing the paired-improvement rule, but the 54/60 minimum and zero-unflagged
+gates fail. An unresolved Å/A unit after removal of a false minus remains
 incorrect. No first score or numerical gate changes.
 
 | Gate | Required | Current status |
 | --- | --- | --- |
-| New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | Second-set baseline OCR 25/60; candidate OCR still running. Separate native first results: 24/60 versus 28/60 |
-| Unflagged critical errors | Zero local omissions/errors without adequate notice | Second-set native 27 versus 16; baseline OCR 26, candidate OCR pending. Exposed-regression zero does not transfer to this set |
+| New sealed primary OCR sample | At least 54/60; target 57/60; paired error reduction rule | **Failed**: baseline OCR 25/60; candidate OCR 35/60. Paired improvement passes; absolute minimum fails. Separate native: 24/60 versus 28/60 |
+| Unflagged critical errors | Zero local omissions/errors without adequate notice | **Failed**: OCR 26 versus 14 questions; native 27 versus 16. Counts are questions containing at least one critical issue, not individual erroneous tokens |
 | Original 75 and preservation | Full current scoring; original 52 target contents and 64 historical regressions retained | Q on 84666bb: 72/75 strict, 52/52 original contents retained, 64/64 historical regressions |
 | Twenty research tasks | At most 31 independent checks, median at most 2; completion/coverage/conflicts retained | Q evidence retains P's 21 checks, median 0.5, 18/20 default completion and 20/20 after source checks |
 | Retrieval | Old Top1 >=12/32, Top5 >=20/32; SI >=3/4; new Top5 >=18/20 | Q: old 13/32 and 24/32; SI 4/4; new Top1 15/20 and Top5 19/20 |
-| Source/export/compatibility | Correct original pages, alternate readings and true conflicts retained | Historical corpus/task exports checked; first three second-set modes source-reviewed and export-checked, candidate OCR pending |
+| Source/export/compatibility | Correct original pages, alternate readings and true conflicts retained | All four second-set modes source-reviewed and mechanically export-checked. Candidate source-conflict answer V06-Q02 remains incomplete; export integrity does not establish scientific completeness |
 | Engineering and actual use | Complete CI and clean installation on final commit | 84666bb: 8 CI jobs, 10 immutable local RC checks and 24 clean installed-use checks pass; final release commit pending |
 | Publication | Verified main, tag, GitHub Release, PyPI and installed distribution | Not published |
 
@@ -517,7 +519,7 @@ all fixed gates, with 673 pages. It excludes prior development and the complete
 first set. One access-blocked article was replaced by its recorded reserve
 before parsing; the original sampling frame and reason remain. The candidate
 freeze records all completed development gates, exact code, runtime, source and
-runner hashes. First execution has begun: v0.7.2 native, v0.7.2 OCR, v0.7.3
+runner hashes. First execution has completed: v0.7.2 native, v0.7.2 OCR, v0.7.3
 native and v0.7.3 OCR run sequentially with one global document worker and no
 concurrent development extraction. All 16 files / 673 pages run in every mode.
 The recorded workflow specified review after an entire mode completed. Actual
@@ -529,34 +531,37 @@ The code, runtime, questions, answers, denominator and gates stayed fixed; there
 was no tuning, per-document rerun or configuration selection. File modification
 times establish saved checkpoints, not exact first-view times or human review
 duration. The deviation is preserved in a separate audit, not erased by changing
-the earlier statement. Remaining candidate OCR review will wait for whole-mode
-completion. This is source-aware implementer adjudication, not blind or external
-independent review.
+the earlier statement. The user subsequently explicitly authorized concurrent
+checking of completed documents. Candidate OCR review then used terminal
+per-document records and verified source/output hashes; its final score was
+sealed after all 16 files completed. This prospective authorization does not
+erase the earlier deviation. This is source-aware implementer adjudication,
+not blind or external independent review.
 
-Three complete first adjudications are now sealed. Each mode processed all
+All four complete first adjudications are now sealed. Each mode processed all
 16 documents / 673 pages with zero parse runtime errors. The following table is
 complete-primary correctness; it does not combine answers between configurations.
 
-| Document | v0.7.2 native | v0.7.2 OCR | Candidate native |
-| --- | ---: | ---: | ---: |
-| V01 | 3/6 | 3/6 | 5/6 |
-| V01-SI | 2/3 | 2/3 | 2/3 |
-| V02 | 3/6 | 3/6 | 4/6 |
-| V03 | 2/5 | 2/5 | 3/5 |
-| V03-SI | 1/3 | 1/3 | 1/3 |
-| V04 | 3/5 | 3/5 | 3/5 |
-| V05 | 2/3 | 2/3 | 2/3 |
-| V05-SI | 0/3 | 1/3 | 0/3 |
-| V06 | 1/3 | 1/3 | 1/3 |
-| V07 | 1/5 | 1/5 | 1/5 |
-| V07-SI | 2/3 | 2/3 | 2/3 |
-| V08 | 2/7 | 2/7 | 2/7 |
-| V09R | 0/2 | 0/2 | 0/2 |
-| V10 | 1/2 | 1/2 | 1/2 |
-| V11 | 1/1 | 1/1 | 1/1 |
-| V12 | 0/3 | 0/3 | 0/3 |
-| **Total** | **24/60** | **25/60** | **28/60** |
-| Critical errors without adequate local notice | 27 | 26 | 16 |
+| Document | v0.7.2 native | v0.7.2 OCR | Candidate native | Candidate OCR |
+| --- | ---: | ---: | ---: | ---: |
+| V01 | 3/6 | 3/6 | 5/6 | 5/6 |
+| V01-SI | 2/3 | 2/3 | 2/3 | 3/3 |
+| V02 | 3/6 | 3/6 | 4/6 | 4/6 |
+| V03 | 2/5 | 2/5 | 3/5 | 4/5 |
+| V03-SI | 1/3 | 1/3 | 1/3 | 2/3 |
+| V04 | 3/5 | 3/5 | 3/5 | 3/5 |
+| V05 | 2/3 | 2/3 | 2/3 | 2/3 |
+| V05-SI | 0/3 | 1/3 | 0/3 | 1/3 |
+| V06 | 1/3 | 1/3 | 1/3 | 1/3 |
+| V07 | 1/5 | 1/5 | 1/5 | 4/5 |
+| V07-SI | 2/3 | 2/3 | 2/3 | 2/3 |
+| V08 | 2/7 | 2/7 | 2/7 | 2/7 |
+| V09R | 0/2 | 0/2 | 0/2 | 0/2 |
+| V10 | 1/2 | 1/2 | 1/2 | 1/2 |
+| V11 | 1/1 | 1/1 | 1/1 | 1/1 |
+| V12 | 0/3 | 0/3 | 0/3 | 0/3 |
+| **Total** | **24/60** | **25/60** | **28/60** | **35/60** |
+| Questions with critical issues lacking adequate local notice | 27 | 26 | 16 | 14 |
 
 Candidate native gains four complete table answers and loses none; reducing
 36 errors to 32 does not satisfy the paired 25% reduction rule, 54/60 minimum or
@@ -565,7 +570,14 @@ not the primary OCR gate. By category, candidate native is prose 13/16, table
 10/20, figure 0/12 and SI 5/12. Newly bounded gaps still fail correctness. Remaining
 problems include missing figure text and panel relations, detached exponents,
 incorrect chemical glyphs, truncated tables and fragmented experimental roles.
-The primary candidate OCR score has not yet been assigned.
+Candidate OCR is prose 13/16, table 14/20, figure 0/12 and SI 8/12. Its ten
+paired gains are eight table questions and two SI questions, with no losses.
+The 25 remaining failures include missing experimental relationships, native
+fragmentation, incorrect glyphs, missing or detached units/exponents, and
+incomplete source-conflict preservation. All twelve figure questions fail
+complete correctness despite useful recovered text; nine of those have local
+disclosure and three contain at least one critical issue without adequate
+local disclosure. Warnings and recovered tokens are not complete answers.
 
 V03-Q01 quotes the general Table1 footnote alongside its first result. A separate
 source qualification preserves the explicitly marked specialized conditions;
@@ -576,14 +588,14 @@ page6 caption; page6 was already source-sealed for another question. This direct
 reference is retained in the baseline and candidate audits, not inferred from
 similar experiments.
 
-The first three modes also passed mechanical selected-evidence export audits:
+All four modes passed mechanical selected-evidence export audits:
 16 documents / 44 question pages each, retaining respectively 1,851 / 3,540 /
-1,821 blocks and 0 / 476 / 0 alternative blocks. Counts differ with extraction
+1,821 / 4,995 blocks and 0 / 476 / 0 / 903 alternative blocks. Counts differ with extraction
 and grouping; they are not coverage or burden scores. Audit success means the
 selected parsed evidence and its source identity survive export, including wrong
 readings and gaps; it does not make those readings scientifically correct.
-Observed native batch wall times are 401.112 s and 455.358 s; baseline OCR is
-6,243.377 s. Read-only review/export activity overlapped some runs, so these are
+Observed native batch wall times are 401.112 s and 455.358 s; OCR is
+6,243.377 s versus 6,501.390 s (candidate 4.13% longer, about 108 minutes). Read-only review/export activity overlapped some runs, so these are
 recorded execution times, not an isolated speed benchmark or human-time measure.
 
 On `0f61979`, 2,131 deterministic tests pass, 115 opt-in or platform skips;
@@ -635,7 +647,19 @@ sdist SHA-256 is
 The public acquisition/install check is actual use, not a scientific accuracy
 score. The final release commit and published-package checks remain required.
 
-Final work still includes complete scientific adjudication, exact-final-commit
+The second set now becomes exposed regression material because its sealed
+failures inform repair decisions. First scores and gates remain immutable.
+The user's convergence direction permits hard semantic reconstruction to remain
+an optional local-AI review boundary, but does not waive failed questions.
+The engineering review records all 25 failures in four repair/boundary groups.
+Nine whole-answer cases are provisionally outside bounded parser repair; even
+hypothetically fixing the other sixteen would yield only 51/60 on this exposed
+set. That arithmetic is a ceiling under the stated deferral, not a measured
+regression or a revised acceptance target. Do not replace hard questions or
+repeat new holdouts merely to chase the score. Default and future AI-assisted
+results remain separate; no remote model was used by the parser.
+
+Final work still includes resolving scientific release blockers, exact-final-commit
 CI and clean use, PR merge, verified main, v0.7.3 tag, GitHub Release, existing
 PyPI publication and fresh published-package installation/checksums. Until these
 actually pass, no release or closure claim is made.
@@ -691,3 +715,11 @@ material excludes restricted PDFs, credentials and authentication state.
 | Second-set baseline native export audit | `6d64ebba14547b5aeb52aa181a3d396f308b013b166d1cae113707712fa6b93e` |
 | Second-set baseline OCR export audit | `217679860760784723f5066139ab583ce91eea3fa260b787d46a2ec36b4a1f07` |
 | Second-set candidate native export audit | `3756e9b7d235b3de8cee3bd300951da0a8bdcf0b2f6e0be768c5850895bbc696` |
+| Second-set candidate OCR first adjudication | `d2cb4cd4c368a431cf06199019a7743e0ada91e88d7b2d6dd85bd28ae9668002` |
+| Second-set complete paired first summary | `7d3bb5d625218e50778218072c0653f35c08b8ade4fcdb94135ddab9cbe8ed01` |
+| Second-set authorized concurrent candidate OCR review | `274e34a9bbcf54addbb1f8c0e58aa442b7402b8c750b9ad1d180ce3b51b93905` |
+| Second-set baseline OCR supplemental reference | `d7568ed3e9351b39ff9a8774a3a73ce4886068e40534cf835f2f88e6341d6de4` |
+| Second-set candidate OCR supplemental reference | `6135412e36f221bdc00fabfcce77233e7055bacbdca784a28a535129a9060ed3` |
+| Second-set candidate OCR export audit | `57d3e08d852655d14704d015c01f11a1b53c31b684f2243003b4eef6bc2e312c` |
+| Second-set bounded repair and AI-boundary decision | `81d0450b122274e64b8ece69973f122f3863cebb48a1a1f59abc2aba99dd5bad` |
+| Second-set promotion to regression after all first seals | `ed0fa04bebf9df3e4d1d825110ecd3db1808251ed0ec2ee8b5d92938f77c9750` |
