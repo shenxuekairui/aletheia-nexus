@@ -59,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.5.11",
+            "adapter_version": "1.5.12",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -98,6 +98,7 @@ def extract_image_annotations(page, page_number, max_pixels):
             colour = record.get("ink_colour")
             if colour and record.get("method") not in {
                 "positioned-panel-scale",
+                "positioned-panel-length",
                 "positioned-axis-label-ticks",
             }:
                 text = f"Image text ({colour}): {text}"

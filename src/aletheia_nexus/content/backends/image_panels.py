@@ -1,4 +1,4 @@
-"""Conservative spatial grouping of printed scale labels in figure panels."""
+"""Spatial grouping of printed length labels; their scientific role is unverified."""
 
 from __future__ import annotations
 
@@ -128,9 +128,9 @@ def panel_boxes(image, box=None, depth=0):
 
 
 def read_panel_markers(records, image, recognize):
-    """Read missing corner labels inside already separated, scaled panels.
+    """Read missing corner labels in separated panels containing length labels.
 
-    The observed gutters and scale bar trigger a small source crop. Two
+    The observed gutters and length label trigger a small source crop. Two
     resolutions must agree at high confidence. No alphabet/order completion
     is allowed, and an existing conflicting reading is never overwritten.
     """
@@ -196,10 +196,11 @@ def read_panel_markers(records, image, recognize):
 
 
 def associate_scales(records, image):
-    """Attach observed scale readings to observed panels, without guessing labels.
+    """Attach length labels to observed panels without asserting a scale bar.
 
-    Missing panel letters use explicit row/column locations. Different printed
-    scales within the same panel remain separate; no majority vote is used.
+    A length unit can also denote a wavelength or displacement. Geometry alone
+    does not verify its role. Missing panel letters use row/column locations;
+    different readings remain separate without a majority vote.
     """
     boxes = panel_boxes(image)
     markers = [
@@ -307,8 +308,8 @@ def associate_scales(records, image):
                     extra.append(
                         {
                             **reading,
-                            "text": f"Panel ({marker['text'].strip('().')}): scale {reading['text']}",
-                            "method": "positioned-panel-scale",
+                            "text": f"Panel ({marker['text'].strip('().')}): length label {reading['text']}; role unverified",
+                            "method": "positioned-panel-length",
                         }
                     )
                     reading["alternative"] = True
@@ -329,8 +330,8 @@ def associate_scales(records, image):
         extra.append(
             {
                 **best,
-                "text": f"Panel ({label}): scale {best['text']}",
-                "method": "positioned-panel-scale",
+                "text": f"Panel ({label}): length label {best['text']}; role unverified",
+                "method": "positioned-panel-length",
             }
         )
         for reading in lengths:

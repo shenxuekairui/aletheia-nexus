@@ -29,7 +29,7 @@ def test_two_framed_plots_keep_interior_measurements_together():
         for n, y in ((710, 80), (720, 170), (730, 260))
     ]
     result = associate_scales(deepcopy(readings), image)
-    assert not any(r.get("method") == "positioned-panel-scale" for r in result)
+    assert not any(r.get("method") == "positioned-panel-length" for r in result)
     assert result == readings
 
 
@@ -59,8 +59,11 @@ def test_real_wide_and_narrow_gutters_keep_printed_panel_names(gutter):
         )
     result = associate_scales(records, image)
     assert {
-        r["text"] for r in result if r.get("method") == "positioned-panel-scale"
-    } == {f"Panel ({chr(65 + i)}): scale {3 + i} μm" for i in range(4)}
+        r["text"] for r in result if r.get("method") == "positioned-panel-length"
+    } == {
+        f"Panel ({chr(65 + i)}): length label {3 + i} μm; role unverified"
+        for i in range(4)
+    }
 
 
 def test_large_white_margin_does_not_invent_a_second_panel():
@@ -68,3 +71,27 @@ def test_large_white_margin_does_not_invent_a_second_panel():
     image = Image.new("RGB", (500, 400), "white")
     image.paste("gray", (80, 40, 420, 360))
     assert panel_boxes(image) == [(0, 0, 500, 400)]
+
+
+def test_detector_wavelength_is_not_promoted_to_a_scale_bar():
+    Image = pytest.importorskip("PIL.Image")
+    Draw = pytest.importorskip("PIL.ImageDraw")
+    image = Image.new("RGB", (800, 420), "white")
+    draw = Draw.Draw(image)
+    for left in (20, 440):
+        draw.rectangle((left, 20, left + 320, 390), outline="black", width=2)
+        draw.line(
+            (left + 1, 350, left + 180, 100, left + 315, 350), fill="gray", width=2
+        )
+    records = [
+        dict(text="313 nm", box=(260, 45, 315, 60), score=0.99),
+        dict(text="(a)", box=(25, 25, 45, 40), score=0.99),
+    ]
+    result = associate_scales(deepcopy(records), image)
+    derived = [r for r in result if r.get("method") == "positioned-panel-length"]
+    assert len(derived) == 1
+    assert derived[0]["text"] == "Panel (a): length label 313 nm; role unverified"
+    assert not any("scale" in r["text"] for r in result)
+    source = next(r for r in result if r["text"] == "313 nm")
+    assert source["box"] == records[0]["box"]
+    assert source["alternative"] and source["association_source"]

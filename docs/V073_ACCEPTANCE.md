@@ -1,7 +1,7 @@
 # v0.7.3 scientific acceptance and publication
 
-Status: **NOT ACCEPTED / NOT RELEASED**. The 0.7 series has not met its
-closure checks. No routine 0.7.4 feature release is planned. The owner authorized
+Status: **FINAL VERIFICATION PENDING / NOT RELEASED**. The 0.7 series has not
+completed its closure checks. No routine 0.7.4 feature release is planned. The owner authorized
 a design-goal-based closure amendment on 2026-10-24 after results were known;
 the original protocol and amendment are both in
 [V073_FINAL_PLAN.md](V073_FINAL_PLAN.md). Original failed numerical gates remain
@@ -16,6 +16,29 @@ versions, incomplete runs and failures are historical checkpoints, not current
 release certification. Original v0.7.2 records are unchanged.
 
 ## Current gates
+
+The final bounded semantic adjustment changes panel length associations from
+an asserted scale role to `length label; role unverified`. Geometry, literal
+values, raw alternatives and confidence stay intact; legacy method identities
+remain readable. Final parser/fusion/image-adapter identities are
+3.10.15 / 1.10.4 / 1.5.12. Content tests pass 729 with three skips. Fresh local
+OCR on the exposed chromatogram page removes two false scale-role assertions.
+Paired old/new association functions on identical fresh OCR records differ only
+in role wording and method identity. Two real micrograph images retain all nine
+length associations, and a no-association control remains unchanged.
+
+These are targeted source checks, not another complete scientific score or
+an independent evaluation. The chromatogram question still fails because its
+experiment/peak/metric relationships remain incomplete. The table-stage exposed
+regression below remains explicitly associated with that earlier stage;
+neither old complete scores nor zero-miss claims are automatically transferred
+to the final backend. Original first reports are immutable.
+
+Local evidence: `panel-role-final/source-role-review.json`, SHA-256
+`247ea181126e42088747a9cca7685bca874e426720ba54c31d7660f09a68a0b8`;
+`panel-role-micrograph/source-role-review.json`, SHA-256
+`1265f01ab87418689082ce496e0d0ba8c55c6e2543c779be847201c6b7bc27bb`.
+Final-commit engineering, clean installed use and publication remain pending.
 
 The [systematic engineering review](V073_ENGINEERING_REVIEW.md) covers the
 complete release delta and end-to-end contracts. It found and tightened

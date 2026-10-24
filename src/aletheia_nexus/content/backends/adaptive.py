@@ -31,6 +31,7 @@ _FORMULA_TEXT = re.compile(r"(?:[=≈≤≥±∑∫√→←]|[αβγδεϵζη�
 _LAYOUT_ASSOCIATIONS = {
     "printed-bar-label-association",
     "positioned-panel-scale",
+    "positioned-panel-length",
     "positioned-axis-label-ticks",
 }
 
@@ -462,7 +463,7 @@ class AdaptiveOcrBackend:
     """Preserve native text and add OCR only where positioned evidence is absent."""
 
     name = "adaptive-native-ocr"
-    version = "1.10.3"
+    version = "1.10.4"
 
     def __init__(
         self,

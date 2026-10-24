@@ -89,6 +89,13 @@ contain untranscribed values, units or scale bars. Closely aligned image rows ca
 belong to one figure; an intervening caption ends that association. Region
 coverage is not image-text recognition or a verified scale-to-panel relationship.
 
+Panel associations marked `positioned-panel-length` describe an observed length
+label and explicitly leave its role unverified. A length unit may denote a
+wavelength or displacement, so position alone must not assert a scale bar.
+Literal readings, alternatives and coordinates remain available. Legacy
+`positioned-panel-scale` records remain readable; their label is not independent
+verification of scientific meaning.
+
 With adaptive OCR enabled, upright embedded images may receive a local OCR pass
 on an isolated high-contrast footer band. Literal length labels, their engine
 identity and source coordinates are retained; no inferred unit replacement is

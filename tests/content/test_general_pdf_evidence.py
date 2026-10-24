@@ -321,17 +321,17 @@ def test_panel_scales_use_grid_locations_without_inventing_missing_letters():
         record("900 nm", 550, 380),
     ]
     result = associate_scales(readings, image)
-    paired = [r["text"] for r in result if r.get("method") == "positioned-panel-scale"]
+    paired = [r["text"] for r in result if r.get("method") == "positioned-panel-length"]
     assert set(paired) == {
-        "Panel (row 1, column 1): scale 75 nm",
-        "Panel (row 1, column 2): scale 4 μm",
-        "Panel (row 2, column 1): scale 2 mm",
-        "Panel (row 2, column 2): scale 900 nm",
+        "Panel (row 1, column 1): length label 75 nm; role unverified",
+        "Panel (row 1, column 2): length label 4 μm; role unverified",
+        "Panel (row 2, column 1): length label 2 mm; role unverified",
+        "Panel (row 2, column 2): length label 900 nm; role unverified",
     }
     assert all(r.get("alternative") for r in readings)
     conflict = [record("8 nm", 240, 170), record("9 nm", 240, 190)]
     assert not any(
-        r.get("method") == "positioned-panel-scale"
+        r.get("method") == "positioned-panel-length"
         for r in associate_scales(conflict, image)
     )
 
@@ -379,9 +379,9 @@ def test_backend_alternative_never_hides_its_primary_derived_reading():
     )
     primary = replace(
         raw,
-        text="Panel (z): scale 8 μm",
+        text="Panel (z): length label 8 μm; role unverified",
         content_region="figure",
-        extraction_method="positioned-panel-scale",
+        extraction_method="positioned-panel-length",
     )
     lines, _ = AdaptiveOcrBackend()._merge(
         native, [replace(native, lines=(raw, primary))]
@@ -468,12 +468,12 @@ def test_touching_micrograph_panels_keep_fragmented_units_and_raw_readings():
     ]
     result = associate_scales(join_length_fragments(records), image)
     assert {
-        r["text"] for r in result if r.get("method") == "positioned-panel-scale"
+        r["text"] for r in result if r.get("method") == "positioned-panel-length"
     } == {
-        "Panel (a): scale 7 nm",
-        "Panel (b): scale 6 um",
-        "Panel (c): scale 12 nm",
-        "Panel (d): scale 8 um",
+        "Panel (a): length label 7 nm; role unverified",
+        "Panel (b): length label 6 um; role unverified",
+        "Panel (c): length label 12 nm; role unverified",
+        "Panel (d): length label 8 um; role unverified",
     }
     assert records[4]["alternative"] and records[5]["alternative"]
 

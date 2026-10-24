@@ -115,7 +115,10 @@ def test_panel_corner_requires_real_gutters_scale_and_two_agreeing_readings(
     assert records[1]["alternative"]
     assert records[-1]["text"] == "b)"
     associated = panels.associate_scales(records, im)
-    assert any(x["text"] == "Panel (b): scale 40 nm" for x in associated)
+    assert any(
+        x["text"] == "Panel (b): length label 40 nm; role unverified"
+        for x in associated
+    )
     # The unscaled second panel gets no invented sequential marker.
     assert sum(x.get("method") == "rapidocr-panel-corner-reading" for x in records) == 1
 

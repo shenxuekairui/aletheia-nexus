@@ -27,6 +27,7 @@ def line(text, box, *, method="image-reading", alternative=False, score=0.98):
         "printed-bar-label-association",
         "positioned-axis-label-ticks",
         "positioned-panel-scale",
+        "positioned-panel-length",
     ],
 )
 def test_relationship_does_not_compete_with_overlapping_legends_or_other_relations(
