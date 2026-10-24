@@ -68,6 +68,27 @@ def test_clear_native_line_is_not_replaced_or_made_a_competing_reading(monkeypat
     assert not lines and existing.text == "−7.4 μA"
 
 
+def test_engine_numeric_scalars_satisfy_the_canonical_geometry_contract(monkeypatch):
+    from fractions import Fraction
+
+    from aletheia_nexus.content.models import validate_page_layout
+
+    # Exercise non-builtin engine coordinates without requiring optional NumPy
+    # in the native-only test installation. Real-model probes cover float32.
+    lines, _ = recognize(
+        monkeypatch,
+        [("−7.4 μA", 0.98, tuple(Fraction(v) for v in (80, 330, 280, 360)))],
+    )
+    result = replace(native(), lines=lines)
+    validate_page_layout(result, expected_page=2)
+    assert lines[0].text == "−7.4 μA"
+    assert (lines[0].x0, lines[0].y0, lines[0].x1, lines[0].y1) == (40, 120, 140, 135)
+    assert all(
+        type(value) is float
+        for value in (lines[0].x0, lines[0].y0, lines[0].x1, lines[0].y1)
+    )
+
+
 def test_image_without_unmapped_outlines_does_not_call_another_recognition_pass(
     monkeypatch,
 ):
@@ -82,9 +103,9 @@ def test_image_without_unmapped_outlines_does_not_call_another_recognition_pass(
     assert not lines and not calls
 
 
-@pytest.mark.parametrize("failed", [False, True])
+@pytest.mark.parametrize("failure", [None, "exception", "invalid_geometry"])
 def test_vector_recognition_failure_keeps_tesseract_result_and_is_disclosed(
-    monkeypatch, failed
+    monkeypatch, failure
 ):
     from pathlib import Path
     from subprocess import CompletedProcess
@@ -118,14 +139,14 @@ def test_vector_recognition_failure_keeps_tesseract_result_and_is_disclosed(
 
     def read(image, layout):
         assert image.mode == "RGB" and image.size == (400, 600)
-        if failed:
+        if failure == "exception":
             raise RuntimeError("local model unavailable")
         return (
             LayoutLine(
                 "−7.4 μA",
                 40,
                 120,
-                140,
+                float("nan") if failure == "invalid_geometry" else 140,
                 135,
                 15,
                 extraction_method="rapidocr-vector-outline",
@@ -147,6 +168,8 @@ def test_vector_recognition_failure_keeps_tesseract_result_and_is_disclosed(
     )
     assert len(renders) == 1
     assert [line.text for line in result.lines] == (
-        ["7.4"] if failed else ["−7.4 μA", "7.4"]
+        ["7.4"] if failure else ["−7.4 μA", "7.4"]
     )
-    assert any(w["code"] == "OCR_BACKEND_FAILED" for w in result.warnings) == failed
+    assert any(w["code"] == "OCR_BACKEND_FAILED" for w in result.warnings) == bool(
+        failure
+    )

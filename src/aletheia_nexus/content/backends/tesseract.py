@@ -20,7 +20,12 @@ from pypdf import PdfWriter
 
 from aletheia_nexus.content.backends.superscripts import raised_glyph_box
 from aletheia_nexus.content.geometry import PageGeometry, raster_bbox_to_canonical
-from aletheia_nexus.content.models import LayoutLine, PageLayout, PageRegion
+from aletheia_nexus.content.models import (
+    LayoutLine,
+    PageLayout,
+    PageRegion,
+    validate_page_layout,
+)
 
 
 @dataclass(frozen=True)
@@ -536,7 +541,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.8.2",
+            "adapter_version": "1.8.3",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
@@ -858,9 +863,19 @@ class TesseractOcrBackend:
                 )
 
                 try:
-                    vector_lines = read_vector_annotations(
+                    candidate_vector_lines = read_vector_annotations(
                         rendered_image, vector_layout
                     )
+                    validate_page_layout(
+                        PageLayout(
+                            page=page_number,
+                            width=page_width,
+                            height=page_height,
+                            lines=candidate_vector_lines,
+                        ),
+                        expected_page=page_number,
+                    )
+                    vector_lines = candidate_vector_lines
                 except Exception as exc:
                     warnings.append(
                         {

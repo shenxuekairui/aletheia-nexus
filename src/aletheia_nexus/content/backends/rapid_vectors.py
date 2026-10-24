@@ -39,7 +39,9 @@ def read_vector_annotations(image, native):
     for polygon, text, score in zip(result.boxes, result.txts, result.scores):
         if score < 0.85 or not text.strip():
             continue
-        xs, ys = [p[0] for p in polygon], [p[1] for p in polygon]
+        # Model polygons contain numeric scalars such as numpy.float32. Keep the
+        # backend's canonical geometry contract and JSON output library-neutral.
+        xs, ys = [float(p[0]) for p in polygon], [float(p[1]) for p in polygon]
         box = (
             min(xs) / image.width,
             1 - max(ys) / image.height,
