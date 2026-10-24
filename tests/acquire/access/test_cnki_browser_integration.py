@@ -1,6 +1,7 @@
 """Real Chromium against routed fixtures; no requests reach CNKI or a login."""
 
 import os
+from contextlib import contextmanager
 from io import BytesIO
 from types import SimpleNamespace
 from urllib.parse import urlsplit
@@ -81,7 +82,10 @@ def test_native_http_429_pauses_session_without_a_visible_error_message(tmp_path
 
 
 @pytest.mark.parametrize("enabled", [True, False])
-def test_cnki_real_refresh_recovers_one_inert_pdf_control(tmp_path, enabled):
+@pytest.mark.parametrize("popup_timeout", [False, True])
+def test_cnki_real_refresh_recovers_one_inert_pdf_control(
+    tmp_path, monkeypatch, enabled, popup_timeout
+):
     from aletheia_nexus.acquire.access import BrowserSession, acquire_cnki_pdf
 
     visits, clicks = [], []
@@ -125,7 +129,20 @@ def test_cnki_real_refresh_recovers_one_inert_pdf_control(tmp_path, enabled):
         cnki_refresh_retry=enabled,
     )
     with BrowserSession(config) as session:
-        session._ensure_started().route("**/*", respond)
+        context = session._ensure_started()
+        context.route("**/*", respond)
+        if popup_timeout:
+            expect_page = context.expect_page
+
+            @contextmanager
+            def timeout_after_page_arrival(**kwargs):
+                with expect_page(**kwargs) as pending:
+                    yield pending
+                # Deterministically exercise the observed timeout boundary with
+                # a real child tab and routed requests, independent of CPU load.
+                raise TimeoutError("Popup arrived at the observation deadline")
+
+            monkeypatch.setattr(context, "expect_page", timeout_after_page_arrival)
         result = acquire_cnki_pdf(
             doi=_DOI,
             title=_TITLE,

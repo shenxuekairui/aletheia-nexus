@@ -1099,6 +1099,48 @@ def test_cnki_same_tab_navigation_does_not_click_result_twice(tmp_path):
     assert len(clicks) == 1
 
 
+@pytest.mark.parametrize("popup_kind", ["late", "pending", "unrelated", "existing"])
+def test_cnki_popup_timeout_never_reissues_detail_navigation(tmp_path, popup_kind):
+    page = _SearchPage("中文论文标题")
+    detail = _DetailPage()
+    detail.opener = lambda: page if popup_kind != "unrelated" else None
+    clicks, duplicate_navigations = [], []
+
+    class TimedOutPopup(_EventInfo):
+        def __exit__(self, *args):
+            raise TimeoutError()
+
+    class Context(_Context):
+        def expect_page(self, **kwargs):
+            return TimedOutPopup(None)
+
+        def new_page(self):
+            duplicate_navigations.append(True)
+            raise AssertionError("The submitted result click must not be replayed")
+
+    context = Context(detail)
+    context.pages = [page, detail] if popup_kind == "existing" else [page]
+
+    def click():
+        clicks.append(True)
+        if popup_kind in {"late", "unrelated"}:
+            context.pages.append(detail)
+
+    page.link._click = click
+    detail.pdf._click = lambda: context.emit("response", _response(detail))
+    attempt = _fetch(page, detail, tmp_path, context=context)
+
+    assert clicks == [True] and not duplicate_navigations
+    assert attempt.status == (
+        BrowserAttemptStatus.VERIFIED
+        if popup_kind == "late"
+        else BrowserAttemptStatus.RETRIEVAL_FAILED
+    )
+    assert attempt.download_started == (popup_kind == "late")
+    if popup_kind == "late":
+        assert detail.closed
+
+
 def test_cnki_post_click_captcha_hands_off_popup_and_leaves_it_open(tmp_path):
     detail, popup = _DetailPage(), _DetailPage()
     popup.url = "https://kns.cnki.net/verify/home?captchaType=blockPuzzle"

@@ -83,20 +83,39 @@ The first v0.7.3 implementation is frozen at
 | Native complete primary | 33/60 | 33/60 |
 | Native prose / table / figure / SI | 15/16; 11/20; 2/12; 5/12 | Same |
 | Native questions with an unflagged critical error | 16 | 15 |
-| Optional OCR complete primary | 34/60 | Original run and adjudication still in progress |
-| Optional OCR questions with an unflagged critical error | 15 | Pending |
+| Optional OCR complete primary | 34/60 | 34/60 |
+| Optional OCR questions with an unflagged critical error | 15 | 14 |
 
-All completed first configurations parsed the 16 complete PDFs without runtime
-errors. Native accuracy did not improve in this first comparison. Missing
+All four first configurations completed the 16 PDFs / 671 pages without runtime
+errors. Neither native nor OCR complete accuracy improved in this comparison. Missing
 figure text/relationships and false space-to-equals font repairs are failures,
-not successes rescued by diagnostics. The baseline OCR categories are prose
+not successes rescued by diagnostics. Both OCR category scores are prose
 15/16, table 12/20, figure 2/12 and SI 5/12.
 
 After the native results informed repairs, **the entire first set became exposed
-regression data**. The still-running original OCR execution remains immutable.
+regression data**. Both completed original OCR executions remain immutable.
 Subsequent scores on these materials are regressions; a fresh run is not a fresh
 blind sample. Per-document first scores and all original failures remain in the
 archived record and local adjudication files.
+
+| Source | First OCR v0.7.2 / frozen v0.7.3 |
+| --- | ---: |
+| H01 | 6/8; 6/8 |
+| H01-SI | 1/3; 1/3 |
+| H02 | 3/3; 3/3 |
+| H03R | 1/3; 1/3 |
+| H04R | 2/5; 2/5 |
+| H05 | 2/3; 2/3 |
+| H05-SI | 2/3; 2/3 |
+| H06 | 3/4; 3/4 |
+| H06-SI | 2/3; 2/3 |
+| H07 | 1/4; 1/4 |
+| H08 | 1/4; 1/4 |
+| H08-SI | 0/3; 0/3 |
+| H09 | 3/3; 3/3 |
+| H10 | 1/3; 1/3 |
+| H11 | 3/4; 3/4 |
+| H12 | 3/4; 3/4 |
 
 ## Current exposed regression
 
@@ -165,8 +184,13 @@ real-model probes on three pages from two layouts observe float32 input, pass
 canonical validation and recover the intended primary groups/unit; a Methods
 page triggers no additional vector recognition. The 660-test content suite
 passes with three opt-in skips. Parser/Tesseract identities are 3.10.10/1.8.3.
-Fresh complete regression is still required. Candidate counts, omissions, task
-checks and additional runtime must be measured before a final scientific claim.
+Fresh complete regression is running on `0f61979`. Its first reviewed complete
+OCR documents are H01 **7/8** and H08 **4/4**, both with zero unflagged errors.
+H01 recovers the microampere unit but still misreads I/l in a catalyst label;
+that answer fails despite correct numeric rows and a local warning. H08 now
+retains the paired standard/scaled results, footnotes and 10⁻⁴ A axis. These
+12 questions are not a complete 60-question score. Candidate counts, omissions,
+task checks and additional runtime still require full measurement.
 
 ## Earlier completed development checkpoint
 
@@ -206,15 +230,25 @@ before parsing; the original sampling frame and reason remain. As of this
 record, no AN parsing of this set has occurred. The candidate must first finish
 historical preservation, task/retrieval/export checks and exposed regression.
 
-On `ba7f735`, 2,129 deterministic tests pass, 115 opt-in or
-platform skips; 658 content tests pass, three opt-in skips. The complete
-[hosted matrix on ba7f735](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40056834861)
+On `0f61979`, 2,131 deterministic tests pass, 115 opt-in or platform skips;
+660 content tests pass with three opt-in skips. The complete
+[hosted matrix on 0f61979](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40059220825)
 has eight successful jobs, including Windows, browser, OCR and clean wheel.
-Skipped draft runs are not passes. Earlier failed Windows attempts and the
-optional PARSED-only public-OA check remain failed historical records; they are
-not rewritten or waived. The last full local ten-check RC passed on `ec615bd`,
-and the last 24-check clean installed-use run passed on `f4b1ff0`; neither is
-final-commit certification.
+Skipped draft runs are not passes. The complete local RC subsequently failed
+one real-browser case: disabling CNKI refresh retry still produced two detail
+visits. The popup-timeout fallback opened the selected URL again after a
+submitted result click. Four deterministic cases reproduced the duplicate
+request. The repair reuses only a newly opened child of that click or its
+observed same-tab navigation; an unresolved timeout now fails explicitly.
+It never retries the detail URL implicitly or adopts unrelated/existing tabs.
+All 122 provider tests and four real-browser refresh/timeout combinations pass;
+a fresh complete local RC is still required. This acquisition-only repair does
+not change the parser, its execution identity or ongoing scientific artifacts.
+
+Earlier failed Windows attempts and the optional PARSED-only public-OA check
+remain failed historical records, not rewritten or waived. The last complete
+ten-check local RC passed on `ec615bd`; the last completed 24-check clean
+installed-use run passed on `f4b1ff0`. Neither certifies the final commit.
 
 Final work still includes complete scientific adjudication, exact-final-commit
 CI and clean use, PR merge, verified main, v0.7.3 tag, GitHub Release, existing
@@ -232,6 +266,7 @@ material excludes restricted PDFs, credentials and authentication state.
 | Frozen20 tasks/queries | `87629cfcf58fe2ca3e0694a7f82694ae57f7c03740df6df0baabfdf17e5c4fa3` |
 | First source/question/oracle seal | `2ac6e32b00144aceae120ffe2401987f9aacaaee45b23f52ae25bf71e10fc40e` |
 | First native adjudication | `2c20d97444772554416880a7c111f6a284676ce0a37a6043ad944d32645aeb36` |
+| First frozen-candidate OCR adjudication | `64730cddc17191f93088dd13993f2ae18e60f57aeff97ca915e9e726c197f00d` |
 | First baseline OCR adjudication | `f560cd4c0a3bdf45cff6e9e818606c0b68f981d1f3d84651684321445816b7dc` |
 | First-set promotion to regression | `bf1c032e42bcfc08f2325f6c9aa3456b693909ec5a9a265e48251de319936fd8` |
 | Fresh ba7f735 native adjudication | `e5992bff581004989278edbdcb2ab04b3a42b1f5fa9441394d0a99fa5b2f6a02` |
