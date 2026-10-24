@@ -119,13 +119,13 @@ archived record and local adjudication files.
 
 ## Current exposed regression
 
-Commit `ba7f735692838c98fc25e9aaa3ee9271141a4fd2` completed a fresh native
+Commit `0f6197909a9cd3e69129896a6f7e9a74106a0e7a` completed a fresh native
 extraction of all **16 documents / 671 pages**, with zero runtime errors.
 All 43 question-bearing pages have exactly the same primary/alternate block
 text and geometry, table relationships and normalized local warnings as the
 previously source-adjudicated native structural replay. Every cited text and
 position was also checked before transporting those source judgments. This is
-fresh extraction with native backend 1.19.5 and parser 3.10.9, not captured-layout
+fresh extraction with native backend 1.19.5 and parser 3.10.10, not captured-layout
 replay and not independent blind validation.
 
 | Exposed native measure | Current result |
@@ -155,7 +155,7 @@ material glyphs, units/reference labels and microscopy scales/lattice spacings.
 Local notices cover the actual affected regions, including diagrams inside
 observed tables. This does not satisfy the primary OCR acceptance gate.
 
-The OCR regression on this commit was stopped after its first complete document
+The earlier `ba7f735` OCR regression was stopped after its first complete document
 exposed an invalid-output failure; the historical development-M run was stopped
 after four complete documents for the same cause. Both failed checkpoints are
 preserved. An older `f4b1ff0` run is preserved after all 12 main-article
@@ -191,6 +191,24 @@ that answer fails despite correct numeric rows and a local warning. H08 now
 retains the paired standard/scaled results, footnotes and 10⁻⁴ A axis. These
 12 questions are not a complete 60-question score. Candidate counts, omissions,
 task checks and additional runtime still require full measurement.
+
+The ongoing development-N extraction exposed two further historical regressions.
+In document 04, the complete correct reference-axis label was alternate-only:
+the preservation check rejected the complete crop solely because the operator
+VS/vs changed case. The repair normalizes only that standalone operator during
+preservation comparison; unit/material case, signs and numbers remain exact.
+A fresh real-model page probe restores the existing complete primary reading,
+with the ambiguous OCR spelling and original fragments retained as alternatives.
+In document 37, a short diagram symbol terminated the numeric grid after entry6.
+The bounded interstitial-ink rule now permits nonempty nonnumeric OCR symbols
+in the same empty interval between two consistently aligned experiment rows.
+It keeps the ink as source content, without assigning it a numeric cell. The
+same captured-page structural replay restores all11 experiments, including the
+split catalyst label and39/86(R) row. Six previously failing scale/ink variants
+now pass; native conditions, numeric cells, separate captions and changed-column
+counterexamples remain protected. All670 content tests pass, with3 opt-in skips.
+Parser/image-adapter identities become3.10.11/1.5.8. Neither probe is a completed
+fresh corpus acceptance; original development-N failures remain unchanged.
 
 ## Earlier completed development checkpoint
 
@@ -246,9 +264,16 @@ a fresh complete local RC is still required. This acquisition-only repair does
 not change the parser, its execution identity or ongoing scientific artifacts.
 
 Earlier failed Windows attempts and the optional PARSED-only public-OA check
-remain failed historical records, not rewritten or waived. The last complete
-ten-check local RC passed on `ec615bd`; the last completed 24-check clean
-installed-use run passed on `f4b1ff0`. Neither certifies the final commit.
+remain failed historical records, not rewritten or waived. The hosted matrix on acquisition-only `a199b57` also passes
+[eight jobs](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40061043717).
+Its local RC used the working checkout and overlapped subsequent source/test
+edits; retain that report only as a diagnostic, not immutable-commit validation.
+The final local RC must run a dedicated archived checkout. The last immutable
+ten-check local RC passed on `ec615bd`. All24 clean installed-use checks pass
+on the unpublished `0f61979` wheel, including actual public acquisition and
+source-byte verification;149 Python source files match its archive and only
+the four authored PDF fixtures are packaged. This is not published-package
+or final-commit certification.
 
 Final work still includes complete scientific adjudication, exact-final-commit
 CI and clean use, PR merge, verified main, v0.7.3 tag, GitHub Release, existing
@@ -269,5 +294,6 @@ material excludes restricted PDFs, credentials and authentication state.
 | First frozen-candidate OCR adjudication | `64730cddc17191f93088dd13993f2ae18e60f57aeff97ca915e9e726c197f00d` |
 | First baseline OCR adjudication | `f560cd4c0a3bdf45cff6e9e818606c0b68f981d1f3d84651684321445816b7dc` |
 | First-set promotion to regression | `bf1c032e42bcfc08f2325f6c9aa3456b693909ec5a9a265e48251de319936fd8` |
+| Fresh 0f61979 native adjudication | `a567cef12d2f0b55e98f20a07effc6dd631c430d1282adf95f1b4d4bb685a61f` |
 | Fresh ba7f735 native adjudication | `e5992bff581004989278edbdcb2ab04b3a42b1f5fa9441394d0a99fa5b2f6a02` |
 | Second unopened seal | `c765c5034a96625e6324f32646e69e2b2f18a477af20b0392f56fc1457d4ff8b` |

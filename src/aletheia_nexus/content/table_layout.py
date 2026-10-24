@@ -642,7 +642,7 @@ def _interstitial_ocr_row(row, previous, following, size):
     if not previous or not all(
         "ocr" in item.extraction_method
         and len(item.text) <= 32
-        and any(c.isalpha() for c in item.text)
+        and item.text.strip()
         and not numeric(item)
         and not _caption_match(item.text)
         for item in row

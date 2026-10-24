@@ -111,7 +111,7 @@ def cells_from(lines, width=600, height=800):
 
 
 @pytest.mark.parametrize("scale", [0.7, 1.0, 1.5])
-@pytest.mark.parametrize("label", ["X—Y", "CH3"])
+@pytest.mark.parametrize("label", ["X—Y", "CH3", "[¢]", "→"])
 def test_diagram_ocr_between_aligned_rows_keeps_the_complete_numeric_table(
     scale, label
 ):
@@ -132,9 +132,11 @@ def test_diagram_ocr_between_aligned_rows_keeps_the_complete_numeric_table(
         (705, ["1", "A", "53", "72 (S)"]),
         (655, ["2", "B", "47", "81 (R)"]),
         (605, ["3", "C", "34", "69 (S)"]),
+        (555, ["4", "D", "29", "63 (R)"]),
+        (505, ["5", "E", "38", "65 (S)"]),
     ]:
         lines.extend(line(t, x, y) for t, x in zip(values, [30, 100, 420, 510]))
-    lines += [line(label, 240, 683, 45, True), line(label, 240, 633, 45, True)]
+    lines += [line(label, 240, 583, 45, True), line(label, 240, 533, 45, True)]
     blocks, tables = cells_from(lines, 600 * scale, 800 * scale)
     cells, _, columns = tables[0]
     assert columns == 4
@@ -142,6 +144,7 @@ def test_diagram_ocr_between_aligned_rows_keeps_the_complete_numeric_table(
         (c["row"], c["column"], c["text"]) for c in cells if c["text"] == "81 (R)"
     ] == [(3, 4, "81 (R)")]
     assert {c["text"] for c in cells if c["row"] == 4} == {"3", "C", "34", "69 (S)"}
+    assert {c["text"] for c in cells if c["row"] == 6} == {"5", "E", "38", "65 (S)"}
     assert len([b for b in blocks if b["text"] == label]) == 2
     assert not any(c["text"] == label for c in cells)
 

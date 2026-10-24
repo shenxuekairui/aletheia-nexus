@@ -11,6 +11,9 @@ def _preserves_fragments(reading, fragments):
     """A crop must not drop observed unit, sign or label characters."""
 
     def key(text):
+        # The reference operator VS/vs is case-insensitive. Unit and material
+        # spellings remain exact: mV/MV and Cl/CI must still disagree.
+        text = re.sub(r"\bvs\b", "vs", text, flags=re.IGNORECASE)
         return "".join(
             c
             for c in unicodedata.normalize("NFKC", text).replace("−", "-")

@@ -12,6 +12,8 @@ from aletheia_nexus.content.backends.image_vertical import (
         ("production rate", ["(ml min1)", "production rate (", "H"]),
         ("volume", ["(ml)", "H2 volume"]),
         ("Current (mA)", ["Current (MA)"]),
+        ("Potential vs reference (mV)", ["Potential", "VS reference (MV)"]),
+        ("Potential vs Ag/AgCl (mV)", ["Potential", "VS Ag/AgCI (mV)"]),
         ("Current 10 A", ["Current 10−4 A"]),
     ],
 )
@@ -22,6 +24,13 @@ def test_shorter_crop_cannot_remove_observed_scientific_characters(reading, frag
 def test_fragmented_crop_can_keep_complete_label_in_either_reading_direction():
     assert _preserves_fragments("Hydrogen volume (mL)", ["(mL)", "Hydrogen volume"])
     assert _preserves_fragments("Current (mA cm−2)", ["Current", "(mA cm-2)"])
+
+
+@pytest.mark.parametrize("reference", ["Ag/AgCI", "reference"])
+def test_reference_operator_case_does_not_discard_a_complete_vertical_label(reference):
+    assert _preserves_fragments(
+        f"E vs {reference} / mV", ["mV", f"{reference} /", "VS", "E"]
+    )
 
 
 def test_truncated_crop_keeps_all_original_primary_fragments():
