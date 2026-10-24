@@ -59,7 +59,7 @@ def execution_identity():
     try:
         paths = model_paths()
         return {
-            "adapter_version": "1.5.4",
+            "adapter_version": "1.5.5",
             "rapidocr": metadata.version("rapidocr"),
             "onnxruntime": metadata.version("onnxruntime"),
             "models_sha256": {
@@ -92,7 +92,7 @@ def extract_image_annotations(page, page_number, max_pixels):
         sx = (bounds[2] - bounds[0]) / image.width
         sy = (bounds[3] - bounds[1]) / image.height
         for record in associate_axes(
-            associate_scales(associate_bars(records, image), image)
+            associate_scales(associate_bars(records, image), image), image
         ):
             text, score = record["text"], record["score"]
             colour = record.get("ink_colour")

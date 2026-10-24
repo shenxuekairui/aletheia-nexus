@@ -354,6 +354,32 @@ review decisions. Parser / Tesseract / image-OCR identities are now **3.10.2 /
 1.8.1 / 1.5.4**. A control-page audit also found an existing prose-as-caption
 association problem; it remains to be corrected and checked before freezing.
 
+That control-page problem is now corrected: recognition removes only spacing
+between adjacent Chinese characters in its decision view, so a prose verb such
+as `给 出 了` cannot create a new figure. A multi-sentence `为…其中，` prose
+reference is also retained as prose. Short descriptive captions remain valid.
+A fresh complete native parse retains the two original prose passages and
+associates only the actual figure caption with its image, without a runtime
+error. The original first result is unchanged.
+
+Short axis titles previously selected only central numeric ticks. Optional image
+OCR can now extend their association to an observed, thin horizontal plot border
+immediately above the same tick row. It uses existing printed readings, never
+interpolation, curve values or a guessed numeric sequence. Blank/filled regions,
+competing titles and duplicate numeric sequences do not authorize extension.
+Group anchors include the actual tick locations as well as the title. Two
+exposed source images recover their outer time ticks; the first still retains
+all four negative-current ticks. These are development source-image probes,
+not completed scientific-question regrades or first holdout results.
+
+The combined focused checks pass 50 axis/image tests and 106 caption/parser
+tests. The complete content suite passes **596 tests**, with three opt-in skips.
+The initial synthetic axis fixture accidentally supplied only two seed ticks;
+its failure is retained and the fixture now supplies the required three.
+Parser and image-OCR identities are **3.10.3** and **1.5.5**. Hosted run
+`40042446564` on `e6441d9` passed six jobs before a subsequent branch update
+cancelled the two browser jobs; it is not a complete or final CI pass.
+
 ## First holdout result: completed baseline OCR configuration
 
 The locked v0.7.2 OCR run completed all 16 PDFs / 671 pages without runtime
