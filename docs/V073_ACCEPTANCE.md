@@ -92,6 +92,29 @@ this disclosure change. Correct-answer counts do not increase because a warning
 was added. Complete final regression and the unopened second holdout remain
 required; native and optional-OCR results remain separate.
 
+The complete a8a39f3 native structural replay retains **46/60**, with **zero**
+unflagged failures after the bounded table-image notice. Its failed answers
+remain failed. The content/deterministic suites pass 652/2,123 tests, with
+three/115 opt-in or platform skips respectively.
+
+The exposed OCR audit identified a remaining routing gap: mapped native text
+and embedded images had their existing readers, but unmapped painted outlines
+only reached page Tesseract. With the optional RapidOCR configuration, that
+same installed local model can now read the existing page raster and retain
+only readings at detected outline regions plus one glyph-height of context.
+Clear native text and unrelated page regions are excluded. There is no new
+engine, remote call, chemistry substitution or paper-specific rule. Literal
+dotted metric abbreviations can participate in the existing positioned result
+groups without losing their footnote markers. The exposed fusion prototypes
+recover an actual two-result product group, two complete footnoted experiment
+lines and a missing microampere label; raw recognition probes and fusion
+prototypes remain separately labelled. New bounded notices and alternate OCR
+readings remain available. A local model failure leaves the Tesseract output
+and an explicit failure notice. The 658-test content suite passes with three
+opt-in skips. These probes are not full-document scientific acceptance; fresh
+complete extraction, counter-layout coverage, review burden and runtime effects
+must still be checked before final candidate freeze.
+
 Hosted run `40044049727` on `0b09ebe` did **not** pass the full gate: seven jobs
 passed, but Windows browser attempt 1 failed an initial bounded page read.
 Attempt 2 passed that case but failed navigation/startup/CDP timeouts in three

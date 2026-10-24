@@ -112,6 +112,25 @@ def test_percentage_result_requires_unique_label_and_separate_columns():
     assert associate_percentage_results(table) == table
 
 
+def test_dotted_metric_abbreviations_preserve_literal_footnotes_and_row_guards():
+    source = tuple(
+        replace(line, text=line.text.replace("ee*", "e.e.a").replace(" ee", " e.e."))
+        for line in results()
+    )
+    output = associate_percentage_results(source)
+    groups = [
+        line.text
+        for line in output
+        if line.extraction_method == "positioned-percentage-result-labels"
+    ]
+    assert groups == [
+        "K2\n23% yield, 87% e.e.\n48% yield, 89% e.e.a",
+        "K4\n41% yield, 93% e.e.\n52% yield, 95% e.e.a",
+    ]
+    competing = (*source, replace(source[0], text="K9", y0=128, y1=136))
+    assert associate_percentage_results(competing) == competing
+
+
 def test_number_first_product_labels_staggered_results_keep_multiple_footnotes():
     source = list(results())
     source[0] = replace(source[0], text="7b")

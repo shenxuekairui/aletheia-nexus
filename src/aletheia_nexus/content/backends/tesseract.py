@@ -536,7 +536,7 @@ class TesseractOcrBackend:
 
             image_identity = execution_identity()
         return {
-            "adapter_version": "1.8.1",
+            "adapter_version": "1.8.2",
             "image_annotation_version": "1.1.0",
             "configuration": configuration,
             "image_ocr_identity": image_identity,
@@ -717,7 +717,18 @@ class TesseractOcrBackend:
             # Masking surrounding text changes Tesseract's figure segmentation:
             # labels can vanish or adjacent captions can merge. Retain its
             # original page context, then select only observed figure readings.
-            full = self._extract_page(page, page_number)
+            vector_layout = (
+                native_layout
+                if self.config.image_ocr == "rapidocr"
+                and native_layout is not None
+                and any(o.object_type == "vector-text" for o in native_layout.objects)
+                else None
+            )
+            full = (
+                self._extract_page(page, page_number, vector_layout=vector_layout)
+                if vector_layout is not None
+                else self._extract_page(page, page_number)
+            )
 
             def in_figure(line):
                 box = (
@@ -775,7 +786,12 @@ class TesseractOcrBackend:
         )
 
     def _extract_page(
-        self, page: Any, page_number: int, regions: tuple[PageRegion, ...] = ()
+        self,
+        page: Any,
+        page_number: int,
+        regions: tuple[PageRegion, ...] = (),
+        *,
+        vector_layout: PageLayout | None = None,
     ) -> PageLayout:
         geometry = PageGeometry.from_page(page)
         page_width = geometry.width
@@ -835,6 +851,24 @@ class TesseractOcrBackend:
                     "OCR raster budget exceeded after rendering: "
                     f"{actual_pixels} pixels > {self.config.max_raster_pixels}"
                 )
+            vector_lines = ()
+            if vector_layout is not None:
+                from aletheia_nexus.content.backends.rapid_vectors import (
+                    read_vector_annotations,
+                )
+
+                try:
+                    vector_lines = read_vector_annotations(
+                        rendered_image, vector_layout
+                    )
+                except Exception as exc:
+                    warnings.append(
+                        {
+                            "code": "OCR_BACKEND_FAILED",
+                            "page": page_number,
+                            "detail": f"Local vector OCR failed; the native and Tesseract readings remain available: {exc}",
+                        }
+                    )
             image = rendered_image.convert("L")
             rendered_image.close()
             if regions:
@@ -971,7 +1005,7 @@ class TesseractOcrBackend:
             media_box=geometry.media_box,
             crop_box=geometry.crop_box,
             rotation=geometry.rotation,
-            lines=lines,
+            lines=vector_lines + lines,
             warnings=tuple(warnings),
         )
 

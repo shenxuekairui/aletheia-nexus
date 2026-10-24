@@ -8,8 +8,8 @@ from dataclasses import replace
 
 _METRIC = re.compile(r"(?P<key>[A-Za-z][A-Za-z /]{0,18})\s*[:=]\s*[−+\-]?\d")
 _RESULT = re.compile(
-    r"[<≤>≥−+\-]?\d+(?:\.\d+)?\s*%\s*[A-Za-z]+\s*[,;]\s*"
-    r"[<≤>≥−+\-]?\d+(?:\.\d+)?\s*%\s*[A-Za-z]+\s*"
+    r"[<≤>≥−+\-]?\d+(?:\.\d+)?\s*%\s*[A-Za-z]+(?:\.[A-Za-z]+)*\.?\s*[,;]\s*"
+    r"[<≤>≥−+\-]?\d+(?:\.\d+)?\s*%\s*[A-Za-z]+(?:\.[A-Za-z]+)*\.?\s*"
     r"(?:[*†‡a-z](?:\s*,\s*[*†‡a-z]){0,3})?"
 )
 _RESULT_LABEL = re.compile(r"(?:[A-Za-z]+\d+[A-Za-z]?|\d+[A-Za-z]+)")
