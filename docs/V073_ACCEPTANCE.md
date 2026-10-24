@@ -54,6 +54,25 @@ These are diagnostics, not a completed scientific regression or new blind
 score. The parser execution identity is 3.10.6; full candidate verification
 and the unopened second holdout remain pending.
 
+The full local RC on `ec615bd` passed all ten checks, including real browser,
+ordinary browser and real OCR. The fresh exposed `f4b1ff0` extraction also
+passes all eight questions on the two previously failing focused articles:
+the membrane name, three printed bar groups and both L7 result rows now remain
+in primary evidence. These are regressions, not new first scores.
+
+The next complete historical extraction exposed a real page failure in document
+14: moving an isolated inline glyph left an empty row that nested-script
+attachment tried to inspect with `max()`. Empty candidate rows are now skipped
+without renumbering rows or changing ambiguity handling. The original failure
+and traceback remain in the ledger; the repaired fresh native page completes.
+An upper split conversion header was also excluded by a boundary based only on
+the `Entry` label. The grid now uses the extent of its already identified
+headers. Replay changes six exposed SI pages and no other captured grid;
+distant diagram labels remain excluded. The parser/native identities are now
+3.10.7/1.19.5. All 644 content tests pass (three opt-in skips), including the
+empty-row, ambiguity, split-header and unrelated-label counterexamples. Full
+document recovery and final scientific/release verification remain required.
+
 Hosted run `40044049727` on `0b09ebe` did **not** pass the full gate: seven jobs
 passed, but Windows browser attempt 1 failed an initial bounded page read.
 Attempt 2 passed that case but failed navigation/startup/CDP timeouts in three

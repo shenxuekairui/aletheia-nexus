@@ -101,11 +101,12 @@ def indexed_grids(lines, layout):
         if len(run) < 3 or discontinuous:
             continue
         row_centers = [(line.y0 + line.y1) / 2 for line in run]
+        top = max(header.y1 for header in headers)
         inside = [
             line
             for line in primary
             if head.x0 - size <= (line.x0 + line.x1) / 2 <= centers[-1] + size * 5
-            and run[-1].y0 - size * 0.4 <= (line.y0 + line.y1) / 2 <= head.y1
+            and run[-1].y0 - size * 0.4 <= (line.y0 + line.y1) / 2 <= top
         ]
         cells = []
         for line in inside:

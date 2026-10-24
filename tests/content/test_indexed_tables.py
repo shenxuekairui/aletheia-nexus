@@ -54,6 +54,25 @@ def test_numeric_results_and_nd_use_the_printed_experiment_index():
     assert "unrelated diagram label" not in cells
 
 
+def test_upper_metric_and_lower_unit_stay_in_the_same_header():
+    page = layout()
+    lines = tuple(
+        replace(line, text="Conv.", y0=164.5, y1=172.5)
+        if line.text == "Results"
+        else line
+        for line in page.lines
+    ) + (
+        LayoutLine("(%)", 424, 155, 436, 163, 8),
+        LayoutLine("separate diagram value", 400, 195, 488, 203, 8),
+    )
+    (grid,) = indexed_grids(lines, page)
+    cells = {line.text: (row, col) for line, row, col in grid["cells"]}
+    assert cells["Conv."] == cells["(%)"] == (1, 3)
+    assert cells["nd"] == (3, 3)
+    assert "separate diagram value" not in cells
+    assert "unrelated diagram label" not in cells
+
+
 def test_missing_caption_missing_result_and_broken_index_abstain():
     page = layout()
     assert not indexed_grids(page.lines[1:], page)

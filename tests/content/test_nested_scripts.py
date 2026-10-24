@@ -8,6 +8,7 @@ from test_display_and_tables import dictionary, regular_font, stream
 
 from aletheia_nexus.content.backends import LayoutPdfBackend
 from aletheia_nexus.content.backends.layout import (
+    _attach_inline_glyphs,
     _attach_nested_scripts,
     _ordered_glyphs,
 )
@@ -59,6 +60,31 @@ def test_competing_local_bases_and_full_size_values_are_not_joined():
     rows = [roots[0], [regular]]
     assert not _attach_nested_scripts(rows)
     assert rows[-1] == [regular]
+
+
+def test_inline_repair_leaves_empty_rows_without_breaking_nested_scripts():
+    root = [glyph("A", 100, 200, 10), glyph("C", 106, 200, 10)]
+    letter = glyph("B", 103, 200, 10)
+    digit = glyph("2", 110, 199, 5)
+    rows = [[], root, [letter], [digit], []]
+    assert not _attach_inline_glyphs(rows)
+    assert rows[2] == []
+    assert not _attach_nested_scripts(rows)
+    assert "".join(c.get_text() for c in _ordered_glyphs(root)) == "ABC2"
+    assert rows[0] == rows[2] == rows[3] == rows[4] == []
+    assert sum(map(len, rows)) == 4
+
+
+def test_empty_rows_do_not_change_competing_base_ambiguity():
+    digit = glyph("2", 120, 200, 6)
+    roots = [
+        [glyph("A", 100, 200, 10), glyph("N", 116, 200, 6)],
+        [glyph("B", 100, 202, 10), glyph("M", 116, 200, 6)],
+    ]
+    rows = [[], roots[0], [], roots[1], [digit], []]
+    assert _attach_nested_scripts(rows) == {id(digit)}
+    assert rows[4] == [digit]
+    assert sum(map(len, rows)) == 5
 
 
 def test_connected_measurement_or_distant_digit_stays_in_its_own_row():

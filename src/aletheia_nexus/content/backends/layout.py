@@ -215,6 +215,7 @@ def _attach_nested_scripts(rows: list[list[LTChar]]) -> set[int]:
             for target, base in enumerate(rows):
                 if (
                     target == source
+                    or not base
                     or max(c.size for c in fragment) >= max(c.size for c in base) * 0.85
                 ):
                     continue
@@ -369,7 +370,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.4"
+    version = "1.19.5"
 
     @property
     def execution_identity(self) -> dict[str, object]:
