@@ -340,6 +340,27 @@ def verify_result(result: dict) -> None:
         raise ValueError("result validation mismatch")
 
 
+def _revision_target(revision: dict) -> str:
+    targets = [
+        key for key in ("record_id", "claim_index", "issue_index") if key in revision
+    ]
+    if len(targets) != 1:
+        raise ValueError("revision must identify exactly one record, claim or issue")
+    return targets[0]
+
+
+def _revision_authority(revision: dict) -> str:
+    # Historical revisions came from the explicit human-review interface.
+    authority = revision.get("authority", "human")
+    if (
+        authority not in ("human", "assistant")
+        or type(revision.get("confirm")) is not bool
+        or (authority == "assistant" and revision["confirm"])
+    ):
+        raise ValueError("only an explicit human revision can confirm a result")
+    return authority
+
+
 def _review_validation(result: dict) -> dict:
     checked = check_response(
         result["response"],
@@ -351,8 +372,22 @@ def _review_validation(result: dict) -> dict:
         if not all(
             revision.get(k) for k in ("author", "at", "reason", "parent_result_id")
         ):
-            raise ValueError("invalid human revision history")
-        if "claim_index" in revision:
+            raise ValueError("invalid revision history")
+        target = _revision_target(revision)
+        authority = _revision_authority(revision)
+        if target == "issue_index":
+            index = revision["issue_index"]
+            if (
+                type(index) is not int
+                or not 0 <= index < len(result["response"]["issues"])
+                or revision["confirm"]
+            ):
+                raise ValueError(
+                    "issue revision requires an existing index and confirm=false"
+                )
+            # Diagnoses are editable notes, not scientific claims to confirm.
+            continue
+        if target == "claim_index":
             index = revision["claim_index"]
             if type(index) is not int or not 0 <= index < len(
                 result["response"]["claims"]
@@ -368,22 +403,28 @@ def _review_validation(result: dict) -> dict:
         if revision["confirm"]:
             checked["record_states"][key] = "human_confirmed"
         else:
-            checked["record_states"][key] = check_response(
+            state = check_response(
                 result["response"],
                 result["task"],
                 result["package"],
                 comparison=result["comparison"],
             )["record_states"][key]
+            checked["record_states"][key] = (
+                "review_required"
+                if authority == "assistant" and state == "source_located"
+                else state
+            )
     return checked
 
 
 def revise_result(result: dict, revision: dict) -> dict:
-    """An explicit human revision creates a child artifact, never modifies its parent."""
+    """An explicit revision creates a child artifact, never modifies its parent."""
     verify_result(result)
-    target = "claim_index" if "claim_index" in revision else "record_id"
+    target = _revision_target(revision)
     required = {target, "replacement", "author", "at", "reason", "confirm"}
     if (
-        set(revision) != required
+        not required <= revision.keys()
+        or revision.keys() - (required | {"authority"})
         or any(
             not isinstance(revision[k], str) or not revision[k].strip()
             for k in ("author", "at", "reason")
@@ -392,14 +433,17 @@ def revise_result(result: dict, revision: dict) -> dict:
         or not isinstance(revision["replacement"], dict)
     ):
         raise ValueError(
-            "revision requires record_id or claim_index, replacement, author, at, reason and confirm"
+            "revision requires record_id, claim_index or issue_index, replacement, author, at, reason and confirm"
         )
+    authority = _revision_authority(revision)
+    if target == "issue_index" and revision["confirm"]:
+        raise ValueError("issue revisions require confirm=false")
     updated = deepcopy(result)
-    if target == "claim_index":
-        items = updated["response"]["claims"]
-        index = revision["claim_index"]
+    if target in {"claim_index", "issue_index"}:
+        items = updated["response"]["claims" if target == "claim_index" else "issues"]
+        index = revision[target]
         if type(index) is not int or not 0 <= index < len(items):
-            raise ValueError("revision must identify an existing claim")
+            raise ValueError("revision must identify an existing claim or issue")
     else:
         items = updated["response"].get("records", [])
         index = next(
@@ -412,12 +456,14 @@ def revise_result(result: dict, revision: dict) -> dict:
     updated["history"].append(
         {
             **deepcopy(revision),
+            "authority": authority,
             "before": before,
             "parent_result_id": result["artifact_id"],
         }
     )
     # Replay explicit reviews so edits revoke only their own confirmation and keep
-    # unchanged records/claims confirmed. AI never supplies this history.
+    # unchanged records/claims confirmed. Provider responses cannot supply history;
+    # explicit assistant revisions remain unconfirmed.
     updated["validation"] = _review_validation(updated)
     return seal_result(updated)
 

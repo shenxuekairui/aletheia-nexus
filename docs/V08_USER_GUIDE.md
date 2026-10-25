@@ -219,6 +219,37 @@ claim_index（从 0 开始，对应原结果 response.claims 的位置），repl
 修订仍检查引用；后续以 confirm=false 改写会撤销该主张的人工确认，不影响未改动的
 记录或其他主张。请只在实际完成人工核对后设置 confirm=true。
 
+AI生成的诊断也可能错误。例如模型读错符号后，可能把问题归为“原文歧义”。可用
+`issue_index`（从0开始，对应response.issues）定位诊断，replacement填写完整的
+kind、detail、source_id、page对象，通过同一revise命令保存新版本。诊断修订的
+confirm必须为false；只替换选中诊断，不删除或重排索引，旧诊断保留在history中。
+它不会自动改动相关字段或主张；这些内容应分别修订，防止表格和摘要不一致。
+
+所有修订可声明`authority`为human或assistant。为兼容既有人工修订文件，省略时
+按human处理；助手或脚本产生的模型复核必须显式填写assistant，并设置confirm=false。
+带assistant来源的修订不能申请人工确认；它修改的记录/主张仍保留待核对或证据
+不足状态。若原记录曾由人工确认，后续助手改写会撤销该记录的确认，其他未改动
+记录不受影响。authority记录修订来源，不是账号认证或科学正确性的保证。
+
+诊断修订示例（示例数据，需按实际原文填写）：
+
+```json
+{
+  "issue_index": 0,
+  "replacement": {
+    "kind": "strategy_problem",
+    "detail": "原页中的近似号被模型误读为负号；相关字段另行修订，旧读法保留。",
+    "source_id": "paper1",
+    "page": 1
+  },
+  "authority": "assistant",
+  "author": "执行原文复核的助手",
+  "at": "2026-10-26",
+  "reason": "复核所选原页后修正错误归因；不是人工确认。",
+  "confirm": false
+}
+```
+
 ## 当前验收边界
 
 自动化测试验证工程行为，不能证明领域正确率。真实 API 连通测试、开发集论文结果、

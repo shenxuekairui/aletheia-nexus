@@ -555,3 +555,26 @@ BECOF/PdCu例由8降至0，保存PARTIAL结果。四次HTTP共估算0.547328 CNY
 component-review-development。累计522次HTTP、用量估算**42.394638 CNY**、
 保守计账**46.811306 CNY**。后续重点是可追溯地修订已核实错误，避免无限追加
 模型复核轮次；科学质量尚未达到正式发布目标。
+
+### 可追溯的助手修订与诊断编辑
+
+继续核对真实结果发现一个编辑缺口：RS-20温度的视觉误读不仅出现在字段和步骤中，
+还出现在摘要主张及“原文歧义”诊断中。既有revise仅能修改记录与主张，无法修订
+最后一项。现已通过同一入口支持issue_index替换诊断；不删除/重排索引，仍保留
+修改前对象、作者、时间、理由与父结果。新authority可明确记录assistant，禁止
+助手来源的confirm=true，并在助手改写已确认内容时撤销相应确认。旧人工修订兼容。
+
+GPT查看原PDF第9页图像并核对独立原文文本后，通过真实CLI执行四次派生修订：
+合成记录（含相关步骤与引文）、摘要主张、误归因的歧义诊断、将“未选页”误判为
+“权限受限”的诊断。只对这些具体错误负责，不声称该论文所有内容重新验收。
+修订均为assistant/confirm=false；原PDF、规范解析JSON和旧结果的SHA-256
+保持一致，冻结参考和成绩未改变。Markdown、CSV、records.jsonl、claims.jsonl
+及离线导出清单重新生成，全程0次远程调用。私有记录在assistant-source-corrections。
+
+新增工程测试覆盖助手撤销确认、拒绝助手确认（包括重算哈希后的非法历史）、
+诊断CLI修订与导出、错误源位置及歧义目标拒绝、旧结果不变。
+针对性工作流**55 passed，11.43秒**；完整本地测试**2301 passed、117 skipped，
+33.06秒**（revision-full-tests.log）；Ruff检查与320个文件格式检查通过。
+上一工程提交5ccbd72的[完整远端CI](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40219008357)
+8项全部通过，包含干净wheel和Linux/Windows真实浏览器；该结果不冒充本次修订改动
+的远端测试。此次修订没有增加API花费，累计预算记录仍为上一节数值。

@@ -898,6 +898,130 @@ def test_claim_revisions_keep_source_validation_and_revoke_confirmation(
         revise_result(amended, revision)
 
 
+def test_assistant_revisions_revoke_confirmation_and_cannot_self_confirm(
+    papers, tmp_path
+):
+    from aletheia_nexus.processing.results import seal_result
+
+    task = validate_task(task_for(papers[:1]))
+    source = load_source(task["documents"][0], tmp_path, task["mode"])
+    package, _ = build_package(task, [source])
+    response = response_for({"material": package, "fields": task["fields"]})
+    response["claims"] = [
+        {
+            "text": "The reported synthesis temperature is 180 C.",
+            "nature": "reported",
+            "citations": deepcopy(
+                response["records"][0]["fields"]["method"]["citations"]
+            ),
+        }
+    ]
+    result = make_result(task, package, {"provider": "mock"}, response)
+    for target, identity, replacement in (
+        ("record_id", "r1", response["records"][0]),
+        ("claim_index", 0, response["claims"][0]),
+    ):
+        revision = {
+            target: identity,
+            "replacement": deepcopy(replacement),
+            "author": "reviewer",
+            "at": "2026-10-26",
+            "reason": "Fixture review",
+            "confirm": True,
+        }
+        result = revise_result(result, revision)
+        revision.update(authority="assistant", author="assistant reviewer")
+        with pytest.raises(ValueError, match="explicit human"):
+            revise_result(result, revision)
+        revision["confirm"] = False
+        if target == "record_id":
+            revision["replacement"]["fields"]["method"]["context"] = (
+                "Assistant reviewed scope."
+            )
+        else:
+            revision["replacement"]["text"] = (
+                "Synthesis temperature was 180 C in this setup."
+            )
+        result = revise_result(result, revision)
+        verify_result(result)
+        states = result["validation"][
+            "record_states" if target == "record_id" else "claim_states"
+        ]
+        assert states[str(identity)] == "review_required"
+        assert result["history"][-1]["authority"] == "assistant"
+        forged = deepcopy(result)
+        forged["history"][-1]["confirm"] = True
+        seal_result(forged)
+        with pytest.raises(ValueError, match="explicit human"):
+            verify_result(forged)
+
+
+def test_issue_revision_cli_keeps_original_and_exports_corrected_diagnosis(
+    papers, tmp_path
+):
+    task = validate_task(task_for(papers[:1]))
+    source = load_source(task["documents"][0], tmp_path, task["mode"])
+    package, _ = build_package(task, [source])
+    response = response_for({"material": package, "fields": task["fields"]})
+    response["issues"] = [
+        {
+            "kind": "source_ambiguous",
+            "detail": "Incorrect diagnosis in fixture.",
+            "source_id": "paper0",
+            "page": 1,
+        }
+    ]
+    result = make_result(task, package, {"provider": "mock"}, response)
+    original = tmp_path / "original.result.json"
+    original.write_text(json.dumps(result), encoding="utf-8")
+    original_hash = sha256_file(original)
+    revision = {
+        "issue_index": 0,
+        "replacement": {
+            "kind": "strategy_problem",
+            "detail": "The model misread the source; correction recorded.",
+            "source_id": "paper0",
+            "page": 1,
+        },
+        "authority": "assistant",
+        "author": "assistant reviewer",
+        "at": "2026-10-26",
+        "reason": "Checked the original page; preserve the old diagnosis in history.",
+        "confirm": False,
+    }
+    patch = tmp_path / "revision.json"
+    patch.write_text(json.dumps(revision), encoding="utf-8")
+    updated_path = tmp_path / "updated.result.json"
+    assert (
+        main(["revise", str(original), str(patch), "--output", str(updated_path)]) == 0
+    )
+    updated = json.loads(updated_path.read_text("utf-8"))
+    verify_result(updated)
+    assert sha256_file(original) == original_hash
+    assert updated["history"][-1]["before"] == response["issues"][0]
+    assert updated["history"][-1]["parent_result_id"] == result["artifact_id"]
+    assert updated["validation"] == result["validation"]
+    assert (
+        main(["export", str(updated_path), "--output-dir", str(tmp_path / "export")])
+        == 0
+    )
+    report = (tmp_path / "export/report.md").read_text("utf-8")
+    assert "The model misread the source" in report
+    assert "Incorrect diagnosis" not in report
+    # Diagnosis changes cannot invent source positions or grant confirmation.
+    revision["replacement"]["page"] = 999
+    with pytest.raises(ProcessingError, match="invalid_issue_location"):
+        revise_result(updated, revision)
+    revision["replacement"]["page"] = 1
+    revision.update(authority="human", confirm=True)
+    with pytest.raises(ValueError, match="confirm=false"):
+        revise_result(updated, revision)
+    revision["confirm"] = False
+    revision["claim_index"] = 0
+    with pytest.raises(ValueError, match="exactly one"):
+        revise_result(updated, revision)
+
+
 def test_original_pdf_change_fails_before_model(papers, tmp_path):
     task = task_for(papers[:1])
     papers[0].write_bytes(papers[0].read_bytes() + b"\nchanged\n")

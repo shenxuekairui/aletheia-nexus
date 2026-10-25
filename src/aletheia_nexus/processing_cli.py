@@ -41,7 +41,9 @@ def main(argv: list[str] | None = None) -> int:
         choices=EXPORT_FORMATS,
         help="本次导出格式；省略时使用任务配置",
     )
-    revision = commands.add_parser("revise", help="保存人工修订的派生版本，保留旧结果")
+    revision = commands.add_parser(
+        "revise", help="保存字段、主张或诊断的修订版本，保留旧结果"
+    )
     revision.add_argument("result", type=Path)
     revision.add_argument("revision", type=Path)
     revision.add_argument("--output", type=Path, required=True)
