@@ -657,11 +657,42 @@ def test_requested_page_adds_real_material_then_reuses_final_result(
     def generate(request):
         response = response_for(request)
         if len(request["material"]["documents"][0]["pages_requested"]) == 1:
+            assert "evidence_update" not in request
+            response["issues"] = [
+                {
+                    "kind": "material_insufficient",
+                    "detail": "Old candidate: testing page was not supplied",
+                    "source_id": "paper0",
+                    "page": 2,
+                }
+            ]
             response["requests"] = [
                 {
                     "source_id": "paper0",
                     "pages": [2],
                     "reason": "Need testing and limitations",
+                }
+            ]
+        else:
+            assert "previous_candidate" not in request
+            assert "Old candidate" not in json.dumps(request)
+            update = request["evidence_update"]
+            assert update["previous_package_id"] == request["material"]["parent_id"]
+            assert update["requested_context"] == [
+                {
+                    "source_id": "paper0",
+                    "pages": [2],
+                    "reason": "Need testing and limitations",
+                }
+            ]
+            assert update["current_coverage"] == [
+                {
+                    "source_id": "paper0",
+                    "current_text_pages": [1, 2],
+                    "added_text_pages": [2],
+                    "current_image_pages": [2] if mode == "hybrid" else [],
+                    "added_image_pages": [2] if mode == "hybrid" else [],
+                    "omitted_pages": [],
                 }
             ]
         return response
@@ -676,6 +707,9 @@ def test_requested_page_adds_real_material_then_reuses_final_result(
     )
     assert manifest["status"] == "COMPLETED"
     assert len(mock.requests) == 2
+    directory = Path(manifest["run_directory"])
+    assert "Old candidate" in (directory / "paper0.0.candidate.json").read_text("utf-8")
+    assert "Old candidate" not in (directory / "paper0.result.json").read_text("utf-8")
     assert any(
         "25 C" in b["text"]
         for b in mock.requests[1]["material"]["documents"][0]["blocks"]
@@ -703,6 +737,57 @@ def test_requested_page_adds_real_material_then_reuses_final_result(
                 .read_bytes()
                 .startswith(b"fake-png-fixture")
             )
+
+
+def test_direct_supplement_reports_image_coverage_without_inventing_text(
+    papers, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        "aletheia_nexus.processing.materials.render_page",
+        lambda pdf, page: b"fake-png-fixture" + str(page).encode(),
+    )
+    task = task_for(papers[:1], mode="direct")
+    task["documents"][0].update(pages=[1], image_pages=[1])
+
+    def generate(request):
+        document = request["material"]["documents"][0]
+        assert document["blocks"] == []
+        synthetic = deepcopy(request)
+        synthetic["material"]["documents"][0]["blocks"] = [
+            {"id": None, "page": 1, "text": "Synthesis lasted 6 h at 180 C."}
+        ]
+        response = response_for(synthetic)
+        if "evidence_update" not in request:
+            response["requests"] = [
+                {"source_id": "paper0", "pages": [2], "reason": "Read testing page"}
+            ]
+        else:
+            assert "previous_candidate" not in request
+            assert request["evidence_update"]["current_coverage"] == [
+                {
+                    "source_id": "paper0",
+                    "current_text_pages": [],
+                    "added_text_pages": [],
+                    "current_image_pages": [1, 2],
+                    "added_image_pages": [2],
+                    "omitted_pages": [],
+                }
+            ]
+        return response
+
+    mock = MockProvider(generate)
+    manifest = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert manifest["status"] == "COMPLETED" and len(mock.requests) == 2
+    result = json.loads(
+        (Path(manifest["run_directory"]) / "paper0.result.json").read_text("utf-8")
+    )
+    assert result["validation"]["scientific_support"] == "not-verified"
 
 
 def test_useless_repeated_requests_stop_and_remain_partial(papers, tmp_path):

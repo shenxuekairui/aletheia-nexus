@@ -26,7 +26,12 @@ def write_json(path: Path, value: dict, *, overwrite: bool = False) -> None:
     )
 
 
-def _request(task: dict, package: dict, previous: dict | None = None) -> dict:
+def _request(
+    task: dict,
+    package: dict,
+    previous: dict | None = None,
+    previous_package: dict | None = None,
+) -> dict:
     request = {
         "phase": "document_extraction",
         "objective": task["objective"],
@@ -36,7 +41,37 @@ def _request(task: dict, package: dict, previous: dict | None = None) -> dict:
         "material": model_material(package),
     }
     if previous is not None:
-        request["previous_candidate"] = previous
+        if previous_package is None:
+            raise ValueError("supplement requires its previous material package")
+        by_id = {d["id"]: d for d in previous_package["documents"]}
+        coverage = []
+        for document in package["documents"]:
+            sid = document["id"]
+            text_pages = {b["page"] for b in document["blocks"]}
+            before = {b["page"] for b in by_id[sid]["blocks"]}
+            image_pages = {
+                i["page"] for i in package["images"] if i["source_id"] == sid
+            }
+            prior_images = {
+                i["page"] for i in previous_package["images"] if i["source_id"] == sid
+            }
+            coverage.append(
+                {
+                    "source_id": sid,
+                    "current_text_pages": sorted(text_pages),
+                    "added_text_pages": sorted(text_pages - before),
+                    "current_image_pages": sorted(image_pages),
+                    "added_image_pages": sorted(image_pages - prior_images),
+                    "omitted_pages": document["omitted_pages"],
+                }
+            )
+        # Keep the old answer on disk and for failure recovery, not as an anchor
+        # for the new extraction. Requested pages are questions, never evidence.
+        request["evidence_update"] = {
+            "previous_package_id": previous_package["artifact_id"],
+            "requested_context": deepcopy(previous["requests"]),
+            "current_coverage": coverage,
+        }
     return request
 
 
@@ -331,7 +366,7 @@ def run_task(
                     ):
                         for source in sources:
                             source.verify()
-                        request = _request(task, package, previous)
+                        request = _request(task, package, previous, previous_package)
                         try:
                             response = _generate_checked(
                                 task,
