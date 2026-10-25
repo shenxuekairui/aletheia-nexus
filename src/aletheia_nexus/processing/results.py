@@ -550,7 +550,7 @@ def export_results(
         + [
             f"{fid}.{key}"
             for fid in field_ids
-            for key in ("value", "raw_value", "unit", "status")
+            for key in ("value", "raw_value", "unit", "status", "context")
         ]
         + ["result_id", "sources"]
     )
@@ -598,10 +598,18 @@ def export_results(
             for definition in task["fields"]:
                 field = record["fields"][definition["id"]]
                 references_text = refs(field["citations"])
+                value_text = _md(field["value"])
+                if field["context"]:
+                    value_text += "<br>说明：" + _md(field["context"])
                 lines.append(
-                    f"| {_md(definition.get('label', definition['id']))} | {_md(field['value'])} | {_md(field['unit'] or '')} | {_md(field['raw_value'] or ('见引用' if field['value'] is not None else None))} | {NATURE_LABELS[field['nature']]} / {FIELD_STATUS[field['status']]} {references_text} |"
+                    f"| {_md(definition.get('label', definition['id']))} | {value_text} | {_md(field['unit'] or '')} | {_md(field['raw_value'] or ('见引用' if field['value'] is not None else None))} | {NATURE_LABELS[field['nature']]} / {FIELD_STATUS[field['status']]} {references_text} |"
                 )
-                row.extend([field[k] for k in ("value", "raw_value", "unit", "status")])
+                row.extend(
+                    [
+                        field[k]
+                        for k in ("value", "raw_value", "unit", "status", "context")
+                    ]
+                )
                 record_citations.extend(field["citations"])
             writer.writerow(
                 [_csv(v) for v in row]

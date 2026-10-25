@@ -1,5 +1,6 @@
 """Engineering fixtures are self-authored, not scientific model performance data."""
 
+import csv
 import json
 import runpy
 import shutil
@@ -301,6 +302,58 @@ def test_three_task_capabilities_use_same_engine_and_keep_sources(
     result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
     assert "human_confirmed" not in result["validation"]["record_states"].values()
     assert result["validation"]["scientific_support"] == "not-verified"
+
+
+@pytest.mark.parametrize(
+    "context,markdown,csv_text",
+    [
+        (
+            "Only synthesis; testing conditions were not reported in supplied pages.",
+            "Only synthesis; testing conditions were not reported in supplied pages.",
+            "Only synthesis; testing conditions were not reported in supplied pages.",
+        ),
+        (
+            '=1+1 | [external](https://example.invalid) <img src="x">',
+            "=1+1 \\| \\[external\\]\\(https://example.invalid\\) &lt;img src=&quot;x&quot;&gt;",
+            '\'=1+1 | [external](https://example.invalid) <img src="x">',
+        ),
+    ],
+)
+def test_context_survives_run_and_offline_exports(
+    papers, tmp_path, monkeypatch, context, markdown, csv_text
+):
+    def generate(request):
+        response = response_for(request)
+        response["records"][0]["fields"]["method"]["context"] = context
+        return response
+
+    run = run_task(
+        task_for(papers[:1]),
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=MockProvider(generate),
+    )
+    directory = Path(run["run_directory"])
+    original = directory / "paper0.result.json"
+    original_hash = sha256_file(original)
+
+    def no_remote(*args, **kwargs):
+        pytest.fail("offline re-export must not call a provider")
+
+    monkeypatch.setattr(DeepSeekProvider, "generate", no_remote)
+    exported = tmp_path / "reexport"
+    assert main(["export", str(original), "--output-dir", str(exported)]) == 0
+    for output in [directory, exported]:
+        assert "<br>说明：" + markdown in (output / "report.md").read_text("utf-8")
+        with (output / "table.csv").open(encoding="utf-8-sig", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        assert len(rows) == 1
+        assert rows[0]["method.context"] == csv_text
+        record = json.loads((output / "records.jsonl").read_text("utf-8"))
+        assert record["fields"]["method"]["context"] == context
+        assert rows[0]["result_id"] == record["result_id"]
+    assert sha256_file(original) == original_hash
 
 
 def test_report_keeps_model_markup_literal_and_structured_value_unchanged(

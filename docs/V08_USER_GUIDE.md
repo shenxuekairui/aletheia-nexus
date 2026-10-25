@@ -220,6 +220,12 @@ result_id；不会因为字段同名就合并不同含义。同一来源 ID 对�
 结果覆盖提示，不是成功率：缺席可能来自处理失败或有意选择部分结果，不能解释成
 原文未报告。具体失败原因仍保留在原运行的 manifest.json；CSV 不凭空填入失败记录。
 
+字段的 `context` 用于保留适用范围、实验阶段和必要限定。Markdown 在该字段的值下
+显示“说明”，CSV 在各字段的 value、raw_value、unit、status 后增加 `字段.context`
+列，JSONL 仍保留完整字段对象。读取 CSV 的脚本应按列名取值，不依赖固定列号；
+旧结果可离线重新导出，无需重新调用模型。说明文字与其他模型输出一样按文本转义，
+不能执行其中的链接、HTML 或表格公式。
+
 人工修改科研结果时，复制目标记录的完整对象到 revision.json 的 replacement；
 同时填写 record_id、author、at、reason、confirm（布尔值）。运行：
 
