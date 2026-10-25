@@ -77,9 +77,9 @@ v8 补充策略的小实验发现了真实收益和新错误，尚无全套同�
 针对性工作流 **64 passed，13.34 秒**；此前主张CSV及导出测试69项、段落修复解析测试70项通过。
 Ruff check/format（src/tests/scripts）通过。跳过明细：113 项
 需显式启用的浏览器测试、2 项 OCR 测试、2 项本机不支持的符号链接测试。
-此前工程提交 `3385d9b` 的 [8 项远端 CI](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40230934871)
+当前工程提交 `f23fbfd` 的 [8 项远端 CI](https://github.com/shenxuekairui/aletheia-nexus/actions/runs/40236644747)
 全部通过，含 Python 3.11–3.14、浏览器、OCR、Windows、构建及干净 wheel 安装。
-这不是当前段落边界、导出及图像覆盖修复的远端验证；对应新提交的CI另行记录。
+该提交包含段落边界、CSV导出/换行及独立图像覆盖修复；后续仅补充验收文档。
 当前 sdist/wheel 构建及 twine 检查通过；全新基础安装环境 pip check、CLI、doctor 正常，
 确认从新环境 site-packages 导入，相关测试 **837 passed、83 skipped，24.00 秒**。
 83项跳过含基础安装未带 Pillow/OCR 的可选测试及本机符号链接限制；没有把跳过称为通过。
@@ -144,3 +144,6 @@ aletheia-nexus research revise paper.result.json revision.json --output revised.
 
 本轮交付功能实现、真实评测、错误与局限以及可复用资料，保持开发版和草稿PR。
 科研性能改进、跨领域新留出及独立专家验证属于后续明确列出的工作，不宣称已经完成。
+
+工程提交已推送至public的feat/v0.8-extraction；没有合并、打标签或发布，两个原有
+用户脚本仍未跟踪且未提交。CI通过证明对应代码的工程检查，不改变上述科研成绩。
