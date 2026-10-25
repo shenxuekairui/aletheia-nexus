@@ -77,7 +77,9 @@ python scripts/run_v08_evaluation.py task-a.json task-b.json --output-dir resear
 `type` 可为 `organize`、`extract`、`procedure`、`compare`，共用同一提取引擎。
 `objective` 写研究问题；`fields` 每项包含唯一 `id`、含义 `description` 和类型。
 支持 string、number、integer、boolean、string_list；可加 label、unit、scope。
-单位是期望描述，不触发自动换算。建议用原子字段，避免把许多独立条件塞进一个值。
+单位是期望描述，不触发自动换算。字段应说明对象、条件和范围；拆成更小的字段便于
+核对，但不能保证更完整或更准确。开发配对实验中，拆分仍保留条件错配，并出现了
+额外的引用校验失败；应先用少量原文比较任务配置的效果。
 
 文献列表中的 `id` 是任务内简短标识，不能重复。每项可设置：
 
@@ -99,6 +101,13 @@ python scripts/run_v08_evaluation.py task-a.json task-b.json --output-dir resear
 
 `rules` 用自然语言说明保留差异、阶段划分和输出语言。`synthesize=true` 会在单篇
 提取后追加跨文献整理；比较结果仍引用原文，失败时保留已有单篇结果。
+
+只需要笔记或信息表时，可设置 `"include_steps": false`，要求每条记录的 `steps`
+和每字段的 `step_ids` 都为空。此项同时进入模型输出约束与本地校验，避免只在文字
+规则里要求不生成步骤而被忽略。若模型仍生成步骤，使用已有的一次修复机会；再次
+失败则明确失败，不静默删去步骤后当作成功。`true` 允许整理有来源的操作步骤，并不
+要求给缺少操作描述的论文编造流程。省略该项时保持旧任务允许步骤的行为；旧结果
+仍可读取、修订和导出。更改此项会改变任务指纹，不能复用不兼容的旧结果。
 
 `export_formats` 选择派生结果的导出格式，例如 `["markdown", "csv"]`。允许 markdown、
 csv、jsonl，省略时全部导出；列表必须非空且不重复。原始结果 JSON、任务和运行清单

@@ -12,7 +12,11 @@ import pytest
 from aletheia_nexus.content import parse_document
 from aletheia_nexus.content.gate import sha256_file
 from aletheia_nexus.content.local import register_local_pdf
-from aletheia_nexus.processing.contracts import TASK_SCHEMA, validate_task
+from aletheia_nexus.processing.contracts import (
+    TASK_SCHEMA,
+    response_schema,
+    validate_task,
+)
 from aletheia_nexus.processing.engine import run_task
 from aletheia_nexus.processing.materials import build_package, load_source
 from aletheia_nexus.processing.provider import DeepSeekProvider, ProcessingError
@@ -163,6 +167,107 @@ class MockProvider:
         row = budget.reserve(None)
         row.update(status="completed", usage={"input_tokens": 10, "output_tokens": 10})
         return self.function(request)
+
+
+@pytest.mark.parametrize("extra", ["steps", "step_ids"])
+def test_no_steps_contract_repairs_without_silent_deletion_or_old_cache(
+    papers, tmp_path, extra
+):
+    legacy_task = task_for(papers[:1], "organize")
+    old_run = run_task(
+        legacy_task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=MockProvider(),
+    )
+    old_file = Path(old_run["run_directory"]) / "paper0.result.json"
+    old_hash = sha256_file(old_file)
+    task = {**legacy_task, "include_steps": False}
+    schema = response_schema(validate_task(task))
+    record_schema = schema["properties"]["records"]["items"]["properties"]
+    assert record_schema["steps"]["maxItems"] == 0
+    assert (
+        record_schema["fields"]["properties"]["method"]["properties"]["step_ids"][
+            "maxItems"
+        ]
+        == 0
+    )
+
+    def generate(request):
+        assert request["include_steps"] is False
+        response = response_for(request)
+        record = response["records"][0]
+        if extra == "steps":
+            record["fields"]["method"]["step_ids"] = []
+        else:
+            record["steps"] = []
+        if "validation_feedback" in request:
+            feedback = request["validation_feedback"]
+            assert feedback["code"] == "invalid_model_output"
+            assert extra in feedback["validation"]
+            record["steps"] = []
+            record["fields"]["method"]["step_ids"] = []
+        return response
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert run["status"] == "COMPLETED"
+    assert (
+        len(mock.requests) == 2
+    )  # Changed output contract cannot reuse the old result.
+    directory = Path(run["run_directory"])
+    candidate = json.loads((directory / "paper0.0.candidate.json").read_text("utf-8"))
+    rejected_record = candidate["records"][0]
+    assert (
+        rejected_record["steps"]
+        if extra == "steps"
+        else rejected_record["fields"]["method"]["step_ids"]
+    )
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    verify_result(result)
+    assert not result["response"]["records"][0]["steps"]
+    assert not result["response"]["records"][0]["fields"]["method"]["step_ids"]
+    assert "180 C" in (directory / "table.csv").read_text("utf-8-sig")
+    repeat = MockProvider(
+        lambda _: pytest.fail("compatible no-step result should reuse")
+    )
+    reused = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=repeat,
+    )
+    assert reused["items"][0]["reused"]
+    assert not reused["calls"]
+    # Old results are still valid and have not been rewritten to remove their steps.
+    verify_result(json.loads(old_file.read_text("utf-8")))
+    assert sha256_file(old_file) == old_hash
+
+
+def test_no_steps_contract_failure_stays_explicit(papers, tmp_path):
+    task = {**task_for(papers[:1]), "include_steps": False}
+    mock = MockProvider()
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert run["status"] == "FAILED"
+    assert len(mock.requests) == 2
+    assert run["items"][0]["error"] == "invalid_model_output"
+    assert not (Path(run["run_directory"]) / "paper0.result.json").exists()
+    with pytest.raises(ValueError, match="include_steps: invalid type"):
+        validate_task({**task, "include_steps": "false"})
 
 
 @pytest.mark.parametrize("kind", ["organize", "extract", "procedure"])

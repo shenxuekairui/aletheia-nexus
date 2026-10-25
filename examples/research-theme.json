@@ -13,6 +13,7 @@
   "mode": "local",
   "allow_remote": false,
   "synthesize": false,
+  "include_steps": false,
   "export_formats": ["markdown", "csv", "jsonl"],
   "rules": ["不得根据背景知识补写论文未报告的信息。"],
   "model": {"name": "deepseek-flash", "currency": "CNY", "reasoning_effort": "none", "input_cost_per_million": 2, "output_cost_per_million": 8},

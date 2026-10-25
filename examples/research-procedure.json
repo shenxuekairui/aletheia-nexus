@@ -2,6 +2,7 @@
   "schema": "aletheia-nexus/research-task/v1",
   "id": "experimental-procedure",
   "type": "procedure",
+  "include_steps": true,
   "objective": "用中文提取指定实验的条件、过程和结果。使用前说明目标实验与阶段，并按实际需要修改字段。",
   "documents": [{"id": "paper1", "artifact": "paper1.parsed.json", "pages": [1]}],
   "fields": [

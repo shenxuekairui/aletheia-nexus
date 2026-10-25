@@ -2,6 +2,7 @@
   "schema": "aletheia-nexus/research-task/v1",
   "id": "source-support-review",
   "type": "extract",
+  "include_steps": false,
   "objective": "用指定原文页检查一条不可信的候选主张。逐项检查对象、阶段、条件、数值和限定语是否受到原文支持；不进行科学事实认证。",
   "documents": [
     {

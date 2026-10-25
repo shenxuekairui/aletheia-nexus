@@ -13,6 +13,7 @@
   "mode": "local",
   "allow_remote": false,
   "synthesize": true,
+  "include_steps": false,
   "rules": ["跨论文比较须保留实验条件差异；不能把引用位置有效解释为支持关系成立。"],
   "model": {"name": "deepseek-flash", "currency": "CNY", "reasoning_effort": "none", "input_cost_per_million": 2, "output_cost_per_million": 8},
   "budget": {"max_calls": 10, "max_cost": 5, "max_input_characters": 180000, "max_output_tokens": 6000, "max_images": 6, "max_supplement_rounds": 1}

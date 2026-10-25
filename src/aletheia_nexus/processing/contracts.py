@@ -136,6 +136,8 @@ def validate(value: object, schema: dict, path: str = "data") -> None:
         for key, child in value.items():
             validate(child, schema["properties"][key], f"{path}.{key}")
     if isinstance(value, list):
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            raise ValueError(f"{path}: at most {schema['maxItems']} items allowed")
         for index, child in enumerate(value):
             validate(child, schema["items"], f"{path}[{index}]")
 
@@ -232,6 +234,7 @@ TASK = obj(
         "model": MODEL,
         "budget": BUDGET,
         "synthesize": BOOLEAN,
+        "include_steps": BOOLEAN,
         "export_formats": array(choice(*EXPORT_FORMATS)),
     },
     ["schema", "id", "type", "objective", "documents", "fields"],
@@ -367,6 +370,7 @@ def response_schema(task: dict, *, comparison: bool = False) -> dict:
     if comparison:
         return obj({"claims": array(CLAIM), "issues": array(ISSUE)})
     fields = {}
+    step_limit = {} if task.get("include_steps", True) else {"maxItems": 0}
     for field in task["fields"]:
         kind = field["type"]
         value = (
@@ -385,7 +389,7 @@ def response_schema(task: dict, *, comparison: bool = False) -> dict:
                 "nature": NATURE,
                 "context": TEXT,
                 "citations": CITATIONS,
-                "step_ids": array(TEXT),
+                "step_ids": {**array(TEXT), **step_limit},
             }
         )
     step = obj(
@@ -403,7 +407,7 @@ def response_schema(task: dict, *, comparison: bool = False) -> dict:
             "subject": TEXT,
             "stage": TEXT,
             "fields": obj(fields),
-            "steps": array(step),
+            "steps": {**array(step), **step_limit},
         }
     )
     return obj(

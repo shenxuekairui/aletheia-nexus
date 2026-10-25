@@ -40,6 +40,8 @@ def _request(
         "rules": task["rules"],
         "material": model_material(package),
     }
+    if "include_steps" in task:
+        request["include_steps"] = task["include_steps"]
     if previous is not None:
         if previous_package is None:
             raise ValueError("supplement requires its previous material package")
@@ -151,6 +153,8 @@ def _generate_checked(
                 },
             )
             if code not in repairable or repair == task["budget"]["max_repair_rounds"]:
+                if isinstance(exc, ValueError):
+                    raise ProcessingError(code, diagnostic) from None
                 raise
             row.setdefault("output_repairs", []).append(
                 {"input": prefix, "error": code, "attempt": repair + 1}
