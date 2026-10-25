@@ -215,6 +215,11 @@ aletheia-nexus research export paper1.result.json --output-dir csv-export --form
 result_id；不会因为字段同名就合并不同含义。同一来源 ID 对应不同 PDF 哈希时拒绝
 合并。原文入口重新检查本地 PDF 哈希，原文件已变化时显示定位提示。
 
+当结果未覆盖任务中的所有文献材料时，Markdown 报告开头会列出涉及数量和未包含的
+来源 ID；离线合并按各输入任务的文献范围并集计算，SI 也作为一份材料计数。这是
+结果覆盖提示，不是成功率：缺席可能来自处理失败或有意选择部分结果，不能解释成
+原文未报告。具体失败原因仍保留在原运行的 manifest.json；CSV 不凭空填入失败记录。
+
 人工修改科研结果时，复制目标记录的完整对象到 revision.json 的 replacement；
 同时填写 record_id、author、at、reason、confirm（布尔值）。运行：
 

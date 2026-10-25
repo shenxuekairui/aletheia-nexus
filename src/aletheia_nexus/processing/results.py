@@ -523,6 +523,26 @@ def export_results(
         "结果为 AI 派生资料；引用定位不等于科学支持已核实。未报告仅指所提供材料范围。",
         "",
     ]
+    # Offline exports may combine compatible tasks with different document sets.
+    # A missing source can also mean a deliberately selected subset, not failure.
+    expected_sources = {
+        d["id"]
+        for source_task in [task, *(r["task"] for r in results)]
+        for d in source_task["documents"]
+    }
+    missing_sources = expected_sources - identities.keys()
+    if missing_sources:
+        lines.extend(
+            [
+                f"本报告的派生结果涉及 {len(expected_sources & identities.keys())}/{len(expected_sources)} 份任务文献材料（含 SI，如有）。",
+                "",
+                "本次未包含："
+                + "、".join(_md(s) for s in sorted(missing_sources))
+                + "。",
+                "可能因处理失败或仅选择部分结果导出；不表示原文未报告所需信息。已包含的材料也不代表字段已完整提取或科学内容已核实。",
+                "",
+            ]
+        )
     csv_stream = io.StringIO(newline="")
     writer = csv.writer(csv_stream)
     writer.writerow(

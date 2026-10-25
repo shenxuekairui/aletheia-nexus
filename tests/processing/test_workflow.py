@@ -266,6 +266,9 @@ def test_no_steps_contract_failure_stays_explicit(papers, tmp_path):
     assert len(mock.requests) == 2
     assert run["items"][0]["error"] == "invalid_model_output"
     assert not (Path(run["run_directory"]) / "paper0.result.json").exists()
+    report = (Path(run["run_directory"]) / "report.md").read_text("utf-8")
+    assert "0/1 份任务文献材料" in report
+    assert "本次未包含：paper0。" in report
     with pytest.raises(ValueError, match="include_steps: invalid type"):
         validate_task({**task, "include_steps": "false"})
 
@@ -391,6 +394,15 @@ def test_export_combines_modes_but_not_different_field_meanings(papers, tmp_path
     paths = []
     for index, mode in enumerate(["parsed", "hybrid"]):
         task = task_for(papers, mode=mode)
+        # Differing task scopes must be unioned, including sources absent from
+        # the chosen results. Do not mistake a selected subset for a full batch.
+        task["documents"] = task["documents"][index:]
+        task["documents"].append(
+            {
+                "id": f"unselected{index}",
+                "artifact": str(papers[index].with_suffix(".parsed.json")),
+            }
+        )
         run = run_task(
             task,
             base_dir=tmp_path,
@@ -403,6 +415,9 @@ def test_export_combines_modes_but_not_different_field_meanings(papers, tmp_path
     records = (tmp_path / "combined/records.jsonl").read_text("utf-8").splitlines()
     assert len(records) == 2
     assert len({json.loads(r)["result_id"] for r in records}) == 2
+    report = (tmp_path / "combined/report.md").read_text("utf-8")
+    assert "2/4 份任务文献材料" in report
+    assert "本次未包含：unselected0、unselected1。" in report
     assert (
         len(
             json.loads((tmp_path / "combined/export-manifest.json").read_text("utf-8"))[
@@ -708,6 +723,10 @@ def test_failed_document_recovers_without_repeating_success(papers, tmp_path):
         provider=MockProvider(fail_second),
     )
     assert first["status"] == "PARTIAL"
+    report = (Path(first["run_directory"]) / "report.md").read_text("utf-8")
+    assert "1/2 份任务文献材料" in report
+    assert "本次未包含：paper1。" in report
+    assert "不表示原文未报告所需信息" in report
     mock = MockProvider()
     resumed = run_task(
         task,
@@ -719,6 +738,9 @@ def test_failed_document_recovers_without_repeating_success(papers, tmp_path):
     assert resumed["status"] == "COMPLETED"
     assert len(mock.requests) == 1
     assert resumed["items"][0]["reused"]
+    assert "本次未包含" not in (Path(resumed["run_directory"]) / "report.md").read_text(
+        "utf-8"
+    )
 
 
 @pytest.mark.parametrize("change", ["objective", "field", "notes", "provider"])
