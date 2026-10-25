@@ -1096,6 +1096,74 @@ def test_invalid_quote_gets_one_evidence_based_repair(
     assert run["items"][0]["output_repairs"][0]["error"] == "quotation_not_in_source"
 
 
+@pytest.mark.parametrize("defect", ["wrong_block", "wrong_page"])
+def test_quote_location_feedback_repairs_without_mutating_candidate(
+    papers, tmp_path, defect
+):
+    def generate(request):
+        answer = response_for(request)
+        citation = answer["records"][0]["fields"]["method"]["citations"][0]
+        expected = {k: citation[k] for k in ("source_id", "block_id", "page")}
+        if "validation_feedback" in request:
+            errors = request["validation_feedback"]["errors"]
+            assert len(errors) == 1
+            assert errors[0]["exact_quote_locations"] == [expected]
+            assert request["unvalidated_candidate"] != answer
+        elif defect == "wrong_block":
+            citation["block_id"] = "nonexistent-block"
+        else:
+            citation["page"] = 2
+        return answer
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task_for(papers[:1]),
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert run["status"] == "COMPLETED" and len(mock.requests) == 2
+    directory = Path(run["run_directory"])
+    original = json.loads((directory / "paper0.0.candidate.json").read_text("utf-8"))
+    repaired = json.loads(
+        (directory / "paper0.0.candidate.repair1.json").read_text("utf-8")
+    )
+    assert original != repaired
+    assert original == mock.requests[1]["unvalidated_candidate"]
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    assert result["validation"]["scientific_support"] == "not-verified"
+
+
+@pytest.mark.parametrize(
+    "scope", ["other_document", "unselected_page", "changed_symbol"]
+)
+def test_quote_location_feedback_preserves_source_scope_and_symbols(
+    papers, tmp_path, scope
+):
+    task = validate_task(task_for(papers))
+    sources = [load_source(c, tmp_path, task["mode"]) for c in task["documents"]]
+    package, _ = build_package(task, sources)
+    answer = response_for({"material": package, "fields": task["fields"]})
+    citation = answer["records"][0]["fields"]["method"]["citations"][0]
+    source = package["documents"][0]
+    if scope == "other_document":
+        # An identical quote in another document must not repair this source ID.
+        source["blocks"] = []
+    elif scope == "unselected_page":
+        source["pages_requested"] = [2]
+    else:
+        # Minus and approximation signs are scientifically distinct.
+        block = next(b for b in source["blocks"] if b["id"] == citation["block_id"])
+        block["text"] = "Temperature was ~95 °C."
+        citation["quote"] = "Temperature was −95 °C."
+    with pytest.raises(ProcessingError) as caught:
+        check_response(answer, task, package)
+    assert all(
+        not e["exact_quote_locations"] for e in caught.value.diagnostics["errors"]
+    )
+
+
 @pytest.mark.parametrize("defect", ["missing_unit", "unknown_step"])
 def test_field_repair_identifies_field_and_keeps_original_candidate(
     papers, tmp_path, defect

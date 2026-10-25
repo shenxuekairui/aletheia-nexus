@@ -67,6 +67,32 @@ def check_response(
 
     citation_errors = {}
 
+    def matching_locations(citation: dict) -> list[dict]:
+        """Offer bounded exact-quote locations, never silently repair a citation.
+
+        Only the same supplied document is searched. A matching quote says nothing
+        about support for the claim; the existing repair must still reassess it.
+        """
+        document = documents.get(citation["source_id"])
+        quotation = _quotation(citation["quote"])
+        if document is None or not quotation:
+            return []
+        matches = []
+        for block in document["blocks"]:
+            if block["page"] not in document["pages_requested"]:
+                continue
+            if quotation in _quotation(block["text"]):
+                matches.append(
+                    {
+                        "source_id": citation["source_id"],
+                        "block_id": block["id"],
+                        "page": block["page"],
+                    }
+                )
+                if len(matches) == 3:
+                    break
+        return matches
+
     def locate_citation(citation: dict) -> bool:
         review = False
         document = documents.get(citation["source_id"])
@@ -130,11 +156,18 @@ def check_response(
             try:
                 review |= locate_citation(citation)
             except ProcessingError as exc:
-                citation_errors[digest(citation)] = {
+                key = digest(citation)
+                if key in citation_errors:
+                    continue
+                citation_errors[key] = {
                     "code": exc.code,
                     "citation": citation,
                     **(exc.diagnostics or {}),
                 }
+                if exc.code in {"invalid_citation", "quotation_not_in_source"}:
+                    citation_errors[key]["exact_quote_locations"] = matching_locations(
+                        citation
+                    )
         return review
 
     states = {}
@@ -255,7 +288,7 @@ def check_response(
             errors[0]["code"],
             {
                 "errors": errors,
-                "validation": "Fix all listed citation errors against supplied evidence; retain original scientific meanings. Do not invent evidence.",
+                "validation": "Fix all listed citation errors against supplied evidence; retain original scientific meanings. exact_quote_locations lists up to three literal matches in the same supplied document, not proof that they support the claim. Reassess context before citing. Do not invent evidence.",
             },
         )
     if any(i["kind"] == "conflict" for i in response["issues"]):
