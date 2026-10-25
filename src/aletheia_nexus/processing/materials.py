@@ -21,7 +21,7 @@ from .contracts import digest
 from .provider import ProcessingError
 
 PACKAGE_SCHEMA = "aletheia-nexus/task-package/v1"
-BUILDER_VERSION = "2"
+BUILDER_VERSION = "3"
 
 
 def model_material(package: dict) -> dict:
@@ -297,6 +297,9 @@ def build_package(
     image_manifest = []
     for source in sources:
         sid = source.config["id"]
+        # Text and image selection are independent. Coverage includes either,
+        # but the evidence pack above still contains only selected text pages.
+        covered_pages = sorted(set(selected[sid]) | set(image_pages[sid]))
         entry = (
             deepcopy(by_id.get(source.artifact.document["artifact_id"], {}))
             if source in parsed
@@ -314,10 +317,10 @@ def build_package(
                     "sidecar": str(source.sidecar),
                     "artifact": str(source.artifact.path) if source.artifact else None,
                 },
-                "pages_requested": selected[sid],
+                "pages_requested": covered_pages,
                 "omitted_pages": sorted(
                     set(range(1, source.identity["page_count"] + 1))
-                    - set(selected[sid])
+                    - set(covered_pages)
                 ),
                 "notes": source.config.get("notes", []),
                 "corrections": source.config.get("corrections", []),

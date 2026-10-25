@@ -28,6 +28,9 @@ class LayoutLine:
     # Native glyph offsets and horizontal bounds, used only to split a table
     # line at observed column boundaries. OCR backends may leave these empty.
     glyph_spans: tuple[tuple[int, int, float, float], ...] = ()
+    # A majority font face is a layout boundary, not proof of a heading or of
+    # bold weight. Legacy/optical backends may not provide this information.
+    dominant_font: str | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +153,10 @@ def validate_page_layout(layout: object, *, expected_page: int | None = None) ->
             raise ValueError(f"lines[{index}] has invalid content region")
         if not isinstance(line.uncertain, bool) or not isinstance(line.bold, bool):
             raise ValueError(f"lines[{index}] has invalid boolean provenance")
+        if line.dominant_font is not None and (
+            not isinstance(line.dominant_font, str) or not line.dominant_font
+        ):
+            raise ValueError(f"lines[{index}] has invalid dominant font")
         previous_end = 0
         for start, end, x0, x1 in line.glyph_spans:
             if (

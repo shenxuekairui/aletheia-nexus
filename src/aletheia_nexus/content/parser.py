@@ -56,7 +56,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.10.15"
+PARSER_VERSION = "3.10.16"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -639,6 +639,11 @@ def _can_merge(
         or current.content_region == "table-cell"
         or previous.content_region != current.content_region
         or previous.extraction_method != current.extraction_method
+        or (
+            previous.dominant_font is not None
+            and current.dominant_font is not None
+            and previous.dominant_font != current.dominant_font
+        )
     ):
         return False
     chinese_prose = all(

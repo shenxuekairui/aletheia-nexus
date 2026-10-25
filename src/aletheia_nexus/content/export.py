@@ -357,7 +357,9 @@ def write_ai_export(path: str | Path, payload: str, *, overwrite: bool = False) 
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.{uuid4().hex}.part")
     try:
-        with temporary.open("x", encoding="utf-8") as handle:
+        # Serializers already choose line endings (CSV uses CRLF). Translating
+        # them again on Windows corrupts row separators and embedded field text.
+        with temporary.open("x", encoding="utf-8", newline="") as handle:
             handle.write(payload)
         os.replace(temporary, target)
     except Exception:

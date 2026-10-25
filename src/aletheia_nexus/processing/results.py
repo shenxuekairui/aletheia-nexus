@@ -556,6 +556,11 @@ def export_results(
     )
     jsonl = []
     claim_jsonl = []
+    claim_csv_stream = io.StringIO(newline="")
+    claim_writer = csv.writer(claim_csv_stream)
+    claim_writer.writerow(
+        ["claim_index", "text", "nature", "state", "result_id", "sources"]
+    )
     reference_numbers = {}
     references = []
 
@@ -636,6 +641,21 @@ def export_results(
                 )
             )
         for index, claim in enumerate(result["response"]["claims"]):
+            claim_state = (
+                result["validation"]
+                .get("claim_states", {})
+                .get(str(index), "review_required")
+            )
+            claim_writer.writerow(
+                [
+                    index,
+                    _csv(claim["text"]),
+                    claim["nature"],
+                    claim_state,
+                    result["artifact_id"],
+                    _csv(json.dumps(claim["citations"], ensure_ascii=False)),
+                ]
+            )
             claim_jsonl.append(
                 json.dumps(
                     {
@@ -643,9 +663,7 @@ def export_results(
                         "claim_index": index,
                         **claim,
                         **provenance,
-                        "state": result["validation"]
-                        .get("claim_states", {})
-                        .get(str(index), "review_required"),
+                        "state": claim_state,
                     },
                     ensure_ascii=False,
                 )
@@ -687,6 +705,9 @@ def export_results(
     if "jsonl" in formats and claim_jsonl:
         write_ai_export(output / "claims.jsonl", "\n".join(claim_jsonl) + "\n")
         outputs.append("claims.jsonl")
+    if "csv" in formats and claim_jsonl:
+        write_ai_export(output / "claims.csv", "\ufeff" + claim_csv_stream.getvalue())
+        outputs.append("claims.csv")
     return outputs
 
 

@@ -124,6 +124,12 @@ csv、jsonl，省略时全部导出；列表必须非空且不重复。原始结
 1600 像素，最多等待 60 秒；可读性仍须核对。`verify_original=true` 要求把所选页
 一起作为图像输入。首版没有 PDF 文件上传或整篇自动视觉扫描。
 
+hybrid 可以独立选择文本和图像，例如 `pages=[1]`、`image_pages=[2]` 表示第1页
+解析文本加第2页原图，不会额外发送第2页解析文本。材料包 builder=3 的
+pages_requested 记录两种输入覆盖的并集；实际文本查看 blocks，实际图像查看 images。
+图像页可用 block_id=null 引用且仍待视觉核对，不能引用该页未发送的解析块。
+旧包及其结果仍可读取；新材料身份不会复用旧覆盖逻辑的缓存。
+
 模型可以请求任务范围内的页。`max_supplement_rounds` 默认 1，最多 3；并受
 max_images、max_input_characters、max_output_tokens、max_calls、max_cost 限制。
 如果没有新增材料，不再次调用。文件缺失、渲染失败或预算不足时保留已有候选结果，
@@ -136,6 +142,11 @@ max_images、max_input_characters、max_output_tokens、max_calls、max_cost 限
 
 解析问题请先区分：补充邻页/SI、在新文件重跑解析，还是修改模型任务。不要仅因为
 模型无法提取就不断增加解析规则。`PARSED` 不代表科学语义已正确。
+
+若原页中的小标题与正文粘连，可用更新后的解析器在新目录重新解析，再让新任务
+引用新工件。当前解析器保留主要字体变化处的文本块边界，但不会把每次字体变化
+都声明为章节标题。不要覆盖旧工件：重新解析可能改变块ID，旧提取结果仍应引用
+原来的工件；新任务使用新材料身份，不应复用旧输入的提取缓存。
 
 核对关键数字或化学式时，可以另存一个少字段的extract任务，仅选择相关原页，
 分别查看parsed与hybrid结果，并保留原始批次结果。实际开发检查中，这种小范围任务
@@ -173,6 +184,19 @@ original 必须精确匹配原块；旧读法仍保留。修改任务即形成�
 package/candidate/result JSON、页面图像，以及 report.md、table.csv、records.jsonl。
 报告默认展示整理结果、字段、操作步骤和轻量引用；详细诊断留在本地文件。
 CSV 防止以公式执行模型文字，原值和原单位完整保留在结构化记录中。
+选择 csv 且结果含独立主张或跨文献结论时，另生成 `claims.csv`。每行包含主张文字、
+性质、核对状态、结果ID、从0开始的claim_index及原文引用。`result_id + claim_index`
+可对应同一结果的主张和修订入口；助手修订不会变成人工确认。原 `table.csv` 继续
+只保存结构化字段记录，因此单独导出仅有结论的comparison结果时，它可能只有表头，
+应查看 `claims.csv`。没有主张时不生成该文件，未选择csv时也不会生成。
+
+```powershell
+aletheia-nexus research export research-runs/runs/RUN_ID/comparison.result.json --output-dir comparison-export
+```
+
+该命令复用已保存结果，不调用模型。CSV保留字段内换行，Windows不会再次转换
+序列化器已生成的换行符；安全转义和原结果只读保护保持不变。
+
 选择 jsonl 且结果包含独立主张或跨文献结论时，同时生成 claims.jsonl，保存主张、性质、
 来源、结果身份和核对状态；records.jsonl 继续只包含字段记录，方便已有处理脚本使用。
 

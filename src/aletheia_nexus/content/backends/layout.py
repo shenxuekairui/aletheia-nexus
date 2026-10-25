@@ -6,6 +6,7 @@ import io
 import re
 import statistics
 import unicodedata
+from collections import Counter
 from importlib.metadata import version
 from typing import Any
 
@@ -58,6 +59,20 @@ def suspicious_text(text: str) -> bool:
             for index, c in enumerate(text)
         )
     )
+
+
+def _dominant_font(chars: list[LTChar]) -> str | None:
+    # Inline symbols, superscripts and occasional emphasized words should not
+    # change the paragraph's font face. Require a majority of full-size letters;
+    # an ambiguous mixture supplies no boundary evidence.
+    largest = max(c.size for c in chars)
+    names = [
+        c.fontname for c in chars if c.get_text().isalpha() and c.size >= largest * 0.85
+    ]
+    if not names:
+        return None
+    name, count = Counter(names).most_common(1)[0]
+    return name if count > len(names) / 2 else None
 
 
 def _ordered_glyphs(chars: list[LTChar]) -> list[LTChar]:
@@ -373,7 +388,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.7"
+    version = "1.19.8"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -865,6 +880,7 @@ class LayoutPdfBackend:
                         x1=x1,
                         y1=y1,
                         font_size=max(1.0, statistics.median(c.size for c in chars)),
+                        dominant_font=_dominant_font(chars),
                         bold=sum(
                             any(
                                 name in c.fontname.casefold()

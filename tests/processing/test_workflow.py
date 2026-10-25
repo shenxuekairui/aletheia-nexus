@@ -432,6 +432,14 @@ def test_compare_uses_original_citations(papers, tmp_path):
     assert claims[0]["state"] == "review_required"
     assert claims[0]["schema"] == "aletheia-nexus/research-claim/v1"
     assert claims[0]["result_id"] and len(claims[0]["source_documents"]) == 2
+    directory = Path(manifest["run_directory"])
+    assert "claims.csv" in manifest["outputs"]
+    with (directory / "claims.csv").open(encoding="utf-8-sig", newline="") as stream:
+        comparison_rows = list(csv.DictReader(stream))
+    assert len(comparison_rows) == 1
+    assert comparison_rows[0]["text"] == claims[0]["text"]
+    assert json.loads(comparison_rows[0]["sources"]) == claims[0]["citations"]
+    assert comparison_rows[0]["state"] == "review_required"
     resumed = MockProvider(generate)
     replay = run_task(
         task_for(papers, "compare"),
@@ -919,6 +927,81 @@ def test_requested_page_adds_real_material_then_reuses_final_result(
             )
 
 
+def test_hybrid_image_only_page_is_citable_without_expanding_text_scope(
+    papers, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        "aletheia_nexus.processing.materials.render_page",
+        lambda pdf, page: b"fake-png-fixture" + str(page).encode(),
+    )
+    task = task_for(papers[:1], mode="hybrid")
+    task["documents"][0].update(pages=[1], image_pages=[2])
+    original = papers[0].with_suffix(".parsed.json")
+    original_hash = sha256_file(original)
+
+    def generate(request):
+        document = request["material"]["documents"][0]
+        assert {b["page"] for b in document["blocks"]} == {1}
+        assert [i["page"] for i in request["material"]["images"]] == [2]
+        response = response_for(request)
+        response["claims"] = [
+            {
+                "text": "The testing page reports 25 C under nitrogen.",
+                "nature": "reported",
+                "citations": [
+                    {
+                        "source_id": "paper0",
+                        "block_id": None,
+                        "page": 2,
+                        "quote": "Testing was performed at 25 C under nitrogen for 2 h.",
+                    }
+                ],
+            }
+        ]
+        return response
+
+    mock = MockProvider(generate)
+    manifest = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert manifest["status"] == "COMPLETED"
+    assert len(mock.requests) == 1
+    result = json.loads(
+        (Path(manifest["run_directory"]) / "paper0.result.json").read_text("utf-8")
+    )
+    document = result["package"]["documents"][0]
+    assert document["pages_requested"] == [1, 2]
+    assert document["omitted_pages"] == []
+    assert {b["page"] for b in document["blocks"]} == {1}
+    assert result["validation"]["citations"][-1]["reading"] == "visual-unverified"
+    assert result["validation"]["scientific_support"] == "not-verified"
+
+    # Image coverage does not authorize citing unprovided parsed text on that page.
+    invalid = deepcopy(result["response"])
+    page_two = next(
+        b for b in json.loads(original.read_text("utf-8"))["blocks"] if b["page"] == 2
+    )
+    invalid["claims"][0]["citations"][0].update(
+        block_id=page_two["id"], quote=page_two["text"]
+    )
+    with pytest.raises(ProcessingError, match="invalid_citation"):
+        check_response(invalid, result["task"], result["package"])
+    replay = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert replay["items"][0]["reused"]
+    assert len(mock.requests) == 1
+    assert sha256_file(original) == original_hash
+
+
 def test_direct_supplement_reports_image_coverage_without_inventing_text(
     papers, tmp_path, monkeypatch
 ):
@@ -1161,6 +1244,70 @@ def test_claim_revisions_keep_source_validation_and_revoke_confirmation(
     revision["claim_index"] = True
     with pytest.raises(ValueError):
         revise_result(amended, revision)
+
+
+@pytest.mark.parametrize("formats", [["csv"], ["markdown", "jsonl"]])
+def test_comparison_only_csv_preserves_revision_provenance_and_safe_text(
+    papers, tmp_path, formats
+):
+    task = validate_task({**task_for(papers[:1]), "export_formats": formats})
+    source = load_source(task["documents"][0], tmp_path, task["mode"])
+    package, _ = build_package(task, [source])
+    response = response_for({"material": package, "fields": task["fields"]})
+    citation = response["records"][0]["fields"]["method"]["citations"][0]
+    original = make_result(
+        task,
+        package,
+        {"provider": "mock"},
+        {
+            "claims": [
+                {
+                    "text": "Initial reading",
+                    "nature": "ai_synthesis",
+                    "citations": [citation],
+                }
+            ],
+            "issues": [],
+        },
+        comparison=True,
+    )
+    revision = {
+        "claim_index": 0,
+        "replacement": {
+            "text": '=HYPERLINK("https://example.invalid","not an active formula")\n第二行, quoted',
+            "nature": "ai_synthesis",
+            "citations": [citation],
+        },
+        "author": "test assistant",
+        "authority": "assistant",
+        "at": "2026-10-26",
+        "reason": "Test reviewed comparison export",
+        "confirm": False,
+    }
+    revised = revise_result(original, revision)
+    source_file = tmp_path / "comparison.json"
+    source_file.write_text(json.dumps(revised), encoding="utf-8")
+    before = sha256_file(source_file)
+    output = tmp_path / "comparison-export"
+    assert main(["export", str(source_file), "--output-dir", str(output)]) == 0
+    assert sha256_file(source_file) == before
+    if "csv" in formats:
+        assert b"\r\r\n" not in (output / "claims.csv").read_bytes()
+        with (output / "claims.csv").open(encoding="utf-8-sig", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        assert len(rows) == 1
+        assert rows[0]["text"] == "'" + revision["replacement"]["text"]
+        assert rows[0]["claim_index"] == "0"
+        assert rows[0]["result_id"] == revised["artifact_id"]
+        assert rows[0]["nature"] == "ai_synthesis"
+        assert rows[0]["state"] == "review_required"
+        assert json.loads(rows[0]["sources"]) == [citation]
+        assert not (output / "claims.jsonl").exists()
+    else:
+        assert not (output / "claims.csv").exists()
+        exported = json.loads((output / "claims.jsonl").read_text("utf-8"))
+        assert exported["text"] == revision["replacement"]["text"]
+        assert exported["state"] == "review_required"
 
 
 def test_assistant_revisions_revoke_confirmation_and_cannot_self_confirm(
