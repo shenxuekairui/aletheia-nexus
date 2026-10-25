@@ -56,6 +56,7 @@ cover/
 *.ai.md
 *.ai.jsonl
 *.chunks.json
+research-output/
 qualification-report.json
 
 # Translations

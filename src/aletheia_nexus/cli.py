@@ -956,6 +956,7 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "  aletheia-nexus search CORPUS|PAPER.parsed.json QUERY [options]\n"
             "  aletheia-nexus export CORPUS|PAPER.parsed.json --format FORMAT --output PATH\n"
             "  aletheia-nexus open-source CORPUS RESULTS.json NUMBER [--launch]\n"
+            "  aletheia-nexus research run TASK.json --output-dir RESULTS [--allow-remote]\n"
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus browser-install\n"
             "  aletheia-nexus library [DIRECTORY] [--folder NAME] [--tag TAG]\n"
@@ -1046,6 +1047,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
             return 2
     if args[0] == "acquire":
         return main(args[1:])
+    if args[0] == "research":
+        from aletheia_nexus.processing_cli import main as research_main
+
+        return research_main(args[1:])
     if args[0] in {"import", "parse-batch", "open-source"}:
         from aletheia_nexus.research_cli import batch_main, import_main, open_main
 

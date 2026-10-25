@@ -1,5 +1,10 @@
 # Aletheia Nexus
 
+The development branch adds opt-in literature processing and field extraction with
+DeepSeek Flash, with local, source-linked results. See the [v0.8 development guide](docs/V08_USER_GUIDE.md)
+and [audit/design](docs/V08_DESIGN.md). This is unreleased work; the v0.7.3 release
+capabilities and historical benchmark claims below remain separate.
+
 [中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.3 Release Notes](docs/RELEASE_NOTES_v0.7.3.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
 
 > **From one verified paper to scientific knowledge infrastructure that can grow with research.**

@@ -8,6 +8,27 @@ from __future__ import annotations
 
 from aletheia_nexus.content.models import PageObject
 
+MAX_VECTOR_CANDIDATES = 5000
+MAX_VECTOR_COMPARISONS = 250000
+
+
+class VectorTextLimitError(ValueError):
+    """Preserve the uninspected region when dense drawings exhaust the scan."""
+
+    def __init__(self, candidates, width, height, reason):
+        super().__init__(reason)
+        boxes = [box for box, _ in candidates]
+        self.region = PageObject(
+            "vector-text",
+            "vector-text-scan-limit",
+            bbox=(
+                max(0, min(b[0] for b in boxes)) / width,
+                max(0, min(b[1] for b in boxes)) / height,
+                min(width, max(b[2] for b in boxes)) / width,
+                min(height, max(b[3] for b in boxes)) / height,
+            ),
+        )
+
 
 def vector_text_regions(shapes, lines, width, height):
     """Find horizontal/vertical runs of filled, glyph-sized PDF paths.
@@ -33,7 +54,15 @@ def vector_text_regions(shapes, lines, width, height):
         ):
             continue
         candidates.append((box, complex_path))
+    if len(candidates) > MAX_VECTOR_CANDIDATES:
+        raise VectorTextLimitError(
+            candidates,
+            width,
+            height,
+            f"{len(candidates)} candidate outlines exceed the scan limit",
+        )
     regions = []
+    comparisons = 0
     for vertical in (False, True):
         along, cross = (1, 0) if vertical else (0, 1)
         remaining = set(range(len(candidates)))
@@ -44,10 +73,19 @@ def vector_text_regions(shapes, lines, width, height):
         for position, i in enumerate(ordered):
             a = candidates[i][0]
             ah = a[cross + 2] - a[cross]
-            for j in ordered[position + 1 :]:
+            for next_position in range(position + 1, len(ordered)):
+                j = ordered[next_position]
                 b = candidates[j][0]
                 if b[along] - a[along + 2] > 24:
                     break
+                comparisons += 1
+                if comparisons > MAX_VECTOR_COMPARISONS:
+                    raise VectorTextLimitError(
+                        candidates,
+                        width,
+                        height,
+                        "candidate outline comparisons exceed the scan limit",
+                    )
                 bh = b[cross + 2] - b[cross]
                 overlap = min(a[cross + 2], b[cross + 2]) - max(a[cross], b[cross])
                 if (

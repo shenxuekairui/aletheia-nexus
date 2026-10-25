@@ -1,5 +1,9 @@
 # Aletheia Nexus 使用说明书
 
+开发分支新增的 `research run/export/revise`、DeepSeek 配置、任务字段、原页核对和
+结果复用见 [v0.8 开发版指南](V08_USER_GUIDE.md)。该功能未正式发布；下文保留既有
+获取、解析与本地文库操作说明。
+
 本手册对应 **v0.7.2**，面向需要获取、核验、整理和解析文献的研究人员。AN 以命令行提供从 DOI/书目输入，到本地 PDF 与来源记录，再到可检索、可导出的结构化内容的工作流。支持无 DOI 文献、本地登记、PDF 补充材料、跨文献检索及按结果导出。科研日常操作见 [0.7.2 工作流程](V072_RESEARCH_WORKFLOW.md)。首次使用建议先看 [README](../README.md#快速开始)，升级变化见 [v0.7.2 发布说明](RELEASE_NOTES_v0.7.2.md)；实际可安装版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
 
 AN 尽可能使用公开路径、已授权的官方 API 和用户自己的浏览器会话获取文件；只有 PDF 结构、论文身份和正文角色通过检查，才标记为 `VERIFIED`。AN 不提供订阅权限，也不会代替用户输入密码、MFA 或验证码。

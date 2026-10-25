@@ -3,6 +3,38 @@ from pypdf import PdfWriter
 from aletheia_nexus.acquire.fulltext.validation import inspect_pdf
 
 
+def test_compressed_stream_limit_is_reported_without_disabling_guard(tmp_path):
+    from pypdf import apply_configuration, get_configuration
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=200, height=200)
+    stream = DecodedStreamObject()
+    stream.set_data(b"BT /F1 10 Tf (" + b"X" * 4096 + b") Tj ET")
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
+    )
+    page[NameObject("/Contents")] = writer._add_object(stream.flate_encode())
+    path = tmp_path / "compressed.pdf"
+    writer.write(path)
+    with apply_configuration(zlib_maximum_output_length=128):
+        inspection = inspect_pdf(path)
+        assert get_configuration().zlib_maximum_output_length == 128
+
+    assert inspection.report.valid_pdf and inspection.report.page_count == 1
+    assert "resource limit" in inspection.report.warning
+    assert not inspection.extracted_text
+    assert not inspection.first_page_text
+    assert not inspection.page_margins
+
+
 def _write_pdf(
     path,
     *,

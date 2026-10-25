@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pypdf import PdfReader
-from pypdf.errors import PdfReadError
+from pypdf.errors import LimitReachedError, PdfReadError
 
 from aletheia_nexus.acquire.fulltext.models import PdfValidationReport
 
@@ -114,7 +114,7 @@ def inspect_pdf(
 
     try:
         reader = PdfReader(str(file_path), strict=False)
-    except (PdfReadError, OSError, ValueError) as exc:
+    except (LimitReachedError, PdfReadError, OSError, ValueError) as exc:
         return PdfInspection(
             report=PdfValidationReport(
                 valid_pdf=False,
@@ -134,14 +134,14 @@ def inspect_pdf(
     if encrypted:
         try:
             unlocked = bool(reader.decrypt(""))
-        except (PdfReadError, ValueError, TypeError):
+        except (LimitReachedError, PdfReadError, ValueError, TypeError):
             unlocked = False
         if not unlocked:
             metadata_title = None
             try:
                 metadata = reader.metadata
                 metadata_title = _clean_text(metadata.title if metadata else None)
-            except (PdfReadError, KeyError, TypeError, ValueError):
+            except (LimitReachedError, PdfReadError, KeyError, TypeError, ValueError):
                 pass
             return PdfInspection(
                 report=PdfValidationReport(
@@ -158,7 +158,7 @@ def inspect_pdf(
 
     try:
         page_count = len(reader.pages)
-    except (PdfReadError, KeyError, TypeError, ValueError) as exc:
+    except (LimitReachedError, PdfReadError, KeyError, TypeError, ValueError) as exc:
         return PdfInspection(
             report=PdfValidationReport(
                 valid_pdf=False,
@@ -190,7 +190,7 @@ def inspect_pdf(
     try:
         metadata = reader.metadata
         metadata_title = _clean_text(metadata.title if metadata else None)
-    except (PdfReadError, KeyError, TypeError, ValueError):
+    except (LimitReachedError, PdfReadError, KeyError, TypeError, ValueError):
         warning = "PDF metadata could not be read"
 
     text_parts: list[str] = []
@@ -201,6 +201,11 @@ def inspect_pdf(
         try:
             text, margins = _page_text_and_margins(page, page_index + 1)
             page_margins.append(margins)
+        except LimitReachedError:
+            # Do not retry more streams after the parser's resource guard fires.
+            # Existing evidence can still be assessed by the unchanged identity gate.
+            warning = "PDF text inspection stopped at the parser resource limit"
+            break
         except (PdfReadError, KeyError, TypeError, ValueError):
             extraction_failed = True
             continue

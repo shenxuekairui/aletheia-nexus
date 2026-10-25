@@ -251,6 +251,7 @@ def build_evidence_pack(
     context_pages: int = 1,
     extra_pages: dict[str, list[int]] | None = None,
     max_characters: int | None = None,
+    document_pages: dict[str, list[int]] | None = None,
 ) -> dict[str, object]:
     """Keep each document's chosen page context intact, or explicitly skip it.
 
@@ -323,6 +324,17 @@ def build_evidence_pack(
             )
             for entry in loaded.documents
         }
+    if document_pages is not None:
+        if report is not None or set(document_pages) - by_artifact.keys():
+            raise ValueError(
+                "document pages require current artifacts without search selectors"
+            )
+        wanted = {}
+        for identity, pages in document_pages.items():
+            count = by_artifact[identity].document["source"]["page_count"]
+            if any(type(p) is not int or not 1 <= p <= count for p in pages):
+                raise ValueError("document PDF page out of bounds")
+            wanted[identity] = set(pages)
     included = []
     skipped = [
         {

@@ -9,7 +9,10 @@ from test_display_and_tables import array, dictionary, regular_font, stream
 
 from aletheia_nexus.content.backends import AdaptiveOcrBackend, LayoutPdfBackend
 from aletheia_nexus.content.backends.tesseract import _native_gap_readings
-from aletheia_nexus.content.backends.vector_text import vector_text_regions
+from aletheia_nexus.content.backends.vector_text import (
+    VectorTextLimitError,
+    vector_text_regions,
+)
 from aletheia_nexus.content.models import LayoutLine, PageLayout
 
 
@@ -117,6 +120,40 @@ def test_straight_table_rules_do_not_make_vector_text_candidates():
     result = LayoutPdfBackend().extract_page(page, 1)
     assert not any(obj.object_type == "vector-text" for obj in result.objects)
     assert not any(w["code"] == "VECTOR_TEXT_UNVERIFIED" for w in result.warnings)
+
+
+@pytest.mark.parametrize(
+    "count,reason", [(5001, "candidate outlines"), (1000, "comparisons")]
+)
+def test_dense_drawings_stop_with_a_reviewable_region(count, reason):
+    # Repeated filled plot marks must not build an unbounded quadratic graph.
+    boxes = [((40, 100, 44, 106), True)] * count
+    with pytest.raises(VectorTextLimitError, match=reason) as error:
+        vector_text_regions(boxes, [], 600, 800)
+    assert error.value.region.bbox == (40 / 600, 100 / 800, 44 / 600, 106 / 800)
+
+
+def test_vector_scan_limit_preserves_native_text_and_original_region(monkeypatch):
+    import aletheia_nexus.content.backends.vector_text as vector_module
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(600, 800)
+    page[NameObject("/Resources")] = dictionary(Font=dictionary(F=regular_font()))
+    drawings = b"BT /F 12 Tf 50 700 Td (Measured at 18 C for 2 h.) Tj ET "
+    for x in (40, 48, 56, 64):
+        drawings += f"{x} 200 m {x + 5} 200 l {x + 5} 207 l {x + 1} 204 l h f ".encode()
+    page[NameObject("/Contents")] = stream(writer, drawings)
+    ordinary = LayoutPdfBackend().extract_page(page, 1)
+    monkeypatch.setattr(vector_module, "MAX_VECTOR_CANDIDATES", 3)
+    bounded = LayoutPdfBackend().extract_page(page, 1)
+    assert bounded.lines == ordinary.lines
+    warning = next(w for w in bounded.warnings if w["code"] == "VECTOR_TEXT_SCAN_LIMIT")
+    region = next(o for o in bounded.objects if o.name == warning["source_object"])
+    assert (
+        tuple(warning["bbox"])
+        == region.bbox
+        == (40 / 600, 200 / 800, 69 / 600, 207 / 800)
+    )
 
 
 def test_ocr_words_do_not_join_widely_separated_experiments():
