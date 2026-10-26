@@ -148,7 +148,11 @@ def test_error_classification_and_bounded_retry(monkeypatch, status, body, code,
 
 @pytest.mark.parametrize(
     "exception,code",
-    [(httpx.ReadTimeout, "timeout"), (httpx.ConnectError, "network_error")],
+    [
+        (httpx.ReadTimeout, "timeout"),
+        (httpx.ConnectError, "network_error"),
+        (httpx.RemoteProtocolError, "network_error"),
+    ],
 )
 def test_transport_failures_do_not_leak_request(monkeypatch, exception, code):
     def handler(request):
@@ -160,6 +164,11 @@ def test_transport_failures_do_not_leak_request(monkeypatch, exception, code):
         adapter.generate({}, obj({"value": TEXT}), [], budget, 100)
     assert len(budget.calls) == 3
     assert "secret-test-key" not in str(error.value)
+    assert error.value.diagnostics == {"transport_error_type": exception.__name__}
+    assert all(
+        call["transport_error_type"] == exception.__name__ for call in budget.calls
+    )
+    assert "secret-test-key" not in json.dumps([budget.calls, error.value.diagnostics])
 
 
 @pytest.mark.parametrize(
@@ -525,3 +534,122 @@ def test_projection_does_not_discard_unknown_science_or_conflicting_metadata(fau
         )
     with pytest.raises(ValueError, match="unknown keys"):
         project_response(noisy, schema, request.get("targets"))
+
+
+def disabled_steps_example():
+    from test_review import revision_example
+
+    task, candidate, review = revision_example()
+    task["include_steps"] = False
+    candidate["records"][0]["steps"] = []
+    for value in candidate["records"][0]["fields"].values():
+        value["step_ids"] = []
+    return task, candidate, review
+
+
+@pytest.mark.parametrize("revision", [False, True])
+def test_disabled_steps_missing_arrays_are_completed_with_replayable_raw(
+    monkeypatch, revision
+):
+    from aletheia_nexus.processing.contracts import response_schema
+    from aletheia_nexus.processing.review import revision_schema
+
+    task, expected, review = disabled_steps_example()
+    if revision:
+        for check in review["checks"]:
+            if check["target_id"] == "record:0/field:method":
+                check["verdict"] = "revise"
+        schema = revision_schema(task, expected, review)
+        expected = {
+            "replacements": {
+                "record:0/field:method": expected["records"][0]["fields"]["method"]
+            },
+            "issues": [],
+            "requests": [],
+        }
+        noisy = deepcopy(expected)
+        del noisy["replacements"]["record:0/field:method"]["step_ids"]
+        added_paths = [["replacements", "record:0/field:method", "step_ids"]]
+    else:
+        schema = response_schema(task)
+        noisy = deepcopy(expected)
+        del noisy["records"][0]["steps"]
+        for value in noisy["records"][0]["fields"].values():
+            del value["step_ids"]
+        added_paths = [
+            ["records", 0, "steps"],
+            ["records", 0, "fields", "method", "step_ids"],
+            ["records", 0, "fields", "duration", "step_ids"],
+        ]
+    original = deepcopy(noisy)
+    raw = json.dumps(noisy, ensure_ascii=False)
+    body = {
+        "status": "completed",
+        "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": raw}]}
+        ],
+    }
+    adapter = provider(monkeypatch, lambda req: httpx.Response(200, json=body))
+    budget = CallBudget(1)
+    response = adapter.generate({}, schema, [], budget, 1000)
+    assert response == expected and noisy == original
+    assert len(budget.calls) == 1 and budget.calls[0]["status"] == "completed"
+    assert response.metadata["raw_text"] == raw
+    assert response.metadata["changes"] == [
+        {
+            "operation": "add",
+            "path": path,
+            "value": [],
+            "reason": "disabled_steps_require_empty_array",
+        }
+        for path in added_paths
+    ]
+    replay = project_response(json.loads(raw), schema, raw_text=raw)
+    assert replay == response and replay.metadata == response.metadata
+    # Already complete empty arrays require no history or model rewrite.
+    assert not isinstance(project_response(expected, schema), ProjectedResponse)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "enabled_record_missing",
+        "enabled_field_missing",
+        "default_field_missing",
+        "null_steps",
+        "nonempty_step_ids",
+        "wrong_type_steps",
+        "scientific_key",
+        "scientific_value_missing",
+    ],
+)
+def test_disabled_steps_completion_never_erases_or_infers_scientific_content(fault):
+    from aletheia_nexus.processing.contracts import response_schema
+
+    task, candidate, _ = disabled_steps_example()
+    record = candidate["records"][0]
+    field = record["fields"]["method"]
+    if fault.startswith("enabled") or fault.startswith("default"):
+        task["include_steps"] = True
+        if fault.startswith("default"):
+            del task["include_steps"]
+        if fault == "enabled_record_missing":
+            del record["steps"]
+        else:
+            del field["step_ids"]
+    elif fault == "null_steps":
+        record["steps"] = None
+    elif fault == "nonempty_step_ids":
+        field["step_ids"] = ["an unreported step"]
+    elif fault == "wrong_type_steps":
+        record["steps"] = ""
+    else:
+        del field["step_ids"]
+        if fault == "scientific_key":
+            field["temperature"] = "not in the contract"
+        else:
+            del field["value"]
+    original = deepcopy(candidate)
+    with pytest.raises(ValueError):
+        project_response(candidate, response_schema(task))
+    assert candidate == original

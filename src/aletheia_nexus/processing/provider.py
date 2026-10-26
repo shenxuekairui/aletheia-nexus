@@ -39,7 +39,7 @@ def project_response(
     *,
     raw_text: str | None = None,
 ) -> dict:
-    """Remove only recognized, non-scientific extras; all other validation stays strict."""
+    """Normalize only unambiguous metadata; all scientific validation stays strict."""
     projected = deepcopy(response)
     targets = targets or []
     by_target = {target["target_id"]: target for target in targets}
@@ -77,6 +77,23 @@ def project_response(
                             "path": [*path, key],
                             "value": value.pop(key),
                             "reason": reason,
+                        }
+                    )
+            for key in ("steps", "step_ids"):
+                child = properties.get(key, {})
+                if (
+                    key not in value
+                    and key in contract.get("required", [])
+                    and child.get("type") == "array"
+                    and child.get("maxItems") == 0
+                ):
+                    value[key] = []
+                    changes.append(
+                        {
+                            "operation": "add",
+                            "path": [*path, key],
+                            "value": [],
+                            "reason": "disabled_steps_require_empty_array",
                         }
                     )
             for key in value:
@@ -212,7 +229,7 @@ class DeepSeekProvider:
     def identity(self) -> dict:
         return {
             "provider": "deepseek-responses",
-            "adapter_version": "4",
+            "adapter_version": "5",
             "temperature": 0,
             "model": self.config["name"],
             "config": self.config,
@@ -490,11 +507,15 @@ class DeepSeekProvider:
                     ) from None
                 row["status"] = "completed"
                 return result
-            except httpx.TimeoutException:
+            except httpx.TimeoutException as exc:
                 row["status"] = "timeout"
+                row["transport_error_type"] = type(exc).__name__
+                diagnostics = {"transport_error_type": row["transport_error_type"]}
                 retry = True
-            except httpx.RequestError:
+            except httpx.RequestError as exc:
                 row["status"] = "network_error"
+                row["transport_error_type"] = type(exc).__name__
+                diagnostics = {"transport_error_type": row["transport_error_type"]}
                 retry = True
             except ProcessingError as exc:
                 row["status"] = exc.code

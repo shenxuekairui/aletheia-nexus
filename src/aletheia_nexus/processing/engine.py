@@ -64,6 +64,13 @@ def _request(
     }
     if "include_steps" in task:
         request["include_steps"] = task["include_steps"]
+    if "include_claims" in task:
+        request["include_claims"] = task["include_claims"]
+        if not task["include_claims"]:
+            request["instruction"] = (
+                "Put scientific content in the configured fields and requested steps; "
+                "return claims: []. Keep necessary issues and material requests."
+            )
     if previous is not None:
         if previous_package is None:
             raise ValueError("supplement requires its previous material package")
@@ -961,6 +968,7 @@ def _compare(
                 pass
         request = _request(task, package)
         request["phase"] = "cross_document_synthesis"
+        request.pop("include_claims", None)
         request["extractions"] = [r["response"] for r in results]
         request["instruction"] = (
             "Compare these extractions; cite original evidence. Preserve contradictions and gaps."

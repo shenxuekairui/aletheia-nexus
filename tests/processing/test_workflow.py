@@ -869,6 +869,94 @@ def test_no_steps_contract_repairs_without_silent_deletion_or_old_cache(
     assert sha256_file(old_file) == old_hash
 
 
+def test_field_only_extraction_keeps_comparison_and_invalidates_old_cache(
+    papers, tmp_path
+):
+    legacy_task = task_for(papers, "compare")
+
+    def generate(request):
+        if request["phase"] == "cross_document_synthesis":
+            assert "include_claims" not in request
+            return {
+                "claims": [
+                    {
+                        "text": "Both sources report the supplied synthesis method.",
+                        "nature": "ai_synthesis",
+                        "citations": request["extractions"][0]["records"][0]["fields"][
+                            "method"
+                        ]["citations"],
+                    }
+                ],
+                "issues": [],
+            }
+        return response_for(request)
+
+    kwargs = dict(base_dir=tmp_path, output_dir=tmp_path / "out", allow_remote=True)
+    previous = run_task(legacy_task, provider=MockProvider(generate), **kwargs)
+    previous_file = Path(previous["run_directory"]) / "paper0.result.json"
+    previous_hash = sha256_file(previous_file)
+    task = {**legacy_task, "include_claims": False}
+    assert "maxItems" not in response_schema(legacy_task)["properties"]["claims"]
+    assert response_schema(task)["properties"]["claims"]["maxItems"] == 0
+    assert (
+        "maxItems" not in response_schema(task, comparison=True)["properties"]["claims"]
+    )
+    mock = MockProvider(generate)
+    result = run_task(task, provider=mock, **kwargs)
+    assert result["status"] == "COMPLETED"
+    assert len(mock.requests) == 3
+    assert all(r["include_claims"] is False for r in mock.requests[:2])
+    assert all("configured fields" in r["instruction"] for r in mock.requests[:2])
+    saved = json.loads(
+        (Path(result["run_directory"]) / "paper0.result.json").read_text("utf-8")
+    )
+    verify_result(saved)
+    assert saved["response"]["records"][0]["fields"]["method"]["value"]
+    assert saved["response"]["claims"] == []
+    repeat = run_task(
+        task,
+        provider=MockProvider(lambda _: pytest.fail("reuse field-only result")),
+        **kwargs,
+    )
+    assert not repeat["calls"]
+    assert sha256_file(previous_file) == previous_hash
+    verify_result(json.loads(previous_file.read_text("utf-8")))
+
+
+def test_field_only_contract_never_silently_discards_model_claims(papers, tmp_path):
+    task = {**task_for(papers[:1]), "include_claims": False}
+    task["budget"]["max_repair_rounds"] = 0
+
+    def generate(request):
+        response = response_for(request)
+        response["claims"] = [
+            {
+                "text": "An unrequested conclusion.",
+                "nature": "ai_synthesis",
+                "citations": [],
+            }
+        ]
+        return response
+
+    mock = MockProvider(generate)
+    result = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert result["status"] == "FAILED"
+    assert result["items"][0]["error"] == "invalid_model_output"
+    assert len(mock.requests) == 1
+    candidate = json.loads(
+        (Path(result["run_directory"]) / "paper0.0.candidate.json").read_text("utf-8")
+    )
+    assert candidate["claims"][0]["text"] == "An unrequested conclusion."
+    with pytest.raises(ValueError, match="include_claims: invalid type"):
+        validate_task({**task, "include_claims": "false"})
+
+
 def test_no_steps_contract_failure_stays_explicit(papers, tmp_path):
     task = {**task_for(papers[:1]), "include_steps": False}
     mock = MockProvider()
@@ -2391,6 +2479,15 @@ def test_prose_summary_keeps_source_quotes_without_fake_literal_value(papers, tm
         check_response(answer, task, package)["record_states"]["r1"]
         == "review_required"
     )
+    for status in ("reported", "normalized"):
+        context_only = deepcopy(answer)
+        context_only["records"][0]["fields"]["method"].update(
+            value=None, raw_value=field["value"], context=field["value"], status=status
+        )
+        unchanged = deepcopy(context_only)
+        with pytest.raises(ProcessingError, match="missing_original_value"):
+            check_response(context_only, task, package)
+        assert context_only == unchanged
     task["fields"][0]["type"] = "number"
     field.update(value=180, nature="reported")
     with pytest.raises(ProcessingError, match="missing_original_value"):

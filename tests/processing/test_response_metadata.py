@@ -140,3 +140,53 @@ def test_comparison_metadata_history_is_preserved_on_resume(papers, tmp_path):
     ).read_bytes() == (
         Path(first["run_directory"]) / "comparison.metadata.json"
     ).read_bytes()
+
+
+def test_disabled_steps_completion_keeps_raw_and_replays_additions_on_resume(
+    papers, tmp_path
+):
+    task = {**task_for(papers[:1]), "include_steps": False}
+
+    def generate(request):
+        response = response_for(request)
+        record = response["records"][0]
+        del record["steps"]
+        del record["fields"]["method"]["step_ids"]
+        return response
+
+    mock = MockProvider(generate)
+    output = tmp_path / "out"
+    kwargs = dict(
+        base_dir=tmp_path, output_dir=output, allow_remote=True, provider=mock
+    )
+    first = run_task(task, **kwargs)
+    row = first["items"][0]
+    assert row["status"] == "COMPLETED" and not row.get("output_repairs")
+    assert len(mock.requests) == 1
+    directory = Path(first["run_directory"])
+    raw = json.loads((directory / "paper0.0.candidate.json").read_text("utf-8"))
+    result = json.loads((directory / row["result"]).read_text("utf-8"))
+    expected = deepcopy(raw)
+    expected["records"][0]["steps"] = []
+    expected["records"][0]["fields"]["method"]["step_ids"] = []
+    assert result["response"] == expected
+    entry = row["response_metadata"][0]
+    proof = json.loads((directory / entry["file"]).read_text("utf-8"))
+    assert json.loads(proof["raw_text"]) == raw
+    assert len(proof["changes"]) == 2
+    assert all(change["operation"] == "add" for change in proof["changes"])
+
+    cached = run_task(task, **kwargs)
+    assert cached["items"][0]["reused"] and len(mock.requests) == 1
+    assert (Path(cached["run_directory"]) / entry["file"]).read_bytes() == (
+        directory / entry["file"]
+    ).read_bytes()
+
+    cache_file = next((output / "cache").glob("*.json"))
+    envelope = json.loads(cache_file.read_text("utf-8"))
+    proof = envelope["metadata_artifacts"][entry["file"]]
+    proof["changes"][0]["value"] = ["forged addition"]
+    envelope["response_metadata"][0]["sha256"] = digest(proof)
+    cache_file.write_text(json.dumps(envelope), "utf-8")
+    rebuilt = run_task(task, **kwargs)
+    assert not rebuilt["items"][0]["reused"] and len(mock.requests) == 2

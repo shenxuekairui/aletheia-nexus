@@ -43,6 +43,8 @@ $env:DEEPSEEK_API_KEY = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY'
 程序不保存请求头和原始错误响应；记录HTTP状态码、固定错误类别、模型、提示词指纹、输入指纹、
 耗时、可获得的 Token 数和费用估算。模型可能拒绝、截断或产生无法核验的输出，均不
 作为成功结果静默接受。JSON 结构有效也不保证科学正确。
+网络失败另记录 `transport_error_type`（例如 `ConnectError`、`RemoteProtocolError`、
+`ReadTimeout`），用于区分连接、传输协议和等待响应问题；不记录异常正文或密钥。
 
 费用配置包括 `currency`、`input_cost_per_million`、`output_cost_per_million`，
 以及可选的 `cached_input_cost_per_million`；省略缓存价格时按普通输入价保守计算。
@@ -171,6 +173,13 @@ PARTIAL。失败的复核不作为成功缓存，重跑会重新处理。成功�
 要求给缺少操作描述的论文编造流程。省略该项时保持旧任务允许步骤的行为；旧结果
 仍可读取、修订和导出。更改此项会改变任务指纹，不能复用不兼容的旧结果。
 
+只需指定字段和步骤、不需要单篇提取另写科学主张时，可设置 `"include_claims": false`。
+模型仍须完整回答所有配置字段，并保留必要的缺失、歧义和材料请求；单篇 `claims`
+受输出契约约束为空，程序不会在生成后静默删除多余主张。此选项不关闭
+`synthesize=true` 的跨文献比较；比较阶段仍可生成有来源的综合主张。省略或设为
+`true` 时保持原行为。更改选项会使旧缓存失效，旧文件不变。它提供任务范围控制，
+不代表已证明普遍提高准确率；新论文上的对照正在验证。
+
 `export_formats` 选择派生结果的导出格式，例如 `["markdown", "csv"]`。允许 markdown、
 csv、jsonl，省略时全部导出；列表必须非空且不重复。原始结果 JSON、任务和运行清单
 始终保留。local 模式尚未提取字段，仍保存原文材料报告和材料包，不生成虚假的结果表。
@@ -268,6 +277,9 @@ aletheia-nexus research export research-runs/runs/RUN_ID/comparison.result.json 
 摘要没有单个原始值时允许 raw_value 为空，原读法保存在 citations 中；数值、布尔值
 和 normalized 字段必须保留 raw_value。not_reported的value/raw_value/unit都为null，
 原因放context；定性的“环境温度”等仍可作为reported值，不能因缺少数值而判未报告。
+`value` 按配置类型保存答案，string 字段可以包含完整的定性描述或阅读笔记。
+reported / normalized 的 value 不能为 null 或空值；context 仅补充范围、限定或
+规范化说明，不能替代答案。程序不会把 context 自动搬入 value，原始候选仍保留。
 步骤关联的科学正确性不能由 ID 存在证明。
 程序校验文献身份和已提供页面。精确块/引文匹配用于定位质量提示，不是整条结果的
 通过门槛。文字不匹配（包括断词）、空引文或缺少块 ID 时保留候选和真实原页入口，
