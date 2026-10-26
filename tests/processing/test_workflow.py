@@ -441,6 +441,7 @@ def test_targeted_review_preserves_supported_fields_and_replays_cached_patch(
     papers, tmp_path, cache_fault
 ):
     task = task_for(papers[:1])
+    task["include_claims"] = False
     task["fields"].append(
         {
             "id": "context",
@@ -451,6 +452,11 @@ def test_targeted_review_preserves_supported_fields_and_replays_cached_patch(
     task["budget"].update(max_review_rounds=1, max_repair_rounds=0)
 
     def generate(request):
+        if request["phase"] == "document_extraction":
+            assert "return claims: []" in request["instruction"]
+        else:
+            # Review checks and targeted replacements have their own schemas.
+            assert "instruction" not in request
         if request["phase"] == "evidence_review":
             review = review_for(request)
             for check in review["checks"]:
@@ -1506,6 +1512,71 @@ def test_failed_document_recovers_without_repeating_success(papers, tmp_path):
     assert "本次未包含" not in (Path(resumed["run_directory"]) / "report.md").read_text(
         "utf-8"
     )
+
+
+@pytest.mark.parametrize("change", ["material_projection", "extraction", "comparison"])
+def test_changed_request_recomputes_only_affected_work(
+    papers, tmp_path, monkeypatch, change
+):
+    from aletheia_nexus.processing import engine
+
+    task = task_for(papers, "compare")
+
+    def generate(request):
+        if request["phase"] == "cross_document_synthesis":
+            return {
+                "claims": [
+                    {
+                        "text": "Both sources report the supplied synthesis method.",
+                        "nature": "ai_synthesis",
+                        "citations": request["extractions"][0]["records"][0]["fields"][
+                            "method"
+                        ]["citations"],
+                    }
+                ],
+                "issues": [],
+            }
+        return response_for(request)
+
+    kwargs = dict(base_dir=tmp_path, output_dir=tmp_path / "out", allow_remote=True)
+    initial = run_task(task, provider=MockProvider(generate), **kwargs)
+    old_file = Path(initial["run_directory"]) / "paper0.result.json"
+    old_hash = sha256_file(old_file)
+    original_request = engine._request
+
+    def changed_request(*args, **kwargs):
+        request = original_request(*args, **kwargs)
+        if change == "material_projection":
+            document = request["material"]["documents"][0]
+            document["notes"] = [*document["notes"], "Keep source roles explicit."]
+        elif (change == "extraction" and request["phase"] == "document_extraction") or (
+            change == "comparison" and request["phase"] == "cross_document_synthesis"
+        ):
+            request["instruction"] = (
+                request.get("instruction", "") + " Retain source roles."
+            )
+        return request
+
+    monkeypatch.setattr(engine, "_request", changed_request)
+    mock = MockProvider(generate)
+    updated = run_task(task, provider=mock, **kwargs)
+    assert updated["status"] == "COMPLETED"
+    # A changed extraction request with an identical resulting artifact leaves
+    # the comparison's actual input unchanged, so only the documents rerun.
+    assert updated["comparison"]["reused"] == (change == "extraction")
+    assert (
+        len(mock.requests)
+        == {"material_projection": 3, "extraction": 2, "comparison": 1}[change]
+    )
+    assert all(row["reused"] == (change == "comparison") for row in updated["items"])
+    repeat = run_task(
+        task,
+        provider=MockProvider(lambda _: pytest.fail("reuse unchanged requests")),
+        **kwargs,
+    )
+    assert not repeat["calls"]
+    assert sha256_file(old_file) == old_hash
+    verify_result(json.loads(old_file.read_text("utf-8")))
 
 
 @pytest.mark.parametrize("change", ["objective", "field", "notes", "provider"])

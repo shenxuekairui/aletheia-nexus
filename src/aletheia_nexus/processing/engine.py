@@ -53,9 +53,11 @@ def _request(
     package: dict,
     previous: dict | None = None,
     previous_package: dict | None = None,
+    *,
+    phase: str = "document_extraction",
 ) -> dict:
     request = {
-        "phase": "document_extraction",
+        "phase": phase,
         "objective": task["objective"],
         "type": task["type"],
         "fields": task["fields"],
@@ -64,9 +66,13 @@ def _request(
     }
     if "include_steps" in task:
         request["include_steps"] = task["include_steps"]
-    if "include_claims" in task:
+    if phase == "cross_document_synthesis":
+        request["instruction"] = (
+            "Compare these extractions; cite original evidence. Preserve contradictions and gaps."
+        )
+    elif "include_claims" in task:
         request["include_claims"] = task["include_claims"]
-        if not task["include_claims"]:
+        if phase == "document_extraction" and not task["include_claims"]:
             request["instruction"] = (
                 "Put scientific content in the configured fields and requested steps; "
                 "return claims: []. Keep necessary issues and material requests."
@@ -308,8 +314,7 @@ def _review_candidate(
             )
             for batch, (targets, view) in enumerate(batches):
                 original_request = {
-                    **_request(task, package),
-                    "phase": "evidence_review",
+                    **_request(task, package, phase="evidence_review"),
                     "candidate": view,
                     "targets": targets,
                 }
@@ -381,8 +386,7 @@ def _review_candidate(
             revised = candidate
             if mode != "unchanged":
                 revision_request = {
-                    **_request(task, package),
-                    "phase": "document_revision",
+                    **_request(task, package, phase="document_revision"),
                     "revision_mode": mode,
                     "base_candidate_sha256": digest(candidate),
                     "candidate": candidate,
@@ -667,6 +671,8 @@ def run_task(
                         "task": task,
                         "material": initial["artifact_id"],
                         "provider": provider_identity,
+                        "request": _request(task, initial),
+                        "schema": response_schema(task),
                     }
                 )
                 cache = cache_dir / (key + ".json")
@@ -947,7 +953,18 @@ def _compare(
             if hashlib.sha256(data).hexdigest() != descriptor["sha256"]:
                 raise ProcessingError("comparison_image_changed")
             images.append({**descriptor, "bytes": data})
-        key = digest({"task": task, "package": package, "provider": provider_identity})
+        request = _request(task, package, phase="cross_document_synthesis")
+        request["extractions"] = [r["response"] for r in results]
+        _within_input_budget(task, request)
+        key = digest(
+            {
+                "task": task,
+                "package": package,
+                "provider": provider_identity,
+                "request": request,
+                "schema": response_schema(task, comparison=True),
+            }
+        )
         cached_path = cache_dir / ("comparison-" + key + ".json")
         cached = None
         if resume and cached_path.is_file():
@@ -966,14 +983,6 @@ def _compare(
                     cached = envelope
             except (OSError, ValueError, KeyError, TypeError, ProcessingError):
                 pass
-        request = _request(task, package)
-        request["phase"] = "cross_document_synthesis"
-        request.pop("include_claims", None)
-        request["extractions"] = [r["response"] for r in results]
-        request["instruction"] = (
-            "Compare these extractions; cite original evidence. Preserve contradictions and gaps."
-        )
-        _within_input_budget(task, request)
         if cached:
             result = cached["result"]
             _restore_metadata_files(cached, run_dir, manifest["comparison"])
