@@ -89,6 +89,14 @@ contain untranscribed values, units or scale bars. Closely aligned image rows ca
 belong to one figure; an intervening caption ends that association. Region
 coverage is not image-text recognition or a verified scale-to-panel relationship.
 
+From parser 3.10.17, candidates on opposite sides of a figure caption are not
+merged. Unambiguous groups on the same page can disambiguate another caption;
+unresolved competition, partial ownership or overlap retains `caption-only`.
+No direction is preferred and caption processing order does not choose ownership.
+Raster regions can still omit vector panels and the caption block can omit
+continuation text; their union is not a guaranteed complete figure crop.
+Existing `parsed-document/v3` artifacts remain valid and are not rewritten.
+
 Panel associations marked `positioned-panel-length` describe an observed length
 label and retain the existing uncertainty flag; their scientific role remains
 unverified. Compact `Panel (...): label ...` text does not identify a measurement

@@ -180,9 +180,16 @@ def test_alternative_conflicts_share_a_location_but_keep_both_readings():
     assert all(g["uncertain"] for g in groups)
 
 
-def test_figure_includes_aligned_upper_panels_but_stops_at_another_caption():
+@pytest.mark.parametrize("mirror", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_figure_includes_aligned_upper_panels_but_stops_at_another_caption(
+    mirror, reverse
+):
+    def orient(box):
+        return (box[0], 1 - box[3], box[2], 1 - box[1]) if mirror else box
+
     objects = tuple(
-        PageObject("image", f"im{i}", 300, 200, box)
+        PageObject("image", f"im{i}", 300, 200, orient(box))
         for i, box in enumerate(
             [
                 (0.1, 0.4, 0.35, 0.53),
@@ -204,15 +211,20 @@ def test_figure_includes_aligned_upper_panels_but_stops_at_another_caption():
         ),
     ]
     anchors = [
-        dict(id="a", bbox=[0.1, 0.36, 0.75, 0.38]),
-        dict(id="b", bbox=[0.1, 0.673, 0.75, 0.683]),
+        dict(id="a", bbox=orient([0.1, 0.36, 0.75, 0.38])),
+        dict(id="b", bbox=orient([0.1, 0.673, 0.75, 0.683])),
     ]
+    if reverse:
+        captions.reverse()
+        objects = tuple(reversed(objects))
     figures, _, _ = _objects(
         captions, anchors, {1: PageLayout(1, 600, 800, objects=objects)}
     )
-    assert {o["name"] for o in figures[0]["source_objects"]} == {
+    by_caption = {f["caption_block_id"]: f for f in figures}
+    assert {o["name"] for o in by_caption["cap"]["source_objects"]} == {
         "im0",
         "im1",
         "im2",
         "im3",
     }
+    assert {o["name"] for o in by_caption["other"]["source_objects"]} == {"im4"}

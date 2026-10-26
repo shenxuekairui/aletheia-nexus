@@ -557,13 +557,14 @@ def evidence_markdown(pack: dict[str, object]) -> str:
                         )
                     lines.append(f"| {row} | " + " | ".join(values) + " |")
                 lines.append("")
+        blocks = {block["id"]: block for block in entry["blocks"]}
         for figure in entry.get("figures", []):
-            figure_pages = sorted(
-                {obj["page"] for obj in figure.get("source_objects", [])}
-            )
+            figure_pages = {obj["page"] for obj in figure.get("source_objects", [])}
+            if caption := blocks.get(figure["caption_block_id"]):
+                figure_pages.add(caption["page"])
             lines.extend(
                 [
-                    f"Observed figure {figure['id']}: {figure['caption']}; original PDF pages={figure_pages}; figure/axis text not guaranteed transcribed; consult the PDF before interpreting values, units or reference electrodes.",
+                    f"Observed figure {figure['id']}: {figure['caption']}; original PDF pages={sorted(figure_pages)}; figure/axis text not guaranteed transcribed; consult the PDF before interpreting values, units or reference electrodes.",
                     "",
                 ]
             )
@@ -579,7 +580,6 @@ def evidence_markdown(pack: dict[str, object]) -> str:
                 ]
             )
 
-        blocks = {block["id"]: block for block in entry["blocks"]}
         locations = entry.get("review_locations") or review_locations(entry)
         uncertain_locations = sum(group["uncertain"] for group in locations)
         uncertain_blocks = sum(block["uncertain"] for block in entry["blocks"])
