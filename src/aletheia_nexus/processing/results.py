@@ -291,7 +291,6 @@ def check_response(
         if (
             source is None
             or not request["reason"].strip()
-            or not request["pages"]
             or any(
                 not 1 <= p <= source["source"]["page_count"] for p in request["pages"]
             )
@@ -716,6 +715,17 @@ def export_results(
                     "",
                 ]
             )
+        material_requests = [
+            request
+            for request in result["response"].get("requests", [])
+            if not request["pages"]
+        ]
+        if material_requests:
+            lines.extend(["**待补充材料**", ""])
+            for request in material_requests:
+                lines.extend(
+                    [f"- {_md(request['source_id'])}：{_md(request['reason'])}", ""]
+                )
         issues = result["response"]["issues"]
         if issues:
             lines.extend(

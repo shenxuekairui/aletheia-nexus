@@ -736,6 +736,7 @@ def run_task(
                         if not response["requests"]:
                             break
                         changed = False
+                        needs_input = any(not r["pages"] for r in response["requests"])
                         next_additions = deepcopy(additions)
                         by_id = {d["id"]: d for d in package["documents"]}
                         for supplement in response["requests"]:
@@ -757,7 +758,9 @@ def run_task(
                             or round_number == task["budget"]["max_supplement_rounds"]
                         ):
                             row["supplement_status"] = (
-                                "no_new_material"
+                                "needs_input"
+                                if not changed and needs_input
+                                else "no_new_material"
                                 if not changed
                                 else "round_budget_exhausted"
                             )
@@ -800,16 +803,47 @@ def run_task(
                             owner_id,
                             row,
                         )
+                        if not row.get("review_status") and row.get(
+                            "supplement_status"
+                        ) in {None, "no_new_material", "needs_input"}:
+                            # Review can introduce requests after the reading loop.
+                            # Cache only requests that cannot add new supplied pages.
+                            covered_pages = {
+                                d["id"]: set(d["pages_requested"])
+                                for d in package["documents"]
+                            }
+                            if task["mode"] == "hybrid":
+                                covered_pages = {
+                                    sid: {
+                                        image["page"]
+                                        for image in package["images"]
+                                        if image["source_id"] == sid
+                                    }
+                                    for sid in covered_pages
+                                }
+                            if not response["requests"] or any(
+                                set(request["pages"])
+                                - covered_pages[request["source_id"]]
+                                for request in response["requests"]
+                            ):
+                                row.pop("supplement_status", None)
+                            else:
+                                row["supplement_status"] = (
+                                    "needs_input"
+                                    if any(not r["pages"] for r in response["requests"])
+                                    else "no_new_material"
+                                )
                     for source in sources:
                         source.verify()
                     result = make_result(task, package, provider_identity, response)
                     row["reused"] = False
-                    # A repeated request for already supplied material is a stable
-                    # partial result, not a reason to charge again on every resume.
+                    # Already supplied pages and requests awaiting user material
+                    # are stable partial results; resume must not charge again.
                     # Failures after adding material still retry on the next run.
                     if not row.get("review_status") and (
                         not response["requests"]
-                        or row.get("supplement_status") == "no_new_material"
+                        or row.get("supplement_status")
+                        in {"no_new_material", "needs_input"}
                     ):
                         write_json(
                             cache,

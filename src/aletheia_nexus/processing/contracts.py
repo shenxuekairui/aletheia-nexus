@@ -388,7 +388,20 @@ ISSUE = obj(
         "page": {"type": ["integer", "null"]},
     }
 )
-REQUEST = obj({"source_id": TEXT, "pages": array(INTEGER), "reason": TEXT})
+REQUEST = obj(
+    {
+        "source_id": TEXT,
+        "pages": {
+            **array(INTEGER),
+            "description": (
+                "Pages to read from a supplied source. Use [] when additional "
+                "material or clarification is needed without known page numbers; "
+                "explain in reason. Such requests await user input, not automatic reading."
+            ),
+        },
+        "reason": TEXT,
+    }
+)
 
 
 def response_schema(task: dict, *, comparison: bool = False) -> dict:

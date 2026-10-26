@@ -1866,6 +1866,166 @@ def test_useless_repeated_requests_stop_and_remain_partial(papers, tmp_path):
     assert cached["items"][0]["supplement_status"] == "no_new_material"
 
 
+@pytest.mark.parametrize("supplement_rounds", [0, 1])
+def test_material_request_without_pages_preserves_result_and_waits_for_input(
+    papers, tmp_path, supplement_rounds
+):
+    task = task_for(papers[:1])
+    task["budget"]["max_supplement_rounds"] = supplement_rounds
+    material_request = {
+        "source_id": "paper0",
+        "pages": [],
+        "reason": "Please provide the supplementary methods; their pages are unknown.",
+    }
+
+    def generate(request):
+        response = response_for(request)
+        response["requests"] = [deepcopy(material_request)]
+        return response
+
+    mock = MockProvider(generate)
+    manifest = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert len(mock.requests) == 1
+    assert manifest["status"] == "PARTIAL"
+    assert manifest["items"][0]["supplement_status"] == "needs_input"
+    result = json.loads(
+        (Path(manifest["run_directory"]) / "paper0.result.json").read_text("utf-8")
+    )
+    assert result["response"] == generate(mock.requests[0])
+    verify_result(result)
+    report = (Path(manifest["run_directory"]) / "report.md").read_text("utf-8")
+    assert "待补充材料" in report and material_request["reason"] in report
+    cached_mock = MockProvider(generate)
+    cached = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=cached_mock,
+    )
+    assert not cached_mock.requests
+    assert cached["status"] == "PARTIAL" and cached["items"][0]["reused"]
+    assert cached["items"][0]["supplement_status"] == "needs_input"
+
+    # Empty pages do not relax source identity, page bounds or explanation rules.
+    for invalid in (
+        {**material_request, "source_id": "not-supplied"},
+        {**material_request, "pages": [999]},
+        {**material_request, "reason": " "},
+    ):
+        response = deepcopy(result["response"])
+        response["requests"] = [invalid]
+        with pytest.raises(ProcessingError, match="invalid_supplement_request"):
+            check_response(response, result["task"], result["package"])
+
+
+def test_material_request_does_not_block_known_page_supplement(papers, tmp_path):
+    task = task_for(papers[:1])
+    task["documents"][0]["pages"] = [1]
+
+    def generate(request):
+        response = response_for(request)
+        response["requests"] = [
+            {"source_id": "paper0", "pages": [], "reason": "Need the missing SI"}
+        ]
+        if 2 not in request["material"]["documents"][0]["pages_requested"]:
+            response["requests"].append(
+                {"source_id": "paper0", "pages": [2], "reason": "Read the limitations"}
+            )
+        return response
+
+    mock = MockProvider(generate)
+    manifest = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert len(mock.requests) == 2
+    assert mock.requests[1]["material"]["documents"][0]["pages_requested"] == [1, 2]
+    assert manifest["status"] == "PARTIAL"
+    assert manifest["items"][0]["supplement_status"] == "needs_input"
+
+
+@pytest.mark.parametrize(
+    "initial_wait,new_page", [(False, False), (False, True), (True, True)]
+)
+def test_review_material_requests_cache_only_when_no_new_page_is_needed(
+    papers, tmp_path, monkeypatch, initial_wait, new_page
+):
+    task = task_for(papers[:1], mode="hybrid")
+    task["documents"][0]["pages"] = [1]
+    task["budget"].update(max_review_rounds=1, max_repair_rounds=0)
+    monkeypatch.setattr(
+        "aletheia_nexus.processing.materials.render_page",
+        lambda pdf, page: b"fake-png-fixture" + str(page).encode(),
+    )
+    material_request = {
+        "source_id": "paper0",
+        "pages": [],
+        "reason": "Need the missing SI",
+    }
+    final_requests = [material_request]
+    if new_page:
+        final_requests.append(
+            {"source_id": "paper0", "pages": [2], "reason": "Read the testing page"}
+        )
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            review = review_for(request)
+            if any(target["kind"] == "field" for target in request["targets"]):
+                review["requests"] = deepcopy(final_requests)
+            return review
+        if request["phase"] == "document_revision":
+            assert request["revision_mode"] == "targeted"
+            return {
+                "replacements": {},
+                "issues": [],
+                "requests": deepcopy(final_requests),
+            }
+        response = response_for(request)
+        if initial_wait:
+            response["requests"] = [deepcopy(material_request)]
+        return response
+
+    kwargs = dict(base_dir=tmp_path, output_dir=tmp_path / "out", allow_remote=True)
+    mock = MockProvider(generate)
+    run = run_task(task, provider=mock, **kwargs)
+    row = run["items"][0]
+    assert run["status"] == "PARTIAL"
+    assert len(mock.requests) == 4
+    assert row["model_reviews"][0]["status"] == "COMPLETED"
+    assert all(
+        request["material"]["documents"][0]["pages_requested"] == [1]
+        for request in mock.requests
+    )  # Review requests do not start another automatic reading round.
+    result = json.loads(
+        (Path(run["run_directory"]) / "paper0.result.json").read_text("utf-8")
+    )
+    assert result["response"]["records"] == response_for(mock.requests[0])["records"]
+    assert result["response"]["requests"] == final_requests
+    verify_result(result)
+    if new_page:
+        assert row.get("supplement_status") not in {"needs_input", "no_new_material"}
+        assert not list((tmp_path / "out" / "cache").glob("*.json"))
+    else:
+        assert row["supplement_status"] == "needs_input"
+
+    resumed_mock = MockProvider(generate)
+    resumed = run_task(task, provider=resumed_mock, **kwargs)
+    assert resumed["status"] == "PARTIAL"
+    assert resumed["items"][0]["reused"] is (not new_page)
+    assert len(resumed_mock.requests) == (4 if new_page else 0)
+
+
 def test_failure_after_supplement_preserves_previous_candidate(papers, tmp_path):
     task = task_for(papers[:1])
     task["documents"][0]["pages"] = [1]
