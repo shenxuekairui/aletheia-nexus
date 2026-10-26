@@ -47,6 +47,7 @@ def test_metadata_projection_survives_review_revision_cache_and_detects_changed_
                 "requests": [],
             }
         response = response_for(request)
+        response["records"][0]["ordering_hint"] = []
         response["claims"] = [
             {
                 "text": response["records"][0]["steps"][0]["description"],

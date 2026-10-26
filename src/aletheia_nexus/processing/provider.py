@@ -39,7 +39,7 @@ def project_response(
     *,
     raw_text: str | None = None,
 ) -> dict:
-    """Normalize only unambiguous metadata; all scientific validation stays strict."""
+    """Project empty extensions and known metadata with replayable raw provenance."""
     projected = deepcopy(response)
     targets = targets or []
     by_target = {target["target_id"]: target for target in targets}
@@ -48,7 +48,11 @@ def project_response(
     def visit(value, contract, path):
         if isinstance(value, dict):
             properties = contract.get("properties", {})
-            removable = {}
+            removable = {
+                key: "empty_unknown_array_extension"
+                for key, child in value.items()
+                if "properties" in contract and key not in properties and child == []
+            }
             is_step = (
                 len(path) == 4
                 and path[2] == "steps"
@@ -229,7 +233,7 @@ class DeepSeekProvider:
     def identity(self) -> dict:
         return {
             "provider": "deepseek-responses",
-            "adapter_version": "5",
+            "adapter_version": "6",
             "temperature": 0,
             "model": self.config["name"],
             "config": self.config,

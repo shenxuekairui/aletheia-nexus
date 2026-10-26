@@ -536,6 +536,58 @@ def test_projection_does_not_discard_unknown_science_or_conflicting_metadata(fau
         project_response(noisy, schema, request.get("targets"))
 
 
+def test_empty_extension_arrays_preserve_response_and_replay_without_model_repair(
+    monkeypatch,
+):
+    request, schema, noisy, expected = metadata_example("claims")
+    citation = {"source_id": "p", "block_id": None, "page": 1, "quote": "Synthesize"}
+    for response in (noisy, expected):
+        response["records"][0]["fields"]["method"]["citations"] = [deepcopy(citation)]
+    record = noisy["records"][0]
+    record["ordering_hint"] = []
+    record["steps"][0]["unconfigured_links"] = []
+    record["fields"]["method"]["citations"][0]["annotation_groups"] = []
+    original = deepcopy(noisy)
+    raw = json.dumps(noisy, ensure_ascii=False, indent=2)
+    body = {
+        "status": "completed",
+        "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": raw}]}
+        ],
+    }
+    adapter = provider(monkeypatch, lambda req: httpx.Response(200, json=body))
+    budget = CallBudget(1)
+    result = adapter.generate(request, schema, [], budget, 1000)
+    assert result == expected and noisy == original
+    assert len(budget.calls) == 1 and budget.calls[0]["status"] == "completed"
+    assert result.metadata["raw_text"] == raw
+    assert len(result.metadata["changes"]) == 4
+    assert all(change["value"] == [] for change in result.metadata["changes"])
+    replay = project_response(json.loads(raw), schema, raw_text=raw)
+    assert replay == expected and replay.metadata == result.metadata
+
+
+@pytest.mark.parametrize("value", [["s1"], None, {}, ""])
+def test_empty_extension_projection_does_not_discard_other_unknown_values(value):
+    _, schema, noisy, _ = metadata_example("claims")
+    noisy["records"][0]["extension"] = value
+    with pytest.raises(ValueError, match="unknown keys"):
+        project_response(noisy, schema)
+
+
+@pytest.mark.parametrize("fault", ["missing_required", "wrong_type"])
+def test_empty_extension_projection_preserves_required_scientific_validation(fault):
+    _, schema, noisy, _ = metadata_example("claims")
+    record = noisy["records"][0]
+    record["extension"] = []
+    if fault == "missing_required":
+        del record["fields"]["method"]["value"]
+    else:
+        record["fields"]["method"]["value"] = {"extension": []}
+    with pytest.raises(ValueError):
+        project_response(noisy, schema)
+
+
 def disabled_steps_example():
     from test_review import revision_example
 
