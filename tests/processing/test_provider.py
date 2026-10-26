@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 import httpx
 import pytest
@@ -8,7 +9,9 @@ from aletheia_nexus.processing.provider import (
     CallBudget,
     DeepSeekProvider,
     ProcessingError,
+    ProjectedResponse,
     accounted_cost,
+    project_response,
 )
 
 
@@ -221,6 +224,62 @@ def test_cost_budget_stops_before_network(monkeypatch):
     assert not budget.calls
 
 
+def test_page_batch_budget_keeps_images_and_full_thinking_output(monkeypatch):
+    seen = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        seen.append(payload)
+        assert payload["max_output_tokens"] == 65536
+        assert payload["reasoning"] == {"effort": "high"}
+        images = [
+            part
+            for part in payload["input"][0]["content"]
+            if part["type"] == "input_image"
+        ]
+        assert len(images) == 10
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "usage": {"input_tokens": 11000, "output_tokens": 1000},
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": '{"value":"ok"}'}],
+                    }
+                ],
+            },
+        )
+
+    adapter = provider(monkeypatch, handler)
+    adapter.config.update(input_cost_per_million=2, output_cost_per_million=8)
+    budget = CallBudget(2, max_cost=0.65)
+    pages = [
+        {"source_id": "paper", "page": page, "bytes": b"mock-page"}
+        for page in range(1, 11)
+    ]
+    # Ten images have a documented maximum of 10,240 input tokens, not 200,000.
+    # Settled usage from the first call leaves room for another full-size request.
+    for _ in range(2):
+        assert adapter.generate({}, obj({"value": TEXT}), pages, budget, 65536) == {
+            "value": "ok"
+        }
+    assert len(seen) == 2
+    assert sum(accounted_cost(call) for call in budget.calls) == pytest.approx(0.06)
+
+
+def test_oversized_inline_payload_fails_before_http_or_cost_reservation(monkeypatch):
+    monkeypatch.setattr(
+        "aletheia_nexus.processing.provider.MAX_INLINE_REQUEST_BYTES", 100
+    )
+    adapter = provider(monkeypatch, lambda r: pytest.fail("oversized request sent"))
+    budget = CallBudget(1)
+    with pytest.raises(ProcessingError, match="request_body_budget_exceeded"):
+        adapter.generate({}, obj({"value": TEXT}), [], budget, 100)
+    assert budget.calls == []
+
+
 def test_image_is_inline_and_labelled_with_source_page(monkeypatch):
     seen = []
 
@@ -287,3 +346,182 @@ def test_provider_config_cannot_persist_key(monkeypatch):
         DeepSeekProvider(
             {"name": "deepseek-flash", "api_key": "never-persist"}, enabled=True
         )
+
+
+@pytest.mark.parametrize(
+    "value,valid",
+    [
+        ({"claim": {"text": "keep"}, "labels": ["one", "two"]}, True),
+        ({"claim": None, "labels": None}, True),
+        ({"claim": {"text": 42}, "labels": ["one"]}, False),
+    ],
+)
+def test_nullable_container_schema_is_accepted_on_wire_and_validated_locally(
+    monkeypatch, value, valid
+):
+    # Actual Responses rejection: type arrays accept primitives, not object/array.
+    # Exercise nested claim deletion and user-defined list fields together.
+    schema = obj(
+        {
+            "results": {
+                "type": "array",
+                "items": obj(
+                    {
+                        "claim": {
+                            **obj({"text": TEXT}),
+                            "type": ["object", "null"],
+                        },
+                        "labels": {"type": ["array", "null"], "items": TEXT},
+                    }
+                ),
+            }
+        }
+    )
+    original = json.dumps(schema)
+
+    def reject_unsupported(node):
+        if isinstance(node, dict):
+            kinds = node.get("type")
+            if isinstance(kinds, list) and {"object", "array"}.intersection(kinds):
+                return True
+            return any(reject_unsupported(v) for v in node.values())
+        if isinstance(node, list):
+            return any(reject_unsupported(v) for v in node)
+        return False
+
+    def handler(request):
+        payload = json.loads(request.content)
+        wire = payload["text"]["format"]["schema"]
+        if reject_unsupported(wire):
+            return httpx.Response(
+                400, json={"error": {"code": "invalid_request_error"}}
+            )
+        fields = wire["properties"]["results"]["items"]["properties"]
+        assert fields["claim"]["anyOf"] == [obj({"text": TEXT}), {"type": "null"}]
+        assert fields["labels"]["anyOf"] == [
+            {"type": "array", "items": TEXT},
+            {"type": "null"},
+        ]
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps({"results": [value]}),
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+    adapter = provider(monkeypatch, handler)
+    if valid:
+        assert adapter.generate({}, schema, [], CallBudget(1), 100) == {
+            "results": [value]
+        }
+    else:
+        with pytest.raises(ProcessingError, match="invalid_model_output"):
+            adapter.generate({}, schema, [], CallBudget(1), 100)
+    assert json.dumps(schema) == original
+
+
+def metadata_example(kind):
+    from test_review import revision_example
+
+    from aletheia_nexus.processing.contracts import response_schema
+    from aletheia_nexus.processing.review import (
+        review_schema,
+        review_targets,
+        revision_schema,
+    )
+
+    task, candidate, review = revision_example()
+    if kind == "review":
+        targets = review_targets(candidate)
+        noisy = deepcopy(review)
+        for check, target in zip(noisy["checks"], targets):
+            check.update(target)
+        return {"targets": targets}, review_schema(), noisy, review
+    if kind == "steps":
+        for check in review["checks"]:
+            if check["target_id"] == "record:0/steps":
+                check["verdict"] = "revise"
+        expected = {
+            "replacements": {
+                "record:0/steps": {
+                    "steps": candidate["records"][0]["steps"],
+                    "field_step_ids": {
+                        fid: field["step_ids"]
+                        for fid, field in candidate["records"][0]["fields"].items()
+                    },
+                }
+            },
+            "issues": [],
+            "requests": [],
+        }
+        noisy = deepcopy(expected)
+        noisy["replacements"]["record:0/steps"]["steps"][0]["citations_note"] = (
+            "not_a_field"
+        )
+        return {}, revision_schema(task, candidate, review), noisy, expected
+    noisy = deepcopy(candidate)
+    noisy["claims"][0]["step_ids"] = []
+    return {}, response_schema(task), noisy, candidate
+
+
+@pytest.mark.parametrize("kind", ["steps", "review", "claims"])
+def test_known_metadata_is_projected_once_with_complete_replayable_raw(
+    monkeypatch, kind
+):
+    request, schema, noisy, expected = metadata_example(kind)
+    raw = json.dumps(noisy, ensure_ascii=False, indent=2)
+    body = {
+        "status": "completed",
+        "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": raw}]}
+        ],
+    }
+    adapter = provider(monkeypatch, lambda req: httpx.Response(200, json=body))
+    budget = CallBudget(1)
+    result = adapter.generate(request, schema, [], budget, 1000)
+    assert result == expected
+    assert isinstance(result, ProjectedResponse)
+    assert result.metadata["raw_text"] == raw
+    assert len(budget.calls) == 1
+    assert budget.calls[0]["status"] == "completed"
+    replay = project_response(
+        json.loads(raw), schema, request.get("targets"), raw_text=raw
+    )
+    assert replay.metadata == result.metadata
+    assert replay == expected
+    assert noisy != expected  # Input was not mutated.
+
+
+@pytest.mark.parametrize(
+    "fault", ["scientific_key", "scientific_note", "association", "target"]
+)
+def test_projection_does_not_discard_unknown_science_or_conflicting_metadata(fault):
+    request, schema, noisy, _ = metadata_example(
+        "review"
+        if fault == "target"
+        else "claims"
+        if fault == "association"
+        else "steps"
+    )
+    if fault == "target":
+        noisy["checks"][1]["record_id"] = "a different experiment"
+    elif fault == "association":
+        noisy["claims"][0]["step_ids"] = ["s1"]
+    else:
+        step = noisy["replacements"]["record:0/steps"]["steps"][0]
+        step["temperature" if fault == "scientific_key" else "citations_note"] = (
+            "Source reports 180 C"
+        )
+    with pytest.raises(ValueError, match="unknown keys"):
+        project_response(noisy, schema, request.get("targets"))

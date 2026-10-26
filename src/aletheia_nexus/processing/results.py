@@ -98,41 +98,48 @@ def check_response(
         document = documents.get(citation["source_id"])
         if document is None or citation["page"] not in document["pages_requested"]:
             raise ProcessingError("invalid_citation")
-        if not citation["quote"].strip():
-            raise ProcessingError("missing_source_reading")
         block = next(
-            (b for b in document["blocks"] if b["id"] == citation["block_id"]), None
+            (
+                b
+                for b in document["blocks"]
+                if b["id"] == citation["block_id"] and b["page"] == citation["page"]
+            ),
+            None,
         )
         reading = "parsed"
-        if citation["block_id"] is None:
-            if (citation["source_id"], citation["page"]) not in image_pages:
-                raise ProcessingError("image_not_supplied")
+        if block is None:
+            visual = (citation["source_id"], citation["page"]) in image_pages
+            if not visual and not any(
+                b["page"] == citation["page"] for b in document["blocks"]
+            ):
+                raise ProcessingError("invalid_citation")
+            # A real supplied page is a usable reading link even when the model
+            # omits/misidentifies a block. Preserve its reading, without claiming
+            # that the page supports it or silently substituting another block.
             review = True
-            reading = "visual-unverified"
-        elif block is None or block["page"] != citation["page"]:
-            raise ProcessingError("invalid_citation")
+            reading = (
+                "visual-unverified"
+                if visual and citation["block_id"] is None
+                else "page-unverified"
+            )
         else:
             quotation = _quotation(citation["quote"])
-            if quotation not in _quotation(block["text"]):
+            if not quotation or quotation not in _quotation(block["text"]):
                 correction = next(
                     (
                         c
                         for c in document["corrections"]
-                        if c["block_id"] == block["id"]
+                        if quotation
+                        and c["block_id"] == block["id"]
                         and quotation in _quotation(c["replacement"])
                     ),
                     None,
                 )
-                if not correction:
-                    raise ProcessingError(
-                        "quotation_not_in_source",
-                        {
-                            "citation": citation,
-                            "source_block_excerpt": block["text"][:4000],
-                            "validation": "Use a contiguous quotation from this block, or cite the correct supplied block. Do not join text from different blocks.",
-                        },
-                    )
-                reading = "human-correction-overlay"
+                reading = (
+                    "human-correction-overlay"
+                    if correction
+                    else "parsed-quotation-unverified"
+                )
                 review = True
             review |= bool(block.get("uncertain"))
         locations.append(
@@ -150,7 +157,7 @@ def check_response(
 
     def citations(items: list[dict], *, required: bool = True) -> bool:
         if required and not items:
-            raise ProcessingError("missing_citation")
+            return True
         review = False
         for citation in items:
             try:
@@ -260,10 +267,18 @@ def check_response(
             if review
             else "source_located"
         )
-    for claim in response["claims"]:
+    claim_states = {}
+    for index, claim in enumerate(response["claims"]):
         if not claim["text"].strip():
             raise ProcessingError("empty_claim")
+        start = len(locations)
         citations(claim["citations"])
+        if not claim["citations"] or any(
+            c["reading"] in {"page-unverified", "parsed-quotation-unverified"}
+            or not c["quote"].strip()
+            for c in locations[start:]
+        ):
+            claim_states[str(index)] = "review_required"
     for issue in response["issues"]:
         source = documents.get(issue["source_id"])
         if source is None or (
@@ -293,18 +308,45 @@ def check_response(
         )
     if any(i["kind"] == "conflict" for i in response["issues"]):
         states = {key: "conflict" for key in states}
-    return {
+    checked = {
         "record_states": states,
         "citations": locations,
         "scientific_support": "not-verified",
         "absence_scope": "supplied_material_only",
     }
+    if claim_states:
+        checked["claim_states"] = claim_states
+    return checked
 
 
 def seal_result(result: dict) -> dict:
     result.pop("artifact_id", None)
     result["artifact_id"] = "an:extraction:sha256:" + digest(result)
     return result
+
+
+def assign_record_ids(response: dict) -> tuple[dict, list[dict]]:
+    """Give rows usable local identifiers without changing research content."""
+    response = deepcopy(response)
+    records = response.get("records", [])
+    occupied = {record["id"] for record in records}
+    seen, changes = set(), []
+    for index, record in enumerate(records):
+        original = record["id"]
+        if not original.strip() or original in seen:
+            stem = f"record-{index + 1}"
+            identifier = stem
+            suffix = 2
+            while identifier in occupied:
+                identifier = f"{stem}-{suffix}"
+                suffix += 1
+            record["id"] = identifier
+            occupied.add(identifier)
+            changes.append(
+                {"record_index": index, "before": original, "after": identifier}
+            )
+        seen.add(record["id"])
+    return response, changes
 
 
 def make_result(

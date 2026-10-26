@@ -3,19 +3,64 @@
   "id": "research-theme",
   "type": "organize",
   "objective": "用中文整理这些论文的研究对象、方法、主要发现和局限，作为组会阅读资料。",
-  "documents": [{"id": "paper1", "artifact": "paper1.parsed.json"}],
+  "documents": [
+    {
+      "id": "paper1",
+      "artifact": "paper1.parsed.json"
+    }
+  ],
   "fields": [
-    {"id": "subject", "label": "研究对象", "type": "string", "description": "论文研究的对象和问题"},
-    {"id": "method", "label": "方法", "type": "string", "description": "与研究目的相关的主要方法"},
-    {"id": "findings", "label": "主要发现", "type": "string_list", "description": "直接报告的主要结果，区分作者解释"},
-    {"id": "limitations", "label": "局限", "type": "string_list", "description": "作者陈述的局限，AI提出的局限须标为未确认"}
+    {
+      "id": "subject",
+      "label": "研究对象",
+      "type": "string",
+      "description": "论文研究的对象和问题"
+    },
+    {
+      "id": "method",
+      "label": "方法",
+      "type": "string",
+      "description": "与研究目的相关的主要方法"
+    },
+    {
+      "id": "findings",
+      "label": "主要发现",
+      "type": "string_list",
+      "description": "直接报告的主要结果，区分作者解释"
+    },
+    {
+      "id": "limitations",
+      "label": "局限",
+      "type": "string_list",
+      "description": "作者陈述的局限，AI提出的局限须标为未确认"
+    }
   ],
   "mode": "local",
   "allow_remote": false,
   "synthesize": false,
   "include_steps": false,
-  "export_formats": ["markdown", "csv", "jsonl"],
-  "rules": ["不得根据背景知识补写论文未报告的信息。"],
-  "model": {"name": "deepseek-flash", "currency": "CNY", "reasoning_effort": "none", "input_cost_per_million": 2, "output_cost_per_million": 8},
-  "budget": {"max_calls": 10, "max_cost": 5, "max_input_characters": 120000, "max_output_tokens": 6000, "max_images": 6, "max_supplement_rounds": 1}
+  "export_formats": [
+    "markdown",
+    "csv",
+    "jsonl"
+  ],
+  "rules": [
+    "不得根据背景知识补写论文未报告的信息。"
+  ],
+  "model": {
+    "name": "deepseek-flash",
+    "currency": "CNY",
+    "reasoning_effort": "high",
+    "input_cost_per_million": 2,
+    "output_cost_per_million": 8,
+    "timeout_seconds": 300
+  },
+  "budget": {
+    "max_calls": 10,
+    "max_cost": 5,
+    "max_input_characters": 120000,
+    "max_output_tokens": 65536,
+    "max_images": 6,
+    "max_supplement_rounds": 1
+  }
 }

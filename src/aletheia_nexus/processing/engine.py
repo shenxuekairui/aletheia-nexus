@@ -14,8 +14,30 @@ from aletheia_nexus.content.export import write_ai_export
 
 from .contracts import digest, response_schema, validate_task
 from .materials import Source, build_package, load_source, model_material
-from .provider import CallBudget, DeepSeekProvider, ProcessingError, Provider
-from .results import export_prepared, export_results, make_result, verify_result
+from .provider import (
+    CallBudget,
+    DeepSeekProvider,
+    ProcessingError,
+    ProjectedResponse,
+    Provider,
+    project_response,
+)
+from .results import (
+    assign_record_ids,
+    export_prepared,
+    export_results,
+    make_result,
+    verify_result,
+)
+from .review import (
+    REVIEW_VERSION,
+    apply_revision,
+    review_batches,
+    review_schema,
+    revision_mode,
+    revision_schema,
+    validate_review,
+)
 
 
 def write_json(path: Path, value: dict, *, overwrite: bool = False) -> None:
@@ -85,6 +107,56 @@ def _within_input_budget(task: dict, request: dict) -> None:
         raise ProcessingError("input_budget_exceeded")
 
 
+def _save_response_metadata(
+    response: dict, request: dict, schema: dict, path: Path, row: dict
+) -> dict:
+    # Mock/alternate providers use exactly the same projection as the HTTP adapter.
+    if not isinstance(response, ProjectedResponse):
+        response = project_response(response, schema, request.get("targets"))
+    if isinstance(response, ProjectedResponse):
+        write_json(path, response.metadata)
+        row.setdefault("response_metadata", []).append(
+            {"file": path.name, "sha256": digest(response.metadata)}
+        )
+    return dict(response)
+
+
+def _metadata_cache(row: dict, run_dir: Path) -> dict:
+    return {
+        "response_metadata": row.get("response_metadata", []),
+        "metadata_artifacts": {
+            item["file"]: json.loads((run_dir / item["file"]).read_text("utf-8"))
+            for item in row.get("response_metadata", [])
+        },
+    }
+
+
+def _verify_metadata_cache(cached: dict) -> None:
+    for item in cached.get("response_metadata", []):
+        if Path(item["file"]).name != item["file"]:
+            raise ValueError("invalid metadata artifact name")
+        proof = cached["metadata_artifacts"][item["file"]]
+        if digest(proof) != item["sha256"]:
+            raise ValueError("response metadata changed")
+        replay = project_response(
+            json.loads(proof["raw_text"]),
+            proof["schema"],
+            proof["targets"],
+            raw_text=proof["raw_text"],
+        )
+        if not isinstance(replay, ProjectedResponse) or replay.metadata != proof:
+            raise ValueError("response metadata does not replay")
+
+
+def _restore_metadata_files(cached: dict, run_dir: Path, row: dict) -> None:
+    if cached.get("response_metadata"):
+        row["response_metadata"] = cached["response_metadata"]
+        for item in row["response_metadata"]:
+            write_json(
+                run_dir / item["file"], cached["metadata_artifacts"][item["file"]]
+            )
+
+
 def _generate_checked(
     task: dict,
     package: dict,
@@ -97,14 +169,13 @@ def _generate_checked(
     row: dict,
     *,
     comparison: bool = False,
+    output_schema: dict | None = None,
+    assemble: Callable[[dict], dict] | None = None,
 ) -> dict:
     """One evidence-based repair; format/location checks never certify scientific truth."""
     repairable = {
         "invalid_model_output",
-        "quotation_not_in_source",
         "invalid_citation",
-        "missing_citation",
-        "missing_source_reading",
         "missing_original_value",
         "empty_reported_value",
         "invalid_record_identity",
@@ -115,25 +186,56 @@ def _generate_checked(
         "empty_result_without_explanation",
         "invalid_issue_location",
         "invalid_supplement_request",
-        "image_not_supplied",
     }
     original_request = request
     for repair in range(task["budget"]["max_repair_rounds"] + 1):
         response = None
+        raw_response = None
         _within_input_budget(task, request)
         suffix = "" if repair == 0 else f".repair{repair}"
         try:
+            schema = output_schema or response_schema(task, comparison=comparison)
             response = provider.generate(
                 request,
-                response_schema(task, comparison=comparison),
+                schema,
                 images,
                 budget,
                 task["budget"]["max_output_tokens"],
             )
-            write_json(run_dir / f"{prefix}.candidate{suffix}.json", response)
-            make_result(
-                task, package, provider.identity, response, comparison=comparison
+            raw_response = (
+                json.loads(response.metadata["raw_text"])
+                if isinstance(response, ProjectedResponse)
+                else response
             )
+            write_json(run_dir / f"{prefix}.candidate{suffix}.json", raw_response)
+            response = _save_response_metadata(
+                response,
+                request,
+                schema,
+                run_dir / f"{prefix}.metadata{suffix}.json",
+                row,
+            )
+            if assemble is not None:
+                response = assemble(response)
+            try:
+                make_result(
+                    task, package, provider.identity, response, comparison=comparison
+                )
+            except ProcessingError as error:
+                if error.code != "invalid_record_identity":
+                    raise
+                # The response schema has already been checked. Row names are
+                # bookkeeping; do not buy another extraction to make them unique.
+                adjusted, changes = assign_record_ids(response)
+                if not changes:
+                    raise
+                make_result(
+                    task, package, provider.identity, adjusted, comparison=comparison
+                )
+                row.setdefault("record_id_adjustments", []).append(
+                    {"candidate_sha256": digest(response), "changes": changes}
+                )
+                response = adjusted
             return response
         except (ProcessingError, ValueError) as exc:
             code = (
@@ -163,9 +265,171 @@ def _generate_checked(
                 **original_request,
                 "validation_feedback": {"code": code, **diagnostic},
             }
-            if response is not None:
-                request["unvalidated_candidate"] = response
+            if raw_response is not None:
+                request["unvalidated_candidate"] = raw_response
     raise ProcessingError("invalid_model_output")
+
+
+def _review_candidate(
+    task: dict,
+    package: dict,
+    candidate: dict,
+    images: list,
+    provider: Provider,
+    budget: CallBudget,
+    run_dir: Path,
+    prefix: str,
+    row: dict,
+) -> tuple[dict, dict]:
+    """Retain the last valid candidate if any bounded review/revision fails."""
+    artifacts = {}
+
+    def save(name: str, value: dict) -> None:
+        artifacts[name] = deepcopy(value)
+        write_json(run_dir / name, value)
+
+    for index in range(task["budget"]["max_review_rounds"]):
+        stem = f"{prefix}.review{index + 1}"
+        save(f"{stem}.input.json", candidate)
+        trace = {"round": index + 1, "version": REVIEW_VERSION, "status": "RUNNING"}
+        row.setdefault("model_reviews", []).append(trace)
+        budget.checkpoint()
+        try:
+            review = {"checks": [], "issues": [], "requests": []}
+            batches = review_batches(
+                candidate, include_steps=task.get("include_steps", True)
+            )
+            for batch, (targets, view) in enumerate(batches):
+                original_request = {
+                    **_request(task, package),
+                    "phase": "evidence_review",
+                    "candidate": view,
+                    "targets": targets,
+                }
+                request = original_request
+                for repair in range(task["budget"]["max_repair_rounds"] + 1):
+                    _within_input_budget(task, request)
+                    part = None
+                    batch_stem = f"{stem}.batch{batch + 1}.attempt{repair + 1}"
+                    try:
+                        part = provider.generate(
+                            request,
+                            review_schema(),
+                            images,
+                            budget,
+                            task["budget"]["max_output_tokens"],
+                        )
+                        save(
+                            f"{batch_stem}.json",
+                            json.loads(part.metadata["raw_text"])
+                            if isinstance(part, ProjectedResponse)
+                            else part,
+                        )
+                        part = _save_response_metadata(
+                            part,
+                            request,
+                            review_schema(),
+                            run_dir / f"{batch_stem}.metadata.json",
+                            row,
+                        )
+                        validate_review(part, candidate, task, package, targets=targets)
+                        break
+                    except (ProcessingError, ValueError) as exc:
+                        code = (
+                            exc.code
+                            if isinstance(exc, ProcessingError)
+                            else "invalid_model_output"
+                        )
+                        diagnostic = (
+                            (exc.diagnostics or {})
+                            if isinstance(exc, ProcessingError)
+                            else {"validation": str(exc)}
+                        )
+                        save(
+                            f"{batch_stem}.rejected.json", {"code": code, **diagnostic}
+                        )
+                        if (
+                            code
+                            not in {
+                                "invalid_model_output",
+                                "invalid_citation",
+                                "incomplete_model_review",
+                                "empty_model_review",
+                            }
+                            or repair == task["budget"]["max_repair_rounds"]
+                        ):
+                            raise
+                        request = {
+                            **original_request,
+                            "validation_feedback": {"code": code, **diagnostic},
+                        }
+                        if part is not None:
+                            request["unvalidated_candidate"] = part
+                for key in review:
+                    review[key].extend(part[key])
+            save(f"{stem}.feedback.json", review)
+            validate_review(review, candidate, task, package)
+            mode = revision_mode(review, candidate)
+            trace["revision_mode"] = mode
+            revised = candidate
+            if mode != "unchanged":
+                revision_request = {
+                    **_request(task, package),
+                    "phase": "document_revision",
+                    "revision_mode": mode,
+                    "base_candidate_sha256": digest(candidate),
+                    "candidate": candidate,
+                    "evidence_review": review,
+                }
+                patch = None
+
+                def assemble(replacements: dict) -> dict:
+                    nonlocal patch
+                    patch = deepcopy(replacements)
+                    return apply_revision(candidate, replacements, task, review)
+
+                revised = _generate_checked(
+                    task,
+                    package,
+                    revision_request,
+                    images,
+                    provider,
+                    budget,
+                    run_dir,
+                    stem,
+                    row,
+                    output_schema=revision_schema(task, candidate, review)
+                    if mode == "targeted"
+                    else None,
+                    assemble=assemble if mode == "targeted" else None,
+                )
+                if mode == "targeted":
+                    save(f"{stem}.patch.json", patch)
+                    trace["patch_sha256"] = digest(patch)
+            # Feedback remains in the hash-bound history. Resolved advice must
+            # not be reintroduced as an outstanding problem in the new result.
+            save(f"{stem}.output.json", revised)
+            trace.update(
+                status="COMPLETED",
+                input_sha256=digest(candidate),
+                review_sha256=digest(review),
+                output_sha256=digest(revised),
+                scientific_support="not-verified",
+            )
+            candidate = revised
+        except (ProcessingError, ValueError) as exc:
+            trace.update(
+                status="FAILED",
+                error=exc.code
+                if isinstance(exc, ProcessingError)
+                else "invalid_model_review",
+            )
+            save(f"{stem}.failure.json", trace)
+            row["review_status"] = trace["error"]
+            break
+        finally:
+            budget.checkpoint()
+    return candidate, artifacts
 
 
 def _restore_cache(
@@ -175,6 +439,7 @@ def _restore_cache(
         return None
     try:
         cached = json.loads(path.read_text(encoding="utf-8"))
+        _verify_metadata_cache(cached)
         result = cached["result"]
         verify_result(result)
         if (
@@ -201,6 +466,56 @@ def _restore_cache(
             parent = rebuilt
             restored_images.extend(images)
         if parent != result["package"]:
+            return None
+        reviews = cached.get("model_reviews", [])
+        if len(reviews) != task["budget"]["max_review_rounds"]:
+            return None
+        artifacts = cached.get("review_artifacts", {})
+        if any(Path(name).name != name for name in artifacts):
+            return None
+        last_output = None
+        for trace in reviews:
+            if trace["status"] != "COMPLETED" or trace["version"] != REVIEW_VERSION:
+                return None
+            triple = {}
+            for suffix, checksum in (
+                ("input", "input_sha256"),
+                ("feedback", "review_sha256"),
+                ("output", "output_sha256"),
+            ):
+                matches = [
+                    v
+                    for name, v in artifacts.items()
+                    if name.endswith(f".review{trace['round']}.{suffix}.json")
+                ]
+                if len(matches) != 1 or digest(matches[0]) != trace[checksum]:
+                    return None
+                triple[suffix] = matches[0]
+            if last_output is not None and triple["input"] != last_output:
+                return None
+            validate_review(triple["feedback"], triple["input"], task, parent)
+            mode = revision_mode(triple["feedback"], triple["input"])
+            if trace.get("revision_mode") != mode:
+                return None
+            if mode == "unchanged" and triple["input"] != triple["output"]:
+                return None
+            if mode == "targeted":
+                patches = [
+                    value
+                    for name, value in artifacts.items()
+                    if name.endswith(f".review{trace['round']}.patch.json")
+                ]
+                if len(patches) != 1 or digest(patches[0]) != trace.get("patch_sha256"):
+                    return None
+                if (
+                    apply_revision(
+                        triple["input"], patches[0], task, triple["feedback"]
+                    )
+                    != triple["output"]
+                ):
+                    return None
+            last_output = triple["output"]
+        if reviews and last_output != result["response"]:
             return None
         for source in sources:
             source.verify()
@@ -359,12 +674,22 @@ def run_task(
                     for img in cached["_restored_images"]:
                         _save_image(run_dir, img)
                     row["reused"] = True
+                    _restore_metadata_files(cached, run_dir, row)
+                    if cached.get("record_id_adjustments"):
+                        row["record_id_adjustments"] = cached["record_id_adjustments"]
                     if cached.get("supplement_status"):
                         row["supplement_status"] = cached["supplement_status"]
+                    if cached.get("model_reviews"):
+                        row["model_reviews"] = cached["model_reviews"]
+                        for name, artifact in cached["review_artifacts"].items():
+                            if Path(name).name != name:
+                                raise ValueError("invalid review artifact name")
+                            write_json(run_dir / name, artifact)
                 else:
                     additions = {}
                     previous = None
                     previous_package = None
+                    previous_images = None
                     for round_number in range(
                         task["budget"]["max_supplement_rounds"] + 1
                     ):
@@ -387,6 +712,7 @@ def run_task(
                             if previous is None:
                                 raise
                             response, package = previous, previous_package
+                            images = previous_images
                             row["supplement_status"] = (
                                 exc.code
                                 if isinstance(exc, ProcessingError)
@@ -438,6 +764,7 @@ def run_task(
                             break
                         additions = next_additions
                         previous_package = package
+                        previous_images = images
                         package, images = next_package, next_images
                         packages.append(package)
                         for img in images:
@@ -447,6 +774,19 @@ def run_task(
                             package,
                         )
                         previous = response
+                    review_artifacts = {}
+                    if task["budget"]["max_review_rounds"]:
+                        response, review_artifacts = _review_candidate(
+                            task,
+                            package,
+                            response,
+                            images,
+                            provider,
+                            budget,
+                            run_dir,
+                            owner_id,
+                            row,
+                        )
                     for source in sources:
                         source.verify()
                     result = make_result(task, package, provider_identity, response)
@@ -454,7 +794,7 @@ def run_task(
                     # A repeated request for already supplied material is a stable
                     # partial result, not a reason to charge again on every resume.
                     # Failures after adding material still retry on the next run.
-                    if (
+                    if not row.get("review_status") and (
                         not response["requests"]
                         or row.get("supplement_status") == "no_new_material"
                     ):
@@ -464,6 +804,12 @@ def run_task(
                                 "result": result,
                                 "packages": packages,
                                 "supplement_status": row.get("supplement_status"),
+                                "model_reviews": row.get("model_reviews", []),
+                                "review_artifacts": review_artifacts,
+                                "record_id_adjustments": row.get(
+                                    "record_id_adjustments", []
+                                ),
+                                **_metadata_cache(row, run_dir),
                             },
                             overwrite=True,
                         )
@@ -478,7 +824,9 @@ def run_task(
                 row.update(
                     {
                         "status": "PARTIAL"
-                        if response.get("requests") or response["issues"]
+                        if response.get("requests")
+                        or response["issues"]
+                        or row.get("review_status")
                         else "COMPLETED",
                         "result": result_file,
                         "result_id": result["artifact_id"],
@@ -598,13 +946,17 @@ def _compare(
         if resume and cached_path.is_file():
             try:
                 candidate = json.loads(cached_path.read_text("utf-8"))
+                # Older comparison caches contain the result directly.
+                envelope = candidate if "result" in candidate else {"result": candidate}
+                candidate = envelope["result"]
+                _verify_metadata_cache(envelope)
                 verify_result(candidate)
                 if (
                     candidate["package"] == package
                     and candidate["task"] == task
                     and candidate["provider"] == provider_identity
                 ):
-                    cached = candidate
+                    cached = envelope
             except (OSError, ValueError, KeyError, TypeError, ProcessingError):
                 pass
         request = _request(task, package)
@@ -615,7 +967,8 @@ def _compare(
         )
         _within_input_budget(task, request)
         if cached:
-            result = cached
+            result = cached["result"]
+            _restore_metadata_files(cached, run_dir, manifest["comparison"])
         else:
             response = _generate_checked(
                 task,
@@ -634,7 +987,11 @@ def _compare(
             )
             for source in used_sources:
                 source.verify()
-            write_json(cached_path, result, overwrite=True)
+            write_json(
+                cached_path,
+                {"result": result, **_metadata_cache(manifest["comparison"], run_dir)},
+                overwrite=True,
+            )
         write_json(run_dir / "comparison.result.json", result)
         results.append(result)
         manifest["comparison"].update(

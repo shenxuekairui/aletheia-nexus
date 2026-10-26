@@ -8,6 +8,7 @@ import json
 import math
 import os
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Protocol
@@ -15,6 +16,114 @@ from typing import Callable, Protocol
 import httpx
 
 from .contracts import MODEL, PROMPT, PROMPT_VERSION, digest, validate
+from .review import REVIEW_PROMPT, REVIEW_VERSION, REVISION_PROMPT
+
+MAX_INLINE_REQUEST_BYTES = 48 * 1024 * 1024
+# DeepSeek's documented per-image maximum, checked 2026-10-26:
+# https://api-docs.deepseek.com/zh-cn/guides/vision/
+MAX_IMAGE_INPUT_TOKENS = 1024
+
+
+class ProjectedResponse(dict):
+    """A normal response mapping with separately persisted, replayable provenance."""
+
+    def __init__(self, response: dict, metadata: dict):
+        super().__init__(response)
+        self.metadata = metadata
+
+
+def project_response(
+    response: dict,
+    schema: dict,
+    targets: list | None = None,
+    *,
+    raw_text: str | None = None,
+) -> dict:
+    """Remove only recognized, non-scientific extras; all other validation stays strict."""
+    projected = deepcopy(response)
+    targets = targets or []
+    by_target = {target["target_id"]: target for target in targets}
+    changes = []
+
+    def visit(value, contract, path):
+        if isinstance(value, dict):
+            properties = contract.get("properties", {})
+            removable = {}
+            is_step = (
+                len(path) == 4
+                and path[2] == "steps"
+                and (
+                    path[0] == "records"
+                    or (path[0] == "replacements" and path[1].endswith("/steps"))
+                )
+            )
+            is_claim = len(path) == 2 and (
+                path[0] == "claims"
+                or (path[0] == "replacements" and path[1].startswith("claim:"))
+            )
+            if is_step and value.get("citations_note") in (None, "", "not_a_field"):
+                removable["citations_note"] = "empty_or_placeholder_step_note"
+            if is_claim and value.get("step_ids") == []:
+                removable["step_ids"] = "empty_claim_step_ids"
+            if len(path) == 2 and path[0] == "checks":
+                target = by_target.get(value.get("target_id"), {})
+                for key in ("kind", "record_id", "field_id"):
+                    if key in target and value.get(key) == target[key]:
+                        removable[key] = "echoed_review_target"
+            for key, reason in removable.items():
+                if key in value and key not in properties:
+                    changes.append(
+                        {
+                            "path": [*path, key],
+                            "value": value.pop(key),
+                            "reason": reason,
+                        }
+                    )
+            for key in value:
+                if key in properties:
+                    visit(value[key], properties[key], [*path, key])
+        elif isinstance(value, list) and "items" in contract:
+            for index, item in enumerate(value):
+                visit(item, contract["items"], [*path, index])
+
+    visit(projected, schema, [])
+    validate(projected, schema, "response")
+    if not changes:
+        return projected
+    return ProjectedResponse(
+        projected,
+        {
+            "version": 1,
+            "raw_text": raw_text
+            if raw_text is not None
+            else json.dumps(response, ensure_ascii=False, allow_nan=False),
+            "schema": deepcopy(schema),
+            "targets": deepcopy(targets),
+            "changes": changes,
+            "output_sha256": digest(projected),
+        },
+    )
+
+
+def _wire_schema(schema: dict) -> dict:
+    """DeepSeek requires anyOf for nullable containers; local contracts stay intact."""
+    converted = {
+        key: {name: _wire_schema(child) for name, child in value.items()}
+        if key == "properties"
+        else _wire_schema(value)
+        if key == "items"
+        else value
+        for key, value in schema.items()
+    }
+    kinds = converted.get("type")
+    if isinstance(kinds, list) and {"object", "array"}.intersection(kinds):
+        return {
+            "anyOf": [
+                {"type": "null"} if kind == "null" else {**converted, "type": kind}
+                for kind in kinds
+            ]
+        }
+    return converted
 
 
 class ProcessingError(RuntimeError):
@@ -103,12 +212,14 @@ class DeepSeekProvider:
     def identity(self) -> dict:
         return {
             "provider": "deepseek-responses",
-            "adapter_version": "2",
+            "adapter_version": "4",
             "temperature": 0,
             "model": self.config["name"],
             "config": self.config,
             "prompt_version": PROMPT_VERSION,
             "prompt_sha256": digest(PROMPT),
+            "review_version": REVIEW_VERSION,
+            "review_prompt_sha256": digest([REVIEW_PROMPT, REVISION_PROMPT]),
         }
 
     def generate(
@@ -119,6 +230,14 @@ class DeepSeekProvider:
         budget: CallBudget,
         max_output_tokens: int,
     ) -> dict:
+        phase = request.get("phase")
+        prompt = (
+            REVIEW_PROMPT
+            if phase == "evidence_review"
+            else PROMPT + REVISION_PROMPT
+            if phase == "document_revision"
+            else PROMPT
+        )
         serialized = json.dumps(request, ensure_ascii=False, allow_nan=False)
         content = [{"type": "input_text", "text": serialized}]
         for item in images:
@@ -126,7 +245,14 @@ class DeepSeekProvider:
                 [
                     {
                         "type": "input_text",
-                        "text": f"Source {item['source_id']}, PDF page {item['page']}",
+                        "text": f"Source {item['source_id']}, PDF page {item['page']}"
+                        + (
+                            f", {item['view']}, region {item['region']} "
+                            "in displayed-page normalized coordinates (top-left origin). "
+                            "Overlapping views show the same page, not separate evidence."
+                            if "region" in item
+                            else ""
+                        ),
                     },
                     {
                         "type": "input_image",
@@ -136,39 +262,49 @@ class DeepSeekProvider:
                     },
                 ]
             )
+        wire_schema = _wire_schema(schema)
         payload = {
             "model": self.config["name"],
             "store": False,
-            "reasoning": {"effort": self.config.get("reasoning_effort", "none")},
+            "reasoning": {"effort": self.config.get("reasoning_effort", "high")},
             "temperature": 0,
             "max_output_tokens": max_output_tokens,
-            "instructions": PROMPT
+            "instructions": prompt
             + "\nThe exact top-level output keys for this call are: "
             + ", ".join(schema["properties"])
             + ". Return no other top-level keys.\n"
             + "\nOutput JSON schema:\n"
-            + json.dumps(schema, ensure_ascii=False),
+            + json.dumps(wire_schema, ensure_ascii=False),
             "input": [{"role": "user", "content": content}],
             "text": {
                 "format": {
                     "type": "json_schema",
                     "name": "research_result",
                     "strict": True,
-                    "schema": schema,
+                    "schema": wire_schema,
                 }
             },
         }
+        if (
+            len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            > MAX_INLINE_REQUEST_BYTES
+        ):
+            raise ProcessingError("request_body_budget_exceeded")
         input_price = self.config.get("input_cost_per_million")
         cached_price = self.config.get("cached_input_cost_per_million", input_price)
         output_price = self.config.get("output_cost_per_million")
-        # Conservative reservation: UTF-8 bytes plus a bounded image allowance.
-        # Model-specific image accounting can differ; this is not a billing guarantee.
+        # Reserve text bytes, each image's documented maximum and full output.
+        # Actual returned usage settles the reservation; this is not a provider bill.
         estimate = None
         if input_price is not None and output_price is not None:
             estimate = (
                 (
-                    len((serialized + PROMPT + json.dumps(schema) * 2).encode("utf-8"))
-                    + len(images) * 20000
+                    len(
+                        (serialized + prompt + json.dumps(wire_schema) * 2).encode(
+                            "utf-8"
+                        )
+                    )
+                    + len(images) * MAX_IMAGE_INPUT_TOKENS
                 )
                 * max(input_price, cached_price)
                 + max_output_tokens * output_price
@@ -188,10 +324,20 @@ class DeepSeekProvider:
                             "source_id": image["source_id"],
                             "page": image["page"],
                             "sha256": hashlib.sha256(image["bytes"]).hexdigest(),
+                            **(
+                                {"region": image["region"], "view": image["view"]}
+                                if "region" in image
+                                else {}
+                            ),
                         }
                         for image in images
                     ],
                     "prompt_version": PROMPT_VERSION,
+                    "phase": phase,
+                    "effective_prompt_sha256": digest(prompt),
+                    "review_version": REVIEW_VERSION
+                    if phase in {"evidence_review", "document_revision"}
+                    else None,
                 }
             )
             budget.checkpoint()
@@ -211,7 +357,7 @@ class DeepSeekProvider:
             try:
                 with httpx.Client(
                     transport=self._transport,
-                    timeout=self.config.get("timeout_seconds", 90),
+                    timeout=self.config.get("timeout_seconds", 300),
                     follow_redirects=False,
                 ) as client:
                     response = client.post(
@@ -330,8 +476,9 @@ class DeepSeekProvider:
                                 "unvalidated": True,
                             },
                         )
-                    result = json.loads(raw)
-                    validate(result, schema, "response")
+                    result = project_response(
+                        json.loads(raw), schema, request.get("targets"), raw_text=raw
+                    )
                 except (ValueError, KeyError, TypeError, AttributeError) as exc:
                     raise ProcessingError(
                         "invalid_model_output",

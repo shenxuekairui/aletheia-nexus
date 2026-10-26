@@ -4,18 +4,68 @@
   "type": "procedure",
   "include_steps": true,
   "objective": "用中文提取指定实验的条件、过程和结果。使用前说明目标实验与阶段，并按实际需要修改字段。",
-  "documents": [{"id": "paper1", "artifact": "paper1.parsed.json", "pages": [1]}],
+  "documents": [
+    {
+      "id": "paper1",
+      "artifact": "paper1.parsed.json",
+      "pages": [
+        1
+      ]
+    }
+  ],
   "fields": [
-    {"id": "materials", "label": "原料与配比", "type": "string_list", "description": "所用原料、用量、比例和溶剂；须关联对应步骤"},
-    {"id": "temperature", "label": "温度", "type": "string", "description": "目标阶段的温度，保留原始单位，不得混入其他阶段", "scope": "用户指定实验阶段"},
-    {"id": "duration", "label": "时间", "type": "string", "description": "该阶段持续时间，保留原值和单位"},
-    {"id": "atmosphere", "label": "气氛", "type": "string", "description": "该阶段气氛；原文未报告时留空"},
-    {"id": "result", "label": "结果", "type": "string", "description": "对应对象和实验步骤的结果，保留条件差异"}
+    {
+      "id": "materials",
+      "label": "原料与配比",
+      "type": "string_list",
+      "description": "所用原料、用量、比例和溶剂；须关联对应步骤"
+    },
+    {
+      "id": "temperature",
+      "label": "温度",
+      "type": "string",
+      "description": "目标阶段的温度，保留原始单位，不得混入其他阶段",
+      "scope": "用户指定实验阶段"
+    },
+    {
+      "id": "duration",
+      "label": "时间",
+      "type": "string",
+      "description": "该阶段持续时间，保留原值和单位"
+    },
+    {
+      "id": "atmosphere",
+      "label": "气氛",
+      "type": "string",
+      "description": "该阶段气氛；原文未报告时留空"
+    },
+    {
+      "id": "result",
+      "label": "结果",
+      "type": "string",
+      "description": "对应对象和实验步骤的结果，保留条件差异"
+    }
   ],
   "mode": "local",
   "allow_remote": false,
   "synthesize": false,
-  "rules": ["不同对象及不同阶段分别建记录。操作顺序来自原文，不补写推测步骤。"],
-  "model": {"name": "deepseek-flash", "currency": "CNY", "reasoning_effort": "none", "input_cost_per_million": 2, "output_cost_per_million": 8},
-  "budget": {"max_calls": 10, "max_cost": 5, "max_input_characters": 120000, "max_output_tokens": 6000, "max_images": 6, "max_supplement_rounds": 1}
+  "rules": [
+    "不同对象及不同阶段分别建记录。操作顺序来自原文，不补写推测步骤。"
+  ],
+  "model": {
+    "name": "deepseek-flash",
+    "currency": "CNY",
+    "reasoning_effort": "high",
+    "input_cost_per_million": 2,
+    "output_cost_per_million": 8,
+    "timeout_seconds": 300
+  },
+  "budget": {
+    "max_calls": 10,
+    "max_cost": 5,
+    "max_input_characters": 120000,
+    "max_output_tokens": 65536,
+    "max_images": 6,
+    "max_supplement_rounds": 1
+  }
 }

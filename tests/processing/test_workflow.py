@@ -15,6 +15,7 @@ from aletheia_nexus.content.gate import sha256_file
 from aletheia_nexus.content.local import register_local_pdf
 from aletheia_nexus.processing.contracts import (
     TASK_SCHEMA,
+    digest,
     response_schema,
     validate_task,
 )
@@ -168,6 +169,621 @@ class MockProvider:
         row = budget.reserve(None)
         row.update(status="completed", usage={"input_tokens": 10, "output_tokens": 10})
         return self.function(request)
+
+
+def review_for(request):
+    return {
+        "checks": [
+            {
+                "target_id": target["target_id"],
+                "verdict": "supported",
+                "detail": "Checked supplied evidence; this is model advice only.",
+                "citations": [],
+            }
+            for target in request["targets"]
+        ],
+        "issues": [],
+        "requests": [],
+    }
+
+
+def test_model_review_preserves_lineage_and_reuses_without_new_calls(papers, tmp_path):
+    task = task_for(papers[:1])
+    task["budget"]["max_review_rounds"] = 1
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            return review_for(request)
+        return response_for(request)
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert [r["phase"] for r in mock.requests] == [
+        "document_extraction",
+        "evidence_review",
+        "evidence_review",
+    ]
+    assert run["items"][0]["model_reviews"][0]["revision_mode"] == "unchanged"
+    assert run["items"][0]["model_reviews"][0]["scientific_support"] == "not-verified"
+    directory = Path(run["run_directory"])
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    verify_result(result)
+    assert result["validation"]["record_states"] == {"r1": "source_located"}
+    assert result["history"] == []
+    cached = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert cached["items"][0]["reused"]
+    assert len(mock.requests) == 3
+    for suffix in ("input", "feedback", "output"):
+        name = f"paper0.review1.{suffix}.json"
+        assert (Path(cached["run_directory"]) / name).read_bytes() == (
+            directory / name
+        ).read_bytes()
+
+
+def test_review_omits_unrequested_procedures_and_keeps_resolved_advice_in_history(
+    papers, tmp_path
+):
+    task = task_for(papers[:1])
+    task["include_steps"] = False
+    task["fields"] *= 4
+    task["fields"] = [
+        dict(field, id=f"field{i}") for i, field in enumerate(task["fields"])
+    ]
+    task["budget"]["max_review_rounds"] = 1
+    old_issue = {
+        "kind": "strategy_problem",
+        "detail": "The first draft omits the precursor ratio; restore it from page 1.",
+        "source_id": "paper0",
+        "page": 1,
+    }
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            review = review_for(request)
+            if any(t["kind"] == "field" for t in request["targets"]):
+                review["issues"] = [old_issue]
+                for check in review["checks"]:
+                    check["verdict"] = "revise"
+            return review
+        response = response_for(request)
+        response["records"][0]["steps"] = []
+        for field in response["records"][0]["fields"].values():
+            field["step_ids"] = []
+            if request["phase"] == "document_extraction":
+                field["value"] = "Synthesis lasted 6 h at 180 C."
+                field["raw_value"] = field["value"]
+        if request["phase"] == "document_revision":
+            assert request["revision_mode"] == "targeted"
+            return {
+                "replacements": {
+                    f"record:0/field:{fid}": value
+                    for fid, value in response["records"][0]["fields"].items()
+                },
+                "issues": [],
+                "requests": [],
+            }
+        return response
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    reviews = [r for r in mock.requests if r["phase"] == "evidence_review"]
+    assert len(reviews) == 2  # Four fields together, then task coverage.
+    assert not any(t["kind"] == "procedure" for r in reviews for t in r["targets"])
+    directory = Path(run["run_directory"])
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    assert result["response"]["issues"] == []
+    assert "1:2" in result["response"]["records"][0]["fields"]["field0"]["value"]
+    feedback = json.loads(
+        (directory / "paper0.review1.feedback.json").read_text("utf-8")
+    )
+    assert old_issue in feedback["issues"]
+    assert run["items"][0]["model_reviews"][0]["scientific_support"] == "not-verified"
+    verify_result(result)
+    cached = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert cached["items"][0]["reused"]
+    assert len(mock.requests) == 4
+    assert (
+        Path(cached["run_directory"]) / "paper0.review1.feedback.json"
+    ).read_bytes() == (directory / "paper0.review1.feedback.json").read_bytes()
+
+
+@pytest.mark.parametrize("failure", ["coverage", "citation", "budget", "revision"])
+def test_failed_review_retains_valid_result_and_is_not_cached(
+    papers, tmp_path, failure
+):
+    task = task_for(papers[:1])
+    task["budget"].update(max_review_rounds=1, max_repair_rounds=0)
+    if failure == "budget":
+        task["budget"]["max_calls"] = 1
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            audit = review_for(request)
+            if failure == "coverage":
+                audit["checks"].pop()
+            if failure == "citation":
+                audit["checks"][0]["citations"] = [
+                    {
+                        "source_id": "paper0",
+                        "page": 999,
+                        "block_id": None,
+                        "quote": "invented",
+                    }
+                ]
+            if failure == "revision":
+                for check in audit["checks"]:
+                    if check["target_id"].startswith("record:"):
+                        check["verdict"] = "revise"
+            return audit
+        if request["phase"] == "document_revision":
+            raise ProcessingError("network_error")
+        return response_for(request)
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert run["status"] == "PARTIAL"
+    row = run["items"][0]
+    assert (
+        row["review_status"]
+        == {
+            "coverage": "incomplete_model_review",
+            "citation": "invalid_citation",
+            "budget": "call_budget_exhausted",
+            "revision": "network_error",
+        }[failure]
+    )
+    directory = Path(run["run_directory"])
+    result = json.loads((directory / row["result"]).read_text("utf-8"))
+    assert result["response"] == response_for(mock.requests[0])
+    verify_result(result)
+    assert not list((tmp_path / "out" / "cache").glob("*.json"))
+
+
+def test_local_task_with_review_budget_still_never_calls_provider(papers, tmp_path):
+    task = task_for(papers[:1], mode="local")
+    task["budget"]["max_review_rounds"] = 2
+    mock = MockProvider()
+    run = run_task(task, base_dir=tmp_path, output_dir=tmp_path / "out", provider=mock)
+    assert run["status"] == "PREPARED"
+    assert mock.requests == []
+
+
+@pytest.mark.parametrize("resolved", [True, False])
+def test_diagnostic_only_revision_preserves_answers_and_reuses_result(
+    papers, tmp_path, resolved
+):
+    task = task_for(papers[:1])
+    task["budget"]["max_review_rounds"] = 1
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            return review_for(request)
+        if request["phase"] == "document_revision":
+            assert request["revision_mode"] == "targeted"
+            candidate = request["candidate"]
+            return {
+                "replacements": {},
+                "issues": [] if resolved else candidate["issues"],
+                "requests": [] if resolved else candidate["requests"],
+            }
+        response = response_for(request)
+        response["issues"] = [
+            {
+                "kind": "strategy_problem",
+                "detail": "Recheck whether the precursor ratio is included.",
+                "source_id": "paper0",
+                "page": 1,
+            }
+        ]
+        response["requests"] = [
+            {
+                "source_id": "paper0",
+                "pages": [1],
+                "reason": "Recheck the already supplied synthesis page.",
+            }
+        ]
+        return response
+
+    output = tmp_path / "out"
+    mock = MockProvider(generate)
+    run = run_task(
+        task, base_dir=tmp_path, output_dir=output, allow_remote=True, provider=mock
+    )
+    assert len(mock.requests) == 4
+    assert run["status"] == ("COMPLETED" if resolved else "PARTIAL")
+    directory = Path(run["run_directory"])
+    before = json.loads((directory / "paper0.review1.input.json").read_text("utf-8"))
+    after = json.loads((directory / "paper0.review1.output.json").read_text("utf-8"))
+    expected = deepcopy(before)
+    if resolved:
+        expected.update(issues=[], requests=[])
+    assert after == expected  # Only the model may clear current diagnostics.
+    assert before["issues"] and before["requests"]  # History remains intact.
+    repeat = run_task(
+        task, base_dir=tmp_path, output_dir=output, allow_remote=True, provider=mock
+    )
+    assert repeat["status"] == run["status"]
+    assert repeat["items"][0]["reused"] and len(mock.requests) == 4
+
+
+@pytest.mark.parametrize("cache_fault", ["patch", "version"])
+def test_targeted_review_preserves_supported_fields_and_replays_cached_patch(
+    papers, tmp_path, cache_fault
+):
+    task = task_for(papers[:1])
+    task["fields"].append(
+        {
+            "id": "context",
+            "type": "string",
+            "description": "Retain reported context and limitations",
+        }
+    )
+    task["budget"].update(max_review_rounds=1, max_repair_rounds=0)
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            review = review_for(request)
+            for check in review["checks"]:
+                if check["target_id"] == "record:0/field:method":
+                    check.update(
+                        verdict="revise",
+                        detail="Restore precursor ratio to this existing field; no record is missing.",
+                    )
+            return review
+        answer = response_for(request)
+        if request["phase"] == "document_revision":
+            assert request["revision_mode"] == "targeted"
+            assert request["base_candidate_sha256"] == digest(request["candidate"])
+            return {
+                "replacements": {
+                    "record:0/field:method": answer["records"][0]["fields"]["method"]
+                },
+                "issues": [],
+                "requests": [],
+            }
+        answer["records"][0]["fields"]["method"].update(
+            value="6 h at 180 C", raw_value="6 h at 180 C"
+        )
+        return answer
+
+    output = tmp_path / "out"
+    mock = MockProvider(generate)
+    run = run_task(
+        task, base_dir=tmp_path, output_dir=output, allow_remote=True, provider=mock
+    )
+    directory = Path(run["run_directory"])
+    before = json.loads((directory / "paper0.review1.input.json").read_text("utf-8"))
+    after = json.loads((directory / "paper0.review1.output.json").read_text("utf-8"))
+    expected = deepcopy(before)
+    expected["records"][0]["fields"]["method"] = response_for(mock.requests[0])[
+        "records"
+    ][0]["fields"]["method"]
+    assert (
+        after == expected
+    )  # Whole untouched compound field, steps and metadata survive.
+    assert "1:2" in after["records"][0]["fields"]["method"]["value"]
+    repeat = run_task(
+        task, base_dir=tmp_path, output_dir=output, allow_remote=True, provider=mock
+    )
+    assert repeat["items"][0]["reused"] and len(mock.requests) == 4
+    cache_file = next((output / "cache").glob("*.json"))
+    cached = json.loads(cache_file.read_text("utf-8"))
+    trace = cached["model_reviews"][0]
+    if cache_fault == "version":
+        trace["version"] = "evidence-review/4"
+    else:
+        name = next(n for n in cached["review_artifacts"] if n.endswith(".patch.json"))
+        patch = cached["review_artifacts"][name]
+        patch["replacements"]["record:0/field:method"]["context"] = (
+            "Changed after review"
+        )
+        trace["patch_sha256"] = digest(
+            patch
+        )  # Hash alone must not replace replay validation.
+    cache_file.write_text(json.dumps(cached), "utf-8")
+    fresh = MockProvider(generate)
+    rerun = run_task(
+        task, base_dir=tmp_path, output_dir=output, allow_remote=True, provider=fresh
+    )
+    assert not rerun["items"][0].get("reused") and len(fresh.requests) == 4
+
+
+@pytest.mark.parametrize("repair", [True, False])
+def test_procedure_revision_checks_associations_before_atomic_acceptance(
+    papers, tmp_path, repair
+):
+    task = task_for(papers[:1])
+    task["budget"].update(max_review_rounds=1, max_repair_rounds=int(repair))
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            review = review_for(request)
+            for check in review["checks"]:
+                if check["target_id"] == "record:0/steps":
+                    check["verdict"] = "revise"
+            return review
+        if request["phase"] == "document_revision":
+            step = {
+                **deepcopy(request["candidate"]["records"][0]["steps"][0]),
+                "id": "replacement-step",
+            }
+            if "validation_feedback" in request:
+                assert (
+                    request["validation_feedback"]["code"] == "invalid_step_reference"
+                )
+                assert "replacements" in request["unvalidated_candidate"]
+            return {
+                "replacements": {
+                    "record:0/steps": {
+                        "steps": [step],
+                        "field_step_ids": {
+                            "method": [
+                                "replacement-step"
+                                if "validation_feedback" in request
+                                else "s1"
+                            ]
+                        },
+                    }
+                },
+                "issues": [],
+                "requests": [],
+            }
+        return response_for(request)
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    row = run["items"][0]
+    directory = Path(run["run_directory"])
+    result = json.loads((directory / row["result"]).read_text("utf-8"))
+    before = response_for(mock.requests[0])
+    if repair:
+        expected = deepcopy(before)
+        expected["records"][0]["steps"][0]["id"] = "replacement-step"
+        expected["records"][0]["fields"]["method"]["step_ids"] = ["replacement-step"]
+        assert result["response"] == expected
+        assert run["status"] == "COMPLETED"
+    else:
+        assert result["response"] == before
+        assert row["review_status"] == "invalid_step_reference"
+        assert not list((tmp_path / "out" / "cache").glob("*.json"))
+    verify_result(result)
+    assert (directory / "paper0.review1.candidate.json").is_file()
+
+
+def test_coverage_adds_requested_record_through_explicit_full_revision(
+    papers, tmp_path
+):
+    task = task_for(papers[:1])
+    task["budget"]["max_review_rounds"] = 1
+
+    def generate(request):
+        if request["phase"] == "evidence_review":
+            review = review_for(request)
+            for check in review["checks"]:
+                if check["target_id"] == "coverage":
+                    check.update(
+                        verdict="revise",
+                        detail="Requested testing stage has no record; existing field edits cannot add it.",
+                    )
+            return review
+        answer = response_for(request)
+        if request["phase"] == "document_revision":
+            assert request["revision_mode"] == "full_coverage"
+            testing = deepcopy(answer["records"][0])
+            testing.update(id="test-stage", stage="testing")
+            block = next(
+                b
+                for b in request["material"]["documents"][0]["blocks"]
+                if "Testing was performed" in b["text"]
+            )
+            citation = {
+                "source_id": "paper0",
+                "block_id": block["id"],
+                "page": block["page"],
+                "quote": block["text"],
+            }
+            testing["fields"]["method"].update(
+                value=block["text"],
+                raw_value=block["text"],
+                context="Testing",
+                citations=[citation],
+            )
+            testing["steps"][0].update(description=block["text"], citations=[citation])
+            answer["records"].append(testing)
+        return answer
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    directory = Path(run["run_directory"])
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    assert [r["stage"] for r in result["response"]["records"]] == [
+        "synthesis",
+        "testing",
+    ]
+    assert (
+        result["response"]["records"][0] == response_for(mock.requests[0])["records"][0]
+    )
+    assert run["items"][0]["model_reviews"][0]["revision_mode"] == "full_coverage"
+    assert not (directory / "paper0.review1.patch.json").exists()
+    verify_result(result)
+
+
+def test_later_review_failure_keeps_last_successful_targeted_revision(papers, tmp_path):
+    task = task_for(papers[:1])
+    task["budget"].update(max_review_rounds=2, max_repair_rounds=0)
+    revised_once = False
+
+    def generate(request):
+        nonlocal revised_once
+        if request["phase"] == "evidence_review":
+            if revised_once:
+                raise ProcessingError("network_error")
+            review = review_for(request)
+            for check in review["checks"]:
+                if check["target_id"] == "record:0/field:method":
+                    check["verdict"] = "revise"
+            return review
+        answer = response_for(request)
+        if request["phase"] == "document_revision":
+            revised_once = True
+            return {
+                "replacements": {
+                    "record:0/field:method": answer["records"][0]["fields"]["method"]
+                },
+                "issues": [],
+                "requests": [],
+            }
+        answer["records"][0]["fields"]["method"].update(
+            value="Incomplete method", raw_value="Incomplete method"
+        )
+        return answer
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert run["status"] == "PARTIAL"
+    directory = Path(run["run_directory"])
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    accepted = json.loads((directory / "paper0.review1.output.json").read_text("utf-8"))
+    assert result["response"] == accepted
+    assert "1:2" in accepted["records"][0]["fields"]["method"]["value"]
+    assert run["items"][0]["model_reviews"][1]["status"] == "FAILED"
+    verify_result(result)
+
+
+def test_duplicate_record_names_get_local_ids_without_repeating_extraction(
+    papers, tmp_path
+):
+    def generate(request):
+        answer = response_for(request)
+        second = deepcopy(answer["records"][0])
+        second["stage"] = "different-stage"
+        answer["records"].append(second)
+        return answer
+
+    mock = MockProvider(generate)
+    task = task_for(papers[:1])
+    run = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert run["status"] == "COMPLETED" and len(mock.requests) == 1
+    directory = Path(run["run_directory"])
+    original = json.loads((directory / "paper0.0.candidate.json").read_text("utf-8"))
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    records = result["response"]["records"]
+    assert len({r["id"] for r in records}) == 2
+    assert records[0] == original["records"][0]
+    assert {k: v for k, v in records[1].items() if k != "id"} == {
+        k: v for k, v in original["records"][1].items() if k != "id"
+    }
+    assert run["items"][0]["record_id_adjustments"][0]["candidate_sha256"] == digest(
+        original
+    )
+    verify_result(result)
+    cached = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert cached["items"][0]["reused"] and len(mock.requests) == 1
+    assert (
+        cached["items"][0]["record_id_adjustments"]
+        == run["items"][0]["record_id_adjustments"]
+    )
+
+
+@pytest.mark.skipif(
+    not shutil.which("pdftoppm"), reason="Poppler optional for page vision"
+)
+def test_page_tiles_have_real_overlapping_crops_and_enforce_image_budget(
+    papers, tmp_path
+):
+    import struct
+
+    task = task_for(papers[:1], mode="direct")
+    task["documents"] = [
+        {
+            "id": "paper0",
+            "pdf": str(papers[0]),
+            "pages": [1],
+            "image_layout": "page_and_tiles",
+        }
+    ]
+    task["budget"]["max_images"] = 4
+    normalized = validate_task(task)
+    source = load_source(normalized["documents"][0], tmp_path, "direct")
+    with pytest.raises(ProcessingError, match="image_budget_exceeded"):
+        build_package(normalized, [source])
+    normalized["budget"]["max_images"] = 5
+    before = sha256_file(papers[0])
+    package, images = build_package(normalized, [source])
+    assert len(images) == len(package["images"]) == 5
+    assert len({i["sha256"] for i in images}) == 5
+    assert images[0]["region"] == [0, 0, 1, 1]
+    width, height = struct.unpack(">II", images[0]["bytes"][16:24])
+    for image in images[1:]:
+        w, h = struct.unpack(">II", image["bytes"][16:24])
+        x0, y0, x1, y1 = image["region"]
+        assert (w, h) == (round((x1 - x0) * width), round((y1 - y0) * height))
+        assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1
+        assert image["page"] == 1 and image["view"] == "tile"
+    assert images[1]["region"][2] > images[2]["region"][0]
+    assert images[1]["region"][3] > images[3]["region"][1]
+    assert sha256_file(papers[0]) == before
+    assert not package["documents"][0]["blocks"]
 
 
 @pytest.mark.parametrize("extra", ["steps", "step_ids"])
@@ -980,7 +1596,7 @@ def test_hybrid_image_only_page_is_citable_without_expanding_text_scope(
     assert result["validation"]["citations"][-1]["reading"] == "visual-unverified"
     assert result["validation"]["scientific_support"] == "not-verified"
 
-    # Image coverage does not authorize citing unprovided parsed text on that page.
+    # A supplied page remains usable, but an unavailable block is not certified.
     invalid = deepcopy(result["response"])
     page_two = next(
         b for b in json.loads(original.read_text("utf-8"))["blocks"] if b["page"] == 2
@@ -988,8 +1604,10 @@ def test_hybrid_image_only_page_is_citable_without_expanding_text_scope(
     invalid["claims"][0]["citations"][0].update(
         block_id=page_two["id"], quote=page_two["text"]
     )
-    with pytest.raises(ProcessingError, match="invalid_citation"):
-        check_response(invalid, result["task"], result["package"])
+    checked = check_response(invalid, result["task"], result["package"])
+    assert checked["citations"][-1]["reading"] == "page-unverified"
+    assert checked["citations"][-1]["bbox"] is None
+    assert checked["claim_states"] == {"0": "review_required"}
     replay = run_task(
         task,
         base_dir=tmp_path,
@@ -1118,9 +1736,7 @@ def test_failure_after_supplement_preserves_previous_candidate(papers, tmp_path)
     assert result["response"]["records"]
 
 
-@pytest.mark.parametrize(
-    "corrupt", ["page", "block", "quote", "human_status", "step", "unknown_source"]
-)
+@pytest.mark.parametrize("corrupt", ["page", "human_status", "step", "unknown_source"])
 def test_invalid_model_references_and_confirmation_rejected(papers, tmp_path, corrupt):
     task = validate_task(task_for(papers[:1]))
     source = load_source(task["documents"][0], tmp_path, task["mode"])
@@ -1129,10 +1745,6 @@ def test_invalid_model_references_and_confirmation_rejected(papers, tmp_path, co
     citation = response["records"][0]["fields"]["method"]["citations"][0]
     if corrupt == "page":
         citation["page"] = 999
-    if corrupt == "block":
-        citation["block_id"] = "invented"
-    if corrupt == "quote":
-        citation["quote"] = "It was 999 C"
     if corrupt == "unknown_source":
         citation["source_id"] = "other"
     if corrupt == "human_status":
@@ -1595,60 +2207,24 @@ def test_interruption_checkpoints_and_resume(papers, tmp_path):
     assert resumed["status"] == "COMPLETED" and len(mock.requests) == 1
 
 
-@pytest.mark.parametrize("repair_succeeds", [True, False])
-def test_invalid_quote_gets_one_evidence_based_repair(
-    papers, tmp_path, repair_succeeds
-):
-    def generate(request):
-        answer = response_for(request)
-        if "validation_feedback" not in request or not repair_succeeds:
-            answer["records"][0]["fields"]["method"]["citations"][0]["quote"] = "999 C"
-            other = deepcopy(answer["records"][0]["fields"]["method"]["citations"][0])
-            other["quote"] = "888 C"
-            answer["claims"] = [
-                {
-                    "text": "Incorrect second citation",
-                    "nature": "reported",
-                    "citations": [other],
-                }
-            ]
-        else:
-            assert request["validation_feedback"]["code"] == "quotation_not_in_source"
-            assert len(request["validation_feedback"]["errors"]) == 2
-            assert request["unvalidated_candidate"]
-        return answer
-
-    mock = MockProvider(generate)
-    run = run_task(
-        task_for(papers[:1]),
-        base_dir=tmp_path,
-        output_dir=tmp_path / "out",
-        allow_remote=True,
-        provider=mock,
-    )
-    assert len(mock.requests) == 2
-    assert run["status"] == ("COMPLETED" if repair_succeeds else "FAILED")
-    assert list(Path(run["run_directory"]).glob("*.rejected.json"))
-    assert run["items"][0]["output_repairs"][0]["error"] == "quotation_not_in_source"
-
-
-@pytest.mark.parametrize("defect", ["wrong_block", "wrong_page"])
-def test_quote_location_feedback_repairs_without_mutating_candidate(
+@pytest.mark.parametrize("defect", ["quote", "empty_quote", "missing_citations"])
+def test_unmatched_reading_preserves_output_without_spending_on_repairs(
     papers, tmp_path, defect
 ):
     def generate(request):
         answer = response_for(request)
-        citation = answer["records"][0]["fields"]["method"]["citations"][0]
-        expected = {k: citation[k] for k in ("source_id", "block_id", "page")}
-        if "validation_feedback" in request:
-            errors = request["validation_feedback"]["errors"]
-            assert len(errors) == 1
-            assert errors[0]["exact_quote_locations"] == [expected]
-            assert request["unvalidated_candidate"] != answer
-        elif defect == "wrong_block":
-            citation["block_id"] = "nonexistent-block"
+        field = answer["records"][0]["fields"]["method"]
+        if defect == "missing_citations":
+            field["citations"] = []
         else:
-            citation["page"] = 2
+            field["citations"][0]["quote"] = "999 C" if defect == "quote" else ""
+        answer["claims"] = [
+            {
+                "text": "A reading requiring source review",
+                "nature": "reported",
+                "citations": deepcopy(field["citations"]),
+            }
+        ]
         return answer
 
     mock = MockProvider(generate)
@@ -1659,16 +2235,53 @@ def test_quote_location_feedback_repairs_without_mutating_candidate(
         allow_remote=True,
         provider=mock,
     )
-    assert run["status"] == "COMPLETED" and len(mock.requests) == 2
+    assert len(mock.requests) == 1 and run["status"] == "COMPLETED"
+    directory = Path(run["run_directory"])
+    assert not list(directory.glob("*.rejected.json"))
+    result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    assert result["response"] == generate(mock.requests[0])
+    assert result["validation"]["record_states"] == {"r1": "review_required"}
+    assert result["validation"]["claim_states"] == {"0": "review_required"}
+    assert result["validation"]["scientific_support"] == "not-verified"
+    if defect != "missing_citations":
+        assert result["validation"]["citations"][-1]["reading"] == (
+            "parsed-quotation-unverified"
+        )
+    verify_result(result)
+
+
+@pytest.mark.parametrize("defect", ["wrong_block", "wrong_page", "page_only"])
+def test_imprecise_block_preserves_real_page_link(papers, tmp_path, defect):
+    def generate(request):
+        answer = response_for(request)
+        citation = answer["records"][0]["fields"]["method"]["citations"][0]
+        if defect == "wrong_block":
+            citation["block_id"] = "nonexistent-block"
+        elif defect == "wrong_page":
+            citation["page"] = 2
+        else:
+            citation["block_id"] = None
+        return answer
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task_for(papers[:1]),
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    assert run["status"] == "COMPLETED" and len(mock.requests) == 1
     directory = Path(run["run_directory"])
     original = json.loads((directory / "paper0.0.candidate.json").read_text("utf-8"))
-    repaired = json.loads(
-        (directory / "paper0.0.candidate.repair1.json").read_text("utf-8")
-    )
-    assert original != repaired
-    assert original == mock.requests[1]["unvalidated_candidate"]
     result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
+    assert result["response"] == original
+    assert result["validation"]["record_states"] == {"r1": "review_required"}
+    assert any(
+        c["reading"] == "page-unverified" for c in result["validation"]["citations"]
+    )
     assert result["validation"]["scientific_support"] == "not-verified"
+    verify_result(result)
 
 
 @pytest.mark.parametrize(
@@ -1693,11 +2306,18 @@ def test_quote_location_feedback_preserves_source_scope_and_symbols(
         block = next(b for b in source["blocks"] if b["id"] == citation["block_id"])
         block["text"] = "Temperature was ~95 °C."
         citation["quote"] = "Temperature was −95 °C."
-    with pytest.raises(ProcessingError) as caught:
-        check_response(answer, task, package)
-    assert all(
-        not e["exact_quote_locations"] for e in caught.value.diagnostics["errors"]
-    )
+    if scope == "changed_symbol":
+        checked = check_response(answer, task, package)
+        assert checked["record_states"] == {"r1": "review_required"}
+        assert checked["citations"][-1]["reading"] == "parsed-quotation-unverified"
+        assert citation["quote"] == "Temperature was −95 °C."
+        assert block["text"] == "Temperature was ~95 °C."
+    else:
+        with pytest.raises(ProcessingError) as caught:
+            check_response(answer, task, package)
+        assert all(
+            not e["exact_quote_locations"] for e in caught.value.diagnostics["errors"]
+        )
 
 
 @pytest.mark.parametrize("defect", ["missing_unit", "unknown_step"])

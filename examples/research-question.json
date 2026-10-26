@@ -3,18 +3,63 @@
   "id": "research-question",
   "type": "compare",
   "objective": "用中文比较这些论文对目标现象的解释，分别整理支持、反对和无法判断的证据。使用前替换为具体研究问题。",
-  "documents": [{"id": "paper1", "artifact": "paper1.parsed.json"}, {"id": "paper2", "artifact": "paper2.parsed.json"}],
+  "documents": [
+    {
+      "id": "paper1",
+      "artifact": "paper1.parsed.json"
+    },
+    {
+      "id": "paper2",
+      "artifact": "paper2.parsed.json"
+    }
+  ],
   "fields": [
-    {"id": "explanation", "label": "解释", "type": "string", "description": "作者对研究问题提出的解释，不等于已证实事实"},
-    {"id": "support", "label": "支持证据", "type": "string_list", "description": "支持该解释的实际实验或观测"},
-    {"id": "contradiction", "label": "反对证据", "type": "string_list", "description": "不支持该解释的实验或矛盾结果"},
-    {"id": "open_questions", "label": "未解决问题", "type": "string_list", "description": "明确标注尚无法判断或需要补充材料的问题"}
+    {
+      "id": "explanation",
+      "label": "解释",
+      "type": "string",
+      "description": "作者对研究问题提出的解释，不等于已证实事实"
+    },
+    {
+      "id": "support",
+      "label": "支持证据",
+      "type": "string_list",
+      "description": "支持该解释的实际实验或观测"
+    },
+    {
+      "id": "contradiction",
+      "label": "反对证据",
+      "type": "string_list",
+      "description": "不支持该解释的实验或矛盾结果"
+    },
+    {
+      "id": "open_questions",
+      "label": "未解决问题",
+      "type": "string_list",
+      "description": "明确标注尚无法判断或需要补充材料的问题"
+    }
   ],
   "mode": "local",
   "allow_remote": false,
   "synthesize": true,
   "include_steps": false,
-  "rules": ["跨论文比较须保留实验条件差异；不能把引用位置有效解释为支持关系成立。"],
-  "model": {"name": "deepseek-flash", "currency": "CNY", "reasoning_effort": "none", "input_cost_per_million": 2, "output_cost_per_million": 8},
-  "budget": {"max_calls": 10, "max_cost": 5, "max_input_characters": 180000, "max_output_tokens": 6000, "max_images": 6, "max_supplement_rounds": 1}
+  "rules": [
+    "跨论文比较须保留实验条件差异；不能把引用位置有效解释为支持关系成立。"
+  ],
+  "model": {
+    "name": "deepseek-flash",
+    "currency": "CNY",
+    "reasoning_effort": "high",
+    "input_cost_per_million": 2,
+    "output_cost_per_million": 8,
+    "timeout_seconds": 300
+  },
+  "budget": {
+    "max_calls": 10,
+    "max_cost": 5,
+    "max_input_characters": 180000,
+    "max_output_tokens": 65536,
+    "max_images": 6,
+    "max_supplement_rounds": 1
+  }
 }

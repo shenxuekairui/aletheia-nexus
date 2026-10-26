@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import struct
 import subprocess
 from copy import deepcopy
 from dataclasses import dataclass
@@ -21,7 +22,89 @@ from .contracts import digest
 from .provider import ProcessingError
 
 PACKAGE_SCHEMA = "aletheia-nexus/task-package/v1"
-BUILDER_VERSION = "3"
+BUILDER_VERSION = "5"
+MODEL_PROJECTION_VERSION = "2"
+
+
+def _model_warnings(document: dict) -> list[dict]:
+    """Summarize repeated diagnostics without merging different readings."""
+    grouped = {}
+    for warning in document.get("warnings", []):
+        page = warning.get("page")
+        if page is not None and page not in document["pages_requested"]:
+            continue
+        detail = " ".join((warning.get("detail") or "").split())
+        # Some parser diagnostics repeat the separately recorded page in prose.
+        # Do not generalize other numbers: they may describe different failures.
+        if page is not None:
+            detail = detail.removeprefix(f"page {page}: ")
+        key = (warning.get("code"), detail)
+        item = grouped.setdefault(
+            key, {"code": key[0], "detail": detail, "pages": [], "count": 0}
+        )
+        if page not in item["pages"]:
+            item["pages"].append(page)
+        item["count"] += 1
+    return list(grouped.values())
+
+
+def _model_figures(document: dict) -> list[dict]:
+    """Retain existing figure links and expose adjacent text as context only."""
+    blocks = document["blocks"]
+    by_id = {block["id"]: block for block in blocks}
+    pages = {page["page"]: page for page in document.get("pages", [])}
+    figures = []
+    for figure in document.get("figures", []):
+        item = {
+            key: figure.get(key)
+            for key in (
+                "id",
+                "caption",
+                "caption_block_id",
+                "interpretation_status",
+                "association",
+            )
+        }
+        linked_ids = set(figure.get("object_block_ids", []))
+        regions = []
+        for obj in figure.get("source_objects", []):
+            linked_ids.update(obj.get("annotation_block_ids", []))
+            regions.append(
+                {
+                    "page": obj["page"],
+                    "bbox": obj.get("bbox"),
+                    "coordinate_system": pages.get(obj["page"], {}).get(
+                        "coordinate_system"
+                    ),
+                }
+            )
+        linked_ids.update(
+            block["id"] for block in blocks if block.get("object_ref") == figure["id"]
+        )
+        item["linked_block_ids"] = [b["id"] for b in blocks if b["id"] in linked_ids]
+        item["source_regions"] = regions
+        item["adjacent_block_ids"] = []
+        caption = by_id.get(figure.get("caption_block_id"))
+        if caption is not None:
+            evidence = caption.get("evidence", {})
+            item["caption_location"] = {
+                "page": caption["page"],
+                "bbox": evidence.get("bbox"),
+                "coordinate_system": evidence.get("coordinate_system"),
+            }
+            index = blocks.index(caption)
+            item["adjacent_block_ids"] = [
+                blocks[i]["id"]
+                for i in (index - 1, index + 1)
+                if 0 <= i < len(blocks) and blocks[i]["page"] == caption["page"]
+            ]
+        item["pages"] = sorted(
+            {region["page"] for region in regions}
+            | {by_id[bid]["page"] for bid in item["linked_block_ids"]}
+            | ({caption["page"]} if caption is not None else set())
+        )
+        figures.append(item)
+    return figures
 
 
 def model_material(package: dict) -> dict:
@@ -42,6 +125,13 @@ def model_material(package: dict) -> dict:
                 },
                 "pages_requested": document["pages_requested"],
                 "omitted_pages": document["omitted_pages"],
+                "image_pages": sorted(
+                    {
+                        image["page"]
+                        for image in package["images"]
+                        if image["source_id"] == document["id"]
+                    }
+                ),
                 "blocks": [
                     {
                         key: block.get(key)
@@ -57,28 +147,27 @@ def model_material(package: dict) -> dict:
                     for block in document["blocks"]
                 ],
                 "tables": document.get("tables", []),
-                "figures": [
-                    {
-                        key: figure.get(key)
-                        for key in (
-                            "id",
-                            "caption",
-                            "caption_block_id",
-                            "interpretation_status",
-                        )
-                    }
-                    for figure in document.get("figures", [])
-                ],
-                "warnings": [
-                    {key: warning.get(key) for key in ("code", "detail", "page")}
-                    for warning in document.get("warnings", [])
-                    if warning.get("page") in [None, *document["pages_requested"]]
-                ],
+                "figures": _model_figures(document),
+                "warnings": _model_warnings(document),
                 "notes": document["notes"],
                 "corrections": document["corrections"],
             }
         )
     return {
+        "projection_version": MODEL_PROJECTION_VERSION,
+        "reading_guidance": [
+            "Parser warnings and not-interpreted describe unverified automated "
+            "transcription, not an inability to read supplied images. Inspect the "
+            "actual page images listed in each document's image_pages for relevant "
+            "figure values, symbols and relationships. Image availability alone "
+            "does not establish legibility or scientific correctness.",
+            "Figure linked_block_ids and source_regions retain parser associations. "
+            "Adjacent_block_ids are same-page reading-order context, which may "
+            "include caption continuations or unrelated text; verify the relation "
+            "rather than treating adjacency as a confirmed caption extension.",
+            "Warnings are grouped by code and detail with affected pages and "
+            "occurrence counts; full diagnostics remain in the local package.",
+        ],
         "artifact_id": package.get("artifact_id"),
         "parent_id": package.get("parent_id"),
         "mode": package.get("mode"),
@@ -170,7 +259,13 @@ def load_source(config: dict, base: Path, mode: str) -> Source:
     return Source(deepcopy(config), pdf, gated.sidecar_path, identity, artifact)
 
 
-def render_page(pdf: Path, page: int) -> bytes:
+def render_page(
+    pdf: Path,
+    page: int,
+    *,
+    scale: int = 1600,
+    crop: tuple[int, int, int, int] | None = None,
+) -> bytes:
     """Render only one CropBox page at bounded dimensions; no OCR or network."""
     binary = shutil.which("pdftoppm")
     if not binary:
@@ -188,7 +283,21 @@ def render_page(pdf: Path, page: int) -> bytes:
                     "-singlefile",
                     "-cropbox",
                     "-scale-to",
-                    "1600",
+                    str(scale),
+                    *(
+                        [
+                            "-x",
+                            str(crop[0]),
+                            "-y",
+                            str(crop[1]),
+                            "-W",
+                            str(crop[2]),
+                            "-H",
+                            str(crop[3]),
+                        ]
+                        if crop
+                        else []
+                    ),
                     "-png",
                     str(pdf),
                     str(prefix),
@@ -204,6 +313,45 @@ def render_page(pdf: Path, page: int) -> bytes:
     if len(data) > 12_000_000 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
         raise ProcessingError("page_image_budget_exceeded")
     return data
+
+
+def render_page_tiles(pdf: Path, page: int) -> list[dict]:
+    """Overview plus four overlapping crops in displayed CropBox coordinates.
+
+    Use Poppler's own pixel crop, including page rotation, without a new imaging
+    dependency. The overview preserves context; each crop retains small text.
+    Normalized boxes have a top-left origin and refer to the displayed page.
+    """
+    overview = render_page(pdf, page, scale=3200)
+    if len(overview) < 24 or overview[12:16] != b"IHDR":
+        raise ProcessingError("invalid_page_image")
+    width, height = struct.unpack(">II", overview[16:24])
+    if not (1 <= width <= 3200 and 1 <= height <= 3200):
+        raise ProcessingError("page_image_budget_exceeded")
+    pieces = [{"bytes": overview, "region": [0, 0, 1, 1], "view": "overview"}]
+    for y0, y1 in ((0, 0.55), (0.45, 1)):
+        for x0, x1 in ((0, 0.55), (0.45, 1)):
+            left, top = int(width * x0), int(height * y0)
+            right, bottom = (
+                min(width, int(width * x1 + 0.5)),
+                min(height, int(height * y1 + 0.5)),
+            )
+            data = render_page(
+                pdf, page, scale=3200, crop=(left, top, right - left, bottom - top)
+            )
+            pieces.append(
+                {
+                    "bytes": data,
+                    "region": [
+                        left / width,
+                        top / height,
+                        right / width,
+                        bottom / height,
+                    ],
+                    "view": "tile",
+                }
+            )
+    return pieces
 
 
 def _corpus(sources: list[Source]) -> Corpus:
@@ -277,7 +425,12 @@ def build_package(
                 raise ValueError("page image inputs require hybrid or direct mode")
             visual = []
         image_pages[sid] = visual
-    if sum(map(len, image_pages.values())) > task["budget"]["max_images"]:
+    image_count = sum(
+        len(image_pages[s.config["id"]])
+        * (5 if s.config.get("image_layout") == "page_and_tiles" else 1)
+        for s in sources
+    )
+    if image_count > task["budget"]["max_images"]:
         raise ProcessingError("image_budget_exceeded")
     parsed = [s for s in sources if s.artifact and task["mode"] != "direct"]
     evidence = (
@@ -329,19 +482,30 @@ def build_package(
         entry.setdefault("parsed_artifact_id", None)
         entry.setdefault("blocks", [])
         for page in image_pages[sid]:
-            data = render_page(source.pdf, page)
-            identity = hashlib.sha256(data).hexdigest()
-            images.append(
-                {"source_id": sid, "page": page, "bytes": data, "sha256": identity}
+            tiled = source.config.get("image_layout") == "page_and_tiles"
+            pieces = (
+                render_page_tiles(source.pdf, page)
+                if tiled
+                else [{"bytes": render_page(source.pdf, page)}]
             )
-            image_manifest.append(
-                {
+            for piece in pieces:
+                data = piece["bytes"]
+                descriptor = {
                     "source_id": sid,
                     "page": page,
-                    "sha256": identity,
-                    "renderer": "pdftoppm-cropbox-scale1600/v1",
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "renderer": "pdftoppm-cropbox-tiles3200/v1"
+                    if tiled
+                    else "pdftoppm-cropbox-scale1600/v1",
                 }
-            )
+                if tiled:
+                    descriptor.update(
+                        region=piece["region"],
+                        view=piece["view"],
+                        coordinates="displayed-cropbox-normalized-top-left",
+                    )
+                images.append({**descriptor, "bytes": data})
+                image_manifest.append(descriptor)
         source.verify()
         documents.append(entry)
     package = {

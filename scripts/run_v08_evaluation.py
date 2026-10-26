@@ -11,9 +11,10 @@ import json
 import math
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
-from aletheia_nexus.processing.contracts import load_task
+from aletheia_nexus.processing.contracts import digest, load_task
 from aletheia_nexus.processing.engine import run_task, write_json
 from aletheia_nexus.processing.provider import accounted_cost
 
@@ -48,8 +49,8 @@ def ledger_lock(root: Path):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def costs(root: Path) -> dict:
-    calls = []
+def ledger_calls(root: Path) -> dict[str, list]:
+    ledger = {}
     files = sorted(root.rglob("manifest.json"))
     smoke = root / "connection-smoke.json"
     if smoke.is_file():
@@ -58,14 +59,67 @@ def costs(root: Path) -> dict:
         data = json.loads(path.read_text("utf-8"))
         if path != smoke and data.get("schema") != "aletheia-nexus/research-run/v1":
             continue
-        calls.extend(data.get("calls", []))
+        ledger[path.relative_to(root).as_posix()] = data.get("calls", [])
+    return ledger
+
+
+def record_provider_bill(root: Path, amount: float, note: str) -> Path:
+    """Caller holds ledger_lock; user confirms bill scope covers existing calls."""
+    if not math.isfinite(amount) or amount < 0 or not note.strip():
+        raise ValueError("nonnegative provider bill and coverage note required")
+    ledger = ledger_calls(root)
+    now = datetime.now(timezone.utc)
+    path = root / "provider-bills" / (now.strftime("%Y%m%dT%H%M%S%fZ") + ".json")
+    write_json(
+        path,
+        {
+            "schema": "aletheia-nexus/provider-bill-checkpoint/v1",
+            "recorded_at": now.isoformat(),
+            "currency": "CNY",
+            "amount": amount,
+            "coverage_note": note,
+            "covered_attempts": sum(len(calls) for calls in ledger.values()),
+            "covered_calls": {
+                name: {"count": len(calls), "sha256": digest(calls)}
+                for name, calls in ledger.items()
+                if calls
+            },
+        },
+    )
+    return path
+
+
+def costs(root: Path) -> dict:
+    ledger = ledger_calls(root)
+    calls = [call for rows in ledger.values() for call in rows]
     if any(c.get("currency") != "CNY" for c in calls):
         raise ValueError(
             "evaluation ledger requires CNY calls; currencies cannot be added"
         )
-    if any(accounted_cost(c) is None for c in calls):
+    pending = calls
+    bill = None
+    checkpoints = sorted((root / "provider-bills").glob("*.json"))
+    if checkpoints:
+        checkpoint = checkpoints[-1]
+        bill = json.loads(checkpoint.read_text("utf-8"))
+        if (
+            bill["schema"] != "aletheia-nexus/provider-bill-checkpoint/v1"
+            or bill["currency"] != "CNY"
+            or not math.isfinite(bill["amount"])
+            or bill["amount"] < 0
+        ):
+            raise ValueError("invalid provider bill checkpoint")
+        for name, covered in bill["covered_calls"].items():
+            if digest(ledger.get(name, [])[: covered["count"]]) != covered["sha256"]:
+                raise ValueError("billed call history changed; reconcile ledger")
+        pending = [
+            call
+            for name, rows in ledger.items()
+            for call in rows[bill["covered_calls"].get(name, {}).get("count", 0) :]
+        ]
+    if any(accounted_cost(c) is None for c in pending):
         raise ValueError("unpriced call in ledger; inspect before spending more")
-    return {
+    report = {
         "currency": "CNY",
         "attempts": len(calls),
         "usage_based_estimate": sum(c.get("estimated_cost") or 0 for c in calls),
@@ -73,22 +127,48 @@ def costs(root: Path) -> dict:
             max(c.get("estimated_cost") or 0, c.get("reserved_cost") or 0)
             for c in calls
         ),
-        "conservative_spend": sum(accounted_cost(c) for c in calls),
+        "conservative_spend": (bill["amount"] if bill else 0)
+        + sum(accounted_cost(c) for c in pending),
         "unknown_usage_calls": sum(c.get("usage") is None for c in calls),
     }
+    if bill:
+        original = [accounted_cost(c) for c in calls]
+        report.update(
+            provider_bill_checkpoint=str(checkpoint),
+            provider_bill_cny=bill["amount"],
+            provider_bill_recorded_at=bill["recorded_at"],
+            covered_attempts=bill["covered_attempts"],
+            subsequent_attempts=len(pending),
+            subsequent_estimated_cny=sum(accounted_cost(c) for c in pending),
+            unreconciled_conservative_spend=None
+            if any(c is None for c in original)
+            else sum(original),
+            accounting_basis="provider_bill_plus_subsequent_estimates",
+        )
+    return report
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("tasks", nargs="+", type=Path)
+    parser.add_argument("tasks", nargs="*", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--max-total-cny", type=float, required=True)
     parser.add_argument("--allow-remote", action="store_true")
+    parser.add_argument("--record-provider-bill-cny", type=float)
+    parser.add_argument("--bill-note", default="")
     args = parser.parse_args()
     if not math.isfinite(args.max_total_cny) or args.max_total_cny <= 0:
         parser.error("positive cost cap required")
+    if args.record_provider_bill_cny is None and not args.tasks:
+        parser.error("task files or --record-provider-bill-cny required")
+    if args.record_provider_bill_cny is not None and args.tasks:
+        parser.error("record a provider bill separately from starting tasks")
     root = args.output_dir.resolve()
     with ledger_lock(root):
+        if args.record_provider_bill_cny is not None:
+            record_provider_bill(root, args.record_provider_bill_cny, args.bill_note)
+            print(json.dumps(costs(root), ensure_ascii=False, indent=2))
+            return 0
         return execute(args, root)
 
 

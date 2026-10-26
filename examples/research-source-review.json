@@ -8,8 +8,12 @@
     {
       "id": "paper1",
       "artifact": "paper1.parsed.json",
-      "pages": [1],
-      "notes": ["不可信候选主张（示例，使用前替换）：样品A的处理温度为180 °C。请同时记录原结果ID和字段名，便于关联旧结果。"]
+      "pages": [
+        1
+      ],
+      "notes": [
+        "不可信候选主张（示例，使用前替换）：样品A的处理温度为180 °C。请同时记录原结果ID和字段名，便于关联旧结果。"
+      ]
     }
   ],
   "fields": [
@@ -29,6 +33,21 @@
     "缺少信息不等于原文反对主张；只有直接相反读法才判contradicted。supported须支持全部要素，不能忽略对象或条件的差别。",
     "仅返回一条记录和source_support字段；用原文引用说明判定。raw_value、unit为null，nature为ai_synthesis，status为unconfirmed；steps和claims为空。"
   ],
-  "model": {"name": "deepseek-flash", "currency": "CNY", "reasoning_effort": "none", "input_cost_per_million": 2, "output_cost_per_million": 8},
-  "budget": {"max_calls": 3, "max_cost": 1, "max_input_characters": 100000, "max_output_tokens": 3000, "max_images": 3, "max_supplement_rounds": 0, "max_repair_rounds": 1}
+  "model": {
+    "name": "deepseek-flash",
+    "currency": "CNY",
+    "reasoning_effort": "high",
+    "input_cost_per_million": 2,
+    "output_cost_per_million": 8,
+    "timeout_seconds": 300
+  },
+  "budget": {
+    "max_calls": 3,
+    "max_cost": 1,
+    "max_input_characters": 100000,
+    "max_output_tokens": 65536,
+    "max_images": 3,
+    "max_supplement_rounds": 0,
+    "max_repair_rounds": 1
+  }
 }

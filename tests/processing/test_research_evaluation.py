@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parents[2]
 score = runpy.run_path(str(ROOT / "scripts/score_v08_review.py"))["score"]
 ledger_lock = runpy.run_path(str(ROOT / "scripts/run_v08_evaluation.py"))["ledger_lock"]
 costs = runpy.run_path(str(ROOT / "scripts/run_v08_evaluation.py"))["costs"]
+record_provider_bill = runpy.run_path(str(ROOT / "scripts/run_v08_evaluation.py"))[
+    "record_provider_bill"
+]
 
 
 def test_cumulative_cost_settles_known_usage_and_keeps_unknown_reservation(tmp_path):
@@ -41,6 +44,77 @@ def test_cumulative_cost_settles_known_usage_and_keeps_unknown_reservation(tmp_p
     assert report["unknown_usage_calls"] == 1
     manifest["calls"][1]["reserved_cost"] = None
     path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="unpriced"):
+        costs(tmp_path)
+
+
+def test_provider_bill_replaces_covered_estimates_and_counts_only_new_calls(tmp_path):
+    path = tmp_path / "manifest.json"
+    manifest = {
+        "schema": "aletheia-nexus/research-run/v1",
+        "calls": [
+            {"currency": "CNY", "estimated_cost": 90, "reserved_cost": 100},
+            {"currency": "CNY", "estimated_cost": None, "reserved_cost": 5},
+        ],
+    }
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    original = path.read_bytes()
+    first = record_provider_bill(tmp_path, 40.45, "User bill covers these prior calls")
+    report = costs(tmp_path)
+    assert path.read_bytes() == original
+    assert report["conservative_spend"] == 40.45
+    assert report["unreconciled_conservative_spend"] == 95
+    assert report["unknown_usage_calls"] == 2
+    assert report["subsequent_attempts"] == 0
+
+    # A new call in an existing run and a new run both count after the checkpoint.
+    manifest["calls"].append({"currency": "CNY", "estimated_cost": 0.2})
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    new_run = tmp_path / "new-run"
+    new_run.mkdir()
+    (new_run / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema": manifest["schema"],
+                "calls": [{"currency": "CNY", "reserved_cost": 1.5}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    report = costs(tmp_path)
+    assert report["conservative_spend"] == pytest.approx(42.15)
+    assert report["subsequent_attempts"] == 2
+    assert report["subsequent_estimated_cny"] == pytest.approx(1.7)
+    # The next bill replaces the cumulative basis; both checkpoints remain.
+    second = record_provider_bill(tmp_path, 41, "Later bill covers all four calls")
+    assert first.exists() and second.exists() and first != second
+    assert costs(tmp_path)["conservative_spend"] == 41
+
+
+@pytest.mark.parametrize("change", ["edit", "delete"])
+def test_provider_bill_does_not_hide_changed_covered_history(tmp_path, change):
+    path = tmp_path / "manifest.json"
+    manifest = {
+        "schema": "aletheia-nexus/research-run/v1",
+        "calls": [{"currency": "CNY", "estimated_cost": 1}],
+    }
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    record_provider_bill(tmp_path, 0.5, "Bill covers this call")
+    if change == "edit":
+        manifest["calls"][0]["estimated_cost"] = 2
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+    else:
+        path.unlink()
+    with pytest.raises(ValueError, match="billed call history changed"):
+        costs(tmp_path)
+
+
+def test_provider_bill_does_not_excuse_unpriced_future_call(tmp_path):
+    record_provider_bill(tmp_path, 40.45, "Bill before a new unpriced request")
+    (tmp_path / "connection-smoke.json").write_text(
+        json.dumps({"calls": [{"currency": "CNY", "usage": None}]}),
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError, match="unpriced"):
         costs(tmp_path)
 
