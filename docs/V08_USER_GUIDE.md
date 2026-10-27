@@ -209,6 +209,11 @@ pages_requested 记录两种输入覆盖的并集；实际文本查看 blocks，
 不会把图像输入记成已提供解析文本；解析页同样支持 block_id=null 的页级引用。
 旧包及其结果仍可读取；新材料身份不会复用旧覆盖逻辑的缓存。
 
+若模型把 SI 的页码标成主文，程序仅在该页超出原 PDF 总页数、主文/SI 双重身份已绑定，
+且同一页码、块 ID 和原句在已提供家族中唯一匹配时纠正 `source_id`。页码、块、原句及
+科学内容不改，原引用和变更保存在结果的 `citation_source_resolution`；Markdown 会提示，
+相关记录/主张仍待核对。未知来源、真实但未提供的页、缺块或多处匹配不会自动猜位置。
+
 模型可以请求任务范围内的页。`max_supplement_rounds` 默认 1，最多 3；并受
 max_images、max_input_characters、max_output_tokens、max_calls、max_cost 限制。
 如果没有新增材料，不再次调用。文件缺失、渲染失败或预算不足时保留已有候选结果，
@@ -343,6 +348,9 @@ JSON 中 parsed-quotation-unverified 表示文字未匹配，page-unverified 表
 强制重跑。中断后已有结果保留。输出 status=PARTIAL 时先看 manifest 的具体原因；
 缺少参数或原文歧义可以是有用的部分结果，不必反复付费重试。
 模型反复请求已提供材料时，保存并复用明确的 PARTIAL 状态；不会升级为完整成功。
+补页轮数已耗尽的有效 PARTIAL 结果同样按原任务复用，避免相同配置重复计费。
+需要继续补页时增加任务的 `max_supplement_rounds` 或明确加入材料；任务指纹随之变化，
+原部分结果和历史保留。确需同条件重新提取时可使用 `--no-resume`。
 
 离线重新导出：
 

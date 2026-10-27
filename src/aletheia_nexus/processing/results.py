@@ -110,6 +110,69 @@ def _matching_locations(citation: dict, documents: list[dict]) -> list[dict]:
     return matches
 
 
+def resolve_citation_source_ids(
+    response: dict, package: dict
+) -> tuple[dict, list[dict]]:
+    """Resolve only an impossible source page with an exact family page/block/quote.
+
+    Page, block, quotation and scientific content stay unchanged. The derived
+    link remains unconfirmed; ordinary valid references are never redirected.
+    """
+    adjusted = deepcopy(response)
+    documents = {d["id"]: d for d in package["documents"]}
+    changes = []
+
+    def visit(value, path):
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, [*path, index])
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                if key != "citations":
+                    visit(child, [*path, key])
+                    continue
+                for index, citation in enumerate(child):
+                    document = documents.get(citation["source_id"])
+                    if (
+                        document is None
+                        or citation["block_id"] is None
+                        or document["source"].get("page_count") is None
+                        or citation["page"] <= document["source"]["page_count"]
+                    ):
+                        continue
+                    quote = _quotation(citation["quote"])
+                    if not quote:
+                        continue
+                    matches = [
+                        d
+                        for d in _citation_search_documents(
+                            document, package["documents"]
+                        )
+                        if d["id"] != document["id"]
+                        and citation["page"] in d["pages_requested"]
+                        and any(
+                            b["id"] == citation["block_id"]
+                            and b["page"] == citation["page"]
+                            and quote in _quotation(b["text"])
+                            for b in d["blocks"]
+                        )
+                    ]
+                    if len(matches) == 1:
+                        before = deepcopy(citation)
+                        citation["source_id"] = matches[0]["id"]
+                        changes.append(
+                            {
+                                "path": [*path, "citations", index],
+                                "before": before,
+                                "after": deepcopy(citation),
+                                "reason": "impossible_source_page_unique_family_page_block_quote",
+                            }
+                        )
+
+    visit(adjusted, [])
+    return adjusted, changes
+
+
 def check_response(
     response: dict, task: dict, package: dict, *, comparison: bool = False
 ) -> dict:
@@ -404,19 +467,21 @@ def make_result(
     *,
     comparison: bool = False,
 ) -> dict:
-    validation = check_response(response, task, package, comparison=comparison)
-    return seal_result(
-        {
-            "schema": RESULT_SCHEMA,
-            "task": deepcopy(task),
-            "package": deepcopy(package),
-            "provider": provider,
-            "response": response,
-            "validation": validation,
-            "comparison": comparison,
-            "history": [],
-        }
-    )
+    validate(response, response_schema(task, comparison=comparison), "response")
+    response, adjustments = resolve_citation_source_ids(response, package)
+    result = {
+        "schema": RESULT_SCHEMA,
+        "task": deepcopy(task),
+        "package": deepcopy(package),
+        "provider": provider,
+        "response": response,
+        "comparison": comparison,
+        "history": [],
+    }
+    if adjustments:
+        result["citation_source_resolution"] = {"version": 1, "changes": adjustments}
+    result["validation"] = _review_validation(result)
+    return seal_result(result)
 
 
 def verify_result(result: dict) -> None:
@@ -503,7 +568,59 @@ def _review_validation(result: dict) -> dict:
                 if authority == "assistant" and state == "source_located"
                 else state
             )
+    _check_source_resolution(result, checked)
     return checked
+
+
+def _check_source_resolution(result: dict, checked: dict) -> None:
+    """Replay reversible link changes before reviews; never confirm their support."""
+    proof = result.get("citation_source_resolution")
+    if proof is None:
+        return
+    if proof.get("version") != 1 or not proof.get("changes"):
+        raise ValueError("invalid citation source resolution")
+    base = deepcopy(result["response"])
+    # Revisions replace existing rows/claims/issues. Undo them only to verify
+    # the original local transformation; final scientific content stays intact.
+    for revision in reversed(result["history"]):
+        target = _revision_target(revision)
+        if target == "record_id":
+            items = base["records"]
+            index = next(i for i, r in enumerate(items) if r["id"] == revision[target])
+        else:
+            items = base["claims" if target == "claim_index" else "issues"]
+            index = revision[target]
+        items[index] = deepcopy(revision["before"])
+    original = deepcopy(base)
+    for change in proof["changes"]:
+        parent = original
+        for part in change["path"][:-1]:
+            parent = parent[part]
+        key = change["path"][-1]
+        if parent[key] != change["after"]:
+            raise ValueError("citation source resolution does not match response")
+        parent[key] = deepcopy(change["before"])
+    adjusted, changes = resolve_citation_source_ids(original, result["package"])
+    if adjusted != base or changes != proof["changes"]:
+        raise ValueError("citation source resolution does not replay")
+    for change in changes:
+        path = change["path"]
+        if path[0] == "records":
+            key = base["records"][path[1]]["id"]
+            if checked["record_states"][key] not in {
+                "human_confirmed",
+                "conflict",
+                "evidence_insufficient",
+            }:
+                checked["record_states"][key] = "review_required"
+        elif path[0] == "claims":
+            states = checked.setdefault("claim_states", {})
+            key = str(path[1])
+            if states.get(key) != "human_confirmed":
+                states[key] = "review_required"
+        for citation in checked["citations"]:
+            if all(citation[k] == v for k, v in change["after"].items()):
+                citation["reading"] = "source-identity-unverified"
 
 
 def revise_result(result: dict, revision: dict) -> dict:
@@ -680,6 +797,15 @@ def export_results(
                 for d in result["package"]["documents"]
             ],
         }
+        if result.get("citation_source_resolution"):
+            proof = result["citation_source_resolution"]
+            provenance["citation_source_resolution"] = proof
+            lines.extend(
+                [
+                    f"来源标识已按同页、同块原句纠正 {len(proof['changes'])} 处，仍待核对；原引用与变更保存在结果 JSON 中。",
+                    "",
+                ]
+            )
         for record in result["response"].get("records", []):
             lines.extend(
                 [

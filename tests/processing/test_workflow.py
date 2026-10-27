@@ -30,6 +30,55 @@ from aletheia_nexus.processing.results import (
 )
 from aletheia_nexus.processing_cli import main
 
+
+def test_exhausted_supplement_rounds_reuse_exact_task_but_allow_budget_change(
+    papers, tmp_path
+):
+    task = task_for(papers[:1], mode="hybrid")
+    task["documents"][0]["image_pages"] = []
+    task["budget"].update(max_supplement_rounds=0, max_calls=3)
+
+    def generate(request):
+        response = response_for(request)
+        if not request.get("evidence_update"):
+            response["requests"] = [
+                {
+                    "source_id": "paper0",
+                    "pages": [2],
+                    "reason": "Read original test page",
+                }
+            ]
+        return response
+
+    provider = MockProvider(generate)
+    output = tmp_path / "supplement-cache"
+
+    def run(config):
+        return run_task(
+            config,
+            base_dir=tmp_path,
+            output_dir=output,
+            allow_remote=True,
+            provider=provider,
+        )
+
+    first = run(task)
+    assert first["status"] == "PARTIAL"
+    assert first["items"][0]["supplement_status"] == "round_budget_exhausted"
+    assert len(provider.requests) == 1
+    cached = run(task)
+    assert cached["items"][0]["reused"] and len(provider.requests) == 1
+    assert cached["items"][0]["supplement_status"] == "round_budget_exhausted"
+    expanded = deepcopy(task)
+    expanded["budget"]["max_supplement_rounds"] = 1
+    completed = run(expanded)
+    assert completed["status"] == "COMPLETED" and not completed["items"][0]["reused"]
+    assert len(provider.requests) == 3  # New task: initial read, then requested page.
+    assert provider.requests[-1]["evidence_update"]["current_coverage"][0][
+        "current_image_pages"
+    ] == [2]
+
+
 ROOT = Path(__file__).resolve().parents[2]
 write_pdf = runpy.run_path(str(ROOT / "scripts/generate_v07_fixtures.py"))["_write_pdf"]
 

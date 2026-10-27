@@ -837,13 +837,15 @@ def run_task(
                         source.verify()
                     result = make_result(task, package, provider_identity, response)
                     row["reused"] = False
-                    # Already supplied pages and requests awaiting user material
-                    # are stable partial results; resume must not charge again.
+                    # Supplied pages, requests awaiting user input and exhausted
+                    # supplement budgets are stable under the exact same task.
+                    # Changing the budget/material changes the cache key; an
+                    # identical resume must not buy the same incomplete reading.
                     # Failures after adding material still retry on the next run.
                     if not row.get("review_status") and (
                         not response["requests"]
                         or row.get("supplement_status")
-                        in {"no_new_material", "needs_input"}
+                        in {"no_new_material", "needs_input", "round_budget_exhausted"}
                     ):
                         write_json(
                             cache,
