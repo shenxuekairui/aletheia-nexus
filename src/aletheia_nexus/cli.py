@@ -1051,6 +1051,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
         from aletheia_nexus.processing_cli import main as research_main
 
         return research_main(args[1:])
+    if args[0] == "mcp":
+        from aletheia_nexus.mcp_server import main as mcp_main
+
+        return mcp_main(args[1:])
     if args[0] in {"import", "parse-batch", "open-source"}:
         from aletheia_nexus.research_cli import batch_main, import_main, open_main
 

@@ -1,0 +1,99 @@
+"""Real SDK v2 subprocess transport, not merely direct Python function calls."""
+
+import asyncio
+import sys
+
+import pytest
+from test_research_app import task_for, write_pdf
+
+pytest.importorskip("mcp")
+from mcp import Client, StdioServerParameters
+
+
+def test_stdio_local_tools_and_permissions(tmp_path):
+    papers = tmp_path / "papers"
+    papers.mkdir()
+    workspace = tmp_path / "results"
+    original = papers / "原始论文.pdf"
+    write_pdf(
+        original,
+        [
+            [
+                (50, 730, 15, "Original paper"),
+                (50, 650, 12, "A sample was measured at 25 C."),
+            ]
+        ],
+        title="Original paper",
+    )
+
+    async def run():
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-m",
+                "aletheia_nexus.mcp_server",
+                "serve",
+                "--allow-dir",
+                str(papers),
+                "--workspace",
+                str(workspace),
+            ],
+        )
+        async with Client(params, read_timeout_seconds=30) as client:
+            tools = await client.list_tools()
+            assert {t.name for t in tools.tools} == {
+                "list_documents",
+                "prepare_documents",
+                "draft_research_task",
+                "validate_research_task",
+                "execute_research_task",
+                "get_run_status",
+                "export_research_results",
+            }
+            result = await client.call_tool(
+                "list_documents", {"directory": str(papers)}
+            )
+            assert not result.is_error
+            assert len(result.structured_content["documents"]) == 1
+            prepared = await client.call_tool(
+                "prepare_documents", {"paths": [str(original)]}
+            )
+            documents = prepared.structured_content["documents"]
+            assert (
+                len(documents) == 1
+                and prepared.structured_content["network_access"] is False
+            )
+            task = task_for(documents)
+            drafted = await client.call_tool("draft_research_task", {"task": task})
+            assert drafted.structured_content["task"]["fields"][0]["label"] == "方法"
+            preview = await client.call_tool("validate_research_task", {"task": task})
+            assert "研究目标" in preview.structured_content["plan"]
+            started = await client.call_tool("execute_research_task", {"task": task})
+            job_id = started.structured_content["job_id"]
+            for _ in range(100):
+                status = await client.call_tool("get_run_status", {"job_id": job_id})
+                if status.structured_content["status"] not in {"QUEUED", "RUNNING"}:
+                    break
+                await asyncio.sleep(0.05)
+            assert status.structured_content["status"] == "PREPARED"
+            assert status.structured_content["manifest"]["usage"]["http_attempts"] == 0
+            remote_task = task_for(documents, mode="parsed")
+            denied = await client.call_tool(
+                "execute_research_task", {"task": remote_task}
+            )
+            assert denied.structured_content["error"] == "remote_disabled"
+            outside = await client.call_tool(
+                "list_documents", {"directory": str(tmp_path)}
+            )
+            assert outside.structured_content == {
+                "ok": False,
+                "error": "path_outside_allowed_directories",
+            }
+            private = await client.call_tool(
+                "list_documents", {"directory": str(workspace / ".authorizations")}
+            )
+            assert (
+                private.structured_content["error"] == "authorization_directory_private"
+            )
+
+    asyncio.run(run())

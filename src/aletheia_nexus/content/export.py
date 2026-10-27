@@ -335,7 +335,7 @@ def _existing_target_is_source_of_truth(target: Path) -> bool:
     if not isinstance(value, dict):
         return False
     schema = value.get("schema")
-    return schema in {
+    return isinstance(schema, str) and schema in {
         PARSED_DOCUMENT_SCHEMA,
         "aletheia-nexus/parsed-document/v2",
         "aletheia-nexus/local-document/v1",

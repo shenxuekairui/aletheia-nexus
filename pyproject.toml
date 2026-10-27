@@ -39,6 +39,9 @@ Source = "https://github.com/shenxuekairui/aletheia-nexus"
 aletheia-nexus = "aletheia_nexus.cli:entrypoint"
 
 [project.optional-dependencies]
+mcp = [
+    "mcp>=2.3,<3",
+]
 browser = [
     "playwright>=1.63,<2",
 ]

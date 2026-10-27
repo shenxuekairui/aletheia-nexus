@@ -19,11 +19,18 @@ from aletheia_nexus.processing.results import (
 
 
 def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] in {"ask", "authorize"}:
+        from aletheia_nexus.research_ask import main as entry_main
+
+        return entry_main(arguments)
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus research",
         description="本地保存的文献整理、字段提取与比较；远程 AI 必须显式启用。",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("ask", help="中文需求生成任务，预览并确认后运行")
+    commands.add_parser("authorize", help="本机确认一次性MCP规划/科研授权")
     run = commands.add_parser("run", help="运行或恢复一个 JSON 科研任务")
     run.add_argument("task", type=Path)
     run.add_argument("--output-dir", type=Path, required=True)

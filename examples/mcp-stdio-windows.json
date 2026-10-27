@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "aletheia-nexus": {
+      "command": "F:/AI4S/github/aletheia-nexus/.venv/Scripts/python.exe",
+      "args": [
+        "-m", "aletheia_nexus.mcp_server", "serve",
+        "--allow-dir", "F:/AI4S/papers",
+        "--workspace", "F:/AI4S/results/an08"
+      ],
+      "cwd": "F:/AI4S/github/aletheia-nexus"
+    }
+  }
+}

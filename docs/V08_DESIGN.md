@@ -60,9 +60,10 @@
 
 ## 真实执行驱动的调整
 
-- 默认关闭 reasoning（`none`），非思考模式 temperature=0。实测 `low` 的 9000
-  输出 Token 上限被耗尽而没有完整结果；用户仍可显式选择 reasoning 并增加预算。
-  不能由这次样本推断思考模式普遍无用。
+- 当前默认 `reasoning_effort=high`，输出上限65536 Token，包含思考与可见输出；
+  用户可在任务中显式调整。早期9000 Token耗尽的单次记录不作为关闭思考的依据。
+  Provider仍发送temperature=0，但官方说明思考模式会忽略该参数，不能据此声称模型
+  输出确定。同一输入的单次配对结果只提供局部证据。[Responses参数说明](https://api-docs.deepseek.com/api/create-response/)
 - 阅读摘要允许 `raw_value=null`，其原读法保存在引用中；数值、布尔值和规范化
   结果仍须保留原值。用数值提取的约束强制摘要，会制造虚假的“原始值”。
 - 引用仅对空白和拉丁排印连字（如 ﬁ）作等价匹配，不用 NFKC，避免改写上下标、

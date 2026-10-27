@@ -77,6 +77,15 @@ def test_structure_aware_exports_are_deterministic_and_source_linked(tmp_path):
     )
 
 
+def test_export_can_replace_derived_input_containing_json_schema(tmp_path):
+    output = tmp_path / "provider-input.json"
+    original = {"schema": {"type": "object"}, "request": {"version": 1}}
+    updated = {"schema": {"type": "object"}, "request": {"version": 2}}
+    write_ai_export(output, json.dumps(original))
+    write_ai_export(output, json.dumps(updated), overwrite=True)
+    assert json.loads(output.read_text(encoding="utf-8")) == updated
+
+
 def test_export_and_parse_outputs_refuse_silent_overwrite(tmp_path):
     artifact = _artifact(tmp_path)
     output = tmp_path / "chunks.json"
