@@ -13,6 +13,7 @@ from aletheia_nexus.content.captions import (
     _CAPTION,
     _UNNUMBERED_TABLE_CAPTION,
     _caption_match,
+    _is_table_caption,
 )
 from aletheia_nexus.content.models import LayoutLine
 
@@ -134,7 +135,7 @@ def _prepare_table_lines(
         match = _CAPTION.match(caption.text.strip()) or _UNNUMBERED_TABLE_CAPTION.match(
             caption.text.strip()
         )
-        if not match or match["kind"].casefold() not in {"table", "表", "таблица"}:
+        if not _is_table_caption(match):
             continue
         descriptions = []
         if not _caption_match(caption.text):
@@ -204,8 +205,7 @@ def _prepare_table_lines(
             and _CELL_NUMBER.fullmatch(item.text.strip())
         ]
         adjacent_caption = any(
-            (other_match := _CAPTION.match(item.text.strip()))
-            and other_match["kind"].casefold() in {"table", "表"}
+            _is_table_caption(_CAPTION.match(item.text.strip()))
             and (item.x0 < left_limit or item.x1 > right_limit)
             and min((cell.y0 for cell in outside), default=bottom) <= item.y0
             for item in lines

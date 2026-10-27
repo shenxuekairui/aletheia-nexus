@@ -13,7 +13,9 @@ from aletheia_nexus.content.local import register_local_pdf
 from aletheia_nexus.content.service import parse_document
 
 
-def segmented_page(scale=1, *, closed=True):
+def segmented_page(
+    scale=1, *, closed=True, caption="Table 1. Wrapped instrument readings"
+):
     writer = PdfWriter()
     page = writer.add_blank_page(600 * scale, 800 * scale)
     page[NameObject("/Resources")] = dictionary(Font=dictionary(F=regular_font()))
@@ -37,7 +39,7 @@ def segmented_page(scale=1, *, closed=True):
                 f"{x} {low + stroke} {stroke} {high - low - stroke - 0.1} re f".encode()
             )
     for text, x, y, size in [
-        ("Table 1. Wrapped instrument readings", 50, 735, 12),
+        (caption, 50, 735, 12),
         ("Object", 60, 670, 12),
         ("Readings", 355, 680, 10),
         ("X", 358, 640, 10),

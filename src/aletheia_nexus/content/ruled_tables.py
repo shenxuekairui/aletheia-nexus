@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from aletheia_nexus.content.captions import _is_table_caption
+
 
 def table_bounds(caption, objects, width, height):
     rules = [o.bbox for o in objects if o.object_type == "horizontal-rule" and o.bbox]
@@ -67,7 +69,7 @@ def prepare_ruled_tables(lines, layout, caption_match, split_fragments):
     replacements = {}
     for caption in lines:
         match = caption_match(caption.text)
-        if not match or match["kind"].casefold() not in {"table", "表", "таблица"}:
+        if not _is_table_caption(match):
             continue
         box = table_bounds(caption, layout.objects, layout.width, layout.height)
         if box is None:

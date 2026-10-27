@@ -8,7 +8,7 @@ from difflib import SequenceMatcher
 
 _CAPTION = re.compile(
     r"^(?P<namespace>supplementary\s+)?"
-    r"(?P<kind>fig(?:ure)?|scheme|table|图式|图|表)\.?\s*"
+    r"(?P<kind>fig(?:ure)?|scheme|table|tab(?=\.)|图式|图|表)\.?\s*"
     r"(?P<label>(?:[A-Z]?\d+(?:[A-Za-z](?=$|\s|[,;:.|\-]))?"
     r"|[IVXLCDM]+(?=$|\s|[,;:.|\-])))",
     re.IGNORECASE,
@@ -174,11 +174,20 @@ def _caption_quality(text: str, match: re.Match[str]) -> tuple[int, int, int, in
     )
 
 
+def _is_table_caption(match: re.Match[str] | None) -> bool:
+    return match is not None and match["kind"].casefold() in {
+        "table",
+        "tab",
+        "表",
+        "таблица",
+    }
+
+
 def _caption_key(match: re.Match[str]) -> tuple[str, str, str]:
     # Main and supplementary captions can share a number in a combined PDF.
     return (
         (match.groupdict().get("namespace") or "").strip().casefold(),
-        match.group("kind").casefold(),
+        "table" if match["kind"].casefold() == "tab" else match["kind"].casefold(),
         match.group("label").casefold(),
     )
 

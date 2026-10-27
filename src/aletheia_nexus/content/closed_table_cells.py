@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from aletheia_nexus.content.captions import _caption_match
+from aletheia_nexus.content.captions import _caption_match, _is_table_caption
 from aletheia_nexus.content.ruled_tables import table_bounds
 from aletheia_nexus.content.table_layout import _line_slice
 
@@ -83,17 +83,13 @@ def prepare_closed_table_cells(layout):
     coordinates. No decimal, chemical formula, unit or blank value is completed.
     Without sufficient native geometry the existing layout is retained.
     """
-    if not any(
-        (match := _caption_match(line.text))
-        and match["kind"].casefold() in {"table", "表", "таблица"}
-        for line in layout.lines
-    ):
+    if not any(_is_table_caption(_caption_match(line.text)) for line in layout.lines):
         return layout
     objects = _joined_rules(layout)
     replacements, consumed = {}, set()
     for caption in layout.lines:
         match = _caption_match(caption.text)
-        if not match or match["kind"].casefold() not in {"table", "表", "таблица"}:
+        if not _is_table_caption(match):
             continue
         box = table_bounds(caption, objects, layout.width, layout.height)
         if box is None:
