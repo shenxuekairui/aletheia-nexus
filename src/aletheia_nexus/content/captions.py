@@ -7,7 +7,8 @@ import unicodedata
 from difflib import SequenceMatcher
 
 _CAPTION = re.compile(
-    r"^(?P<kind>fig(?:ure)?|scheme|table|图式|图|表)\.?\s*"
+    r"^(?P<namespace>supplementary\s+)?"
+    r"(?P<kind>fig(?:ure)?|scheme|table|图式|图|表)\.?\s*"
     r"(?P<label>(?:[A-Z]?\d+(?:[A-Za-z](?=$|\s|[,;:.|\-]))?"
     r"|[IVXLCDM]+(?=$|\s|[,;:.|\-])))",
     re.IGNORECASE,
@@ -49,6 +50,11 @@ _CAPTION_SUFFIX_MENTION = re.compile(r"^on\b", re.IGNORECASE)
 
 
 _CAPTION_JOINED_SUFFIX_MENTION = re.compile(r"^[A-Za-z]on\b", re.IGNORECASE)
+
+
+_CAPTION_LABEL_RANGE = re.compile(
+    r"^[–—-]\s*(?:[A-Z]?\d+|[IVXLCDM]+)(?=$|[\s,;.)])", re.IGNORECASE
+)
 
 
 _CAPTION_CROSS_REFERENCE = re.compile(
@@ -105,7 +111,7 @@ def _caption_match(text: str) -> re.Match[str] | None:
         ):
             return None
     remainder = stripped[match.end() :].lstrip()
-    if remainder.startswith((",", ";")):
+    if remainder.startswith((",", ";")) or _CAPTION_LABEL_RANGE.match(remainder):
         return None
     description = _caption_description(stripped, match)
     # Character spacing in a Chinese PDF must not turn a sentence such as
@@ -168,10 +174,19 @@ def _caption_quality(text: str, match: re.Match[str]) -> tuple[int, int, int, in
     )
 
 
+def _caption_key(match: re.Match[str]) -> tuple[str, str, str]:
+    # Main and supplementary captions can share a number in a combined PDF.
+    return (
+        (match.groupdict().get("namespace") or "").strip().casefold(),
+        match.group("kind").casefold(),
+        match.group("label").casefold(),
+    )
+
+
 def _deduplicate_caption_blocks(blocks: list[dict[str, object]]) -> None:
     """Keep one semantic caption for duplicated PDF text-layer evidence."""
 
-    descriptive_keys: set[tuple[str, str]] = set()
+    descriptive_keys: set[tuple[str, str, str]] = set()
     for block in blocks:
         if block["kind"] != "caption":
             continue
@@ -181,9 +196,7 @@ def _deduplicate_caption_blocks(blocks: list[dict[str, object]]) -> None:
             continue
         description = _caption_description(text, match).casefold()
         if description and "continued" not in description:
-            descriptive_keys.add(
-                (match.group("kind").casefold(), match.group("label").casefold())
-            )
+            descriptive_keys.add(_caption_key(match))
     for block in blocks:
         if block["kind"] != "caption":
             continue
@@ -191,11 +204,11 @@ def _deduplicate_caption_blocks(blocks: list[dict[str, object]]) -> None:
         match = _caption_match(text)
         if match is None:
             continue
-        key = (match.group("kind").casefold(), match.group("label").casefold())
+        key = _caption_key(match)
         if key in descriptive_keys and not _caption_description(text, match):
             block["kind"] = "paragraph"
 
-    kept: dict[tuple[str, str], list[dict[str, object]]] = {}
+    kept: dict[tuple[str, str, str], list[dict[str, object]]] = {}
     for block in blocks:
         if block["kind"] != "caption":
             continue
@@ -203,7 +216,7 @@ def _deduplicate_caption_blocks(blocks: list[dict[str, object]]) -> None:
         match = _caption_match(text)
         if match is None:
             continue
-        key = (match.group("kind").casefold(), match.group("label").casefold())
+        key = _caption_key(match)
         description = _caption_description(text, match).casefold()
         if "continued" in description or "supplement" in description:
             kept.setdefault(key, []).append(block)
