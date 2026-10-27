@@ -16,6 +16,7 @@ from aletheia_nexus.content.captions import (
     _caption_match,
     _deduplicate_caption_blocks,
 )
+from aletheia_nexus.content.closed_table_cells import prepare_closed_table_cells
 from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.embedded_tables import (
     append_embedded_tables,
@@ -56,7 +57,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.10.21"
+PARSER_VERSION = "3.10.22"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -872,6 +873,7 @@ class _NativeExtractionStage:
                     crop_box=expected.crop_box,
                     rotation=expected.rotation,
                 )
+                layout = prepare_closed_table_cells(layout)
             except Exception as exc:
                 context.errors.append(
                     {

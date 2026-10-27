@@ -35,8 +35,6 @@ def table_bounds(caption, objects, width, height):
         return None
     # The header separator must follow nearby. A distant page-footer rule is
     # not a table boundary. Subsequent full-width rules delimit body rows.
-    if top[1] - aligned[1][3] > caption.font_size * 5 / height:
-        return None
     borders = [
         o.bbox
         for o in objects
@@ -45,6 +43,16 @@ def table_bounds(caption, objects, width, height):
         and abs(o.bbox[3] - top[3]) < 0.003
         and (abs(o.bbox[0] - top[0]) < 0.003 or abs(o.bbox[2] - top[2]) < 0.003)
     ]
+    if top[1] - aligned[1][3] > caption.font_size * 5 / height and not all(
+        any(
+            abs((b[0] + b[2]) / 2 - x) < 0.003 and b[1] <= aligned[-1][1] + 0.003
+            for b in borders
+        )
+        for x in (top[0], top[2])
+    ):
+        # A tall wrapped header needs printed sides extending to the bottom,
+        # not just a distant horizontal footer sharing its width.
+        return None
     if len(borders) >= 2:
         end = max(b[1] for b in borders)
         selected = [b for b in aligned if b[1] >= end - 0.003]
@@ -114,7 +122,10 @@ def prepare_ruled_tables(lines, layout, caption_match, split_fragments):
         for line in inside:
             pieces = (
                 split_fragments(line, references)
-                if len(references) >= 2 and line not in header and line.glyph_spans
+                if len(references) >= 2
+                and line not in header
+                and line.glyph_spans
+                and not line.extraction_method.endswith("+painted-cell")
                 else ()
             )
             replacements[id(line)] = tuple(
@@ -161,7 +172,7 @@ def explicit_grid_cells(caption, blocks, anchors, layout):
         for o in layout.objects
         if o.object_type == "vertical-rule"
         and o.bbox
-        and x0 - tol < o.bbox[0] < x1 + tol
+        and x0 - tol < (o.bbox[0] + o.bbox[2]) / 2 < x1 + tol
         and o.bbox[1] <= y1
         and o.bbox[3] >= y0
     ]
