@@ -436,7 +436,15 @@ def response_schema(task: dict, *, comparison: bool = False) -> dict:
                 "status": choice(
                     "reported", "normalized", "not_reported", "ambiguous", "unconfirmed"
                 ),
-                "nature": NATURE,
+                "nature": {
+                    "type": ["string", "null"],
+                    "enum": [*NATURE["enum"], None],
+                    "description": (
+                        "Null is allowed only for status not_reported when value, "
+                        "raw_value and unit are all null; otherwise specify the "
+                        "nature of the answer."
+                    ),
+                },
                 "context": {
                     **TEXT,
                     "description": (

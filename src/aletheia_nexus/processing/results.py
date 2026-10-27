@@ -24,6 +24,7 @@ FIELD_STATUS = {
     "unconfirmed": "未确认",
 }
 NATURE_LABELS = {
+    None: "未指定",
     "reported": "直接报告",
     "author_interpretation": "作者解释",
     "ai_synthesis": "AI 归纳",
@@ -290,6 +291,20 @@ def check_response(
                     and not field["value"]
                 ):
                     raise ProcessingError("empty_reported_value")
+                if field["nature"] is None:
+                    raise ProcessingError(
+                        "missing_field_nature",
+                        {
+                            "record_id": record["id"],
+                            "field_id": field_id,
+                            "validation": (
+                                "Nature may be JSON null only for status "
+                                "not_reported with null value, raw_value and unit. "
+                                "Otherwise use reported, author_interpretation "
+                                "or ai_synthesis without changing the scientific content."
+                            ),
+                        },
+                    )
                 review |= field["status"] != "reported" or field["nature"] != "reported"
             if field["status"] == "normalized" and not field["context"].strip():
                 raise ProcessingError("normalization_requires_explanation")

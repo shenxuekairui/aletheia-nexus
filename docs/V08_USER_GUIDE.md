@@ -312,6 +312,9 @@ aletheia-nexus research export research-runs/runs/RUN_ID/comparison.result.json 
 摘要没有单个原始值时允许 raw_value 为空，原读法保存在 citations 中；数值、布尔值
 和 normalized 字段必须保留 raw_value。not_reported的value/raw_value/unit都为null，
 原因放context；定性的“环境温度”等仍可作为reported值，不能因缺少数值而判未报告。
+仅在 `status=not_reported` 且 `value/raw_value/unit` 全为 `null` 时，字段的 `nature`
+也允许为 `null`：保存时保留原值，Markdown 显示“未指定”，不推断为原文报告或 AI 归纳。
+其他状态以及步骤、主张仍须明确填写性质。此兼容性处理不证明缺失判断正确，也不放宽引用校验。
 `value` 按配置类型保存答案，string 字段可以包含完整的定性描述或阅读笔记。
 reported / normalized 的 value 不能为 null 或空值；context 仅补充范围、限定或
 规范化说明，不能替代答案。程序不会把 context 自动搬入 value，原始候选仍保留。
