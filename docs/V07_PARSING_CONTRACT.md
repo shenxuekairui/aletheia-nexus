@@ -97,6 +97,19 @@ Raster regions can still omit vector panels and the caption block can omit
 continuation text; their union is not a guaranteed complete figure crop.
 Existing `parsed-document/v3` artifacts remain valid and are not rewritten.
 
+From parser 3.10.18, figure/scheme caption continuation is assembled from native
+lines with matching font, size, spacing and caption-local horizontal bounds.
+This requires the caption type to be smaller than the page's character-weighted
+median; a short final line can retain its original caption column. Same-page
+duplicate caption starts are resolved before continuation so a prose reference
+does not win merely by growing longer. A demoted start still ends continuation.
+Text, source bounds and uncertainty remain available; equation-like continuation
+does not become scientifically verified. Unknown fonts, indistinguishable body
+styles and caption-dominated pages can retain separate blocks. Small body text
+with the same caption style remains a layout ambiguity, so this is not a guarantee
+of complete captions or complete figure crops. Old artifacts and PDFs are not
+modified; changed parser execution identities apply to new parsing.
+
 Panel associations marked `positioned-panel-length` describe an observed length
 label and retain the existing uncertainty flag; their scientific role remains
 unverified. Compact `Panel (...): label ...` text does not identify a measurement

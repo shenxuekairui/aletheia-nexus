@@ -56,7 +56,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.10.17"
+PARSER_VERSION = "3.10.18"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -690,6 +690,43 @@ def _can_merge_heading(
     return abs(previous.x0 - current.x0) <= max(24.0, width * 0.08)
 
 
+def _can_merge_caption(
+    first: LayoutLine, previous: LayoutLine, current: LayoutLine, median_font: float
+) -> bool:
+    """Join a continued figure caption only within its observed line style.
+
+    A short final line still belongs to the caption's original column. Its end
+    is also a boundary: do not continue into nearby prose merely because that
+    prose uses the same font. Require smaller type than the dominant page text;
+    same-style prose and backends without font information stay unchanged.
+    """
+    match = _caption_match(first.text)
+    if not match or not match.group("kind").lower().startswith(("fig", "scheme", "图")):
+        return False
+    if (
+        first.content_region != "body"
+        or not first.dominant_font
+        or first.font_size >= median_font * 0.95
+    ):
+        return False
+    if any(
+        line.content_region != first.content_region
+        or line.extraction_method != first.extraction_method
+        or line.dominant_font != first.dominant_font
+        or abs(line.font_size / first.font_size - 1) > 0.05
+        for line in (previous, current)
+    ):
+        return False
+    size = first.font_size
+    gap = previous.y0 - current.y1
+    return (
+        -0.3 * size <= gap <= 0.65 * size
+        and abs(current.x0 - first.x0) <= 0.4 * size
+        and current.x1 <= first.x1 + 0.5 * size
+        and previous.x1 - previous.x0 >= 0.65 * (first.x1 - first.x0)
+    )
+
+
 def _union_bbox(first: list[float], second: list[float]) -> list[float]:
     return [
         min(first[0], second[0]),
@@ -781,6 +818,7 @@ class _NativeExtractionStage:
             )
             previous_line: LayoutLine | None = None
             previous_kind: str | None = None
+            caption_first_line: LayoutLine | None = None
             prepared_lines = _associate_figure_labels(
                 layout.lines, layout.objects, layout.width, layout.height
             )
@@ -808,7 +846,19 @@ class _NativeExtractionStage:
                 *_order_layout_lines(ordinary, layout, config),
                 *_order_lines(alternatives, layout.width, config),
             ]
-            for line in ordered:
+            # Resolve duplicate caption starts before joining continuation text.
+            # Otherwise a prose reference can grow into a longer false caption,
+            # or a complete caption can lose to a reference under prose heuristics.
+            caption_starts = {
+                index: {"text": line.text, "kind": "caption", "page": page_index}
+                for index, line in enumerate(ordered)
+                if _kind(line, median_font, config.heading_font_ratio) == "caption"
+                and (match := _caption_match(line.text)) is not None
+                and match.group("kind").lower().startswith(("fig", "scheme", "图"))
+                and not _is_page_furniture(line, layout, repeated_furniture)
+            }
+            _deduplicate_caption_blocks(list(caption_starts.values()))
+            for index, line in enumerate(ordered):
                 line_engines = line.source_engines or (
                     f"{backend.name}@{backend.version}",
                 )
@@ -816,8 +866,11 @@ class _NativeExtractionStage:
                     context.suppressed_page_furniture += 1
                     previous_line = None
                     previous_kind = None
+                    caption_first_line = None
                     continue
                 kind = _kind(line, median_font, config.heading_font_ratio)
+                if index in caption_starts:
+                    kind = caption_starts[index]["kind"]
                 will_merge_paragraph = (
                     config.merge_paragraph_lines
                     and kind == previous_kind == "paragraph"
@@ -838,7 +891,19 @@ class _NativeExtractionStage:
                         width=layout.width,
                     )
                 )
-                will_merge = will_merge_paragraph or will_merge_heading
+                will_merge_caption = (
+                    previous_kind == "caption"
+                    and kind in {"paragraph", "equation"}
+                    and index not in caption_starts
+                    and previous_line is not None
+                    and caption_first_line is not None
+                    and _can_merge_caption(
+                        caption_first_line, previous_line, line, median_font
+                    )
+                )
+                will_merge = (
+                    will_merge_paragraph or will_merge_heading or will_merge_caption
+                )
                 projected_characters = (
                     text_characters + len(line.text) + int(will_merge)
                 )
@@ -860,7 +925,9 @@ class _NativeExtractionStage:
                     anchor = context.anchors[-1]
                     block["text"] = f"{block['text']} {line.text}"
                     block["line_count"] = int(block["line_count"]) + 1
-                    block["uncertain"] = bool(block["uncertain"] or line.uncertain)
+                    block["uncertain"] = bool(
+                        block["uncertain"] or line.uncertain or kind == "equation"
+                    )
                     block["extraction_confidence"] = min(
                         float(block["extraction_confidence"]),
                         line.extraction_confidence,
@@ -948,6 +1015,7 @@ class _NativeExtractionStage:
                 text_characters = projected_characters
                 previous_line = line
                 previous_kind = kind
+                caption_first_line = line if kind == "caption" else None
 
 
 def _sections(blocks: list[dict[str, object]]) -> list[dict[str, object]]:
