@@ -115,6 +115,8 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | --- | --- | --- |
 | `list_documents` | 列举允许目录内PDF、来源/解析状态 | 否 |
 | `prepare_documents` | 准备明确选择的PDF，隔离失败，在工作区建副本 | 否 |
+| `import_local_document` | 用明确标题/DOI登记本地主文副本；仅为DECLARED，不验证身份 | 否 |
+| `parse_document` | 对已登记文献显式生成独立的新解析工件，保留旧版 | 否 |
 | `draft_research_task` | 直接验证客户端任务；或从自然语言规划 | 只有自然语言分支需规划许可 |
 | `validate_research_task` | 校验来源/字段/预算，返回计划及批准请求 | 否 |
 | `execute_research_task` | 现有引擎异步执行，返回job_id | 科研模式需独立许可 |
@@ -132,6 +134,26 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 检索直接复用 v0.7 的表格/图注内容单元和证据包，不把字面未命中解释为科学事实缺失。
 `read_document_context` 超出字符预算时明确跳过完整上下文，不截断表头或悄悄漏行。
 跨盘的手工PDF/工件组合需先 `prepare_documents` 在工作区准备，再进行文库检索。
+
+### 明确登记与新版本解析
+
+本地主文还没有来源记录时，可调用
+`import_local_document(pdf="F:/papers/paper.pdf", title="论文标题", doi="10.xxxx/...")`。
+DOI可省略；调用者提供的元数据仅记为 `REGISTERED/DECLARED`，不冒充下载验证。
+导入在工作区保留PDF副本、原路径及文件名，返回 `document`；它不会覆盖原PDF或原来源记录。
+已有登记/获取记录请用 `prepare_documents`。本工具不接受 `role`、`parent` 或 `confirmed`：
+新SI归属仍通过现有本地 `import --role SUPPLEMENT --parent ...` 声明，之后保留该来源记录。
+
+将返回的 `document` 交给 `parse_document(document=..., max_pages=2000)`，可显式用当前解析器
+创建新版本。每次写入唯一的 `*.parsed.json`，可被现有 `load_corpus` 文库扫描；不会改名或覆盖
+旧规范工件。`prepare_documents` 继续读取旧 `parsed-UUID.json`，也不会仅因解析器升级重新解析。
+明确选择新版本时使用返回的 `document`；旧引用和旧结果仍绑定原工件。
+
+默认采用原生文本；`ocr=true, ocr_languages="eng"` 才开启已有的本地原生优先选择性OCR，
+依赖Poppler/Tesseract及已安装语言数据，不下载模型。工具不开放可执行文件路径等配置。
+原生新版本不会替换既有OCR版本。返回真实 `status`、`parser`、`quality`、`warnings`、`errors`
+及所用选项；页数上限、OCR缺依赖或不足材料可能得到 `PARTIAL/FAILED`，不能当成完整解析。
+调用为同步本地操作；大文件/OCR可能较慢，可设置客户端超时或继续使用既有解析CLI。
 
 客户端已有模型时，可直接生成任务并验证，不必再调用 AN 规划API。只有自然语言目标时，
 AN先返回规划许可请求。元数据和论文内容不会因模型传入 `confirmed=true` 自动发送。

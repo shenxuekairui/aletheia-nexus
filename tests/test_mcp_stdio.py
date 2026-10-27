@@ -46,6 +46,8 @@ def test_stdio_local_tools_and_permissions(tmp_path):
             assert {t.name for t in tools.tools} == {
                 "list_documents",
                 "prepare_documents",
+                "import_local_document",
+                "parse_document",
                 "draft_research_task",
                 "validate_research_task",
                 "execute_research_task",
@@ -63,6 +65,27 @@ def test_stdio_local_tools_and_permissions(tmp_path):
             )
             assert not result.is_error
             assert len(result.structured_content["documents"]) == 1
+            imported = await client.call_tool(
+                "import_local_document",
+                {
+                    "pdf": str(original),
+                    "title": "Explicit local paper",
+                    "doi": "10.1234/local-test",
+                },
+            )
+            assert imported.structured_content["status"] == "REGISTERED"
+            assert (
+                imported.structured_content["source"]["identity_basis"]
+                == "local_declared"
+            )
+            parsed = await client.call_tool(
+                "parse_document", {"document": imported.structured_content["document"]}
+            )
+            assert parsed.structured_content["status"] in {"PARSED", "PARTIAL"}
+            assert parsed.structured_content["document"]["artifact"].endswith(
+                ".parsed.json"
+            )
+            assert parsed.structured_content["network_access"] is False
             prepared = await client.call_tool(
                 "prepare_documents", {"paths": [str(original)]}
             )

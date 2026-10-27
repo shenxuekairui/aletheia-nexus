@@ -21,6 +21,7 @@ from pypdf import PdfReader
 
 from aletheia_nexus.content.gate import sha256_file, validate_parser_input
 from aletheia_nexus.content.local import register_local_pdf
+from aletheia_nexus.content.parser import ParserConfig
 from aletheia_nexus.content.service import parse_document
 from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
 from aletheia_nexus.processing.contracts import digest, validate_task
@@ -32,6 +33,20 @@ from aletheia_nexus.processing.results import export_results, verify_result
 
 def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _parsed_candidates(pdf: Path) -> list[Path]:
+    # Preserve the old preparation filename while making new artifacts discoverable
+    # by the v0.7 corpus reader (which searches for *.parsed.json).
+    return list(
+        dict.fromkeys(
+            [
+                pdf.with_suffix(".parsed.json"),
+                *sorted(pdf.parent.glob("*.parsed.json")),
+                *sorted(pdf.parent.glob("parsed-*.json")),
+            ]
+        )
+    )
 
 
 def _lock_job_owner(path: Path, *, create=False):
@@ -87,6 +102,137 @@ class ResearchApplication:
             raise ProcessingError("path_outside_allowed_directories")
         return target
 
+    def _copy_source_file(self, original: Path, target: Path) -> Path:
+        original, target = self.path(original), self.path(target, write=True)
+        fingerprint = sha256_file(original)
+        if target.exists():
+            if sha256_file(target) != fingerprint:
+                raise ProcessingError("workspace_source_hash_mismatch")
+            return target
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.parent / (uuid4().hex + ".part")
+        try:
+            shutil.copyfile(original, temporary)
+            if sha256_file(temporary) != fingerprint:
+                raise ProcessingError("source_changed_while_copying")
+            # The workspace copy is immutable too: a concurrent existing copy must
+            # match, never replace a different file.
+            with target.open("xb") as output, temporary.open("rb") as source:
+                shutil.copyfileobj(source, output)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return target
+
+    def import_local_document(
+        self, pdf: str, title: str, *, doi: str | None = None
+    ) -> dict:
+        """Declare a main article locally; never mint a verified identity or SI link."""
+        original = self.path(pdf)
+        if original.suffix.lower() != ".pdf" or not title.strip():
+            raise ValueError("select a PDF and supply its title")
+        sidecar = self.path(acquisition_sidecar_path(original))
+        if sidecar.exists():
+            # Do not replace an acquired/registered identity with model metadata,
+            # particularly an independently established supplement relationship.
+            raise ProcessingError("source_already_registered_use_prepare_documents")
+        destination = self.path(
+            self.workspace / "materials" / ("import-" + uuid4().hex), write=True
+        )
+        copied = self._copy_source_file(original, destination / "paper.pdf")
+        registered = register_local_pdf(
+            copied, output_dir=destination, title=title, doi=doi
+        )
+        document = {
+            "id": "paper_" + sha256_file(registered)[:16],
+            "pdf": str(registered),
+            "sidecar": str(acquisition_sidecar_path(registered)),
+        }
+        source = self.check_document(document, "direct")
+        receipt = {
+            "document": document,
+            "source": source.identity,
+            "original_pdf": str(original),
+            "original_filename": original.name,
+            "status": "REGISTERED",
+            "warnings": [
+                "标题和DOI由调用者声明，未经来源验证；仅登记为独立主文，不绑定SI。"
+            ],
+            "network_access": False,
+        }
+        path = self.path(destination / "import.json", write=True)
+        write_json(path, receipt)
+        return {**receipt, "import_file": str(path)}
+
+    def parse_document(
+        self, document: dict, *, ocr=False, ocr_languages="eng", max_pages=2000
+    ) -> dict:
+        """Explicitly create a new parse; old native/OCR artifacts stay untouched."""
+        config = ParserConfig(max_pages=max_pages)
+        if type(ocr) is not bool or not re.fullmatch(
+            r"[A-Za-z0-9_]+(?:\+[A-Za-z0-9_]+)*", ocr_languages
+        ):
+            raise ValueError("invalid local OCR options")
+        source = self.check_document(document, "direct")
+        destination = self.path(
+            self.workspace / "materials" / source.identity["pdf_sha256"], write=True
+        )
+        pdf = self._copy_source_file(source.pdf, destination / "paper.pdf")
+        # Distinct declarations of the same bytes may have different identities.
+        # Keep every source record, and bind its exact copy in the new artifact.
+        sidecar = self._copy_source_file(
+            source.sidecar,
+            destination
+            / "json"
+            / (source.identity["acquisition_sidecar_sha256"] + ".acquisition.json"),
+        )
+        backend = None
+        if ocr:
+            from aletheia_nexus.content.backends import (
+                AdaptiveOcrBackend,
+                TesseractOcrBackend,
+                TesseractOcrConfig,
+            )
+
+            backend = AdaptiveOcrBackend(
+                ocr_backends=(
+                    TesseractOcrBackend(TesseractOcrConfig(languages=ocr_languages)),
+                )
+            )
+        artifact = self.path(
+            destination / ("parsed-" + uuid4().hex + ".parsed.json"), write=True
+        )
+        result = parse_document(
+            pdf,
+            sidecar_path=sidecar,
+            output_path=artifact,
+            config=config,
+            backend=backend,
+        )
+        source.verify()
+        updated = {
+            **deepcopy(document),
+            "pdf": str(pdf),
+            "sidecar": str(sidecar),
+            "artifact": str(artifact),
+        }
+        return {
+            "document": updated,
+            "status": result.status,
+            "parser": result.document["parser"],
+            "quality": result.document["quality"],
+            "warnings": result.document["warnings"],
+            "errors": result.document["errors"],
+            "options": {
+                "ocr": ocr,
+                "ocr_languages": ocr_languages,
+                "max_pages": max_pages,
+            },
+            "original_pdf": str(source.pdf),
+            "original_filename": source.pdf.name,
+            "previous_artifact": document.get("artifact"),
+            "network_access": False,
+        }
+
     def list_documents(self, directory: str, *, recursive=False) -> dict:
         root = self.path(directory)
         if not root.is_dir():
@@ -121,14 +267,30 @@ class ResearchApplication:
                     row["warnings"].append(
                         "标题/DOI/文献角色尚未核实；不会自动绑定SI。"
                     )
-                parsed = pdf.with_suffix(".parsed.json")
                 row["parsed_artifact"] = None
-                if parsed.is_file():
-                    self.check_document(
-                        {"id": "check", "pdf": str(pdf), "artifact": str(parsed)},
-                        "parsed",
-                    )
-                    row["parsed_artifact"] = str(parsed)
+                row["parsed_artifacts"] = []
+                for parsed in _parsed_candidates(pdf):
+                    if not parsed.is_file():
+                        continue
+                    try:
+                        parsed_source = self.check_document(
+                            {"id": "check", "pdf": str(pdf), "artifact": str(parsed)},
+                            "parsed",
+                        )
+                    except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                        continue
+                    row["parsed_artifacts"].append(str(parsed))
+                    if row["status"] == "UNREGISTERED":
+                        row.update(
+                            title=parsed_source.identity["title"],
+                            doi=parsed_source.identity["doi"],
+                            role=parsed_source.identity["document_role"],
+                            identity_basis=parsed_source.identity["identity_basis"],
+                            status="SOURCE_AVAILABLE",
+                        )
+                        row["warnings"] = []
+                if row["parsed_artifacts"]:
+                    row["parsed_artifact"] = row["parsed_artifacts"][0]
             except Exception as exc:
                 row.update(status="UNAVAILABLE", error=self.error_code(exc))
             rows.append(row)
@@ -181,6 +343,8 @@ class ResearchApplication:
         # Validate every selected boundary before writing anything.
         selected = [self.path(p) for p in paths]
         for original in selected:
+            self.path(acquisition_sidecar_path(original))
+        for original in selected:
             try:
                 if original.suffix.lower() != ".pdf":
                     raise ValueError("PDF required")
@@ -209,6 +373,9 @@ class ResearchApplication:
                 if sidecar.exists():
                     self.path(sidecar)
                     validate_parser_input(original, sidecar_path=sidecar)
+                    sidecar = self._copy_source_file(
+                        sidecar, destination / "json" / "paper.acquisition.json"
+                    )
                 else:
                     notes = [
                         "本地文件，标题采用文件名；DOI和文献角色未经核实。"
@@ -226,7 +393,7 @@ class ResearchApplication:
                 }
                 candidates = [
                     original.with_suffix(".parsed.json"),
-                    *sorted(destination.glob("parsed-*.json")),
+                    *_parsed_candidates(pdf),
                 ]
                 artifact = None
                 for candidate in candidates:
@@ -241,7 +408,7 @@ class ResearchApplication:
                     artifact = candidate
                     break
                 if artifact is None:
-                    artifact = destination / ("parsed-" + uuid4().hex + ".json")
+                    artifact = destination / ("parsed-" + uuid4().hex + ".parsed.json")
                     parse_document(pdf, sidecar_path=sidecar, output_path=artifact)
                 config["artifact"] = str(artifact)
                 self.check_document(config, "parsed")

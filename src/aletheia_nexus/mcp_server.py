@@ -56,6 +56,32 @@ def create_server(app: ResearchApplication):
         return app.prepare_documents(paths)
 
     @tool
+    def import_local_document(
+        pdf: str, title: str, doi: str | None = None
+    ) -> dict[str, Any]:
+        """Copy an unregistered local main PDF with explicit title/DOI to workspace.
+        Metadata is DECLARED, not verified. No new SI relationship or remote API.
+        Already registered sources must use prepare_documents to preserve identity.
+        """
+        return app.import_local_document(pdf, title, doi=doi)
+
+    @tool
+    def parse_document(
+        document: dict,
+        ocr: bool = False,
+        ocr_languages: str = "eng",
+        max_pages: int = 2000,
+    ) -> dict[str, Any]:
+        """Create a unique new *.parsed.json using the current local parser.
+        Original PDF, source record and older parses are never replaced. Default
+        native text; OCR explicitly enables native-first local Poppler/Tesseract.
+        Returns actual status/quality/errors. No scientific verification or API.
+        """
+        return app.parse_document(
+            document, ocr=ocr, ocr_languages=ocr_languages, max_pages=max_pages
+        )
+
+    @tool
     def draft_research_task(
         task: dict | None = None,
         goal: str | None = None,
