@@ -67,6 +67,8 @@ def project_response(
             )
             if is_step and value.get("citations_note") in (None, "", "not_a_field"):
                 removable["citations_note"] = "empty_or_placeholder_step_note"
+            if is_claim and value.get("citations_note") in (None, "", "not_a_field"):
+                removable["citations_note"] = "empty_or_placeholder_claim_note"
             if is_claim and value.get("step_ids") == []:
                 removable["step_ids"] = "empty_claim_step_ids"
             if len(path) == 2 and path[0] == "checks":
@@ -233,7 +235,7 @@ class DeepSeekProvider:
     def identity(self) -> dict:
         return {
             "provider": "deepseek-responses",
-            "adapter_version": "6",
+            "adapter_version": "7",
             "temperature": 0,
             "model": self.config["name"],
             "config": self.config,

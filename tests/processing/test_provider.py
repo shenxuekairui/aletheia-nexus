@@ -489,6 +489,8 @@ def test_known_metadata_is_projected_once_with_complete_replayable_raw(
     monkeypatch, kind
 ):
     request, schema, noisy, expected = metadata_example(kind)
+    if kind == "claims":
+        noisy["claims"][0]["citations_note"] = None
     raw = json.dumps(noisy, ensure_ascii=False, indent=2)
     body = {
         "status": "completed",

@@ -54,6 +54,7 @@ def test_metadata_projection_survives_review_revision_cache_and_detects_changed_
                 "nature": "reported",
                 "citations": response["records"][0]["steps"][0]["citations"],
                 "step_ids": [],
+                "citations_note": None,
             }
         ]
         return response
