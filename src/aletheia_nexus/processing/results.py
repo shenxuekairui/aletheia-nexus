@@ -594,6 +594,8 @@ def export_results(
             for key in ("value", "raw_value", "unit", "status", "context")
         ]
         + ["result_id", "sources"]
+        + [f"{fid}.step_ids" for fid in field_ids]
+        + ["steps"]
     )
     jsonl = []
     claim_jsonl = []
@@ -641,12 +643,17 @@ def export_results(
             )
             row = [record["id"], record["subject"], record["stage"]]
             record_citations = []
+            step_orders = {step["id"]: step["order"] for step in record["steps"]}
             for definition in task["fields"]:
                 field = record["fields"][definition["id"]]
                 references_text = refs(field["citations"])
                 value_text = _md(field["value"])
                 if field["context"]:
                     value_text += "<br>说明：" + _md(field["context"])
+                if field["step_ids"]:
+                    value_text += "<br>关联本记录步骤：" + "、".join(
+                        str(step_orders[sid]) for sid in field["step_ids"]
+                    )
                 lines.append(
                     f"| {_md(definition.get('label', definition['id']))} | {value_text} | {_md(field['unit'] or '')} | {_md(field['raw_value'] or ('见引用' if field['value'] is not None else None))} | {NATURE_LABELS[field['nature']]} / {FIELD_STATUS[field['status']]} {references_text} |"
                 )
@@ -663,6 +670,11 @@ def export_results(
                     result["artifact_id"],
                     _csv(json.dumps(record_citations, ensure_ascii=False)),
                 ]
+                + [
+                    json.dumps(record["fields"][fid]["step_ids"], ensure_ascii=False)
+                    for fid in field_ids
+                ]
+                + [json.dumps(record["steps"], ensure_ascii=False)]
             )
             lines.append("")
             for step in record["steps"]:

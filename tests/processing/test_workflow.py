@@ -1066,6 +1066,77 @@ def test_context_survives_run_and_offline_exports(
     assert sha256_file(original) == original_hash
 
 
+def test_step_relationships_survive_run_and_offline_exports(
+    papers, tmp_path, monkeypatch
+):
+    def generate(request):
+        response = response_for(request)
+        first = response["records"][0]
+        second_step = deepcopy(first["steps"][0])
+        second_step.update(id="s2", order=2)
+        first["steps"].append(second_step)
+        first["fields"]["method"]["step_ids"] = ["s2"]
+        # Repeated step IDs in another record must never borrow that record's
+        # order or imply that its unlinked field applies to every step.
+        second = deepcopy(first)
+        second.update(id="r2", stage="separate procedure")
+        second["steps"] = [dict(second_step, order=1)]
+        second["fields"]["method"]["step_ids"] = []
+        response["records"].append(second)
+        return response
+
+    mock = MockProvider(generate)
+    run = run_task(
+        task_for(papers[:1]),
+        base_dir=tmp_path,
+        output_dir=tmp_path / "out",
+        allow_remote=True,
+        provider=mock,
+    )
+    directory = Path(run["run_directory"])
+    original = directory / "paper0.result.json"
+    original_hash = sha256_file(original)
+    saved = json.loads(original.read_text("utf-8"))["response"]["records"]
+
+    def no_remote(*args, **kwargs):
+        pytest.fail("offline re-export must not call a provider")
+
+    monkeypatch.setattr(DeepSeekProvider, "generate", no_remote)
+    exported = tmp_path / "reexport"
+    assert main(["export", str(original), "--output-dir", str(exported)]) == 0
+    for output in [directory, exported]:
+        report = (output / "report.md").read_text("utf-8")
+        assert report.count("关联本记录步骤：") == 1
+        assert "关联本记录步骤：2" in report
+        with (output / "table.csv").open(encoding="utf-8-sig", newline="") as stream:
+            reader = csv.DictReader(stream)
+            rows = list(reader)
+        assert reader.fieldnames == [
+            "record_id",
+            "subject",
+            "stage",
+            "method.value",
+            "method.raw_value",
+            "method.unit",
+            "method.status",
+            "method.context",
+            "result_id",
+            "sources",
+            "method.step_ids",
+            "steps",
+        ]
+        assert len(rows) == 2
+        for row, record in zip(rows, saved, strict=True):
+            assert (
+                json.loads(row["method.step_ids"])
+                == record["fields"]["method"]["step_ids"]
+            )
+            assert json.loads(row["steps"]) == record["steps"]
+            assert row["method.value"] == record["fields"]["method"]["value"]
+    assert len(mock.requests) == 1
+    assert sha256_file(original) == original_hash
+
+
 def test_report_keeps_model_markup_literal_and_structured_value_unchanged(
     papers, tmp_path
 ):
