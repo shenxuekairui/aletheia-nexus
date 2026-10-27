@@ -56,7 +56,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.10.18"
+PARSER_VERSION = "3.10.19"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -374,10 +374,89 @@ def _order_layout_lines(lines, layout, config):
     return _order_lines(lines, layout.width, config)
 
 
+def _prose_columns(lines: list[LayoutLine]) -> list[list[LayoutLine]] | None:
+    """Find supported prose columns separated by an unbroken horizontal gap.
+
+    The caller has already isolated spanning images, tables and wide lines.
+    A crossing line or a weak side label leaves the original ordering in use.
+    """
+    if len(lines) < 6 or any(line.content_region != "body" for line in lines):
+        return None
+    size = statistics.median(line.font_size for line in lines)
+    columns: list[list[LayoutLine]] = []
+    right = float("-inf")
+    for line in sorted(lines, key=lambda item: (item.x0, item.x1)):
+        if not columns or line.x0 - right >= size * 0.5:
+            columns.append([line])
+            right = line.x1
+        else:
+            columns[-1].append(line)
+            right = max(right, line.x1)
+    if len(columns) < 2:
+        return None
+    extents = []
+    for column in columns:
+        substantial = [line for line in column if line.x1 - line.x0 >= 8 * size]
+        if len(substantial) < 3:
+            return None
+        extents.append(
+            (min(line.y0 for line in substantial), max(line.y1 for line in substantial))
+        )
+    if min(top for _, top in extents) - max(bottom for bottom, _ in extents) < 2 * size:
+        return None
+    return columns
+
+
+def _prose_band_order(lines: list[LayoutLine]) -> list[LayoutLine] | None:
+    """Isolate a supported text-style band when captions obscure its gutters."""
+    styles: dict[tuple[str, float], list[LayoutLine]] = {}
+    for line in lines:
+        if line.content_region == "body" and line.dominant_font:
+            styles.setdefault(
+                (line.dominant_font, round(line.font_size, 1)), []
+            ).append(line)
+    if not styles:
+        return None
+    family = max(
+        styles.values(), key=lambda group: sum(len(line.text) for line in group)
+    )
+    size = statistics.median(line.font_size for line in family)
+    bands: list[list[LayoutLine]] = []
+    bottom = float("inf")
+    for line in sorted(family, key=lambda item: -item.y1):
+        if not bands or bottom - line.y1 > size * 1.8:
+            bands.append([line])
+            bottom = line.y0
+        else:
+            bands[-1].append(line)
+            bottom = min(bottom, line.y0)
+    for band in sorted(bands, key=lambda group: -sum(len(line.text) for line in group)):
+        columns = _prose_columns(band)
+        if columns is None or len(columns) < 3:
+            continue
+        left = min(line.x0 for line in band) - size * 0.5
+        right = max(line.x1 for line in band) + size * 0.5
+        bottom, top = min(line.y0 for line in band), max(line.y1 for line in band)
+        actual = [
+            line
+            for line in lines
+            if line.x1 >= left
+            and line.x0 <= right
+            and line.y1 >= bottom
+            and line.y0 <= top
+        ]
+        if any(line.y0 < bottom - 0.01 or line.y1 > top + 0.01 for line in actual):
+            continue
+        columns = _prose_columns(actual)
+        if columns is not None and len(columns) >= 3:
+            return [line for column in columns for line in _sort_spatial_lines(column)]
+    return None
+
+
 def _order_lines(
     lines: tuple[LayoutLine, ...], width: float, config: ParserConfig
 ) -> list[LayoutLine]:
-    """Use spanning lines as bands, then read left column before right column."""
+    """Use spanning lines as bands, then read supported prose columns in order."""
 
     captions = [
         line for line in lines if line.content_region == "spanning-table-caption"
@@ -430,6 +509,9 @@ def _order_lines(
     def ordered_region(region: list[LayoutLine]) -> list[LayoutLine]:
         if not region:
             return []
+        columns = _prose_columns(region)
+        if columns is not None:
+            return [line for column in columns for line in _sort_spatial_lines(column)]
         split = width * config.column_split_ratio
         left = [line for line in region if (line.x0 + line.x1) / 2 < split]
         right = [line for line in region if (line.x0 + line.x1) / 2 >= split]
@@ -445,8 +527,15 @@ def _order_lines(
             and left_substantial >= 2
             and right_substantial >= 2
         ):
-            return _sort_spatial_lines(left) + _sort_spatial_lines(right)
-        return _sort_spatial_lines(region)
+            fallback = _sort_spatial_lines(left) + _sort_spatial_lines(right)
+        else:
+            fallback = _sort_spatial_lines(region)
+        prose = _prose_band_order(region)
+        if prose is None:
+            return fallback
+        selected = {id(line) for line in prose}
+        ordered = iter(prose)
+        return [next(ordered) if id(line) in selected else line for line in fallback]
 
     result: list[LayoutLine] = []
     upper = float("inf")

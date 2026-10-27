@@ -110,6 +110,16 @@ with the same caption style remains a layout ambiguity, so this is not a guarant
 of complete captions or complete figure crops. Old artifacts and PDFs are not
 modified; changed parser execution identities apply to new parsing.
 
+From parser 3.10.19, an isolated prose band can use multiple observed horizontal
+gutters instead of a fixed page midpoint. Each column needs several substantial
+lines and shared vertical extent. On mixed pages, a dominant text style can locate
+a separate three-or-more-column band; all lines in that band must also satisfy
+the gutter check. Figure/table regions, crossing lines and weak candidates retain
+the existing order. This does not resolve every mixed layout or identify unmarked
+text tables. Native line content, positions and uncertainty are retained; old
+PDFs and artifacts remain unchanged. Correct reading order is not scientific
+confirmation of a subsequent model extraction.
+
 Panel associations marked `positioned-panel-length` describe an observed length
 label and retain the existing uncertainty flag; their scientific role remains
 unverified. Compact `Panel (...): label ...` text does not identify a measurement
