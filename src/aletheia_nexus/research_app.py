@@ -13,6 +13,7 @@ import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
@@ -33,7 +34,11 @@ from aletheia_nexus.processing.contracts import digest, validate_task
 from aletheia_nexus.processing.engine import run_task, write_json
 from aletheia_nexus.processing.materials import load_source
 from aletheia_nexus.processing.provider import ProcessingError
-from aletheia_nexus.processing.results import export_results, verify_result
+from aletheia_nexus.processing.results import (
+    export_results,
+    revise_result,
+    verify_result,
+)
 
 
 def read_json(path: Path) -> dict:
@@ -906,6 +911,80 @@ class ResearchApplication:
             "reading": "original_page_not_scientifically_verified",
             "network_access": False,
         }, png
+
+    def revise_research_result(
+        self, result: str, revision: dict, *, client_identity: str
+    ) -> dict:
+        """Create an assistant-only child using the existing revision contract.
+
+        The transport supplies client_identity for attribution, not permission.
+        Neither tool arguments nor a client's advertised name can confirm science.
+        """
+        targets = {"record_id", "claim_index", "issue_index"} & revision.keys()
+        if (
+            len(targets) != 1
+            or revision.keys() != targets | {"replacement", "reason"}
+            or not isinstance(revision["reason"], str)
+            or not revision["reason"].strip()
+            or not isinstance(client_identity, str)
+            or not client_identity.strip()
+        ):
+            raise ValueError("revision requires one target, replacement and reason")
+        parent_path = self.path(result)
+        parent = read_json(parent_path)
+        # Check all saved source paths before any source verification/export reads.
+        for document in parent.get("task", {}).get("documents", []):
+            for key in ("pdf", "sidecar", "artifact"):
+                if document.get(key):
+                    self.path(document[key])
+        documents = parent.get("package", {}).get("documents", [])
+        for document in documents:
+            for locator in document.get("locators", {}).values():
+                if locator is not None:
+                    self.path(locator)
+        verify_result(parent)
+        for document in documents:
+            config = {"id": document["id"], **document["locators"]}
+            config = {key: value for key, value in config.items() if value is not None}
+            source = self.check_document(
+                config, "parsed" if config.get("artifact") else "direct"
+            )
+            if any(
+                source.identity.get(key) != value
+                for key, value in document["source"].items()
+            ) or (
+                source.artifact is not None
+                and source.artifact.document["artifact_id"]
+                != document.get("parsed_artifact_id")
+            ):
+                raise ProcessingError("source_identity_mismatch")
+        child = revise_result(
+            parent,
+            {
+                **deepcopy(revision),
+                "author": client_identity,
+                "at": datetime.now(timezone.utc).isoformat(),
+                "authority": "assistant",
+                "confirm": False,
+            },
+        )
+        verify_result(child)
+        directory = self.path(self.workspace / "revisions" / uuid4().hex, write=True)
+        result_path = directory / "result.json"
+        write_json(result_path, child)
+        outputs = export_results([child], child["task"], directory)
+        return {
+            "directory": str(directory),
+            "result": str(result_path),
+            "artifact_id": child["artifact_id"],
+            "parent_result_id": parent["artifact_id"],
+            "authority": "assistant",
+            "confirmed": False,
+            "validation": child["validation"],
+            "history_length": len(child["history"]),
+            "outputs": [str(result_path), *(str(directory / name) for name in outputs)],
+            "network_access": False,
+        }
 
     def read_research_result(self, result: str) -> dict:
         value = read_json(self.path(result))

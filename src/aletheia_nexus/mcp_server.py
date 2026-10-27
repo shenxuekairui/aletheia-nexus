@@ -1,7 +1,5 @@
 """Optional official MCP v2 stdio adapter; never an alternate extraction engine."""
 
-from __future__ import annotations
-
 import argparse
 import base64
 import json
@@ -18,6 +16,7 @@ from aletheia_nexus.research_app import ResearchApplication
 def create_server(app: ResearchApplication):
     try:
         from mcp.server import MCPServer
+        from mcp.server.mcpserver import Context
     except ImportError:
         raise ProcessingError("mcp_dependency_missing") from None
 
@@ -183,6 +182,30 @@ def create_server(app: ResearchApplication):
         Result integrity does not certify current source bytes or scientific correctness.
         """
         return app.read_research_result(result)
+
+    @tool
+    def revise_research_result(
+        result: str, revision: dict, ctx: Context
+    ) -> dict[str, Any]:
+        """Save an assistant-only child and exports without changing the parent.
+        revision must contain exactly one existing record_id/claim_index/issue_index,
+        its complete replacement object and a nonempty reason. No author, timestamp,
+        authority or confirmation arguments: these come from the server. Requires
+        unchanged source bytes in allowed roots; never calls a model or network.
+        """
+        # The SDK may ignore unknown top-level arguments; explicitly reject them
+        # so a model's human/confirm flag is never silently accepted.
+        arguments = (ctx.request_context.params or {}).get("arguments", {})
+        if set(arguments) != {"result", "revision"}:
+            raise ValueError("only result and revision arguments are accepted")
+        params = ctx.request_context.session.client_params
+        client = params.client_info if params else None
+        identity = (
+            f"MCP client: {client.name} ({client.version})"
+            if client
+            else "MCP client: identity not supplied"
+        )
+        return app.revise_research_result(result, revision, client_identity=identity)
 
     @tool
     def list_research_runs(limit: int = 20) -> dict[str, Any]:

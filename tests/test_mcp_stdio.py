@@ -4,12 +4,17 @@ import asyncio
 import base64
 import shutil
 import sys
+from copy import deepcopy
 
 import pytest
 from test_research_app import task_for, write_pdf
+from test_research_revision_app import save_fixture_result
+
+from aletheia_nexus.research_app import ResearchApplication
 
 pytest.importorskip("mcp")
 from mcp import Client, StdioServerParameters
+from mcp.types import Implementation
 
 
 def test_stdio_local_tools_and_permissions(tmp_path):
@@ -27,6 +32,12 @@ def test_stdio_local_tools_and_permissions(tmp_path):
         ],
         title="Original paper",
     )
+    fixture_app = ResearchApplication([papers], workspace)
+    try:
+        parent_path, parent = save_fixture_result(fixture_app, original)
+    finally:
+        fixture_app.close()
+    parent_bytes = parent_path.read_bytes()
 
     async def run():
         params = StdioServerParameters(
@@ -41,7 +52,11 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 str(workspace),
             ],
         )
-        async with Client(params, read_timeout_seconds=30) as client:
+        async with Client(
+            params,
+            read_timeout_seconds=30,
+            client_info=Implementation(name="revision-sdk-test", version="1"),
+        ) as client:
             tools = await client.list_tools()
             assert {t.name for t in tools.tools} == {
                 "list_documents",
@@ -58,6 +73,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 "read_document_context",
                 "get_parse_diagnostics",
                 "read_research_result",
+                "revise_research_result",
                 "list_research_runs",
                 "read_original_page",
             }
@@ -140,6 +156,51 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 assert image.is_error
             history = await client.call_tool("list_research_runs", {})
             assert history.structured_content["runs"] == []
+            revision_tool = next(
+                t for t in tools.tools if t.name == "revise_research_result"
+            )
+            assert set(revision_tool.input_schema["properties"]) == {
+                "result",
+                "revision",
+            }
+            claim = deepcopy(parent["response"]["claims"][0])
+            claim["text"] = "所供材料报告25 C测量，仍待研究者确认"
+            revision = {
+                "claim_index": 0,
+                "replacement": claim,
+                "reason": "明确适用范围",
+            }
+            revised = await client.call_tool(
+                "revise_research_result",
+                {"result": str(parent_path), "revision": revision},
+            )
+            assert revised.structured_content["ok"], revised.structured_content
+            assert revised.structured_content["network_access"] is False
+            child = await client.call_tool(
+                "read_research_result", {"result": revised.structured_content["result"]}
+            )
+            audit = child.structured_content["history"][-1]
+            assert audit["author"] == "MCP client: revision-sdk-test (1)"
+            assert audit["authority"] == "assistant" and audit["confirm"] is False
+            assert (
+                child.structured_content["validation"]["claim_states"]["0"]
+                == "review_required"
+            )
+            for arguments in (
+                {"result": str(parent_path), "revision": {**revision, "confirm": True}},
+                {
+                    "result": str(parent_path),
+                    "revision": revision,
+                    "authority": "human",
+                },
+                {"result": str(parent_path), "revision": revision, "confirm": True},
+            ):
+                rejected = await client.call_tool("revise_research_result", arguments)
+                assert rejected.structured_content == {
+                    "ok": False,
+                    "error": "ValueError",
+                }
+            assert parent_path.read_bytes() == parent_bytes
             task = task_for(documents)
             drafted = await client.call_tool("draft_research_task", {"task": task})
             assert drafted.structured_content["task"]["fields"][0]["label"] == "方法"

@@ -128,6 +128,7 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | `read_original_page` | 以MCP图像返回原始PDF选页和来源身份 | 否 |
 | `get_parse_diagnostics` | 查看解析质量、失败诊断和当前来源核验 | 否 |
 | `read_research_result` | 读取既有字段、引用、验证和修订历史 | 否 |
+| `revise_research_result` | 显式助手修订一个既有记录/主张/诊断，独立保存并导出，始终不确认为人工审阅 | 否 |
 | `list_research_runs` | 查看本地历史运行与已记录费用 | 否 |
 
 读取工具会把允许目录中的内容返回给宿主客户端；宿主自身模型是否向远程发送内容，
@@ -151,6 +152,29 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 本工具不会跟随记录里的文件路径或URL、不重试获取、不写入或升级来源记录；PDF和sidecar
 都必须处于本地配置允许范围。它没有 `confirmed` 或远程授权参数。尚未将网络下载/机构会话
 接入MCP；需要获取新文献时继续使用既有获取CLI及其访问设置。
+
+### 显式助手修订结果
+
+先用 `read_research_result` 读取结果，保留目标完整结构。调用
+`revise_research_result(result="结果JSON路径", revision={...})` 时，`revision` 必须包含：
+
+- 恰好一个既有目标：`record_id`，或从0起的 `claim_index` / `issue_index`。
+- `replacement`：该记录、主张或诊断的完整替换对象；记录ID不得改变。
+- `reason`：非空修订理由。
+
+它复用现有修订及引用校验，不调用AI、下载或读取新的页，也不修改任务、来源包或原始文件。
+结果所绑定的PDF、来源记录和规范解析工件须仍在允许目录内且与保存的身份一致。
+来源缺失或改变时明确失败，不通过改路径/重解析偷偷迁移旧引用。
+
+服务端固定 `authority=assistant`、`confirm=false`，写入UTC时刻和MCP握手中的客户端名称/版本。
+工具不接受调用者提供的 `author`、`at`、`authority`、`confirm`；客户端自报名称仅作历史归属，
+不是身份认证或人工批准。修订目标保持待核对，未改目标原有的人工审阅状态按现有规则保留。
+不支持新增/删除记录、主张或诊断，也不编辑补充请求；每次仅修订一个既有目标。
+
+新版本位于工作区 `revisions/<唯一ID>/result.json`，父结果、PDF和旧解析工件不覆盖。
+完整JSON包含逐次修订理由、替换前内容和父结果ID，可再次读取、复制或导出；同目录同时生成
+既有Markdown/CSV/JSONL科研资料导出。表格导出不是完整历史的替代，追溯请保留JSON。
+本入口只校验结构、来源和引用位置，不能保证修订的科学内容正确。
 
 ### 明确登记与新版本解析
 
@@ -203,7 +227,7 @@ aletheia-nexus research authorize "返回的authorization_request路径"
 
 `materials/`、`preparations/` 保存登记/解析和选择记录；`planning/` 独立保存规划请求、
 原始响应、task.json 和 `phase=task_planning` 的运行清单。`jobs/` 是统一进度，
-`research/runs/` 是原生科研结果与来源包，`exports/` 是重新导出。
+`research/runs/` 是原生科研结果与来源包，`exports/` 是重新导出，`revisions/` 保存独立修订版本及导出。
 `PARTIAL`、诊断和AI判断不会变成人工确认。
 
 工程通过不等于科研准确率提升。真实模型、客户端、失败、用量与局限见验收记录；

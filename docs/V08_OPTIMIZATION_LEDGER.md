@@ -582,3 +582,22 @@ Qwen Max原页小探针成功，原完整B任务非流式315.27秒ReadTimeout，
 公开PAYG代理预留，不当TokenPlan账单或科学错误。独立具名流式候选保留原科学输入，
 只改变传输及总截止900秒；五项SSE/Mock/配置检查通过，科学结果仍待完整交付和源审。
 新授权预算按各60CNY原截止点另账，不因本次记录重置历史。
+
+## MCP 助手修订与历史路线去重（2026-10-28）
+
+第17工具revise_research_result复用既有revise_result/verify_result/export_results，仅允许
+既有record/claim/issue的完整替换和理由。服务端生成UTC时间与客户端自报归属，强制
+assistant/confirm=false；拒绝工具内外人工确认/伪造历史参数。新UUID目录保存子结果、
+完整历史及Markdown/CSV/JSONL，父结果/PDF/canonical不改。读取前核授权路径，核源身份和
+解析artifact_id，重用同一科研应用接口。23项相关检查通过、1项Windows符号链接权限
+跳过，含真实SDK stdio修订/历史读取及拒绝冒充确认；无付费API，未改处理核心。
+
+旧field-focused零API复核：原23检查的低总分含18未交付，不能解释为18个科学读错；
+但C恢复早已做完，勘误版仍P11/16、R11/18、记录0/4，含真实跨阶段纯度错配及归位遗漏。
+不把原样逐字段或已做的空object恢复改名重测。官方模型能力核查确认Pro不支持图片，
+已有matched-text同输入Pro/Flash均4/18确认字段、0/4记录，不重复付费。温度参数在当前
+思考模式不生效，不将调整temperature当科研新机制。
+
+Qwen Max独立流式候选现已有效交付（297.35秒、148779输入/15505输出tokens，公开PAYG
+代理2.343528CNY，TokenPlan Credits未知），原非流式未知用量预留不撤销。原3字段/12组
+及全部主张/诊断仍按冻结参考源审，当前未据单例改变模型默认或声称总体准确率提高。
