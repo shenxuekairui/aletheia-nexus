@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 import logging
 import sys
 from functools import wraps
 from pathlib import Path
 from typing import Any
 
+from aletheia_nexus.processing.provider import ProcessingError
 from aletheia_nexus.research_app import ResearchApplication
 
 
@@ -16,7 +19,7 @@ def create_server(app: ResearchApplication):
     try:
         from mcp.server import MCPServer
     except ImportError:
-        raise RuntimeError('Install MCP support: pip install -e ".[mcp]"') from None
+        raise ProcessingError("mcp_dependency_missing") from None
 
     server = MCPServer(
         "Aletheia Nexus",
@@ -102,6 +105,84 @@ def create_server(app: ResearchApplication):
         """Re-export compatible verified local results as Markdown/CSV/JSONL; no API."""
         return app.export_research_results(results, name, formats)
 
+    @tool
+    def search_documents(
+        documents: list[dict], query: str, limit: int = 10, mode: str = "and"
+    ) -> dict[str, Any]:
+        """Search selected local documents using AN's table/figure-aware literal search.
+        Returns canonical blocks/pages and partial coverage; never calls a model.
+        """
+        return app.search_documents(documents, query, limit=limit, mode=mode)
+
+    @tool
+    def read_document_context(
+        document: dict,
+        pages: list[int] | None = None,
+        block_ids: list[str] | None = None,
+        context_pages: int = 1,
+        max_characters: int = 60000,
+    ) -> dict[str, Any]:
+        """Read full local page context, tables, captions and evidence positions.
+        Content is returned to the host client; its model privacy policy applies.
+        Complete context exceeding the budget is explicitly skipped, never silently cut.
+        """
+        return app.read_document_context(
+            document,
+            pages=pages,
+            block_ids=block_ids,
+            context_pages=context_pages,
+            max_characters=max_characters,
+        )
+
+    @tool
+    def get_parse_diagnostics(document: dict) -> dict[str, Any]:
+        """Read parse quality/errors and current source check, including FAILED artifacts."""
+        return app.get_parse_diagnostics(document)
+
+    @tool
+    def read_research_result(result: str) -> dict[str, Any]:
+        """Read existing extraction, references, validation and revision history locally.
+        Result integrity does not certify current source bytes or scientific correctness.
+        """
+        return app.read_research_result(result)
+
+    @tool
+    def list_research_runs(limit: int = 20) -> dict[str, Any]:
+        """List local job history and recorded costs without a model or API key."""
+        return app.list_research_runs(limit=limit)
+
+    @server.tool(structured_output=False)
+    def read_original_page(document: dict, page: int) -> Any:
+        """Return a selected original PDF page as an MCP image with source identity.
+        Only allowed documents can be read. No AN model is called; the host receives pixels.
+        """
+        from mcp.types import CallToolResult, ImageContent, TextContent
+
+        try:
+            metadata, png = app.read_original_page(document, page)
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text", text=json.dumps(metadata, ensure_ascii=False)
+                    ),
+                    ImageContent(
+                        type="image",
+                        data=base64.b64encode(png).decode("ascii"),
+                        mimeType="image/png",
+                    ),
+                ]
+            )
+        except Exception as exc:
+            return CallToolResult(
+                isError=True,
+                content=[
+                    TextContent(
+                        type="text",
+                        text=json.dumps({"ok": False, "error": app.error_code(exc)}),
+                    )
+                ],
+            )
+
     return server
 
 
@@ -127,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"AN MCP: {ResearchApplication.error_code(exc)}", file=sys.stderr)
+        if isinstance(exc, ProcessingError) and exc.code == "mcp_dependency_missing":
+            print('Install MCP support: pip install -e ".[mcp]"', file=sys.stderr)
         return 2
     finally:
         if app:

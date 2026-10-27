@@ -120,6 +120,18 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | `execute_research_task` | 现有引擎异步执行，返回job_id | 科研模式需独立许可 |
 | `get_run_status` | 查询状态、错误、原生清单和费用 | 否 |
 | `export_research_results` | 重导出兼容结果为Markdown/CSV/JSONL | 否 |
+| `search_documents` | 对选定文献做已有表格/图注感知检索，保留覆盖情况 | 否 |
+| `read_document_context` | 读取完整原页上下文、表格、图注和位置 | 否 |
+| `read_original_page` | 以MCP图像返回原始PDF选页和来源身份 | 否 |
+| `get_parse_diagnostics` | 查看解析质量、失败诊断和当前来源核验 | 否 |
+| `read_research_result` | 读取既有字段、引用、验证和修订历史 | 否 |
+| `list_research_runs` | 查看本地历史运行与已记录费用 | 否 |
+
+读取工具会把允许目录中的内容返回给宿主客户端；宿主自身模型是否向远程发送内容，
+由该客户端的隐私与批准机制负责。AN 的 `--enable-remote` 控制的是 AN 自己的模型调用。
+检索直接复用 v0.7 的表格/图注内容单元和证据包，不把字面未命中解释为科学事实缺失。
+`read_document_context` 超出字符预算时明确跳过完整上下文，不截断表头或悄悄漏行。
+跨盘的手工PDF/工件组合需先 `prepare_documents` 在工作区准备，再进行文库检索。
 
 客户端已有模型时，可直接生成任务并验证，不必再调用 AN 规划API。只有自然语言目标时，
 AN先返回规划许可请求。元数据和论文内容不会因模型传入 `confirmed=true` 自动发送。
@@ -139,6 +151,9 @@ aletheia-nexus research authorize "返回的authorization_request路径"
 重启后未完成任务标 `INTERRUPTED`，不自动重发收费请求；先检查工作区的原生 manifest
 及已交付结果，再经新批准恢复。既有缓存规则不变：不稳定的材料补充失败不能冒充缓存，
 恢复可能需要API。停止用 Ctrl+C，或禁用/删除客户端配置，不清除原文。
+
+新任务通过操作系统文件锁识别运行进程，CLI执行时可由另一个MCP入口查询；进程退出后
+返回 `INTERRUPTED`。旧任务没有运行归属记录时保留未知状态，不猜测其进程已经停止。
 
 ## 保存内容与验收边界
 

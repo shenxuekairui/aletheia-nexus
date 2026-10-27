@@ -34,6 +34,28 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def _lock_job_owner(path: Path, *, create=False):
+    """Keep job ownership visible across CLI/MCP processes, including crashes."""
+    handle = path.open("a+b" if create else "r+b")
+    if create and handle.seek(0, 2) == 0:
+        handle.write(b"0")
+        handle.flush()
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return None
+    return handle
+
+
 class ResearchApplication:
     """Explicit read roots, one output workspace, and no implicit remote permission.
 
@@ -371,6 +393,14 @@ class ResearchApplication:
         }
         self._save_job(receipt)
 
+        owner = _lock_job_owner(
+            self.path(directory / ".owner", write=True), create=True
+        )
+        if owner is None:
+            receipt.update(status="FAILED", error="job_owner_unavailable")
+            self._save_job(receipt)
+            raise ProcessingError("job_owner_unavailable")
+
         def execute():
             receipt["status"] = "RUNNING"
             self._save_job(receipt)
@@ -396,10 +426,20 @@ class ResearchApplication:
             self._save_job(receipt)
             return deepcopy(receipt)
 
+        def owned_execute():
+            try:
+                return execute()
+            finally:
+                owner.close()
+
         if not background:
-            return execute()
-        with self._lock:
-            self._jobs[job_id] = self._pool.submit(execute)
+            return owned_execute()
+        try:
+            with self._lock:
+                self._jobs[job_id] = self._pool.submit(owned_execute)
+        except RuntimeError:
+            owner.close()
+            raise
         return deepcopy(receipt)
 
     def _save_job(self, receipt):
@@ -416,11 +456,18 @@ class ResearchApplication:
         if not re.fullmatch("[0-9a-f]{32}", job_id):
             raise ValueError("invalid job ID")
         receipt = read_json(self.path(self.workspace / "jobs" / job_id / "status.json"))
-        if receipt["status"] in {"QUEUED", "RUNNING"} and job_id not in self._jobs:
-            receipt["status"] = "INTERRUPTED"
-            receipt["recovery"] = (
-                "服务重启后不自动重发；重新校验授权并执行，复用引擎缓存。"
-            )
+        if receipt["status"] in {"QUEUED", "RUNNING"}:
+            ownership = self.path(self.workspace / "jobs" / job_id / ".owner")
+            if ownership.exists():
+                probe = _lock_job_owner(ownership)
+                if probe is not None:
+                    probe.close()
+                    receipt["status"] = "INTERRUPTED"
+                    receipt["recovery"] = (
+                        "原进程已退出，不自动重发；检查原清单后经新授权恢复。"
+                    )
+            elif job_id not in self._jobs:
+                receipt["owner_state"] = "legacy_unrecorded; process ownership unknown"
         if receipt.get("run_directory"):
             run = self.path(receipt["run_directory"])
             receipt["manifest"] = read_json(self.path(run / "manifest.json"))
@@ -458,3 +505,208 @@ class ResearchApplication:
 
     def close(self):
         self._pool.shutdown(wait=True)
+
+    def _document_corpus(self, document: dict):
+        """Adapt explicitly selected, source-checked documents to v0.7 readers.
+
+        Constructing a Corpus does not scan its root. Only this selected entry is
+        supplied, so a common ancestor never widens filesystem authorization.
+        """
+        from aletheia_nexus.content.corpus import Corpus, CorpusDocument
+
+        source = self.check_document(document, "parsed")
+        try:
+            root = Path(
+                os.path.commonpath([source.pdf.parent, source.artifact.path.parent])
+            )
+        except ValueError:
+            raise ProcessingError(
+                "cross_volume_corpus_requires_local_preparation"
+            ) from None
+        entry = CorpusDocument(
+            source.artifact.path, source.pdf, source.artifact, source.artifact.document
+        )
+        return source, Corpus(root, [entry], [], [])
+
+    def search_documents(
+        self, documents: list[dict], query: str, *, limit=10, mode="and"
+    ) -> dict:
+        """Reuse native table/figure-aware search; never turn no match into absence."""
+        from aletheia_nexus.content.corpus import search_corpus
+
+        if not documents or not 1 <= limit <= 50:
+            raise ValueError("select documents and a limit between1and50")
+        hits, coverage, failures = [], [], []
+        for document in documents:
+            try:
+                source, corpus = self._document_corpus(document)
+                report = search_corpus(corpus, query, limit=limit, mode=mode)
+                source.verify()
+                hits.extend(
+                    {
+                        **hit,
+                        "document_id": document["id"],
+                        "artifact": str(source.artifact.path),
+                        "pdf": str(source.pdf),
+                    }
+                    for hit in report["hits"]
+                )
+                coverage.append(
+                    {"document_id": document["id"], "coverage": report["coverage"]}
+                )
+            except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
+                failures.append(
+                    {"document_id": document.get("id"), "error": self.error_code(exc)}
+                )
+        hits.sort(
+            key=lambda h: (
+                h.get("reading_role") == "alternative",
+                -h["score"],
+                h["document_id"],
+                h["id"],
+            )
+        )
+        return {
+            "query": query,
+            "hits": [{**h, "number": n} for n, h in enumerate(hits[:limit], 1)],
+            "coverage": coverage,
+            "unsearched": failures,
+            "network_access": False,
+            "interpretation": "字面检索；未命中不代表原文没有报告。可继续读取完整上下文与原页。",
+        }
+
+    def read_document_context(
+        self,
+        document: dict,
+        *,
+        pages: list[int] | None = None,
+        block_ids: list[str] | None = None,
+        context_pages=1,
+        max_characters=60000,
+    ) -> dict:
+        """Keep complete native page context, tables, captions and source locations."""
+        from aletheia_nexus.content.evidence import build_evidence_pack
+
+        if not 0 <= context_pages <= 3 or not 1 <= max_characters <= 500000:
+            raise ValueError("context/resource limit out of range")
+        source, corpus = self._document_corpus(document)
+        wanted = set(pages or [])
+        wanted.update(source.artifact.locate(bid)["page"] for bid in block_ids or [])
+        if not wanted or any(
+            type(p) is not int or not 1 <= p <= source.identity["page_count"]
+            for p in wanted
+        ):
+            raise ValueError("select existing pages or block IDs")
+        expanded = sorted(
+            {
+                p
+                for page in wanted
+                for p in range(
+                    max(1, page - context_pages),
+                    min(source.identity["page_count"], page + context_pages) + 1,
+                )
+            }
+        )
+        pack = build_evidence_pack(
+            corpus,
+            document_pages={source.artifact.document["artifact_id"]: expanded},
+            context_pages=0,
+            max_characters=max_characters,
+        )
+        source.verify()
+        return {
+            "document_id": document["id"],
+            "artifact": str(source.artifact.path),
+            "pdf": str(source.pdf),
+            "source_root": str(corpus.root),
+            "evidence": pack,
+            "network_access": False,
+        }
+
+    def get_parse_diagnostics(self, document: dict) -> dict:
+        from aletheia_nexus.content.artifact import ParsedArtifact
+        from aletheia_nexus.content.parser import PARSER_VERSION
+
+        artifact = ParsedArtifact.load(self.path(document["artifact"]))
+        data = artifact.document
+        try:
+            self.check_document(document, "parsed").verify()
+            source_check = {"ok": True}
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
+            source_check = {"ok": False, "error": self.error_code(exc)}
+        return {
+            "artifact_id": data["artifact_id"],
+            "status": data["status"],
+            "parser": data["parser"],
+            "current_parser_version": PARSER_VERSION,
+            "quality": data["quality"],
+            "warnings": data["warnings"],
+            "errors": data["errors"],
+            "source_check": source_check,
+            "network_access": False,
+        }
+
+    def read_original_page(self, document: dict, page: int) -> tuple[dict, bytes]:
+        from aletheia_nexus.processing.materials import render_page
+
+        source = self.check_document(document, "direct")
+        if type(page) is not int or not 1 <= page <= source.identity["page_count"]:
+            raise ProcessingError("page_out_of_bounds")
+        png = render_page(source.pdf, page)
+        source.verify()
+        return {
+            "document_id": document["id"],
+            "page": page,
+            "source": source.identity,
+            "reading": "original_page_not_scientifically_verified",
+            "network_access": False,
+        }, png
+
+    def read_research_result(self, result: str) -> dict:
+        value = read_json(self.path(result))
+        # Historical records remain readable after PDFs move or leave the
+        # allowed roots. Do not dereference any stored source path here.
+        # Re-export and actual document reads apply their own path boundary.
+        verify_result(value)
+        return {
+            "artifact_id": value["artifact_id"],
+            "task": value["task"],
+            "response": value["response"],
+            "validation": value["validation"],
+            "history": value["history"],
+            "provider": value["provider"],
+            "sources": [
+                {
+                    "id": d["id"],
+                    "identity": d["source"],
+                    "parsed_artifact_id": d["parsed_artifact_id"],
+                }
+                for d in value["package"]["documents"]
+            ],
+            "source_byte_verification": "historical; use document source checks for current bytes",
+            "network_access": False,
+        }
+
+    def list_research_runs(self, *, limit=20) -> dict:
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between1and100")
+        paths = [self.path(p) for p in (self.workspace / "jobs").glob("*/status.json")]
+        rows = []
+        for path in sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)[
+            :limit
+        ]:
+            receipt = self.get_run_status(path.parent.name)
+            rows.append(
+                {
+                    k: receipt.get(k)
+                    for k in (
+                        "job_id",
+                        "status",
+                        "task_fingerprint",
+                        "run_directory",
+                        "error",
+                        "usage",
+                    )
+                }
+            )
+        return {"runs": rows, "network_access": False}

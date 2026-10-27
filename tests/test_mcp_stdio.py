@@ -1,6 +1,8 @@
 """Real SDK v2 subprocess transport, not merely direct Python function calls."""
 
 import asyncio
+import base64
+import shutil
 import sys
 
 import pytest
@@ -49,6 +51,12 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 "execute_research_task",
                 "get_run_status",
                 "export_research_results",
+                "search_documents",
+                "read_document_context",
+                "get_parse_diagnostics",
+                "read_research_result",
+                "list_research_runs",
+                "read_original_page",
             }
             result = await client.call_tool(
                 "list_documents", {"directory": str(papers)}
@@ -63,6 +71,35 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 len(documents) == 1
                 and prepared.structured_content["network_access"] is False
             )
+            searched = await client.call_tool(
+                "search_documents", {"documents": documents, "query": "measured"}
+            )
+            assert searched.structured_content["hits"]
+            hit = searched.structured_content["hits"][0]
+            context = await client.call_tool(
+                "read_document_context",
+                {
+                    "document": documents[0],
+                    "block_ids": hit["block_ids"],
+                    "context_pages": 0,
+                },
+            )
+            assert context.structured_content["evidence"]["included"]
+            diagnostics = await client.call_tool(
+                "get_parse_diagnostics", {"document": documents[0]}
+            )
+            assert diagnostics.structured_content["source_check"]["ok"]
+            image = await client.call_tool(
+                "read_original_page", {"document": documents[0], "page": 1}
+            )
+            if shutil.which("pdftoppm"):
+                assert not image.is_error
+                png = next(c for c in image.content if c.type == "image")
+                assert base64.b64decode(png.data).startswith(b"\x89PNG")
+            else:
+                assert image.is_error
+            history = await client.call_tool("list_research_runs", {})
+            assert history.structured_content["runs"] == []
             task = task_for(documents)
             drafted = await client.call_tool("draft_research_task", {"task": task})
             assert drafted.structured_content["task"]["fields"][0]["label"] == "方法"

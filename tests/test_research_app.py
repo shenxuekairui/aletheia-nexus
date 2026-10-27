@@ -126,6 +126,7 @@ def test_nested_locator_cannot_escape(app, tmp_path):
 def test_implicit_sidecar_checked_before_loading(app, tmp_path, monkeypatch):
     service, pdf = app
     import aletheia_nexus.research_app as module
+
     outside = tmp_path / "outside.acquisition.json"
     monkeypatch.setattr(module, "acquisition_sidecar_path", lambda _: outside)
     calls = []
@@ -247,16 +248,84 @@ def test_mock_remote_uses_native_engine_and_local_reexport(app):
     assert len(manifest["calls"]) == 1
     results = [str(run / i["result"]) for i in manifest["items"] if i.get("result")]
     exported = service.export_research_results(results, "reuse")
+    loaded = service.read_research_result(results[0])
+    assert loaded["response"]["records"][0]["fields"]["method"]["value"] == "25 C测量2h"
+    assert loaded["provider"]["provider"] == "mock-test"
+    assert service.list_research_runs()["runs"][0]["job_id"] == job["job_id"]
     assert len(exported["outputs"]) == 3
     assert not exported["network_access"]
     assert "HUMAN_CONFIRMED" not in json.dumps(read_json(Path(results[0])))
     # A validly sealed result cannot smuggle an out-of-scope PDF into re-export.
     from aletheia_nexus.processing.contracts import digest
+
     malicious = read_json(Path(results[0]))
-    malicious["package"]["documents"][0]["locators"]["pdf"] = str(pdf.parent.parent / "private.pdf")
+    malicious["package"]["documents"][0]["locators"]["pdf"] = str(
+        pdf.parent.parent / "private.pdf"
+    )
     malicious["artifact_id"] = "an:extraction:sha256:" + digest(
-        {k: v for k, v in malicious.items() if k != "artifact_id"})
+        {k: v for k, v in malicious.items() if k != "artifact_id"}
+    )
     path = service.workspace / "malicious-result.json"
     path.write_text(json.dumps(malicious), encoding="utf-8")
     with pytest.raises(ProcessingError, match="path_outside"):
         service.export_research_results([str(path)], "blocked")
+    # Reading the allowed historical JSON never dereferences that old PDF.
+    history = service.read_research_result(str(path))
+    assert history["response"] == malicious["response"]
+    assert history["source_byte_verification"].startswith("historical")
+
+
+def test_live_job_visible_from_another_application_and_crash_detected(app, monkeypatch):
+    import subprocess
+    import sys
+    from threading import Event
+
+    from aletheia_nexus import research_app as module
+    from aletheia_nexus.processing.engine import write_json
+
+    service, pdf = app
+    documents = service.prepare_documents([str(pdf)])["documents"]
+    started, release = Event(), Event()
+    native = module.run_task
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return native(*args, **kwargs)
+
+    monkeypatch.setattr(module, "run_task", delayed)
+    observer = ResearchApplication([pdf.parent], service.workspace)
+    try:
+        job = service.execute_research_task(task_for(documents))
+        assert started.wait(10)
+        assert observer.get_run_status(job["job_id"])["status"] == "RUNNING"
+        release.set()
+        service._jobs[job["job_id"]].result(timeout=10)
+        assert observer.get_run_status(job["job_id"])["status"] == "PREPARED"
+        crashed = "c" * 32
+        directory = service.workspace / "jobs" / crashed
+        write_json(directory / "status.json", {"job_id": crashed, "status": "RUNNING"})
+        helper = (
+            "import os,sys; from pathlib import Path; "
+            "from aletheia_nexus.research_app import _lock_job_owner; "
+            "owner=_lock_job_owner(Path(sys.argv[1]),create=True); "
+            "assert owner is not None; print('ready',flush=True); sys.stdin.read(1); os._exit(0)"
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", helper, str(directory / ".owner")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        try:
+            assert process.stdout.readline().strip() == b"ready"
+            assert observer.get_run_status(crashed)["status"] == "RUNNING"
+        finally:
+            # EOF makes the actual Python child exit abruptly, including when a
+            # Windows venv executable is a redirector rather than that child.
+            process.stdin.close()
+            process.wait(timeout=10)
+        assert observer.get_run_status(crashed)["status"] == "INTERRUPTED"
+    finally:
+        release.set()
+        observer.close()

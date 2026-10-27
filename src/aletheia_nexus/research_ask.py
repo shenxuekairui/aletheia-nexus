@@ -6,7 +6,6 @@ import argparse
 import sys
 from pathlib import Path
 
-from aletheia_nexus.processing.contracts import digest
 from aletheia_nexus.processing.provider import ProcessingError
 from aletheia_nexus.research_app import ResearchApplication, read_json
 from aletheia_nexus.research_planner import draft_task, planning_request
