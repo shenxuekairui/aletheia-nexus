@@ -19,7 +19,12 @@ from uuid import uuid4
 
 from pypdf import PdfReader
 
-from aletheia_nexus.content.gate import sha256_file, validate_parser_input
+from aletheia_nexus.content.errors import ParserInputError
+from aletheia_nexus.content.gate import (
+    ACQUISITION_SCHEMAS,
+    sha256_file,
+    validate_parser_input,
+)
 from aletheia_nexus.content.local import register_local_pdf
 from aletheia_nexus.content.parser import ParserConfig
 from aletheia_nexus.content.service import parse_document
@@ -304,6 +309,79 @@ class ResearchApplication:
     @staticmethod
     def error_code(exc: Exception) -> str:
         return exc.code if isinstance(exc, ProcessingError) else type(exc).__name__
+
+    def get_acquisition_status(
+        self,
+        sidecar: str,
+        *,
+        pdf: str | None = None,
+        expected_doi: str | None = None,
+    ) -> dict:
+        """Read a saved acquisition outcome and optionally recheck selected bytes.
+
+        Record paths/URLs are never followed. A past VERIFIED outcome is not a
+        current integrity check, and a local declaration is not verified identity.
+        """
+        record_path = self.path(sidecar)
+        pdf_path = self.path(pdf) if pdf is not None else None
+        if expected_doi is not None and pdf_path is None:
+            raise ValueError("expected_doi requires an explicitly selected PDF")
+        record = read_json(record_path)
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("schema"), str)
+            or record["schema"] not in ACQUISITION_SCHEMAS
+        ):
+            raise ProcessingError("unsupported_acquisition_record")
+        target = record.get("target") or {}
+        identity = record.get("identity_validation") or {}
+        validation = record.get("pdf_validation") or {}
+        retrieval = record.get("retrieval") or {}
+        report = {
+            "sidecar": str(record_path),
+            "schema": record["schema"],
+            "recorded_status": record.get("status"),
+            "target": {
+                key: target.get(key)
+                for key in ("doi", "title", "expected_title", "article_id")
+            },
+            "recorded_identity_status": identity.get("status"),
+            "recorded_document_role": identity.get("document_role"),
+            "recorded_valid_pdf": validation.get("valid_pdf"),
+            "recorded_page_count": validation.get("page_count"),
+            "recorded_pdf_sha256": retrieval.get("sha256"),
+            "attempts": record.get("attempts"),
+            "elapsed_seconds": record.get("elapsed_seconds"),
+            "current_check": {"status": "NOT_CHECKED", "reason": "pdf_not_supplied"},
+            "network_access": False,
+            "new_files": False,
+        }
+        if pdf_path is not None:
+            try:
+                source = validate_parser_input(
+                    pdf_path, requested_doi=expected_doi, sidecar_path=record_path
+                )
+            except ParserInputError as exc:
+                report["current_check"] = {"status": "FAILED", "error": exc.code.value}
+            except OSError as exc:
+                report["current_check"] = {
+                    "status": "FAILED",
+                    "error": type(exc).__name__,
+                }
+            else:
+                report["current_check"] = {
+                    "status": "PASSED",
+                    "pdf": str(source.pdf_path),
+                    "pdf_sha256": source.pdf_sha256,
+                    "sidecar_sha256": source.sidecar_sha256,
+                    "page_count": source.page_count,
+                    "doi": source.doi,
+                    "document_role": source.document_role,
+                    "identity_basis": source.identity_basis,
+                    "identity_verified": source.identity_basis
+                    == "acquisition_verified",
+                }
+        return report
 
     def check_document(self, config: dict, mode: str):
         """Check explicit paths AND parsed-artifact locators before loading sources."""

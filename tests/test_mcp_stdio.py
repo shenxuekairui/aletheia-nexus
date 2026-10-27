@@ -45,6 +45,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
             tools = await client.list_tools()
             assert {t.name for t in tools.tools} == {
                 "list_documents",
+                "get_acquisition_status",
                 "prepare_documents",
                 "import_local_document",
                 "parse_document",
@@ -77,6 +78,22 @@ def test_stdio_local_tools_and_permissions(tmp_path):
             assert (
                 imported.structured_content["source"]["identity_basis"]
                 == "local_declared"
+            )
+            document = imported.structured_content["document"]
+            source_status = await client.call_tool(
+                "get_acquisition_status",
+                {"sidecar": document["sidecar"], "pdf": document["pdf"]},
+            )
+            assert source_status.structured_content["recorded_status"] == "REGISTERED"
+            check = source_status.structured_content["current_check"]
+            assert check["status"] == "PASSED" and check["identity_verified"] is False
+            assert source_status.structured_content["network_access"] is False
+            receipt_only = await client.call_tool(
+                "get_acquisition_status", {"sidecar": document["sidecar"]}
+            )
+            assert (
+                receipt_only.structured_content["current_check"]["status"]
+                == "NOT_CHECKED"
             )
             parsed = await client.call_tool(
                 "parse_document", {"document": imported.structured_content["document"]}

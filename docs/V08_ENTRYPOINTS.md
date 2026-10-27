@@ -114,6 +114,7 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | 工具 | 作用 | 远程调用 |
 | --- | --- | --- |
 | `list_documents` | 列举允许目录内PDF、来源/解析状态 | 否 |
+| `get_acquisition_status` | 读取既有获取/登记状态，可对明确指定PDF核验当前完整性与身份依据 | 否 |
 | `prepare_documents` | 准备明确选择的PDF，隔离失败，在工作区建副本 | 否 |
 | `import_local_document` | 用明确标题/DOI登记本地主文副本；仅为DECLARED，不验证身份 | 否 |
 | `parse_document` | 对已登记文献显式生成独立的新解析工件，保留旧版 | 否 |
@@ -134,6 +135,22 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 检索直接复用 v0.7 的表格/图注内容单元和证据包，不把字面未命中解释为科学事实缺失。
 `read_document_context` 超出字符预算时明确跳过完整上下文，不截断表头或悄悄漏行。
 跨盘的手工PDF/工件组合需先 `prepare_documents` 在工作区准备，再进行文库检索。
+
+### 获取记录与当前来源检查
+
+`get_acquisition_status(sidecar="F:/papers/json/paper.acquisition.json")` 可查看既有
+获取记录，包括 `AUTH_REQUIRED` 等未交付状态；不要求存在解析工件或成功下载的PDF。
+只读记录时 `current_check.status=NOT_CHECKED`，历史 `VERIFIED` 不能证明当前文件仍完整。
+
+显式加入 `pdf="F:/papers/paper.pdf"` 后，复用现有来源门禁检查哈希、页数、记录状态和身份。
+可同时给 `expected_doi` 核对预期DOI；不提供PDF时不能要求此项核验。
+返回值分开保留 `recorded_status` 与 `current_check`，例如旧记录仍为 `VERIFIED`，当前
+检查可能是 `FAILED/PDF_HASH_MISMATCH`。本地登记即使通过完整性检查也仍为
+`REGISTERED/DECLARED`、`identity_verified=false`；检查通过不等于科学内容正确。
+
+本工具不会跟随记录里的文件路径或URL、不重试获取、不写入或升级来源记录；PDF和sidecar
+都必须处于本地配置允许范围。它没有 `confirmed` 或远程授权参数。尚未将网络下载/机构会话
+接入MCP；需要获取新文献时继续使用既有获取CLI及其访问设置。
 
 ### 明确登记与新版本解析
 

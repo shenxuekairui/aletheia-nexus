@@ -48,6 +48,18 @@ def create_server(app: ResearchApplication):
         return app.list_documents(directory, recursive=recursive)
 
     @tool
+    def get_acquisition_status(
+        sidecar: str, pdf: str | None = None, expected_doi: str | None = None
+    ) -> dict[str, Any]:
+        """Read a saved acquisition/local registration record, including failures.
+        An explicitly selected PDF enables current hash/page/identity checks using
+        the existing source gate. Past VERIFIED and current integrity are separate;
+        local DECLARED is not verified identity. Never follows saved paths/URLs,
+        retries a download, modifies a record, or calls a network service.
+        """
+        return app.get_acquisition_status(sidecar, pdf=pdf, expected_doi=expected_doi)
+
+    @tool
     def prepare_documents(paths: list[str]) -> dict[str, Any]:
         """Register/parse exactly selected PDFs locally. Creates derivatives in workspace.
 
