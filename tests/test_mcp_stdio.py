@@ -61,6 +61,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
             assert {t.name for t in tools.tools} == {
                 "list_documents",
                 "get_acquisition_status",
+                "acquire_documents",
                 "prepare_documents",
                 "import_local_document",
                 "parse_document",
@@ -82,6 +83,10 @@ def test_stdio_local_tools_and_permissions(tmp_path):
             )
             assert not result.is_error
             assert len(result.structured_content["documents"]) == 1
+            denied = await client.call_tool(
+                "acquire_documents", {"papers": [{"doi": "10.5555/disabled"}]}
+            )
+            assert denied.structured_content["error"] == "network_disabled"
             imported = await client.call_tool(
                 "import_local_document",
                 {

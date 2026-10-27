@@ -90,7 +90,14 @@ class ResearchApplication:
     are not. This is not a sandbox against other programs running as that OS user.
     """
 
-    def __init__(self, roots: list[str | Path], workspace: str | Path, *, remote=False):
+    def __init__(
+        self,
+        roots: list[str | Path],
+        workspace: str | Path,
+        *,
+        remote=False,
+        network=False,
+    ):
         self.roots = tuple(Path(p).resolve(strict=True) for p in roots)
         if not self.roots or any(not p.is_dir() for p in self.roots):
             raise ValueError("at least one existing document directory is required")
@@ -98,6 +105,7 @@ class ResearchApplication:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.private = self.workspace / ".authorizations"
         self.remote = remote
+        self.network = network
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="an-research")
         self._jobs: dict = {}
         self._lock = Lock()
@@ -564,6 +572,10 @@ class ResearchApplication:
         if scope == "execute":
             validated = self.validate_research_task(payload)
             payload = {"task": validated["task"], "sources": validated["documents"]}
+        elif scope == "acquire":
+            from .research_acquisition import public_acquisition_plan
+
+            payload = public_acquisition_plan(self, payload)["binding"]
         elif scope != "plan":
             raise ValueError("unknown authorization scope")
         return digest(
@@ -606,7 +618,9 @@ class ResearchApplication:
         return token
 
     def consume(self, token: str | None, scope: str, payload: dict) -> None:
-        if not self.remote:
+        if scope == "acquire" and not self.network:
+            raise ProcessingError("network_disabled")
+        if scope != "acquire" and not self.remote:
             raise ProcessingError("remote_disabled")
         if not isinstance(token, str) or not re.fullmatch("[0-9a-f]{64}", token):
             raise ProcessingError("local_authorization_required")
@@ -641,15 +655,6 @@ class ResearchApplication:
             "directory": str(directory),
             "error": None,
         }
-        self._save_job(receipt)
-
-        owner = _lock_job_owner(
-            self.path(directory / ".owner", write=True), create=True
-        )
-        if owner is None:
-            receipt.update(status="FAILED", error="job_owner_unavailable")
-            self._save_job(receipt)
-            raise ProcessingError("job_owner_unavailable")
 
         def execute():
             receipt["status"] = "RUNNING"
@@ -676,6 +681,71 @@ class ResearchApplication:
             self._save_job(receipt)
             return deepcopy(receipt)
 
+        return self._start_job(receipt, execute, background=background)
+
+    def acquire_documents(
+        self, payload: dict, *, authorization=None, background=True
+    ) -> dict:
+        """Explicitly authorized public DOI batch, using existing acquisition/checkpoint services."""
+        from .research_acquisition import (
+            acquire_public_documents,
+            public_acquisition_plan,
+        )
+
+        if not self.network:
+            raise ProcessingError("network_disabled")
+        plan = public_acquisition_plan(self, payload)
+        payload = plan["payload"]
+        if authorization is None:
+            return {
+                "status": "AUTHORIZATION_REQUIRED",
+                "plan": plan["plan"],
+                "network_access": False,
+                **self.authorization_request("acquire", payload),
+            }
+        self.consume(authorization, "acquire", payload)
+        job_id = uuid4().hex
+        directory = self.path(self.workspace / "jobs" / job_id, write=True)
+        write_json(directory / "acquisition-request.json", payload)
+        receipt = {
+            "job_id": job_id,
+            "kind": "acquisition",
+            "status": "QUEUED",
+            "directory": str(directory),
+            "error": None,
+            "model_calls": 0,
+            "resume_of": payload.get("resume_job_id"),
+        }
+
+        def progress(row):
+            receipt.update(row)
+            self._save_job(receipt)
+
+        def execute():
+            receipt["status"] = "RUNNING"
+            self._save_job(receipt)
+            try:
+                receipt.update(
+                    acquire_public_documents(self, plan, directory, progress)
+                )
+            except Exception as exc:
+                receipt.update(status="FAILED", error=self.error_code(exc))
+            self._save_job(receipt)
+            return deepcopy(receipt)
+
+        return self._start_job(receipt, execute, background=background)
+
+    def _start_job(self, receipt: dict, execute, *, background: bool) -> dict:
+        """Use one process-ownership and status mechanism for both application jobs."""
+        self._save_job(receipt)
+        owner = _lock_job_owner(
+            self.path(Path(receipt["directory"]) / ".owner", write=True), create=True
+        )
+        if owner is None:
+            receipt.update(status="FAILED", error="job_owner_unavailable")
+            self._save_job(receipt)
+            raise ProcessingError("job_owner_unavailable")
+
         def owned_execute():
             try:
                 return execute()
@@ -686,7 +756,7 @@ class ResearchApplication:
             return owned_execute()
         try:
             with self._lock:
-                self._jobs[job_id] = self._pool.submit(owned_execute)
+                self._jobs[receipt["job_id"]] = self._pool.submit(owned_execute)
         except RuntimeError:
             owner.close()
             raise
@@ -1022,15 +1092,18 @@ class ResearchApplication:
             receipt = self.get_run_status(path.parent.name)
             rows.append(
                 {
-                    k: receipt.get(k)
-                    for k in (
-                        "job_id",
-                        "status",
-                        "task_fingerprint",
-                        "run_directory",
-                        "error",
-                        "usage",
-                    )
+                    "kind": receipt.get("kind", "research"),
+                    **{
+                        k: receipt.get(k)
+                        for k in (
+                            "job_id",
+                            "status",
+                            "task_fingerprint",
+                            "run_directory",
+                            "error",
+                            "usage",
+                        )
+                    },
                 }
             )
         return {"runs": rows, "network_access": False}

@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     ask.add_argument("--save-only", action="store_true")
     ask.add_argument("--non-interactive", action="store_true")
     authorize = commands.add_parser(
-        "authorize", help="本机审阅并签发一次性MCP规划/科研授权"
+        "authorize", help="本机审阅并签发一次性MCP规划/科研/公共获取授权"
     )
     authorize.add_argument("request", type=Path)
     authorize.add_argument(
@@ -61,7 +61,10 @@ def main(argv: list[str] | None = None) -> int:
             if request.get("schema") != "aletheia-nexus/local-authorization-request/v1":
                 raise ValueError("not an authorization request")
             app = ResearchApplication(
-                request["roots"], request["workspace"], remote=True
+                request["roots"],
+                request["workspace"],
+                remote=True,
+                network=request["scope"] == "acquire",
             )
             scope, payload = request["scope"], request["payload"]
             binding = app.binding(scope, payload)
@@ -69,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
                 raise ProcessingError("authorization_request_changed")
             if scope == "execute":
                 print(app.validate_research_task(payload)["plan"])
+            elif scope == "acquire":
+                from .research_acquisition import public_acquisition_plan
+
+                print(public_acquisition_plan(app, payload)["plan"])
             else:
                 print("规划仅发送用户目标及文献元数据，不发送论文全文。")
                 print(payload["goal"])
@@ -171,7 +178,9 @@ def main(argv: list[str] | None = None) -> int:
                     raise ProcessingError("extraction_authorization_required")
                 break
             action = (
-                input("按上述范围和预算发送论文并执行[e] / 编辑后重读[m] / 只保存[s] / 取消[c]：")
+                input(
+                    "按上述范围和预算发送论文并执行[e] / 编辑后重读[m] / 只保存[s] / 取消[c]："
+                )
                 .strip()
                 .lower()
             )

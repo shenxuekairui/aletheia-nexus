@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Python,
     [Parameter(Mandatory = $true)][string]$Papers,
     [Parameter(Mandatory = $true)][string]$Workspace,
-    [switch]$EnableRemote
+    [switch]$EnableRemote,
+    [switch]$EnableAcquisition
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,5 +12,6 @@ if ($EnableRemote -and [string]::IsNullOrWhiteSpace($env:DEEPSEEK_API_KEY)) {
 }
 $anMcpArguments = @('-m', 'aletheia_nexus.mcp_server', 'serve', '--allow-dir', $Papers, '--workspace', $Workspace)
 if ($EnableRemote) { $anMcpArguments += '--enable-remote' }
+if ($EnableAcquisition) { $anMcpArguments += '--enable-acquisition' }
 & $Python @anMcpArguments
 exit $LASTEXITCODE

@@ -115,6 +115,7 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | --- | --- | --- |
 | `list_documents` | 列举允许目录内PDF、来源/解析状态 | 否 |
 | `get_acquisition_status` | 读取既有获取/登记状态，可对明确指定PDF核验当前完整性与身份依据 | 否 |
+| `acquire_documents` | 公共DOI批量获取、身份验证与断点恢复；返回异步job_id | 需独立公共获取许可；不调用AI |
 | `prepare_documents` | 准备明确选择的PDF，隔离失败，在工作区建副本 | 否 |
 | `import_local_document` | 用明确标题/DOI登记本地主文副本；仅为DECLARED，不验证身份 | 否 |
 | `parse_document` | 对已登记文献显式生成独立的新解析工件，保留旧版 | 否 |
@@ -129,13 +130,51 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | `get_parse_diagnostics` | 查看解析质量、失败诊断和当前来源核验 | 否 |
 | `read_research_result` | 读取既有字段、引用、验证和修订历史 | 否 |
 | `revise_research_result` | 显式助手修订一个既有记录/主张/诊断，独立保存并导出，始终不确认为人工审阅 | 否 |
-| `list_research_runs` | 查看本地历史运行与已记录费用 | 否 |
+| `list_research_runs` | 查看本地历史运行与已记录费用，kind区分科研与获取 | 否 |
 
 读取工具会把允许目录中的内容返回给宿主客户端；宿主自身模型是否向远程发送内容，
 由该客户端的隐私与批准机制负责。AN 的 `--enable-remote` 控制的是 AN 自己的模型调用。
 检索直接复用 v0.7 的表格/图注内容单元和证据包，不把字面未命中解释为科学事实缺失。
 `read_document_context` 超出字符预算时明确跳过完整上下文，不截断表头或悄悄漏行。
 跨盘的手工PDF/工件组合需先 `prepare_documents` 在工作区准备，再进行文库检索。
+
+### 经批准获取公共全文
+
+默认不启用获取。需要此能力时启动：
+
+```powershell
+aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08" --enable-acquisition
+```
+
+或复制 [公共获取 stdio 配置](../examples/mcp-stdio-windows-acquisition.json)，修改绝对路径。
+使用 `start_an_mcp.ps1` 时增加 `-EnableAcquisition`；它与 `-EnableRemote` 分开，
+公共下载不需要 DeepSeek Key，也不授予模型调用权限。
+
+在客户端说：“获取 DOI 10.1371/journal.pone.0310216，核对来源后准备解析，先给获取计划。”
+客户端调用 `acquire_documents(papers=[{"doi":"10.1371/journal.pone.0310216"}])`。
+每篇可附 `title` 作为身份约束，每批最多10篇；当前不支持仅题名检索、SI自动获取或机构登录。
+这些既有 CLI 能力尚未全部封装进 MCP，公共获取失败不会自动打开浏览器、使用官方凭据或扩大权限。
+
+工具先返回中文范围和 `authorization_request` 文件，不联网。按本节下方的
+`research authorize` 命令在独立终端审阅后，将一次性授权交给当前工具的 `authorization`。
+批准绑定 DOI/题名、允许目录、固定的公共路径限制和恢复断点；不能用 `confirmed=true` 代替。
+原规划/科研授权不能用于获取，获取授权也不能用于 AI。授权仅使用一次。
+
+批准后返回 `job_id`，通过 `get_run_status` 查看逐篇结果与本地 `pdf`/`sidecar`。
+服务端复用已有批量获取、PDF/身份验证及断点机制，每篇最多4条路线与4个文件候选；
+路线/文件请求超时30秒，各路径/文件最多尝试1次。`COMPLETED/PARTIAL/FAILED`
+区分全成、部分和未交付，公开路径原状态与异常类型分别保留。后台执行不会占住stdio请求。
+成功文件可直接交给 `prepare_documents`，保留下载来源记录，不降格为人工声明或覆盖旧PDF。
+
+恢复失败或中断时，用同一 `papers` 加 `resume_job_id` 再请求计划、重新批准。
+恢复写入新任务目录：复制并复核已验证文件，只重试失败项；旧断点、PDF、来源与历史不改。
+原任务仍运行时不能恢复；断点改变后旧批准失效；已有损坏断点明确报错。
+若进程在首个断点前退出，计划明确说明从头获取选定范围，不自动信任遗留文件。
+
+第18个工具只完成公共主文获取这一增量，不代表全部出版社/题名/机构获取已接入MCP。
+本次用官方SDK2.3.0真实stdio客户端完成模拟网络的授权/恢复/解析测试；另实际下载并
+核验上述公共 DOI、准备12页解析成功，模型调用0。再以新服务进程、不可用HTTP代理恢复，
+有效文件复用、获取尝试0，原PDF/来源记录/断点哈希不变。真实桌面 AI 客户端中的手工会话仍另行验收。
 
 ### 获取记录与当前来源检查
 
@@ -210,7 +249,7 @@ AN先返回规划许可请求。元数据和论文内容不会因模型传入 `c
 aletheia-nexus research authorize "返回的authorization_request路径"
 ```
 
-核对范围和预算，确认后将一次性授权交给当前 AN 工具。规划授权不能用于提取；
+核对范围和预算，确认后将一次性授权交给当前 AN 工具。规划、科研和公共获取授权相互隔离；
 任务、材料、预算或目录改变后重新批准。授权一小时内有效，使用一次即失效，MCP没有
 签发工具。受信任CLI的 `--approve-fingerprint` 只用于已审请求，不应让模型自行调用。
 这是对 MCP 参数的边界，不是针对任意同用户本机程序的 OS 沙箱。

@@ -47,6 +47,26 @@ def create_server(app: ResearchApplication):
         return app.list_documents(directory, recursive=recursive)
 
     @tool
+    def acquire_documents(
+        papers: list[dict],
+        authorization: str | None = None,
+        resume_job_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Acquire up to10 public main articles by DOI (optional expected title).
+        Requires server --enable-acquisition and independent local one-use grant.
+        Without a grant, saves a reviewable authorization request without network.
+        Approved downloads run in background; get_run_status reports per-paper
+        outcomes. Resume a completed/interrupted acquisition using a NEW grant;
+        validated files are copied/reused, old history/files stay unchanged.
+        No browser, institutional/official credentials, AI calls or title-only
+        discovery. Sources use existing identity/PDF validation, not model consent.
+        """
+        payload = {"papers": papers}
+        if resume_job_id is not None:
+            payload["resume_job_id"] = resume_job_id
+        return app.acquire_documents(payload, authorization=authorization)
+
+    @tool
     def get_acquisition_status(
         sidecar: str, pdf: str | None = None, expected_doi: str | None = None
     ) -> dict[str, Any]:
@@ -258,12 +278,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="仍需本机CLI生成的一次性规划/科研授权",
     )
+    serve.add_argument(
+        "--enable-acquisition",
+        action="store_true",
+        help="启用公共DOI获取；仍需本机CLI签发独立一次性获取授权",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
     app = None
     try:
         app = ResearchApplication(
-            args.allow_dir, args.workspace, remote=args.enable_remote
+            args.allow_dir,
+            args.workspace,
+            remote=args.enable_remote,
+            network=args.enable_acquisition,
         )
         create_server(app).run(transport="stdio")
         return 0
