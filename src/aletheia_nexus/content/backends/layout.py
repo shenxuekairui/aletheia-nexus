@@ -388,7 +388,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.8"
+    version = "1.19.9"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -779,7 +779,8 @@ class LayoutPdfBackend:
                 # intervenes (ng mL-1). A real millilitre m has no such proof.
                 for offset, reading in unit_positions.items():
                     if reading == "μ" and re.match(
-                        r"m(?:m|L|l)(?![A-Za-z])", raw_text[offset:]
+                        r"m(?:mol|[mglLAsF])(?=$|[^A-Za-z]|[A-Za-z]+(?:[−⁻+-]?\d|[²³]))",
+                        raw_text[offset:],
                     ):
                         characters[offset] = reading
                 text = "".join(characters).strip()

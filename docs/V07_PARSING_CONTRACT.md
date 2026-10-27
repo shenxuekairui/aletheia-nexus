@@ -120,6 +120,14 @@ text tables. Native line content, positions and uncertainty are retained; old
 PDFs and artifacts remain unchanged. Correct reading order is not scientific
 confirmation of a subsequent model extraction.
 
+From parser 3.10.20 (native layout 1.19.9), an existing font-outline-verified
+`m` → `μ` reading also applies to `μmol` and supported SI suffixes followed by
+compact exponent-bearing factors, such as `μmolcm-2h-1`. The suffix does not
+establish the glyph reading: ordinary `m`, `mmol` and `mL`, non-mu outlines,
+and similar prose remain unchanged. Original readings, correction warnings and
+uncertainty are retained. The parsed-document/v3 contract is unchanged; the new
+execution version prevents reuse of the older parsing result without rewriting it.
+
 Panel associations marked `positioned-panel-length` describe an observed length
 label and retain the existing uncertainty flag; their scientific role remains
 unverified. Compact `Panel (...): label ...` text does not identify a measurement
