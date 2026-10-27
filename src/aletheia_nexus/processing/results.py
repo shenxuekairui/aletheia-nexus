@@ -50,6 +50,65 @@ def _quotation(text: str) -> str:
     )
 
 
+def _citation_search_documents(document: dict, documents: list[dict]) -> list[dict]:
+    """Search siblings only when both parent identifiers resolve to one main."""
+    source = document["source"]
+    role = source.get("document_role")
+    if role == "ARTICLE":
+        parent = source
+    elif role == "SUPPLEMENT":
+        parent = source.get("parent") or {}
+    else:
+        return [document]
+    key = (parent.get("pdf_sha256"), parent.get("article_id"))
+    if not all(key):
+        return [document]
+    mains = [
+        d
+        for d in documents
+        if d["source"].get("document_role") == "ARTICLE"
+        and (d["source"].get("pdf_sha256"), d["source"].get("article_id")) == key
+    ]
+    if len(mains) != 1:
+        return [document]
+    family = []
+    for candidate in documents:
+        if candidate["id"] == document["id"]:
+            continue
+        source = candidate["source"]
+        parent = source.get("parent") or {}
+        if candidate is mains[0] or (
+            source.get("document_role") == "SUPPLEMENT"
+            and (parent.get("pdf_sha256"), parent.get("article_id")) == key
+        ):
+            family.append(candidate)
+    return [document, *sorted(family, key=lambda d: d["id"])]
+
+
+def _matching_locations(citation: dict, documents: list[dict]) -> list[dict]:
+    """Offer at most three literal locations, not a repair or proof of support."""
+    document = next((d for d in documents if d["id"] == citation["source_id"]), None)
+    quotation = _quotation(citation["quote"])
+    if document is None or not quotation:
+        return []
+    matches = []
+    for candidate in _citation_search_documents(document, documents):
+        for block in candidate["blocks"]:
+            if block["page"] not in candidate["pages_requested"]:
+                continue
+            if quotation in _quotation(block["text"]):
+                matches.append(
+                    {
+                        "source_id": candidate["id"],
+                        "block_id": block["id"],
+                        "page": block["page"],
+                    }
+                )
+                if len(matches) == 3:
+                    return matches
+    return matches
+
+
 def check_response(
     response: dict, task: dict, package: dict, *, comparison: bool = False
 ) -> dict:
@@ -66,32 +125,6 @@ def check_response(
     locations = []
 
     citation_errors = {}
-
-    def matching_locations(citation: dict) -> list[dict]:
-        """Offer bounded exact-quote locations, never silently repair a citation.
-
-        Only the same supplied document is searched. A matching quote says nothing
-        about support for the claim; the existing repair must still reassess it.
-        """
-        document = documents.get(citation["source_id"])
-        quotation = _quotation(citation["quote"])
-        if document is None or not quotation:
-            return []
-        matches = []
-        for block in document["blocks"]:
-            if block["page"] not in document["pages_requested"]:
-                continue
-            if quotation in _quotation(block["text"]):
-                matches.append(
-                    {
-                        "source_id": citation["source_id"],
-                        "block_id": block["id"],
-                        "page": block["page"],
-                    }
-                )
-                if len(matches) == 3:
-                    break
-        return matches
 
     def locate_citation(citation: dict) -> bool:
         review = False
@@ -172,8 +205,8 @@ def check_response(
                     **(exc.diagnostics or {}),
                 }
                 if exc.code in {"invalid_citation", "quotation_not_in_source"}:
-                    citation_errors[key]["exact_quote_locations"] = matching_locations(
-                        citation
+                    citation_errors[key]["exact_quote_locations"] = _matching_locations(
+                        citation, package["documents"]
                     )
         return review
 
@@ -302,7 +335,7 @@ def check_response(
             errors[0]["code"],
             {
                 "errors": errors,
-                "validation": "Fix all listed citation errors against supplied evidence; retain original scientific meanings. exact_quote_locations lists up to three literal matches in the same supplied document, not proof that they support the claim. Reassess context before citing. Do not invent evidence.",
+                "validation": "Fix all listed citation errors against supplied evidence; retain original scientific meanings. exact_quote_locations lists up to three literal matches, preferring the same supplied document, then supplied main/supplement documents with matching parent PDF and article identities. These locations are not proof that they support the claim. Reassess context before citing. Do not invent evidence.",
             },
         )
     if any(i["kind"] == "conflict" for i in response["issues"]):
