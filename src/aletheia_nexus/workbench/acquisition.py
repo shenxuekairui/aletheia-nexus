@@ -17,6 +17,8 @@ import time
 from dataclasses import asdict, fields, replace
 from difflib import SequenceMatcher
 from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from aletheia_nexus.acquire.access.batch import acquire_full_text_batch_maximized
@@ -72,6 +74,159 @@ _EXTRA_DEFAULTS = {
     "max_si_files": 20,
     "si_max_bytes": 100 * 1024 * 1024,
 }
+
+_MAIN_REASONS = {
+    "VERIFIED": "正文已通过来源、文件内容与论文身份核验。",
+    "AUTH_REQUIRED": "来源要求登录或 API 授权。请检查所选会话与合法访问权限后再恢复。",
+    "INTERACTION_REQUIRED": "需要在所选浏览器中完成登录或验证，再选择继续、跳过或取消。",
+    "ENTITLEMENT_REQUIRED": "来源要求额外的全文访问权限；系统不会自动绕过订阅或机构授权。",
+    "ACCESS_DENIED": "来源拒绝当前访问。请核对账号、网络与合法权限，不要连续盲目重试。",
+    "BROWSER_UNAVAILABLE": "所选浏览器未能启动或连接，请检查浏览器安装、会话与连接设置。",
+    "UNSAFE_URL": "来源地址未通过网络安全检查，已拒绝访问。",
+    "EXHAUSTED": "已尝试本次允许的来源，仍未取得已验证正文；请检查逐条来源结果后再调整策略。",
+    "ERROR": "获取过程发生错误，已保留来源诊断；请核对原因后重试。",
+    "RUNNER_ERROR": "获取引擎未能完成当前论文，已保留错误类型；请检查诊断后重试。",
+    "AMBIGUOUS": "论文或文件身份仍有歧义，需要人工核对候选，不能自动选择第一项。",
+    "RETRIEVED_UNVERIFIED": "已取得文件，但未通过正文身份核验；未将其登记为已验证正文。",
+    "INVALID_DOI": "DOI 无效，请修正输入后重新预览。",
+    "DEFERRED": "当前论文尚未调度，等待后续恢复。",
+    "SKIPPED": "已按用户决定跳过当前论文，不会自动重新进入此论文。",
+    "CANCELLED": "已按用户决定停止当前论文；已完成的文件与来源记录保留。",
+}
+
+
+def _value(value):
+    return getattr(value, "value", value)
+
+
+def _diagnostic_text(value):
+    if value is None:
+        return None
+    from .messages import error_record
+
+    # Redact ALL URL query values, not just familiar token parameter names.
+    value = re.sub(
+        r"https?://[^\s<>\"']+", lambda m: redact_url_for_record(m[0]) or "", str(value)
+    )
+    return error_record(value)["raw"][:2000]
+
+
+def _diagnostic_url(value):
+    return _diagnostic_text(redact_url_for_record(value)) if value else None
+
+
+def _outcome(item) -> dict:
+    """Whitelist source diagnostics; never serialize response bodies or headers."""
+    from .messages import error_record
+
+    status = _value(item.status)
+    result = item.result
+    base = getattr(result, "base_result", None)
+    details = []
+
+    def append(phase, node, *, candidate=None, source_kind="公共来源", error=None):
+        route = _diagnostic_url(getattr(candidate, "url", None))
+        source = (
+            urlsplit(route).hostname
+            if route and route.startswith(("http:", "https:"))
+            else None
+        )
+        code = _diagnostic_text(error or getattr(node, "error", None))
+        details.append(
+            {
+                "phase": phase,
+                "status": _value(getattr(node, "status", None)),
+                "source": source,
+                "source_kind": source_kind,
+                "route": route,
+                "reason_code": code,
+                "message": _diagnostic_text(getattr(node, "message", None) or code),
+                "attempts": getattr(node, "attempts", None),
+                "elapsed_seconds": getattr(node, "elapsed_seconds", None),
+            }
+        )
+
+    provider_names = {
+        "crossref": "Crossref",
+        "openalex": "OpenAlex",
+        "unpaywall": "Unpaywall",
+        "pmc_cloud": "PMC 官方文献库",
+        "cnki": "中国知网",
+    }
+    for provider in getattr(getattr(base, "discovery", None), "providers", ()):
+        append("公共来源发现", provider)
+        provider_id = _value(provider.provider)
+        details[-1]["source"] = provider_names.get(
+            provider_id, _diagnostic_text(provider_id)
+        )
+        details[-1]["candidate_count"] = len(provider.candidates)
+    if getattr(base, "metadata_error", None):
+        append(
+            "书目信息读取", SimpleNamespace(status="FAILED", error=base.metadata_error)
+        )
+    for route in getattr(base, "route_attempts", ()):
+        append("公共来源页面", route.result, candidate=route.candidate)
+    for file in getattr(base, "file_attempts", ()):
+        append("公共正文文件", file.result, candidate=file.candidate)
+    official = getattr(result, "elsevier_attempt", None)
+    if official:
+        append("官方 API", official, source_kind="已授权官方 API")
+        details[-1]["source"] = "Elsevier 官方 API"
+    for browser in getattr(result, "browser_attempts", ()):
+        append(
+            "浏览器来源页面",
+            browser,
+            candidate=browser.source_candidate,
+            source_kind="浏览器来源",
+        )
+        details[-1]["challenge_kinds"] = [
+            _value(c.kind) for c in browser.challenge_history
+        ]
+        details[-1]["bibliographic_conflicts"] = list(browser.bibliographic_conflicts)
+        for file in browser.file_attempts:
+            append(
+                "浏览器正文文件",
+                file.result,
+                candidate=file.candidate,
+                source_kind="浏览器来源",
+                error=file.error,
+            )
+            details[-1]["method"] = _diagnostic_text(file.method)
+    latest = details[-1] if details else {}
+    error = _diagnostic_text(item.error)
+    code = error or next(
+        (row["reason_code"] for row in reversed(details) if row["reason_code"]), None
+    )
+    base_status = _value(getattr(base, "status", None))
+    reason = _MAIN_REASONS.get(status, "当前获取结果需要核对，请查看逐条来源诊断。")
+    if base_status == "LIMIT_REACHED" and status != "VERIFIED":
+        reason = (
+            "本次公共来源路线或文件候选预算已用尽；尚不能判断所有可用来源都已尝试。"
+        )
+    if code:
+        translated = error_record({"code": code, "message": code})
+        if translated["known"]:
+            reason += " " + translated["message"]
+    attempts = item.attempts
+    return {
+        "main_status": status,
+        "phase": "正文核验完成" if status == "VERIFIED" else "获取正文结束",
+        "reason": reason,
+        "reason_code": code or status,
+        "message": _diagnostic_text(
+            getattr(result, "message", None) or getattr(base, "message", None)
+        )
+        or reason,
+        "base_status": base_status,
+        "source": latest.get("source"),
+        "source_kind": latest.get("source_kind"),
+        "route": latest.get("route"),
+        "attempts": attempts,
+        "retry_count": max(0, attempts - 1) if isinstance(attempts, int) else None,
+        "error": error,
+        "diagnostics": details[:200],
+        "diagnostics_truncated": len(details) > 200,
+    }
 
 
 def get_acquisition_defaults() -> dict:
@@ -549,24 +704,33 @@ class AcquisitionService:
         items = []
         current = None
         interaction_skipped = False
+        interaction_route = None
 
         def interaction(challenge, url):
-            nonlocal interaction_skipped
+            from .jobs import TaskCancelled
+
+            nonlocal interaction_skipped, interaction_route
             if context is None or options["interaction_policy"] == "skip":
                 return
-            decision = context.wait_interaction(
-                {
-                    "paper": asdict(current),
-                    "source": redact_url_for_record(url),
-                    "challenge": challenge.kind.value,
-                    "stage": "browser_interaction",
-                },
-                timeout=options["interaction_timeout"] or None,
-            )
+            interaction_route = _diagnostic_url(url)
+            try:
+                decision = context.wait_interaction(
+                    {
+                        "paper": asdict(current),
+                        "source": interaction_route,
+                        "challenge": challenge.kind.value,
+                        "stage": "browser_interaction",
+                    },
+                    timeout=options["interaction_timeout"] or None,
+                )
+                # Cancellation wins even if it arrived with a skip/continue.
+                context.checkpoint()
+            except TaskCancelled as exc:
+                raise _CancelAcquisition(exc) from exc
             if decision == "skip":
                 interaction_skipped = True
-                # Raising leaves the engine's browser attempt through its normal
-                # failure path; the adapter checks cancellation at the boundary.
+                # The legacy engine catches all Exception values as retryable.
+                # This private signal is caught at THIS adapter boundary instead.
                 raise _SkipInteraction("user_skipped_interaction")
 
         browser_values = dict(options["browser"])
@@ -582,6 +746,7 @@ class AcquisitionService:
         with BrowserSession(browser) as session:
             for index, current in enumerate(prepared, 1):
                 interaction_skipped = False
+                interaction_route = None
                 if context:
                     context.checkpoint()
                     if context.should_skip(current.key):
@@ -589,10 +754,27 @@ class AcquisitionService:
                             "id": current.key,
                             "status": "SKIPPED",
                             "request": asdict(current),
+                            "main_status": "SKIPPED",
+                            "si_status": "NOT_ATTEMPTED"
+                            if options["include_si"]
+                            else "NOT_REQUESTED",
+                            "phase": "调度前跳过",
+                            "reason": _MAIN_REASONS["SKIPPED"],
+                            "reason_code": "user_skipped_before_dispatch",
+                            "attempts": 0,
+                            "retry_count": 0,
+                            "folder": str(destination(self.root, current.folder)),
+                            "checkpoint": str(checkpoint),
                         }
                         items.append(row)
                         context.record(
-                            current.key, "SKIPPED", **{"request": asdict(current)}
+                            current.key,
+                            "SKIPPED",
+                            **{
+                                k: v
+                                for k, v in row.items()
+                                if k not in {"id", "status"}
+                            },
                         )
                         continue
                     context.progress(
@@ -617,16 +799,44 @@ class AcquisitionService:
                 }
                 # Public-only ignores browser access exactly as the engine does.
                 kwargs["browser_session"] = session
-                result = acquire_full_text_batch_maximized([current], **kwargs)
-                item = result.items[0]
+                item_started = time.monotonic()
+                try:
+                    result = acquire_full_text_batch_maximized([current], **kwargs)
+                    item = result.items[0]
+                except _SkipInteraction:
+                    item = SimpleNamespace(
+                        status="SKIPPED",
+                        result=None,
+                        verified_path=None,
+                        attempts=None,
+                        error="user_skipped_interaction",
+                        resumed=False,
+                        elapsed_seconds=time.monotonic() - item_started,
+                    )
+                except _CancelAcquisition as stopped:
+                    if context:
+                        context.record(
+                            current.key,
+                            "CANCELLED",
+                            main_status="CANCELLED",
+                            phase="人工验证时取消",
+                            reason=_MAIN_REASONS["CANCELLED"],
+                            request=asdict(current),
+                            route=interaction_route,
+                            folder=str(destination(self.root, current.folder)),
+                            checkpoint=str(checkpoint),
+                            attempts=None,
+                        )
+                    raise stopped.original
                 row = {
                     "id": current.key,
                     "request": asdict(current),
-                    "status": item.status.value,
-                    "attempts": item.attempts,
+                    "status": _value(item.status),
+                    **_outcome(item),
                     "resumed": item.resumed,
                     "elapsed_seconds": item.elapsed_seconds,
-                    "error": item.error,
+                    "folder": str(destination(self.root, current.folder)),
+                    "checkpoint": str(checkpoint),
                     "si_status": "NOT_ATTEMPTED"
                     if options["include_si"]
                     else "NOT_REQUESTED",
@@ -635,11 +845,25 @@ class AcquisitionService:
                     options["interaction_policy"] == "skip"
                     and row["status"] in {"INTERACTION_REQUIRED", "AUTH_REQUIRED"}
                 ):
+                    prior_reason = (
+                        row["reason"]
+                        if row["status"] != "SKIPPED"
+                        else "在人工登录或验证阶段停止当前论文。"
+                    )
                     row.update(
                         status="SKIPPED",
-                        acquisition_status=item.status.value,
-                        reason="human_interaction_skipped",
+                        main_status="SKIPPED",
+                        acquisition_status=_value(item.status),
+                        phase="人工验证时跳过",
+                        reason=prior_reason + " " + _MAIN_REASONS["SKIPPED"],
+                        reason_code="user_skipped_interaction",
                     )
+                    if interaction_route:
+                        row.update(
+                            route=interaction_route,
+                            source=urlsplit(interaction_route).hostname,
+                            source_kind="浏览器来源",
+                        )
                 if item.verified_path:
                     if not Path(item.verified_path).resolve().is_relative_to(
                         self.root
@@ -662,7 +886,23 @@ class AcquisitionService:
                         sidecar=str(source.sidecar_path),
                         pdf_sha256=source.pdf_sha256,
                         identity_verified=True,
+                        folder=str(source.pdf_path.parent),
                     )
+                    recorded = json.loads(source.sidecar_path.read_text("utf-8"))
+                    route = _diagnostic_url(
+                        (recorded.get("access") or {}).get("source_page_url")
+                        or (recorded.get("candidate") or {}).get("url")
+                        or (recorded.get("retrieval") or {}).get("final_url")
+                    )
+                    if route:
+                        row.update(route=route, source=urlsplit(route).hostname)
+                    if not row.get("source_kind"):
+                        row["source_kind"] = (
+                            "公共来源"
+                            if recorded.get("schema")
+                            == "aletheia-nexus/acquisition-record/v1"
+                            else "原始获取来源（已复核）"
+                        )
                     bibliography = self._store_bibliography(item, source)
                     if bibliography is not None:
                         row["bibliography"] = bibliography
@@ -672,6 +912,14 @@ class AcquisitionService:
                         )
 
                         try:
+                            if context:
+                                context.progress(
+                                    index - 1,
+                                    len(prepared),
+                                    item=row,
+                                    current=asdict(current),
+                                    stage="获取 SI 与关联附件",
+                                )
                             si = acquire_supplements(
                                 source.pdf_path,
                                 library=self.library,
@@ -683,6 +931,11 @@ class AcquisitionService:
                         except Exception as exc:
                             # SI is independent: never rewrite successful main state.
                             row.update(si_status="FAILED", si_error=type(exc).__name__)
+                        row["phase"] = (
+                            "正文与附件获取结束"
+                            if row["si_status"] == "COMPLETED"
+                            else "正文已验证，附件需核对"
+                        )
                 items.append(row)
                 if context:
                     context.record(
@@ -749,5 +1002,10 @@ class AcquisitionService:
         }
 
 
-class _SkipInteraction(RuntimeError):
-    pass
+class _SkipInteraction(BaseException):
+    """Private cooperative signal; bypass legacy Exception-as-retry handlers."""
+
+
+class _CancelAcquisition(BaseException):
+    def __init__(self, original):
+        self.original = original
