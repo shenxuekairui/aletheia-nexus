@@ -370,11 +370,15 @@ def build_evidence_pack(
         block_ids = {b["id"] for b in blocks}
         tables = []
         table_membership: dict[str, list[str]] = {}
-        observed_tables = {table["id"]: table for table in document["tables"]}
-        for unit in canonical_units(document).values():
-            if unit["kind"] != "table" or not block_ids.intersection(unit["block_ids"]):
+        observed_units = canonical_units(document)
+        for table in document["tables"]:
+            unit = observed_units.get(table["id"])
+            if unit is None and not table["cells"]:
+                # A caption-only object is not a structured search unit, but
+                # selected evidence must still disclose its unread table.
+                unit = {"id": table["id"], "block_ids": [table["caption_block_id"]]}
+            if unit is None or not block_ids.intersection(unit["block_ids"]):
                 continue
-            table = observed_tables[unit["id"]]
             present_ids = [bid for bid in unit["block_ids"] if bid in block_ids]
             tables.append(
                 {
@@ -391,7 +395,8 @@ def build_evidence_pack(
                     "missing_block_ids": [
                         bid for bid in unit["block_ids"] if bid not in block_ids
                     ],
-                    "complete_context": set(unit["block_ids"]) <= block_ids,
+                    "complete_context": bool(table["cells"])
+                    and set(unit["block_ids"]) <= block_ids,
                     "uncertain": True,
                     "interpretation_status": "not-interpreted",
                 }
