@@ -25,7 +25,8 @@ AI 研究和成果共用底层服务；支持分类共享 `SI/`、独立标题�
 API 密钥从环境读取，远程调用需明确勾选授权；启动和浏览文库不会自动调用模型。
 
 参见[工作台手册与支持矩阵](docs/WORKBENCH_USER_GUIDE.md)、
-[实施审计](docs/WORKBENCH_IMPLEMENTATION.md)和[验收记录](docs/WORKBENCH_ACCEPTANCE.md)。
+[十分钟开始与输入改进](docs/WORKBENCH_USABILITY.md)、[实施审计](docs/WORKBENCH_IMPLEMENTATION.md)
+和[验收记录](docs/WORKBENCH_ACCEPTANCE.md)。
 UI 工程验收与 v0.8 科学提取质量验收分别记录，不修改现有科学性能结论。
 
 开发分支新增 opt-in 的 AI 文献整理、字段提取与比较工作流，使用 DeepSeek Flash，
