@@ -129,7 +129,7 @@ def _citations(text: str) -> list[dict]:
         r"(?:doi\s*[:：]|(?:https?://)?(?:dx\.)?doi\.org/|10\.\d{4,9}/)", text, re.I
     ):
         raise ValueError(
-            "DOI行包含无法识别的内容；逐篇设置请使用“| 分类=...”和“| 标签=...”。"
+            "这一行包含无法识别的DOI内容；逐篇设置请使用“| 分类=...”和“| 标签=...”。"
         )
     return [{"title": text}]
 
