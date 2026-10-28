@@ -8,6 +8,7 @@ import io
 import json
 from copy import deepcopy
 from pathlib import Path
+from string import ascii_letters, ascii_lowercase
 
 from aletheia_nexus.content.export import write_ai_export
 from aletheia_nexus.content.gate import sha256_file
@@ -117,6 +118,8 @@ def resolve_citation_source_ids(
 
     Page, block, quotation and scientific content stay unchanged. The derived
     link remains unconfirmed; ordinary valid references are never redirected.
+    A quote may cross its original anchor and the immediately following same-page
+    block. Such matches retain the two-block basis in the reversible trace.
     """
     adjusted = deepcopy(response)
     documents = {d["id"]: d for d in package["documents"]}
@@ -143,34 +146,82 @@ def resolve_citation_source_ids(
                     quote = _quotation(citation["quote"])
                     if not quote:
                         continue
-                    matches = [
-                        d
-                        for d in _citation_search_documents(
-                            document, package["documents"]
-                        )
-                        if d["id"] != document["id"]
-                        and citation["page"] in d["pages_requested"]
-                        and any(
-                            b["id"] == citation["block_id"]
-                            and b["page"] == citation["page"]
-                            and quote in _quotation(b["text"])
-                            for b in d["blocks"]
-                        )
-                    ]
+                    matches = []
+                    for candidate in _citation_search_documents(
+                        document, package["documents"]
+                    ):
+                        if (
+                            candidate["id"] == document["id"]
+                            or citation["page"] not in candidate["pages_requested"]
+                        ):
+                            continue
+                        basis = _source_quote_basis(citation, quote, candidate)
+                        if basis is not None:
+                            matches.append((candidate, basis))
                     if len(matches) == 1:
+                        candidate, basis = matches[0]
                         before = deepcopy(citation)
-                        citation["source_id"] = matches[0]["id"]
+                        citation["source_id"] = candidate["id"]
                         changes.append(
                             {
                                 "path": [*path, "citations", index],
                                 "before": before,
                                 "after": deepcopy(citation),
-                                "reason": "impossible_source_page_unique_family_page_block_quote",
+                                "reason": (
+                                    "impossible_source_page_unique_family_adjacent_block_quote"
+                                    if basis
+                                    else "impossible_source_page_unique_family_page_block_quote"
+                                ),
+                                **({"evidence": basis} if basis else {}),
                             }
                         )
 
     visit(adjusted, [])
     return adjusted, changes
+
+
+def _source_quote_basis(citation: dict, quote: str, document: dict) -> dict | None:
+    """Return {} for the legacy single-block match, otherwise a literal span proof."""
+    blocks = document["blocks"]
+    anchors = [
+        (i, block)
+        for i, block in enumerate(blocks)
+        if (block["id"], block["page"]) == (citation["block_id"], citation["page"])
+    ]
+    if any(quote in _quotation(block["text"]) for _, block in anchors):
+        return {}  # Preserve old traces byte-for-byte.
+    if len(anchors) != 1:
+        return None
+    for i, block in anchors:
+        left = _quotation(block["text"])
+        if i + 1 >= len(blocks) or blocks[i + 1]["page"] != block["page"]:
+            continue
+        following = blocks[i + 1]
+        right = _quotation(following["text"])
+        joins = [(left + " " + right, "same_page_adjacent_blocks_whitespace", 1)]
+        if (
+            len(left) >= 2
+            and left.endswith("-")
+            and left[-2] in ascii_letters
+            and right
+            and right[0] in ascii_lowercase
+        ):
+            # Only this actual block boundary is joined. Keep the literal hyphen;
+            # do not normalize in-block text, scientific symbols, digits or units.
+            joins.append((left + right, "same_page_adjacent_blocks_line_end_hyphen", 0))
+        for combined, mode, separator in joins:
+            start = combined.find(quote)
+            if 0 <= start < len(left) and start + len(quote) > len(left) + separator:
+                return {
+                    "page": block["page"],
+                    "block_ids": [block["id"], following["id"]],
+                    "block_text_sha256": [
+                        digest(block["text"]),
+                        digest(following["text"]),
+                    ],
+                    "match_mode": mode,
+                }
+    return None
 
 
 def check_response(

@@ -205,3 +205,149 @@ def test_no_guess_for_real_pages_unknown_sources_missing_identity_or_ambiguous_f
         adjusted, changes = resolve_citation_source_ids(candidate, sources)
         assert adjusted == candidate and changes == []
         assert (candidate, sources) == untouched
+
+
+def adjacent_fixture(
+    left="A microﬂuidic",
+    right="response was observed.",
+    quote="microfluidic response was observed.",
+):
+    main = {
+        "id": "main",
+        "source": {
+            "document_role": "ARTICLE",
+            "pdf_sha256": "hash",
+            "article_id": "article",
+            "page_count": 1,
+        },
+        "blocks": [],
+        "pages_requested": [1],
+    }
+    si = {
+        "id": "si",
+        "source": {
+            "document_role": "SUPPLEMENT",
+            "page_count": 4,
+            "parent": {"pdf_sha256": "hash", "article_id": "article"},
+        },
+        "blocks": [
+            {"page": 3, "id": "b1", "text": left},
+            {"page": 3, "id": "b2", "text": right},
+        ],
+        "pages_requested": [3, 4],
+    }
+    response = {
+        "claims": [
+            {
+                "text": "Unchanged scientific assertion.",
+                "citations": [
+                    {"source_id": "main", "page": 3, "block_id": "b1", "quote": quote}
+                ],
+            }
+        ]
+    }
+    return response, {"documents": [main, si]}
+
+
+@pytest.mark.parametrize(
+    "left,right,quote,mode",
+    [
+        (
+            "A microﬂuidic",
+            "response was observed.",
+            "microfluidic response was observed.",
+            "same_page_adjacent_blocks_whitespace",
+        ),
+        (
+            "An image after continuous-\n",
+            "\nflow operation.",
+            "continuous-flow operation.",
+            "same_page_adjacent_blocks_line_end_hyphen",
+        ),
+    ],
+)
+def test_adjacent_source_recovery_changes_only_source_and_records_exact_basis(
+    left, right, quote, mode
+):
+    response, package = adjacent_fixture(left, right, quote)
+    untouched = deepcopy((response, package))
+    adjusted, changes = resolve_citation_source_ids(response, package)
+    assert (response, package) == untouched
+    assert len(changes) == 1
+    change = changes[0]
+    assert (
+        change["reason"] == "impossible_source_page_unique_family_adjacent_block_quote"
+    )
+    assert change["after"] == {**change["before"], "source_id": "si"}
+    assert change["evidence"]["block_ids"] == ["b1", "b2"]
+    assert change["evidence"]["page"] == 3
+    assert change["evidence"]["match_mode"] == mode
+    assert len(change["evidence"]["block_text_sha256"]) == 2
+    restored = deepcopy(adjusted)
+    restored["claims"][0]["citations"][0] = change["before"]
+    assert (
+        restored == response
+    )  # Every value, quote, page and original block ID is unchanged.
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "other_family",
+        "ambiguous_family",
+        "different_page",
+        "not_supplied",
+        "missing_quote",
+        "original_page_legal",
+        "quote_only_in_second",
+        "three_blocks",
+        "duplicate_anchor",
+        "exponent_changed",
+        "digits_joined",
+        "hyphen_deleted",
+        "within_block_hyphen",
+    ],
+)
+def test_adjacent_recovery_refuses_nonliteral_unbounded_or_ambiguous_matches(failure):
+    response, package = adjacent_fixture()
+    main, si = package["documents"]
+    citation = response["claims"][0]["citations"][0]
+    if failure == "other_family":
+        si["source"]["parent"]["article_id"] = "unrelated"
+    elif failure == "ambiguous_family":
+        duplicate = deepcopy(si)
+        duplicate["id"] = "si2"
+        package["documents"].append(duplicate)
+    elif failure == "different_page":
+        si["blocks"][1]["page"] = 4
+    elif failure == "not_supplied":
+        si["pages_requested"] = [4]
+    elif failure == "missing_quote":
+        citation["quote"] = ""
+    elif failure == "original_page_legal":
+        main["source"]["page_count"] = 3
+    elif failure == "quote_only_in_second":
+        citation["quote"] = si["blocks"][1]["text"]
+    elif failure == "three_blocks":
+        si["blocks"][1]["text"] = "response was"
+        si["blocks"].append({"page": 3, "id": "b3", "text": "observed."})
+    elif failure == "duplicate_anchor":
+        si["blocks"].append(deepcopy(si["blocks"][0]))
+    elif failure == "exponent_changed":
+        si["blocks"][0]["text"] = "Measured 5 m²"
+        citation["quote"] = "5 m2 response was observed."
+    elif failure == "digits_joined":
+        si["blocks"][0]["text"] = "Measured 1"
+        si["blocks"][1]["text"] = "23 units."
+        citation["quote"] = "123 units."
+    elif failure == "hyphen_deleted":
+        si["blocks"][0]["text"] = "An image after continuous-"
+        si["blocks"][1]["text"] = "flow operation."
+        citation["quote"] = "continuousflow operation."
+    else:
+        si["blocks"][0]["text"] = "An image after continuous- flow operation."
+        citation["quote"] = "continuous-flow operation."
+    untouched = deepcopy((response, package))
+    adjusted, changes = resolve_citation_source_ids(response, package)
+    assert adjusted == response and changes == []
+    assert (response, package) == untouched
