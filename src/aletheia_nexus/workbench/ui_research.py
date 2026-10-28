@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 
 from .labels import CHOICES, GRID_LOCALE, value_label
@@ -39,6 +40,97 @@ def active_research_task(jobs, task):
         if isinstance(existing, dict) and digest(existing) == fingerprint:
             return job
     return None
+
+
+def result_version_label(row):
+    if row.get("comparison"):
+        title = "跨论文比较"
+        if row.get("paper_count"):
+            title += f" · {row['paper_count']} 篇"
+    else:
+        title = (row.get("title") or row["objective"])[:65]
+    counts = []
+    if row.get("records"):
+        counts.append(f"{row['records']} 条记录")
+    if row.get("claims"):
+        counts.append(f"{row['claims']} 项主张")
+    return (
+        title
+        + " · "
+        + " / ".join(counts or ["尚无研究条目"])
+        + f" · 修订 {row['revisions']} · {row.get('run', '')[-8:]}"
+    )
+
+
+def result_source_names(sources, material_papers, papers):
+    """Readable aliases only; immutable source identity remains the audit record."""
+    numbers, parent_keys = {}, {}
+    for source in sources:
+        identity = source["identity"]
+        if identity.get("document_role") != "ARTICLE":
+            continue
+        key = material_papers.get(source["id"]) or source["id"]
+        numbers.setdefault(key, len(numbers) + 1)
+        parent_keys.setdefault(
+            (identity.get("pdf_sha256"), identity.get("article_id")), []
+        ).append(key)
+    aliases, supplement_counts = {}, {}
+    for source in sources:
+        identity, sid = source["identity"], source["id"]
+        paper_id = material_papers.get(sid)
+        paper = papers.get(paper_id) or {}
+        preferred = next(
+            (
+                value.strip()
+                for value in (paper.get("custom_name"), paper.get("title_zh"))
+                if isinstance(value, str) and value.strip()
+            ),
+            identity.get("title") or "未命名来源",
+        )
+        key = paper_id or sid
+        if identity.get("document_role") == "ARTICLE":
+            reference = f"文献{numbers[key]}"
+        else:
+            if key not in numbers:
+                parent = identity.get("parent") or {}
+                matches = (
+                    parent_keys.get((parent["pdf_sha256"], parent["article_id"]), [])
+                    if parent.get("pdf_sha256") and parent.get("article_id")
+                    else []
+                )
+                key = matches[0] if len(matches) == 1 else None
+            if key in numbers:
+                supplement_counts[key] = supplement_counts.get(key, 0) + 1
+                reference = f"文献{numbers[key]}的SI{supplement_counts[key]}"
+            else:
+                reference = f"补充材料{len(aliases) + 1}"
+        aliases[sid] = {"reference": reference, "title": preferred}
+    return aliases
+
+
+def display_claim_text(text, aliases):
+    if not aliases:
+        return text
+    pattern = (
+        r"(?<![A-Za-z0-9_-])(?:"
+        + "|".join(re.escape(sid) for sid in sorted(aliases, key=len, reverse=True))
+        + r")(?![A-Za-z0-9_-])"
+    )
+    return re.sub(pattern, lambda match: aliases[match[0]]["reference"], text)
+
+
+def citation_button_text(citation, sources, *, prefix="核对", aliases=None):
+    identity = sources.get(citation.get("source_id"), {})
+    original_title = identity.get("title") or "未匹配来源"
+    alias = (aliases or {}).get(citation.get("source_id"), {})
+    title = " ".join((alias.get("title") or original_title).split())
+    short = title if len(title) <= 32 else title[:32] + "…"
+    role = " · SI" if identity.get("document_role") == "SUPPLEMENT" else ""
+    page = f"物理第{citation['page']}页" if citation.get("page") else "页码待核对"
+    reference = alias.get("reference")
+    text = f"{prefix} {reference + ' · ' if reference else ''}{short}{role} · {page}"
+    tooltip = f"{original_title}\n来源编号：{citation.get('source_id', '')}\n{page}"
+    return text, tooltip
 
 
 def render_parse_summary(diagnostics):
@@ -1338,12 +1430,7 @@ class ResearchPages:
                 "尚无模型科研结果；本地准备任务的材料包、报告与状态可在任务中心查看。"
             )
             return
-        options = {
-            r[
-                "path"
-            ]: f"{r.get('title', r['objective'])[:65]} · {r['records']} 条 · 修订 {r['revisions']} · {r.get('run', '')[-8:]}"
-            for r in rows
-        }
+        options = {r["path"]: result_version_label(r) for r in rows}
         current = (
             self.current_result if self.current_result in options else rows[0]["path"]
         )
@@ -1355,8 +1442,17 @@ class ResearchPages:
             )
         )
         result = self.ctx.research.read_result(current)
+        citation_sources = {s["id"]: s["identity"] for s in result["sources"]}
         self.current_result = current
         material_papers = self.ctx.research.result_material_papers(current)
+        current_papers = {
+            paper_id: self.ctx.library.get(paper_id)
+            for paper_id in set(material_papers.values())
+            if paper_id
+        }
+        aliases = result_source_names(
+            result["sources"], material_papers, current_papers
+        )
 
         def open_material_parent(index):
             request = result["response"]["requests"][index]
@@ -1446,27 +1542,38 @@ class ResearchPages:
                         "confirmation": "核对状态",
                         "context": "适用条件",
                     }
-                    table = rows_table(
-                        flattened,
-                        columns=[
-                            {
-                                "name": key,
-                                "label": label,
-                                "field": key,
-                                "align": "left",
-                                "sortable": True,
-                                "style": "white-space:pre-wrap;min-width:140px;max-width:320px",
-                            }
-                            for key, label in result_labels.items()
-                        ],
-                        selection="single",
-                    )
-                    with ui.row().classes("an-toolbar"):
-                        ui.button(
-                            "核对选中数据的证据",
-                            icon="picture_as_pdf",
-                            on_click=guard(lambda: show_selected()),
+                    table = None
+                    if flattened:
+                        table = rows_table(
+                            flattened,
+                            columns=[
+                                {
+                                    "name": key,
+                                    "label": label,
+                                    "field": key,
+                                    "align": "left",
+                                    "sortable": True,
+                                    "style": "white-space:pre-wrap;min-width:140px;max-width:320px",
+                                }
+                                for key, label in result_labels.items()
+                            ],
+                            selection="single",
                         )
+                    elif result["response"].get("claims"):
+                        ui.label(
+                            "本结果以研究主张交付，请逐条核对下方引用；没有结构化记录不表示研究主张已通过科学核验。"
+                        ).classes("an-info w-full")
+                    else:
+                        ui.label(
+                            "本结果没有可展示的研究数据或主张。请查看诊断与材料请求，核对实际处理范围。"
+                        ).classes("an-info w-full")
+                    with ui.row().classes("an-toolbar"):
+                        if table is not None:
+                            ui.button(
+                                "核对选中数据的证据",
+                                icon="picture_as_pdf",
+                                on_click=guard(lambda: show_selected()),
+                            )
                         ui.button(
                             "修订 / 人工确认",
                             icon="edit",
@@ -1481,17 +1588,31 @@ class ResearchPages:
                                 icon="format_list_numbered",
                             ).classes("w-full"):
                                 rows_table(record["steps"], row_key="id")
+                    if result["response"].get("claims"):
+                        with ui.expansion(
+                            "文献对照（阅读名称）", icon="menu_book", value=True
+                        ).classes("w-full"):
+                            for alias in aliases.values():
+                                name = alias["title"]
+                                short = name if len(name) <= 40 else name[:40] + "…"
+                                ui.label(f"{alias['reference']}《{short}》")
+                            ui.label(
+                                "当前显示名称仅便于阅读；模型原始文本与来源编号保留在下方专家区。"
+                            ).classes("an-muted text-sm")
                     for index, claim in enumerate(result["response"].get("claims", [])):
                         with ui.card().classes("an-card w-full"):
                             ui.label(
                                 f"主张 {index + 1} · {value_label(claim.get('nature', ''))}"
                             ).classes("text-xs an-muted")
-                            ui.label(claim["text"])
+                            ui.label(display_claim_text(claim["text"], aliases))
                             for citation in claim.get("citations", []):
+                                label, tooltip = citation_button_text(
+                                    citation, citation_sources, aliases=aliases
+                                )
                                 ui.button(
-                                    f"核对 {citation.get('source_id')} · 第{citation.get('page')}页",
+                                    label,
                                     on_click=guard(lambda c=citation: show_citation(c)),
-                                ).props("flat dense")
+                                ).props("flat dense").tooltip(tooltip)
                     render_material_requests(
                         result,
                         open_request=lambda r: show_citation(
@@ -1589,7 +1710,7 @@ class ResearchPages:
                     json_view(report, label="原文前后页、来源块与布局上下文")
 
         def show_selected():
-            if not table.selected:
+            if table is None or not table.selected:
                 raise ValueError("请先选择一条研究数据")
             chosen = table.selected[0]
             record = next(
@@ -1601,10 +1722,13 @@ class ResearchPages:
             show_citation(citations[0])
             with pdf_area:
                 for citation in citations[1:]:
+                    label, tooltip = citation_button_text(
+                        citation, citation_sources, prefix="其它引用", aliases=aliases
+                    )
                     ui.button(
-                        f"其它引用 · {citation['source_id']} 第{citation['page']}页",
+                        label,
                         on_click=guard(lambda c=citation: show_citation(c)),
-                    ).props("flat")
+                    ).props("flat").tooltip(tooltip)
 
     def revision_dialog(self, path, result):
         from nicegui import ui

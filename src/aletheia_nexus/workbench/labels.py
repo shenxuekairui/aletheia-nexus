@@ -309,6 +309,8 @@ VALUE_LABELS = {
     "paragraph": "段落",
     "heading": "标题",
     "context": "上下文",
+    "ai_synthesis": "AI综合判断",
+    "author_interpretation": "作者解释",
     "review_required": "待核对",
     "human_confirmed": "人工已确认",
     "equation": "公式",

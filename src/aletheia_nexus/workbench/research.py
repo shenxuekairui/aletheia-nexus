@@ -1493,6 +1493,12 @@ class WorkbenchResearch:
                         "title": " / ".join(titles) or value["task"]["objective"],
                         "run": path.parent.name,
                         "records": len(value["response"].get("records", [])),
+                        "claims": len(value["response"].get("claims", [])),
+                        "comparison": value["comparison"],
+                        "paper_count": sum(
+                            d["identity"].get("document_role") == "ARTICLE"
+                            for d in value["sources"]
+                        ),
                         "revisions": len(value["history"]),
                         "validation": value["validation"],
                     }
