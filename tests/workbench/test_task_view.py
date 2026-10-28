@@ -110,6 +110,16 @@ def test_unknown_billing_retains_reservation_and_does_not_report_zero_as_known()
     }
     cost = task_costs(job)[0]
     assert cost["unknown_calls"] == 1 and cost["reserved_cost"] == 0.2
+    assert cost["known_cost"] is None
+
+
+def test_planning_ledger_survives_failure_and_observed_zero_is_explicit():
+    job = {"result": None, "planning_calls": [], "planning_usage": {"http_attempts": 0}}
+    assert task_costs(job)[0]["calls"] == 0
+    job["planning_calls"] = [{"estimated_cost": None, "reserved_cost": 0.13}]
+    row = task_costs(job)[0]
+    assert row["label"] == "自然语言规划" and row["known_cost"] is None
+    assert row["unknown_calls"] == 1 and row["reserved_cost"] == 0.13
 
 
 def test_rolled_back_rename_does_not_reuse_the_preflight_ready_state():

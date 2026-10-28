@@ -143,6 +143,12 @@ def render_task_dialog(controller):
                         "文件操作尚需恢复。请先核对下方文件日志并验证回滚，不要直接重复改名。"
                     ).classes("text-red-8")
                 result = job.get("result")
+                if job.get("planning_manifest"):
+                    ui.link(
+                        "查看本次规划的持久调用账本",
+                        controller.files.register(job["planning_manifest"]),
+                        new_tab=True,
+                    )
                 if isinstance(result, dict):
                     controller.output_links(result)
                     if job["kind"] == "parse" and result.get("items"):
@@ -267,14 +273,34 @@ def render_task_dialog(controller):
                             ui.label(interaction["resume_instruction"]).classes(
                                 "text-sm"
                             )
-                    if latest["kind"] == "research":
+                    planning = "planning_max_cost" in (latest.get("parameters") or {})
+                    if planning:
+                        for cost in task_costs(latest):
+                            known = cost["known_cost"]
+                            ui.label(
+                                f"自然语言规划 · 请求 {cost['calls']} 次 · "
+                                + (
+                                    f"已知用量估算 {known:.6f} {cost['currency']}"
+                                    if known is not None
+                                    else "用量金额尚未确认"
+                                )
+                                + (
+                                    f" · {cost['unknown_calls']} 次费用待核对，预留 {cost['reserved_cost'] or 0:.6f} {cost['currency']}"
+                                    if cost["unknown_calls"]
+                                    else " · 非服务商实际账单"
+                                )
+                            ).classes("an-info w-full text-sm")
+                    elif latest["kind"] == "research":
                         observed = controller.ctx.research.live_run(
                             latest.get("native_job_id") or job_id
                         )
                         current = observed.get("current_item") or {}
                         model = observed.get("model") or {}
                         model_name = (
-                            model.get("model") or model.get("provider") or "本地处理"
+                            model.get("name")
+                            or model.get("model")
+                            or model.get("provider")
+                            or "本地处理"
                             if isinstance(model, dict)
                             else str(model)
                         )
@@ -389,7 +415,9 @@ def render_task_dialog(controller):
                             and latest["status"] not in TERMINAL
                         ):
                             ui.label(
-                                "科研模型不支持即时跳过；可在论文组边界暂停或取消，保留已交付结果后调整新计划。"
+                                "当前规划请求无法撤回；暂停或取消只会在再次收费请求前的安全边界处理。"
+                                if planning
+                                else "科研模型不支持即时跳过；可在论文组边界暂停或取消，保留已交付结果后调整新计划。"
                             ).classes("an-muted text-xs")
                 if (
                     not views["ready"]
@@ -497,14 +525,20 @@ def render_task_dialog(controller):
             with ui.expansion("CLI / MCP 原生科研运行历史", icon="history").classes(
                 "w-full"
             ):
+                histories = controller.ctx.research.history()
                 rows = [
                     {
-                        "id": r["job_id"],
+                        "id": r.get("job_id") or r.get("run_id") or str(i),
+                        "kind": "自然语言规划"
+                        if r.get("kind") == "planning"
+                        else "科研运行",
                         "status": r["status"],
                         "reason": user_message(r["error"]) if r.get("error") else "",
                         "folder": r.get("run_directory") or r.get("directory", ""),
+                        "calls": (r.get("usage") or {}).get("http_attempts"),
+                        "cost": (r.get("usage") or {}).get("estimated_cost"),
                     }
-                    for r in controller.ctx.research.history()
+                    for i, r in enumerate(histories)
                 ]
                 rows_table(
                     rows,
@@ -512,12 +546,58 @@ def render_task_dialog(controller):
                         {"name": k, "field": k, "label": label}
                         for k, label in (
                             ("id", "运行编号"),
+                            ("kind", "类型"),
                             ("status", "状态"),
+                            ("calls", "已记录请求数"),
+                            ("cost", "用量费用估算"),
                             ("reason", "诊断"),
                             ("folder", "结果目录"),
                         )
                     ],
                 )
+                available = {
+                    str(i): r for i, r in enumerate(histories) if r.get("task_file")
+                }
+                if available:
+                    picked = (
+                        ui.select(
+                            {
+                                i: ("规划" if r.get("kind") == "planning" else "科研")
+                                + " · "
+                                + (r.get("run_id") or r.get("job_id") or i)
+                                + " · "
+                                + status_label(r["status"])
+                                for i, r in available.items()
+                            },
+                            value=next(iter(available)),
+                            label="复用已保存的原生任务计划",
+                        )
+                        .props("outlined")
+                        .classes("w-full")
+                    )
+
+                    async def reuse_native():
+                        from nicegui import run
+
+                        from aletheia_nexus.research_app import read_json
+
+                        def read():
+                            path = controller.ctx.research.app.path(
+                                available[picked.value]["task_file"]
+                            )
+                            return controller.ctx.research.validate_plan(
+                                read_json(path)
+                            )["task"]
+
+                        controller.current_task = await run.io_bound(read)
+                        dialog.close()
+                        controller.navigate("AI 研究")
+
+                    ui.button(
+                        "载入所选计划，重新核对材料和授权",
+                        icon="history",
+                        on_click=guard(reuse_native),
+                    ).props("outline")
 
         query.on_value_change(lambda _: content.refresh())
         status.on_value_change(lambda _: content.refresh())

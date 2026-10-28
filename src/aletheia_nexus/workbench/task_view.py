@@ -18,6 +18,8 @@ def _reason(value) -> str:
 
 
 def task_rows(job: dict) -> list[dict]:
+    if "planning_max_cost" in (job.get("parameters") or {}):
+        return []
     result = job.get("result") or {}
     items = result.get("items")
     if not isinstance(items, list) and result.get("native_runs"):
@@ -145,6 +147,16 @@ def task_costs(job: dict) -> list[dict]:
     result = job.get("result") or {}
     summaries = []
     reports = [("科研模型", result)]
+    if isinstance(job.get("planning_calls"), list):
+        reports.append(
+            (
+                "自然语言规划",
+                {
+                    "calls": job["planning_calls"],
+                    "usage": job.get("planning_usage"),
+                },
+            )
+        )
     if not isinstance(result.get("usage"), dict):
         reports.extend(("科研模型", run) for run in result.get("native_runs", []))
     if isinstance(result.get("translation"), dict):
@@ -152,8 +164,13 @@ def task_costs(job: dict) -> list[dict]:
     for label, report in reports:
         calls = report.get("calls")
         usage = report.get("usage")
-        if isinstance(calls, list) and calls:
+        if isinstance(calls, list):
             unknown = [c for c in calls if c.get("estimated_cost") is None]
+            known = [
+                c["estimated_cost"]
+                for c in calls
+                if c.get("estimated_cost") is not None
+            ]
             model = (report.get("options") or {}).get("model") or {}
             summaries.append(
                 {
@@ -161,12 +178,12 @@ def task_costs(job: dict) -> list[dict]:
                     "calls": len(calls),
                     "currency": (usage or {}).get("currency")
                     or model.get("currency", "CNY"),
-                    "known_cost": sum(c.get("estimated_cost") or 0 for c in calls),
+                    "known_cost": sum(known) if known or not unknown else None,
                     "reserved_cost": sum(c.get("reserved_cost") or 0 for c in unknown),
                     "unknown_calls": len(unknown),
                 }
             )
-        elif isinstance(usage, dict) and usage.get("http_attempts"):
+        elif isinstance(usage, dict) and usage.get("http_attempts") is not None:
             summaries.append(
                 {
                     "label": label,

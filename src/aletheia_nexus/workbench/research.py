@@ -420,6 +420,7 @@ class WorkbenchResearch:
         failures = []
         materials = self._materials(ids, include_si, errors=failures)
         rows = list(failures)
+        total = len(materials) + len(failures)
         if context:
             for row in failures:
                 context.record(
@@ -430,9 +431,16 @@ class WorkbenchResearch:
         for n, material in enumerate(materials):
             if context:
                 context.checkpoint()
-                context.progress(n, len(materials), item=material["pdf"], stage="parse")
+                context.progress(
+                    n + len(failures), total, item=material["pdf"], stage="parse"
+                )
                 if context.should_skip(material["id"]):
                     rows.append({"id": material["id"], "status": "SKIPPED"})
+                    context.record(
+                        material["id"],
+                        "SKIPPED",
+                        title=material["source"].identity["title"],
+                    )
                     continue
             try:
                 prior = self.versions_for_key(material["key"])
@@ -506,6 +514,8 @@ class WorkbenchResearch:
                     row["status"],
                     **{k: v for k, v in row.items() if k not in {"id", "status"}},
                 )
+        if context:
+            context.progress(total, total, stage="PDF 解析结束")
         return {
             "status": "COMPLETED"
             if rows and all(r["status"] == "PARSED" for r in rows)
