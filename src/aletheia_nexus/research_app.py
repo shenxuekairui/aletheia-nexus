@@ -5,6 +5,7 @@ This module orchestrates existing services; scientific extraction stays in run_t
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -14,6 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timezone
+from importlib.metadata import version
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
@@ -775,17 +777,25 @@ class ResearchApplication:
     def get_run_status(self, job_id: str) -> dict:
         if not re.fullmatch("[0-9a-f]{32}", job_id):
             raise ValueError("invalid job ID")
-        receipt = read_json(self.path(self.workspace / "jobs" / job_id / "status.json"))
+        status_path = self.path(self.workspace / "jobs" / job_id / "status.json")
+        receipt = read_json(status_path)
         if receipt["status"] in {"QUEUED", "RUNNING"}:
             ownership = self.path(self.workspace / "jobs" / job_id / ".owner")
             if ownership.exists():
                 probe = _lock_job_owner(ownership)
                 if probe is not None:
-                    probe.close()
-                    receipt["status"] = "INTERRUPTED"
-                    receipt["recovery"] = (
-                        "原进程已退出，不自动重发；检查原清单后经新授权恢复。"
-                    )
+                    try:
+                        # A worker can save its final state and release the lock
+                        # after our first read. Only the fresh state can show an
+                        # interruption once ownership is available.
+                        receipt = read_json(status_path)
+                    finally:
+                        probe.close()
+                    if receipt["status"] in {"QUEUED", "RUNNING"}:
+                        receipt["status"] = "INTERRUPTED"
+                        receipt["recovery"] = (
+                            "原进程已退出，不自动重发；检查原清单后经新授权恢复。"
+                        )
             elif job_id not in self._jobs:
                 receipt["owner_state"] = "legacy_unrecorded; process ownership unknown"
         if receipt.get("run_directory"):
@@ -981,6 +991,53 @@ class ResearchApplication:
             "reading": "original_page_not_scientifically_verified",
             "network_access": False,
         }, png
+
+    def read_original_page_text(
+        self, document: dict, page: int, max_characters: int = 40000
+    ) -> dict:
+        """Expose one PDF text layer with layout, separately from canonical parsing."""
+        source = self.check_document(document, "direct")
+        if type(page) is not int or not 1 <= page <= source.identity["page_count"]:
+            raise ProcessingError("page_out_of_bounds")
+        if type(max_characters) is not int or not 1 <= max_characters <= 200000:
+            raise ValueError("max_characters must be between 1 and 200000")
+        with source.pdf.open("rb") as stream:
+            text = (
+                PdfReader(stream)
+                .pages[page - 1]
+                .extract_text(extraction_mode="layout", layout_mode_strip_rotated=False)
+            )
+        source.verify()
+        delivered = text[:max_characters]
+        extraction = {"engine": "pypdf", "version": version("pypdf"), "mode": "layout"}
+        text_sha = hashlib.sha256(delivered.encode("utf-8")).hexdigest()
+        return {
+            "artifact_id": "an:page-native-layout:sha256:"
+            + digest(
+                {
+                    "pdf_sha256": source.identity["pdf_sha256"],
+                    "page": page,
+                    "extraction": extraction,
+                    "text_sha256": text_sha,
+                }
+            ),
+            "document_id": document["id"],
+            "page": page,
+            "source": source.identity,
+            "reading": "derived_native_layout_not_scientifically_verified",
+            "extraction": extraction,
+            "text": delivered,
+            "text_sha256": text_sha,
+            "total_characters": len(text),
+            "text_truncated": len(delivered) < len(text),
+            "has_native_text": bool(text.strip()),
+            "limitations": [
+                "Text-layer extraction may contain encoding, ordering or layout errors.",
+                "Raster images and graph curves are not read; rotated text is best effort.",
+                "An empty or incomplete text layer does not establish scientific absence.",
+            ],
+            "network_access": False,
+        }
 
     def revise_research_result(
         self, result: str, revision: dict, *, client_identity: str

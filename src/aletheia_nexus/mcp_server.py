@@ -264,6 +264,19 @@ def create_server(app: ResearchApplication):
                 ],
             )
 
+    @tool
+    def read_original_page_text(
+        document: dict, page: int, max_characters: int = 40000
+    ) -> dict[str, Any]:
+        """Read one allowed PDF page's native text layer with spatial whitespace.
+        No parse artifact, renderer, OCR, model or network is required. Returns
+        source identity, engine/version and explicit truncation. Layout/encoding
+        may be incomplete; use read_original_page for figures or visual checking.
+        Does not modify the PDF or canonical parsed artifact, establish absence,
+        or confirm scientific meaning.
+        """
+        return app.read_original_page_text(document, page, max_characters)
+
     return server
 
 

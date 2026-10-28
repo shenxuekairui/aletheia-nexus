@@ -92,6 +92,30 @@ def test_folder_prepare_reuse_and_local_execution(app, monkeypatch):
     assert status["manifest"]["mode"] == "local"
 
 
+def test_worker_finishing_between_status_read_and_owner_probe(app, monkeypatch):
+    """A released lock may mean normal completion after the initial stale read."""
+    import aletheia_nexus.research_app as module
+
+    service, _ = app
+    job_id = "1" * 32
+    directory = service.workspace / "jobs" / job_id
+    directory.mkdir(parents=True)
+    status = directory / "status.json"
+    (directory / ".owner").touch()
+    running = {"job_id": job_id, "status": "RUNNING"}
+    status.write_text(json.dumps(running), encoding="utf-8")
+    original_probe = module._lock_job_owner
+    final = {**running, "status": "PREPARED", "usage": {"http_attempts": 0}}
+
+    def completed_before_probe(path, **kwargs):
+        status.write_text(json.dumps(final), encoding="utf-8")
+        return original_probe(path, **kwargs)
+
+    monkeypatch.setattr(module, "_lock_job_owner", completed_before_probe)
+    assert service.get_run_status(job_id) == final
+    assert read_json(status) == final
+
+
 def test_empty_and_path_boundaries(app, tmp_path):
     service, pdf = app
     empty = pdf.parent / "empty"

@@ -77,6 +77,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 "revise_research_result",
                 "list_research_runs",
                 "read_original_page",
+                "read_original_page_text",
             }
             result = await client.call_tool(
                 "list_documents", {"directory": str(papers)}
@@ -101,6 +102,26 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 == "local_declared"
             )
             document = imported.structured_content["document"]
+            original_text = await client.call_tool(
+                "read_original_page_text", {"document": document, "page": 1}
+            )
+            assert not original_text.is_error
+            native = original_text.structured_content
+            assert native["ok"] and "25 C" in native["text"]
+            assert native["network_access"] is False
+            assert native["extraction"]["mode"] == "layout"
+            clipped = await client.call_tool(
+                "read_original_page_text",
+                {"document": document, "page": 1, "max_characters": 8},
+            )
+            assert clipped.structured_content["text_truncated"]
+            bad_page = await client.call_tool(
+                "read_original_page_text", {"document": document, "page": 2}
+            )
+            assert bad_page.structured_content == {
+                "ok": False,
+                "error": "page_out_of_bounds",
+            }
             source_status = await client.call_tool(
                 "get_acquisition_status",
                 {"sidecar": document["sidecar"], "pdf": document["pdf"]},
@@ -229,6 +250,14 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 "list_documents", {"directory": str(tmp_path)}
             )
             assert outside.structured_content == {
+                "ok": False,
+                "error": "path_outside_allowed_directories",
+            }
+            escaped = {**document, "pdf": str(tmp_path / "outside.pdf")}
+            denied_text = await client.call_tool(
+                "read_original_page_text", {"document": escaped, "page": 1}
+            )
+            assert denied_text.structured_content == {
                 "ok": False,
                 "error": "path_outside_allowed_directories",
             }
