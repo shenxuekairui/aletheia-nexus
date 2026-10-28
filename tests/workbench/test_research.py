@@ -169,6 +169,10 @@ def test_same_pdf_bytes_with_distinct_source_declarations_keep_distinct_ids(rese
 
 
 def test_human_revision_and_unicode_export_name(research):
+    import hashlib
+    import json
+    import zipfile
+
     from aletheia_nexus.processing.engine import write_json
     from aletheia_nexus.processing.materials import build_package
     from aletheia_nexus.processing.results import make_result
@@ -226,7 +230,165 @@ def test_human_revision_and_unicode_export_name(research):
     exported = research.export([revised["result"]], name="验收结果")
     assert exported["display_name"] == "验收结果"
     assert all(Path(p).is_file() for p in exported["outputs"])
+    native = json.loads(Path(exported["native_manifest"]).read_text(encoding="utf-8"))
+    assert native["status"] == "COMPLETED"
+    copied_result = Path(exported["directory"]) / native["results"][0]["result_file"]
+    assert copied_result.read_bytes() == Path(revised["result"]).read_bytes()
+    with zipfile.ZipFile(exported["native_bundle"]) as archive:
+        for entry in native["files"]:
+            assert (
+                hashlib.sha256(archive.read(entry["path"])).hexdigest()
+                == entry["sha256"]
+            )
+        assert any(name.endswith("package.json") for name in archive.namelist())
+        assert any(name.endswith("history.json") for name in archive.namelist())
+        assert any(name.endswith("task.json") for name in archive.namelist())
     assert path.read_bytes() == parent_bytes
+
+
+def test_extra_pages_require_fresh_execution_consent(research, monkeypatch):
+    task = research.local_plan("整理测量条件", ["p1"], mode="parsed")
+    assert task["budget"]["max_supplement_rounds"] == 0
+    task["budget"]["max_supplement_rounds"] = 1
+    calls = []
+    monkeypatch.setattr(
+        research.app,
+        "execute_research_task",
+        lambda *args, **kwargs: calls.append(True) or {"status": "COMPLETED"},
+    )
+    with pytest.raises(ProcessingError, match="supplement_page_consent"):
+        research.execute(task, consent=True)
+    assert not calls
+    assert (
+        research.execute(task, consent=True, allow_extra_pages=True)["status"]
+        == "COMPLETED"
+    )
+    assert calls == [True]
+
+
+def test_material_request_adds_explicit_si_to_new_unapproved_plan(research):
+    from copy import deepcopy
+
+    from aletheia_nexus.processing.engine import write_json
+    from aletheia_nexus.processing.materials import build_package
+    from aletheia_nexus.processing.results import make_result
+
+    task = research.local_plan("核对补充材料", ["p1"], mode="parsed")
+    package, _ = build_package(
+        task, [research.app.check_document(task["documents"][0], "parsed")]
+    )
+    sid = package["documents"][0]["id"]
+    response = {
+        "records": [],
+        "claims": [],
+        "issues": [
+            {
+                "kind": "material_insufficient",
+                "detail": "需要补充信息",
+                "source_id": sid,
+                "page": 1,
+            }
+        ],
+        "requests": [{"source_id": sid, "pages": [1], "reason": "核对原页与新增SI"}],
+    }
+    value = make_result(task, package, {"provider": "deterministic-test"}, response)
+    path = research.workspace / "request.result.json"
+    write_json(path, value)
+    unchanged = path.read_bytes()
+    no_page = deepcopy(response)
+    no_page["requests"][0]["pages"] = []
+    blocked = research.workspace / "missing-si.result.json"
+    write_json(
+        blocked, make_result(task, package, {"provider": "deterministic-test"}, no_page)
+    )
+    with pytest.raises(ValueError, match="尚无新增"):
+        research.supplement_task(str(blocked), 0)
+    original = research.library.get("p1")
+    source = research.library.root / "incoming-si.pdf"
+    writer = runpy.run_path(
+        str(Path(__file__).resolve().parents[2] / "scripts/generate_v07_fixtures.py")
+    )["_write_pdf"]
+    writer(
+        source,
+        [[(50, 700, 12, "Supplementary information for the authored fixture")]],
+        title="SI",
+    )
+    si = register_local_pdf(
+        source,
+        output_dir=research.library.root / "SI",
+        title="Explicit SI",
+        role="SUPPLEMENT",
+        parent_pdf=original["pdf_path"],
+        parent_sidecar=original["sidecar_path"],
+    )
+    original["attachments"].append(
+        {
+            "id": "si_fixture",
+            "path": str(si),
+            "role": "SUPPLEMENT",
+            "sidecar_path": str(acquisition_sidecar_path(si)),
+        }
+    )
+    prepared = research.supplement_task(str(path), 0)
+    assert (
+        prepared["network_access"] is False
+        and prepared["authorization_required"] is True
+    )
+    assert prepared["task"]["id"] != task["id"]
+    assert len(prepared["task"]["documents"]) == 2
+    assert prepared["task"]["documents"][0]["image_pages"] == [1]
+    assert prepared["task"]["budget"]["max_supplement_rounds"] == 0
+    with pytest.raises(ProcessingError, match="research_consent"):
+        research.execute(prepared["task"])
+    assert path.read_bytes() == unchanged
+
+
+def test_planning_preserves_user_limits_and_defaults_adaptive_pages_off(
+    research, monkeypatch
+):
+    monkeypatch.setattr(
+        "aletheia_nexus.workbench.research.draft_task",
+        lambda app, request, **kwargs: request,
+    )
+    request = research.plan(
+        "核对材料",
+        ["p1"],
+        consent=True,
+        budget={
+            "max_input_characters": 500,
+            "max_images": 1,
+            "max_output_tokens": 1024,
+            "max_supplement_rounds": 2,
+            "max_review_rounds": 1,
+        },
+    )
+    assert request["research_budget"]["max_input_characters"] == 500
+    assert request["research_budget"]["max_images"] == 1
+    assert request["research_budget"]["max_output_tokens"] == 1024
+    assert request["research_budget"]["max_review_rounds"] == 1
+    assert request["research_budget"]["max_supplement_rounds"] == 0
+
+
+def test_parse_source_failure_isolated_and_real_metadata_recorded(research):
+    Path(research.library.get("p2")["pdf_path"]).write_bytes(b"changed, invalid PDF")
+    receipt = research.parse(["p1", "p2"])
+    assert receipt["status"] == "PARTIAL"
+    assert {r["id"]: r["status"] for r in receipt["items"]} == {
+        "p1": "PARSED",
+        "p2": "FAILED",
+    }
+    metadata = research.library.get("p1")["metadata"]
+    assert metadata["ocr_status"] == "NOT_REQUESTED"
+    assert metadata["ocr_diagnostics"]["ocr_text_blocks"] == 0
+    task = research.local_plan("本地任务关联", ["p1"])
+    run = research.execute(task)
+    history = research.library.get("p1")["metadata"]["research_tasks"]
+    assert history[-1]["job_id"] == run["job_id"]
+    assert history[-1]["status"] == "PREPARED"
+    assert (
+        research.ocr_summary({"quality": {"ocr_supplemented_blocks": 4}}, {})[0]
+        == "USED"
+    )
 
 
 def test_cancel_after_completed_paper_retains_native_diagnostics(research):

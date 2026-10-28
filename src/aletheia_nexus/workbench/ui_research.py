@@ -6,7 +6,9 @@ import json
 from copy import deepcopy
 
 from .labels import CHOICES, GRID_LOCALE, value_label
+from .messages import user_message
 from .ui_common import guard, json_text, json_view, parameter_editor, rows_table
+from .ui_presets import preset_controls
 
 FIELD_TYPES = {
     "string": "文本",
@@ -15,6 +17,104 @@ FIELD_TYPES = {
     "boolean": "是或否",
     "string_list": "文本列表",
 }
+
+
+def render_parse_summary(diagnostics):
+    from nicegui import ui
+
+    coverage = (diagnostics.get("quality") or {}).get("page_coverage") or {}
+    parser = diagnostics.get("parser") or {}
+    checked = diagnostics.get("source_check") or {}
+    with ui.row().classes("an-toolbar w-full"):
+        ui.badge(value_label(diagnostics.get("status"))).props("outline")
+        ui.label(
+            f"页覆盖：{coverage.get('parsed', '—')} / {coverage.get('total', '—')}"
+        )
+        ui.label(f"解析器版本：{parser.get('version', '—')}")
+        ui.label(
+            "来源检查："
+            + (
+                "通过"
+                if checked.get("ok")
+                else "未通过"
+                if checked.get("ok") is False
+                else "尚未检查"
+            )
+        )
+    warnings, errors = diagnostics.get("warnings", []), diagnostics.get("errors", [])
+    ui.label(
+        f"提示 {len(warnings)} 项 · 错误 {len(errors)} 项；处理覆盖不表示科学信息准确率。"
+    ).classes("an-muted text-sm")
+    for label, items in (("错误", errors), ("提示", warnings)):
+        for item in items[:20]:
+            page = item.get("page") if isinstance(item, dict) else None
+            ui.label(
+                f"{label}{' · 物理第' + str(page) + '页' if page else ''}：{user_message(item)}"
+            ).classes("an-info w-full")
+        if len(items) > 20:
+            ui.label(f"另有 {len(items) - 20} 项{label}，完整原始诊断保留在专家区。")
+
+
+def render_material_requests(
+    result, *, open_request=None, new_task=None, open_parent=None
+):
+    from nicegui import ui
+
+    sources = {d["id"]: d["identity"] for d in result.get("sources", [])}
+    issues = result["response"].get("issues", [])
+    requests = result["response"].get("requests", [])
+    with ui.expansion(
+        f"材料不足与诊断（{len(issues)} 项）", icon="info", value=bool(issues)
+    ).classes("w-full"):
+        for issue in issues:
+            source = sources.get(issue.get("source_id"), {})
+            ui.label(
+                (source.get("title", "") + "：" if source else "")
+                + issue.get("detail", "请查看诊断记录")
+            ).classes("an-info w-full whitespace-pre-wrap")
+    with ui.expansion(
+        f"需要补充的研究材料（{len(requests)} 项）",
+        icon="post_add",
+        value=bool(requests),
+    ).classes("w-full"):
+        for i, request in enumerate(requests):
+            source = sources.get(request.get("source_id"), {})
+            with ui.card().classes("an-card w-full"):
+                ui.label(source.get("title") or "所选文献的材料请求").classes(
+                    "font-semibold"
+                )
+                pages = request.get("pages") or []
+                ui.label(
+                    "物理 PDF 页码："
+                    + (
+                        "、".join(map(str, pages))
+                        if pages
+                        else "尚未指定，需要人工确认材料"
+                    )
+                )
+                ui.label(request.get("reason", "请核对材料需求")).classes(
+                    "whitespace-pre-wrap"
+                )
+                ui.label(
+                    "如缺少 SI，先在所属论文详情显式关联附件，再建立固定新快照；旧结果保留，重新执行需审阅计划并授权。"
+                ).classes("an-muted text-sm")
+                with ui.row().classes("an-toolbar"):
+                    if open_parent:
+                        ui.button(
+                            "关联 SI / 检查所属论文",
+                            on_click=guard(lambda n=i: open_parent(n)),
+                        ).props("outline")
+                    if open_request and pages:
+                        ui.button(
+                            "查看请求原页",
+                            on_click=guard(lambda r=request: open_request(r)),
+                        ).props("flat")
+                    if new_task:
+                        ui.button(
+                            "创建补充材料的新任务",
+                            icon="science",
+                            on_click=guard(lambda n=i: new_task(n)),
+                        )
 
 
 def page_numbers(value):
@@ -38,6 +138,24 @@ def page_numbers(value):
 
 
 class ResearchPages:
+    async def parse_diagnostics_dialog(self, document):
+        from nicegui import run, ui
+
+        diagnostics = await run.io_bound(
+            self.ctx.research.app.get_parse_diagnostics, document
+        )
+        with ui.dialog() as dialog, ui.card().classes("w-[950px] max-w-[95vw]"):
+            ui.label("解析状态与真实覆盖").classes("text-xl font-semibold")
+            render_parse_summary(diagnostics)
+            ui.button(
+                "查看来源 PDF",
+                icon="picture_as_pdf",
+                on_click=guard(lambda: self.show_pdf(document)),
+            ).props("outline")
+            json_view(diagnostics, label="完整解析诊断与配置")
+            ui.button("关闭", on_click=dialog.close).props("flat")
+        dialog.open()
+
     def parse_dialog(self, ids):
         from nicegui import ui
 
@@ -75,6 +193,13 @@ class ResearchPages:
                     "image_ocr": "图片OCR引擎",
                 },
             )
+            preset_controls(
+                self.ctx.settings,
+                "parsing",
+                read_options,
+                read_options.apply,
+                title="解析参数预设",
+            )
             with ui.expansion("已有版本与真实诊断", icon="history").classes("w-full"):
                 for paper_id in ids[:20]:
                     for material in self.ctx.research.versions(
@@ -100,6 +225,14 @@ class ResearchPages:
                                         )
                                     ),
                                 ).props("flat dense")
+                                ui.button(
+                                    "查看状态 / 页覆盖 / 警告",
+                                    on_click=guard(
+                                        lambda d=version["document"]: (
+                                            self.parse_diagnostics_dialog(d)
+                                        )
+                                    ),
+                                ).props("outline dense")
                             json_view(version, label="解析版本与参数")
                 if len(ids) > 20:
                     ui.label("此处仅显示前20篇；所有选中文件仍会处理。")
@@ -469,7 +602,7 @@ class ResearchPages:
                     "max_images": 6,
                     "max_output_tokens": 65536,
                     "max_repair_rounds": 1,
-                    "max_supplement_rounds": 1,
+                    "max_supplement_rounds": 0,
                     "max_review_rounds": 0,
                     **(self.current_task or {}).get("budget", {}),
                 }
@@ -481,6 +614,70 @@ class ResearchPages:
                 "我授权仅将科研目标和选中文献元数据发送给DeepSeek生成计划（单独计费）",
                 value=False,
             )
+            extra_pages_consent = ui.checkbox(
+                "本次授权模型在已选文献内按材料请求补充其它页（仍受补充轮数、图片和费用上限限制）",
+                value=False,
+            )
+            ui.label(
+                "未勾选时补充轮数必须为0；历史任务和预设不会继承本次额外页授权。"
+            ).classes("an-muted text-sm")
+
+            def read_preset():
+                return {
+                    "model": read_model(),
+                    "budget": read_budget(),
+                    "mode": mode.value,
+                    "type": task_type.value,
+                    "include_steps": include_steps.value,
+                    "synthesize": compare.value,
+                }
+
+            def apply_preset(parameters):
+                allowed = {
+                    "model",
+                    "budget",
+                    "mode",
+                    "type",
+                    "include_steps",
+                    "synthesize",
+                }
+                if not isinstance(parameters, dict) or set(parameters) - allowed:
+                    raise ValueError(
+                        "科研预设只接受模型、预算、材料模式、任务类型、步骤和比较参数"
+                    )
+                pending = []
+                for key, read in (("model", read_model), ("budget", read_budget)):
+                    if key in parameters:
+                        pending.extend(read._pending_updates(parameters[key]))
+                if "mode" in parameters and parameters["mode"] not in CHOICES["mode"]:
+                    raise ValueError("科研预设中的材料模式不受支持")
+                if "type" in parameters and parameters["type"] not in CHOICES["type"]:
+                    raise ValueError("科研预设中的任务类型不受支持")
+                for key in ("include_steps", "synthesize"):
+                    if key in parameters and type(parameters[key]) is not bool:
+                        raise ValueError("科研预设的步骤与比较选项必须为是或否")
+                for element, value in pending:
+                    element.set_value(value)
+                for key, element in (
+                    ("mode", mode),
+                    ("type", task_type),
+                    ("include_steps", include_steps),
+                    ("synthesize", compare),
+                ):
+                    if key in parameters:
+                        element.set_value(parameters[key])
+                planning_consent.set_value(False)
+                extra_pages_consent.set_value(False)
+                if state.get("content_consent") is not None:
+                    state["content_consent"].set_value(False)
+
+            preset_controls(
+                self.ctx.settings,
+                "research",
+                read_preset,
+                apply_preset,
+                title="科研模型与预算预设",
+            )
         plan_area = ui.column().classes("w-full")
         state = {
             "fields": None,
@@ -489,10 +686,20 @@ class ResearchPages:
             "use_expert": None,
             "plan_job": None,
             "loaded": False,
+            "content_consent": None,
         }
 
         def render_plan(task):
             self.current_task = task
+            goal.set_value(task["objective"])
+            mode.set_value(task["mode"])
+            task_type.set_value(task["type"])
+            include_steps.set_value(bool(task.get("include_steps")))
+            compare.set_value(bool(task.get("synthesize")))
+            read_model.apply(task.get("model", {}))
+            read_budget.apply(task.get("budget", {}))
+            planning_consent.set_value(False)
+            extra_pages_consent.set_value(False)
             plan_area.clear()
             with plan_area:
                 ui.label("可编辑研究计划").classes("font-semibold text-xl")
@@ -630,7 +837,7 @@ class ResearchPages:
                     theme="quartz",
                 ).classes("h-56 w-full")
                 ui.label(
-                    "页码支持 1,3,5-8；SI页码独立。仅图像模式必须明确给出页码。远程材料限于启用的来源及页码。"
+                    "页码支持 1,3,5-8；SI页码独立。仅图像模式必须明确给出页码。默认限于已选页；允许补充其它页须重新勾选上方授权。"
                 ).classes("an-info w-full")
                 with ui.expansion(
                     "专家 · 实际研究任务契约", icon="data_object"
@@ -647,6 +854,7 @@ class ResearchPages:
                     "我已核对实际材料和预算，授权将本计划选中的文献内容发送到配置的远程模型（可能收费）",
                     value=False,
                 )
+                state["content_consent"] = consent
                 check_area = ui.column().classes("w-full")
 
                 async def collect():
@@ -690,6 +898,14 @@ class ResearchPages:
 
                 async def validate():
                     value = await collect()
+                    if (
+                        value.get("mode", "local") != "local"
+                        and value.get("budget", {}).get("max_supplement_rounds", 1) > 0
+                        and not extra_pages_consent.value
+                    ):
+                        raise ValueError(
+                            "补充轮数大于0会允许同文献其它页外发；请明确授权，或将补充轮数设为0"
+                        )
                     checked = self.ctx.research.app.validate_research_task(value)
                     check_area.clear()
                     with check_area:
@@ -702,6 +918,7 @@ class ResearchPages:
                 async def execute():
                     task_value = await validate()
                     grant = consent.value
+                    extra_grant = extra_pages_consent.value
                     if task_value["mode"] != "local" and not grant:
                         raise ValueError("请明确授权本计划的文献材料外发和费用")
                     self.current_task = task_value
@@ -710,9 +927,12 @@ class ResearchPages:
                         task_value["objective"][:80],
                         [d["id"] for d in task_value["documents"]],
                         lambda c: self.ctx.research.execute(
-                            task_value, consent=grant, context=c
+                            task_value,
+                            consent=grant,
+                            allow_extra_pages=extra_grant,
+                            context=c,
                         ),
-                        {"task": task_value},
+                        {"task": task_value, "extra_pages_authorized": extra_grant},
                     )
 
                 with ui.row().classes("an-toolbar"):
@@ -740,6 +960,7 @@ class ResearchPages:
                 task_type.value,
             )
             steps, synthesis = include_steps.value, compare.value
+            requested_mode = mode.value
             if not goal_value.strip() or not ids:
                 raise ValueError("请先选择论文并输入科研目标")
 
@@ -756,7 +977,7 @@ class ResearchPages:
                 )
                 task["include_steps"] = steps
                 task["synthesize"] = synthesis
-                return {"task": task}
+                return {"task": task, "requested_mode": requested_mode}
 
             receipt = self.submit(
                 "research",
@@ -793,6 +1014,7 @@ class ResearchPages:
                     max_cost=options["max_cost"],
                     max_calls=options["max_calls"],
                     planning_max_cost=cost,
+                    budget=options,
                 ),
                 {"goal": goal_value, "planning_max_cost": cost, "model": model},
             )
@@ -807,6 +1029,8 @@ class ResearchPages:
             if isinstance(job.get("result"), dict) and job["result"].get("task"):
                 state["loaded"] = True
                 render_plan(job["result"]["task"])
+                if job["result"].get("requested_mode"):
+                    mode.set_value(job["result"]["requested_mode"])
             elif job["status"] in {"FAILED", "INTERRUPTED", "CANCELLED"}:
                 state["loaded"] = True
                 ui.notify(
@@ -858,6 +1082,45 @@ class ResearchPages:
         )
         result = self.ctx.research.read_result(current)
         self.current_result = current
+        material_papers = self.ctx.research.result_material_papers(current)
+
+        def open_material_parent(index):
+            request = result["response"]["requests"][index]
+            paper_id = material_papers.get(request["source_id"])
+            if paper_id is None:
+                raise ValueError(
+                    "请求所属论文不在当前文库，请先导入保留来源的正文，再显式关联 SI"
+                )
+            self.details_dialog(paper_id)
+
+        async def new_material_task(index):
+            import asyncio
+
+            from .jobs import TERMINAL
+
+            receipt = self.submit(
+                "research",
+                "准备补充材料的新研究计划",
+                [],
+                lambda c: self.ctx.research.supplement_task(current, index, context=c),
+                {"parent_result": current, "material_request_index": index},
+            )
+            job_id = receipt.get("id", receipt.get("job_id"))
+            while receipt["status"] not in TERMINAL:
+                await asyncio.sleep(0.3)
+                receipt = self.ctx.jobs.get(job_id)
+            prepared = receipt.get("result") or {}
+            if not prepared.get("task"):
+                raise ValueError(
+                    "补充材料计划未完成，请在任务中心查看原因；旧结果保持不变"
+                )
+            self.current_task = prepared["task"]
+            self.navigate("AI 研究")
+            ui.notify(
+                "新快照已准备，尚未调用模型。请核对新增 SI、选页与预算后重新授权。",
+                type="positive",
+            )
+
         with ui.splitter(value=52).classes("w-full") as splitter:
             with splitter.before:
                 with ui.column().classes("w-full pr-3"):
@@ -953,6 +1216,18 @@ class ResearchPages:
                                     f"核对 {citation.get('source_id')} · 第{citation.get('page')}页",
                                     on_click=guard(lambda c=citation: show_citation(c)),
                                 ).props("flat dense")
+                    render_material_requests(
+                        result,
+                        open_request=lambda r: show_citation(
+                            {
+                                "source_id": r["source_id"],
+                                "page": r["pages"][0],
+                                "quote": "",
+                            }
+                        ),
+                        new_task=new_material_task,
+                        open_parent=open_material_parent,
+                    )
                     json_view(
                         result["response"].get("issues", []), label="诊断信息与材料不足"
                     )
@@ -992,6 +1267,11 @@ class ResearchPages:
                         export_area.clear()
                         with export_area:
                             self.output_links(report)
+                            for warning in report.get("warnings", []):
+                                ui.label(warning).classes("an-info w-full")
+                            ui.label(
+                                "原生结果包包含完整任务、材料包、历史、图像和校验清单；原PDF按原始来源定位与哈希另行备份。"
+                            ).classes("an-muted text-sm")
 
                     ui.button(
                         "导出此版本", icon="download", on_click=guard(export)

@@ -119,7 +119,97 @@ class WorkbenchResearch:
             active[key] = document["artifact"]
             write_json(self.active_path, active, overwrite=True)
 
-    def _materials(self, ids, include_si=False) -> list[dict]:
+    def library_source_map(self):
+        """Resolve frozen sources to current papers by source hashes, never names."""
+        result = {}
+        try:
+            papers = self.library.scan()["items"]
+        except (OSError, ValueError, RuntimeError):
+            return result
+        for paper in papers:
+            try:
+                entries = [
+                    (
+                        paper.get("pdf_sha256") or sha256_file(Path(paper["pdf_path"])),
+                        paper["sidecar_path"],
+                    )
+                ]
+            except (OSError, ValueError, KeyError):
+                continue
+            entries.extend(
+                (a.get("sha256"), a.get("sidecar_path"))
+                for a in paper.get("attachments", [])
+            )
+            for pdf_hash, sidecar in entries:
+                if pdf_hash and sidecar:
+                    try:
+                        result[(pdf_hash, sha256_file(self.app.path(sidecar)))] = paper[
+                            "id"
+                        ]
+                    except (OSError, ValueError, RuntimeError):
+                        continue
+        return result
+
+    def _record_research_associations(
+        self, checked, receipt, *, allow_extra_pages=False
+    ):
+        mapping = self.library_source_map()
+        paper_ids = {
+            mapping.get((d["pdf_sha256"], d["acquisition_sidecar_sha256"]))
+            for d in checked["documents"]
+        } - {None}
+        native = receipt.get("native_receipt") or receipt
+        job_id = native.get("job_id")
+        if not job_id:
+            return receipt
+        warnings = []
+        for paper_id in paper_ids:
+            try:
+                paper = self.library.get(paper_id)
+                history = deepcopy(
+                    (paper.get("metadata") or {}).get("research_tasks", [])
+                )
+                entry = {
+                    "job_id": job_id,
+                    "task_id": checked["task"]["id"],
+                    "status": receipt["status"],
+                    "fingerprint": checked["task_fingerprint"],
+                    "run_directory": native.get("run_directory"),
+                    "extra_pages_authorized": allow_extra_pages,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                history = [
+                    h
+                    for h in history
+                    if not isinstance(h, dict) or h.get("job_id") != job_id
+                ]
+                self.library.update_metadata(paper_id, research_tasks=[*history, entry])
+            except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                warnings.append(
+                    "研究结果已保存，但当前文库的任务关联未能更新；请查看原生运行历史。"
+                )
+        if warnings:
+            return {**receipt, "library_warnings": warnings}
+        return receipt
+
+    @staticmethod
+    def ocr_summary(diagnostics, options):
+        count = (diagnostics.get("quality") or {}).get("ocr_supplemented_blocks", 0)
+        backend = (diagnostics.get("parser") or {}).get("backend") or {}
+        configured = (
+            options.get("ocr")
+            if "ocr" in options
+            else "ocr" in backend.get("name", "").casefold()
+        )
+        status = "USED" if count else "CONFIGURED" if configured else "NOT_REQUESTED"
+        return status, {
+            "configured": bool(configured),
+            "ocr_text_blocks": count,
+            "backend": backend,
+            "interpretation": "是否配置及是否产生OCR文本块，不代表OCR识别或科学抽取准确率。",
+        }
+
+    def _materials(self, ids, include_si=False, *, errors=None) -> list[dict]:
         materials = []
         seen = set()
         selected_ids = list(dict.fromkeys(ids))
@@ -129,6 +219,17 @@ class WorkbenchResearch:
         for paper_id in selected_ids:
             paper = by_id.get(paper_id)
             if paper is None:
+                if errors is not None:
+                    errors.append(
+                        {
+                            "id": paper_id,
+                            "paper_id": paper_id,
+                            "status": "FAILED",
+                            "error": "selected_paper_unavailable",
+                            "reason": "选中文献已缺失或来源不再有效，请刷新文库",
+                        }
+                    )
+                    continue
                 raise ValueError(
                     "Selected paper is unavailable; refresh the library selection"
                 )
@@ -151,7 +252,7 @@ class WorkbenchResearch:
                         entries.append(
                             {
                                 "id": attachment.get(
-                                    "id", "si_" + sha256_file(Path(path))[:16]
+                                    "id", "si_" + str(attachment.get("sha256", ""))[:16]
                                 ),
                                 "pdf": path,
                                 "sidecar": attachment.get("sidecar_path")
@@ -161,16 +262,29 @@ class WorkbenchResearch:
                         )
             for entry in entries:
                 # Source paths are checked before hashes or source records are read.
-                pdf = self.app.path(entry["pdf"])
-                sidecar = self.app.path(entry["sidecar"])
-                source = self.app.check_document(
-                    {
-                        "id": "paper_" + sha256_file(pdf)[:16],
-                        "pdf": str(pdf),
-                        "sidecar": str(sidecar),
-                    },
-                    "direct",
-                )
+                try:
+                    pdf = self.app.path(entry["pdf"])
+                    sidecar = self.app.path(entry["sidecar"])
+                    source = self.app.check_document(
+                        {"id": entry["id"], "pdf": str(pdf), "sidecar": str(sidecar)},
+                        "direct",
+                    )
+                except (OSError, ValueError, RuntimeError) as exc:
+                    if errors is None:
+                        raise
+                    errors.append(
+                        {
+                            "id": entry["id"],
+                            "paper_id": paper_id,
+                            "status": "FAILED",
+                            "title": paper.get("title_original")
+                            or paper.get("title")
+                            or "文献来源异常",
+                            "error": self.app.error_code(exc),
+                            "reason": str(exc)[:1000],
+                        }
+                    )
+                    continue
                 key = (
                     source.identity["pdf_sha256"]
                     + ":"
@@ -234,8 +348,16 @@ class WorkbenchResearch:
                     ),
                 )
             )
-        materials = self._materials(ids, include_si)
-        rows = []
+        failures = []
+        materials = self._materials(ids, include_si, errors=failures)
+        rows = list(failures)
+        if context:
+            for row in failures:
+                context.record(
+                    row["id"],
+                    "FAILED",
+                    **{k: v for k, v in row.items() if k not in {"id", "status"}},
+                )
         for n, material in enumerate(materials):
             if context:
                 context.checkpoint()
@@ -278,6 +400,8 @@ class WorkbenchResearch:
                 row = {
                     "id": material["id"],
                     "paper_id": material["paper_id"],
+                    "title": material["source"].identity["title"],
+                    "role": material["source"].identity["document_role"],
                     "document": document,
                     "reused": reused,
                     **diagnostics,
@@ -285,11 +409,14 @@ class WorkbenchResearch:
                 if row["status"] in {"PARSED", "PARTIAL"}:
                     self._activate(material["key"], document)
                 if material["id"] == material["paper_id"]:
+                    ocr_status, ocr_diagnostics = self.ocr_summary(diagnostics, options)
                     self.library.update_metadata(
                         material["paper_id"],
                         parse_status=row["status"],
                         artifact=document["artifact"],
                         parse_options=options,
+                        ocr_status=ocr_status,
+                        ocr_diagnostics=ocr_diagnostics,
                     )
             except Exception as exc:
                 row = {
@@ -364,7 +491,7 @@ class WorkbenchResearch:
         self, ids, *, include_si=False, parse_missing=True, context=None
     ) -> dict:
         documents, unparsed = [], []
-        materials = self._materials(ids, include_si)
+        materials = self._materials(ids, include_si, errors=unparsed)
         legacy_candidates = None
         for n, material in enumerate(materials):
             if context:
@@ -460,10 +587,28 @@ class WorkbenchResearch:
                     }
                 )
             else:
+                if material["id"] == material["paper_id"]:
+                    paper = self.library.get(material["paper_id"])
+                    if (paper.get("metadata") or {}).get("artifact") != found[
+                        "artifact"
+                    ]:
+                        diagnostics = self.app.get_parse_diagnostics(found)
+                        ocr_status, ocr_diagnostics = self.ocr_summary(diagnostics, {})
+                        self.library.update_metadata(
+                            material["paper_id"],
+                            parse_status=diagnostics["status"],
+                            artifact=found["artifact"],
+                            ocr_status=ocr_status,
+                            ocr_diagnostics=ocr_diagnostics,
+                        )
                 documents.append({**deepcopy(found), "_paper_id": material["paper_id"]})
             if context:
                 context.record(
-                    material["id"], "PREPARED" if found else "FAILED", document=found
+                    material["id"],
+                    "PREPARED" if found else "FAILED",
+                    document=found,
+                    title=material["source"].identity["title"],
+                    role=material["source"].identity["document_role"],
                 )
         return {"documents": documents, "unparsed": unparsed}
 
@@ -600,7 +745,12 @@ class WorkbenchResearch:
                 "mode": mode,
                 "allow_remote": mode != "local",
                 "model": deepcopy(model or DEFAULT_MODEL),
-                "budget": budget or {"max_calls": 10, "max_cost": 2},
+                "budget": {
+                    "max_calls": 10,
+                    "max_cost": 2,
+                    "max_supplement_rounds": 0,
+                    **(budget or {}),
+                },
             }
         )
 
@@ -615,6 +765,7 @@ class WorkbenchResearch:
         max_cost=2,
         max_calls=10,
         planning_max_cost=0.5,
+        budget=None,
         transport=None,
     ) -> dict:
         if not consent:
@@ -631,14 +782,55 @@ class WorkbenchResearch:
             max_calls=max_calls,
             planning_max_cost=planning_max_cost,
         )
+        # Planning consent covers metadata only. Extra source pages require a
+        # fresh, explicit content authorization in the execution UI.
+        request["research_budget"]["max_supplement_rounds"] = 0
+        if budget is not None:
+            template = validate_task(
+                {
+                    "schema": TASK_SCHEMA,
+                    "id": "planning_limits",
+                    "type": "extract",
+                    "objective": goal,
+                    "documents": request["documents"],
+                    "mode": "hybrid",
+                    "allow_remote": True,
+                    "fields": [
+                        {"id": "check", "type": "string", "description": "预算契约检查"}
+                    ],
+                    "model": request["model"],
+                    "budget": {
+                        **request["research_budget"],
+                        **budget,
+                        "max_supplement_rounds": 0,
+                    },
+                }
+            )
+            request["research_budget"] = template["budget"]
         token = self.app.authorize("plan", request)
         return draft_task(self.app, request, authorization=token, transport=transport)
 
-    def execute(self, task, *, consent=False, context=None, provider=None) -> dict:
+    def execute(
+        self,
+        task,
+        *,
+        consent=False,
+        allow_extra_pages=False,
+        context=None,
+        provider=None,
+    ) -> dict:
         checked = self.app.validate_research_task(task)
         task = checked["task"]
         if task["mode"] != "local" and not consent:
             raise ProcessingError("explicit_research_consent_required")
+        if type(allow_extra_pages) is not bool:
+            raise ValueError("额外页授权必须由本次明确勾选")
+        if (
+            task["mode"] != "local"
+            and task["budget"]["max_supplement_rounds"] > 0
+            and not allow_extra_pages
+        ):
+            raise ProcessingError("explicit_supplement_page_consent_required")
         if context:
             context.checkpoint()
             context.progress(
@@ -680,7 +872,7 @@ class WorkbenchResearch:
                         outputs.extend(
                             str(p) for p in path.parent.glob("*.result.json")
                         )
-                return {
+                cancelled = {
                     "status": "CANCELLED",
                     "native_receipt": receipt,
                     "native_runs": runs,
@@ -688,7 +880,12 @@ class WorkbenchResearch:
                     "interruption_point": "completed_paper_boundary",
                     "notice": "已完成的调用与结果保留；取消只停止后续调度，不撤回已经完成或可能计费的请求。",
                 }
-            return receipt
+                return self._record_research_associations(
+                    checked, cancelled, allow_extra_pages=allow_extra_pages
+                )
+            return self._record_research_associations(
+                checked, receipt, allow_extra_pages=allow_extra_pages
+            )
         finally:
             self.app.current.context = None
 
@@ -720,6 +917,93 @@ class WorkbenchResearch:
 
     def read_result(self, path):
         return self.app.read_research_result(path)
+
+    def result_material_papers(self, result_path):
+        value = read_json(self.app.path(result_path))
+        verify_result(value)
+        current = self.library_source_map()
+        return {
+            d["id"]: current.get(
+                (d["source"]["pdf_sha256"], d["source"]["acquisition_sidecar_sha256"])
+            )
+            for d in value["package"]["documents"]
+        }
+
+    def supplement_task(self, result_path, request_index, *, context=None):
+        """Make a new, unapproved plan from a saved material request and current SI.
+
+        The parent result and its fixed sources remain untouched. Only explicitly
+        associated current PDF SI can join; no parent is inferred from a filename.
+        """
+        parent = read_json(self.app.path(result_path))
+        verify_result(parent)
+        requests = parent["response"].get("requests", [])
+        if type(request_index) is not int or not 0 <= request_index < len(requests):
+            raise ValueError("请选择当前结果中真实存在的材料请求")
+        request = requests[request_index]
+        mapping = self.result_material_papers(result_path)
+        paper_id = mapping.get(request["source_id"])
+        if paper_id is None:
+            raise ValueError(
+                "请求所属论文不在当前文库，先导入保留原来源的正文后再补充材料"
+            )
+        prepared = self.prepare([paper_id], include_si=True, context=context)
+        if prepared["unparsed"]:
+            raise ValueError("关联补充材料未能完成解析，请先在解析窗口处理失败项")
+        task = deepcopy(parent["task"])
+        task["id"] = "ui_" + uuid4().hex[:12]
+        documents = deepcopy(task["documents"])
+        existing = {}
+        added = 0
+        for document in documents:
+            source = self.app.check_document(
+                document, "parsed" if document.get("artifact") else "direct"
+            )
+            existing[
+                (
+                    source.identity["pdf_sha256"],
+                    source.identity["acquisition_sidecar_sha256"],
+                )
+            ] = document
+        for candidate in self._clean_documents(prepared["documents"]):
+            source = self.app.check_document(candidate, "parsed")
+            key = (
+                source.identity["pdf_sha256"],
+                source.identity["acquisition_sidecar_sha256"],
+            )
+            if key not in existing and source.identity["document_role"] == "SUPPLEMENT":
+                if candidate["id"] in {d["id"] for d in documents}:
+                    candidate["id"] += "_" + uuid4().hex[:6]
+                documents.append(candidate)
+                existing[key] = candidate
+                added += 1
+        # Requested physical pages become explicit image pages in the new plan.
+        # This does not authorize additional adaptive requests beyond those pages.
+        target = next(d for d in documents if d["id"] == request["source_id"])
+        supplied_images = {
+            i["page"]
+            for i in parent["package"].get("images", [])
+            if i.get("source_id") == request["source_id"]
+        }
+        if not added and not (set(request.get("pages", [])) - supplied_images):
+            raise ValueError(
+                "尚无新增的关联PDF SI或未读原页；请先补齐材料，已有结果不会被重复当作材料已补充"
+            )
+        if request.get("pages"):
+            target["image_pages"] = sorted(
+                set(target.get("image_pages", [])) | set(request["pages"])
+            )
+        task.update(documents=documents, mode="hybrid", allow_remote=True)
+        task["budget"]["max_supplement_rounds"] = 0
+        checked = self.app.validate_research_task(task)
+        return {
+            "task": checked["task"],
+            "plan": checked["plan"],
+            "parent_result_id": parent["artifact_id"],
+            "request": deepcopy(request),
+            "network_access": False,
+            "authorization_required": True,
+        }
 
     def citation_document(self, result_path, source_id):
         result = read_json(self.app.path(result_path))
@@ -786,6 +1070,8 @@ class WorkbenchResearch:
         }
 
     def export(self, paths, *, name="research", formats=None):
+        import zipfile
+
         from aletheia_nexus.processing.contracts import digest
 
         if not isinstance(name, str) or not name.strip() or len(name) > 200:
@@ -794,19 +1080,108 @@ class WorkbenchResearch:
         if slug != name or len(slug) > 64:
             slug = (slug[:40] or "export") + "-" + digest(name)[:12]
         report = self.app.export_research_results(paths, slug, formats)
+        directory = Path(report["directory"])
+        native_files, exported_results, warnings = [], [], []
+
+        def record_file(path):
+            native_files.append(
+                {
+                    "path": path.relative_to(directory).as_posix(),
+                    "sha256": sha256_file(path),
+                    "bytes": path.stat().st_size,
+                }
+            )
+
+        for index, selected in enumerate(paths, 1):
+            original = self.app.path(selected)
+            value = read_json(original)
+            verify_result(value)
+            target = directory / "native" / f"result-{index:03d}"
+            native = self.app._copy_source_file(original, target / "result.json")
+            record_file(native)
+            for key in ("task", "package", "history"):
+                part = target / (key + ".json")
+                write_json(part, value[key])
+                record_file(part)
+            images = []
+            for image in value.get("package", {}).get("images", []):
+                fingerprint = image.get("sha256", "")
+                if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+                    raise ValueError("原生结果的原页图像指纹无效")
+                candidates = [original.parent / (fingerprint + ".png")]
+                candidates.extend(
+                    (self.workspace / "research" / "runs").glob(
+                        "*/" + fingerprint + ".png"
+                    )
+                )
+                image_source = next(
+                    (
+                        p
+                        for p in candidates
+                        if p.is_file() and sha256_file(self.app.path(p)) == fingerprint
+                    ),
+                    None,
+                )
+                if image_source is None:
+                    warnings.append(
+                        f"原生结果保留图像指纹，但原页图像文件缺失：{fingerprint}"
+                    )
+                    continue
+                copied = self.app._copy_source_file(
+                    image_source, target / "images" / (fingerprint + ".png")
+                )
+                if not any(
+                    f["path"] == copied.relative_to(directory).as_posix()
+                    for f in native_files
+                ):
+                    record_file(copied)
+                images.append(copied.relative_to(directory).as_posix())
+            exported_results.append(
+                {
+                    "artifact_id": value["artifact_id"],
+                    "original_result": str(original),
+                    "result_file": native.relative_to(directory).as_posix(),
+                    "source_locators_preserved": True,
+                    "image_files": images,
+                }
+            )
+        manifest = {
+            "schema": "aletheia-nexus/native-result-export/v1",
+            "status": "PARTIAL" if warnings else "COMPLETED",
+            "results": exported_results,
+            "files": native_files,
+            "warnings": warnings,
+            "includes_original_pdfs": False,
+            "source_location_policy": "原始来源定位保持不变；本包保留完整结果、材料包、任务、历史和可用图像，原PDF按来源哈希另行备份。",
+        }
+        manifest_path = directory / "native-manifest.json"
+        write_json(manifest_path, manifest)
+        bundle = directory / "native-results.zip"
+        with zipfile.ZipFile(bundle, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+            for entry in native_files:
+                selected = directory / entry["path"]
+                if sha256_file(selected) != entry["sha256"]:
+                    raise ValueError("原生导出文件在打包前发生变化")
+                archive.write(selected, arcname=entry["path"])
+            archive.write(manifest_path, arcname="native-manifest.json")
         info = {
             "display_name": name,
             "directory_identifier": slug,
             "source_results": list(paths),
         }
-        info_path = Path(report["directory"]) / "export-info.json"
+        info_path = directory / "export-info.json"
         write_json(info_path, info)
         return {
             **report,
             "display_name": name,
+            "native_manifest": str(manifest_path),
+            "native_bundle": str(bundle),
+            "warnings": warnings,
             "outputs": [
                 *(str(Path(report["directory"]) / p) for p in report["outputs"]),
                 str(info_path),
+                str(manifest_path),
+                str(bundle),
             ],
         }
 
