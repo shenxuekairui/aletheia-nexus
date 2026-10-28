@@ -22,6 +22,16 @@ def _add(keys, message):
 
 
 _add(
+    ("AcquisitionAccessBlockedError",),
+    "来源页面拒绝当前访问，无法检查其附件。可核对网络与合法访问权限后改用机构浏览器；已验证正文的状态不受影响。",
+)
+_add(
+    ("IDENTITY_NOT_CONFIRMED",),
+    "附件页面未能确认属于当前论文，未据此下载或关联文件。请核对官方论文页面及 DOI；已验证正文保留。",
+)
+
+
+_add(
     ("Unreadable library record",),
     "该来源记录或对应文件无法读取或未通过核验。请检查所列路径、缺失文件和原始来源记录；恢复正确材料后重新扫描。",
 )

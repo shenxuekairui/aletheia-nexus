@@ -14,6 +14,14 @@ def _reason(value) -> str:
         return ""
     if isinstance(value, list):
         return "；".join(dict.fromkeys(_reason(v) for v in value if v))
+    if isinstance(value, dict):
+        reason = user_message(
+            value.get("error") or value.get("message") or value.get("status") or value
+        )
+        page = value.get("page")
+        if isinstance(page, str) and (host := urlsplit(page).hostname):
+            return host + "：" + reason
+        return reason
     return user_message(value)
 
 

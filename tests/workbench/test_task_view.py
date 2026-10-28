@@ -9,6 +9,44 @@ from aletheia_nexus.workbench.task_view import (
 )
 
 
+def test_real_si_page_failures_explain_access_and_identity_separately():
+    rows = attachment_rows(
+        {
+            "result": {
+                "items": [
+                    {
+                        "request": {"doi": "10.9999/a"},
+                        "supplements": {
+                            "errors": [
+                                {
+                                    "status": "PAGE_FAILED",
+                                    "error": "AcquisitionAccessBlockedError",
+                                    "page": "https://doi.org/10.9999/a",
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        "request": {"doi": "10.9999/b"},
+                        "supplements": {
+                            "errors": [
+                                {
+                                    "status": "IDENTITY_NOT_CONFIRMED",
+                                    "page": "https://publisher.example/article",
+                                }
+                            ]
+                        },
+                    },
+                ]
+            }
+        }
+    )
+    assert "拒绝当前访问" in rows[0]["reason"] and rows[0]["reason"].startswith(
+        "doi.org："
+    )
+    assert "未能确认属于当前论文" in rows[1]["reason"]
+
+
 def test_realistic_acquisition_failure_and_independent_si_are_readable():
     receipt = {
         "kind": "acquisition",
