@@ -29,6 +29,7 @@ def config(tmp_path):
         headless=True,
         interactive=False,
         navigation_timeout=10,
+        auto_challenge_grace=0,
     )
 
 
@@ -86,6 +87,74 @@ def test_real_browser_same_origin_bounded_pdf_fetch_keeps_article_tab_unchanged(
                 {
                     "transport": "browser_same_origin_bounded_pdf",
                     "bytes": len(body),
+                    "main_tab_unchanged": True,
+                    "external_http": False,
+                }
+            )
+        )
+
+
+def test_attachment_challenge_is_observed_and_owned_page_retained_without_main_callback(
+    tmp_path,
+):
+    from aletheia_nexus.workbench.supplements_browser import SupplementBrowserError
+
+    doi = "10.1021/ja0659323"
+    parent = "https://pubs.acs.org/jacsat/article/128/51/16414/3525402/Fixture"
+    attachment = (
+        "https://pubs.acs.org/jacsat/article-supplement/3525402/pdf/ja0659323_si_001/"
+    )
+    with BrowserSession(config(tmp_path)) as session:
+        context = session._ensure_started()
+
+        def respond(route):
+            if route.request.url == attachment:
+                route.fulfill(
+                    status=403,
+                    content_type="text/html",
+                    body="<title>Checking your browser</title><main>Verify you are human. CAPTCHA security check.</main>",
+                )
+            else:
+                route.fulfill(
+                    content_type="text/html",
+                    body=f'<title>Local article</title><meta name="citation_doi" content="{doi}">',
+                )
+
+        context.route("https://pubs.acs.org/**", respond)
+        source = context.new_page()
+        source.goto(parent)
+        adapter = SupplementBrowserTransport(session, doi=doi)
+        adapter.page_fetch(parent)
+        before_pages = set(context.pages)
+        diagnostics = []
+        with pytest.raises(
+            SupplementBrowserError, match="attachment_interaction_required"
+        ):
+            adapter.file_fetch(
+                attachment,
+                source_page=parent,
+                extension=".pdf",
+                output_dir=tmp_path / "files",
+                max_bytes=1024 * 1024,
+                timeout=10,
+                diagnostics=diagnostics,
+            )
+        fetched = next(d for d in diagnostics if d["status"] == "BROWSER_PDF_FETCH")
+        gate = next(d for d in diagnostics if d["status"] == "NATIVE_ATTACHMENT_PAGE")
+        assert fetched["http_status"] == 403 and fetched["reason"] == "HTTP_STATUS"
+        assert gate["challenge"] in {"BOT_CHALLENGE", "CAPTCHA"}
+        assert gate["content_type"] == "text/html" and gate["page_retained"] is True
+        assert gate["needs_manual_check"] is True
+        assert source.url == parent and len(context.pages) == len(before_pages) + 1
+        assert all(not page.is_closed() for page in before_pages)
+        assert any(p.url == attachment and not p.is_closed() for p in context.pages)
+        print(
+            json.dumps(
+                {
+                    "transport": "attachment_gate_fixture",
+                    "fetch_http_status": 403,
+                    "challenge": gate["challenge"],
+                    "page_retained": True,
                     "main_tab_unchanged": True,
                     "external_http": False,
                 }

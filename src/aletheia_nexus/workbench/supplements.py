@@ -391,7 +391,7 @@ def _known_attachment(main, directory: Path, attachment: dict, library=None):
     return None
 
 
-def _retrieve_official_file(url, *, source_page, **kwargs):
+def _retrieve_official_file(url, *, source_page, diagnostics=None, **kwargs):
     """Reuse the streaming transport, rejecting off-publisher redirects before HTTP."""
 
     class OfficialClient(httpx.Client):
@@ -400,7 +400,21 @@ def _retrieve_official_file(url, *, source_page, **kwargs):
                 raise ValueError("attachment_redirect_host_not_covered")
             return super().stream(method, target, *args, **request_options)
 
-    with OfficialClient(follow_redirects=False) as client:
+    def response_observed(response):
+        if diagnostics is not None:
+            diagnostics.append(
+                {
+                    "status": "HTTP_FILE_RESPONSE",
+                    "http_status": response.status_code,
+                    "url": redact_url_for_record(str(response.url)),
+                    "content_type": response.headers.get("content-type"),
+                    "content_length": response.headers.get("content-length"),
+                }
+            )
+
+    with OfficialClient(
+        follow_redirects=False, event_hooks={"response": [response_observed]}
+    ) as client:
         return retrieve_to_temp(url, client=client, **kwargs)
 
 
@@ -648,6 +662,7 @@ def acquire_supplements(
                         output_dir=directory,
                         max_bytes=max_bytes,
                         timeout=timeout,
+                        diagnostics=file_diagnostics,
                     )
                 elif file_fetch is not None:
                     resource = file_fetch(
@@ -663,6 +678,7 @@ def acquire_supplements(
                         output_dir=directory,
                         max_bytes=max_bytes,
                         timeout=timeout,
+                        diagnostics=file_diagnostics,
                     )
                 temporary = resource.local_path
                 if not _official_link(attachment["page"], resource.final_url) or any(
@@ -683,9 +699,9 @@ def acquire_supplements(
                 return resource, validation
 
             try:
-                resource, validation = retrieve_file(
-                    attachment.get("transport") == "browser_session"
-                )
+                # A DOM discovery may point to a public CDN; the discovery's
+                # session does not require every file to use browser delivery.
+                resource, validation = retrieve_file(False)
             except Exception as exc:
                 if (
                     browser is None
@@ -819,11 +835,14 @@ def acquire_supplements(
             )
             items.append(
                 {
-                    "status": "FAILED",
+                    "status": "INTERACTION_REQUIRED"
+                    if reason == "attachment_interaction_required"
+                    else "FAILED",
                     "role": attachment["role"],
                     "error": reason,
                     "error_type": type(exc).__name__,
                     "source_url": redact_url_for_record(attachment["url"]),
+                    "diagnostics": file_diagnostics,
                 }
             )
         finally:
@@ -838,6 +857,8 @@ def acquire_supplements(
         and not errors
         else "PARTIAL"
         if saved
+        else "INTERACTION_REQUIRED"
+        if any(item["status"] == "INTERACTION_REQUIRED" for item in items)
         else "FAILED"
         if items or errors
         else "NOT_FOUND",

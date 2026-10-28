@@ -109,19 +109,28 @@ def is_pdf_document_url(url: str) -> bool:
         return False
 
 
-_PDF_FETCH_SCRIPT = """async ({url, maxBytes, timeoutMs, cache, returnBody}) => {
+_PDF_FETCH_SCRIPT = """async ({url, maxBytes, timeoutMs, cache, returnBody, diagnostics}) => {
     const controller = new AbortController();
     let timer;
+    let observed = {};
+    const failed = (reason, extra = {}) => diagnostics
+      ? {ok: false, reason, ...observed, ...extra} : null;
     const read = async () => {
         const response = await fetch(url, {
             cache, credentials: 'include', signal: controller.signal
         });
         const declared = Number(response.headers.get('content-length') || 0);
-        if (!response.ok || (declared > 0 && declared > maxBytes)) {
+        observed = {url: response.url || url, status: response.status,
+          contentType: response.headers.get('content-type'), declaredBytes: declared};
+        if (!response.ok) {
             controller.abort();
-            return null;
+            return failed('HTTP_STATUS');
         }
-        if (!response.body) return null;
+        if (declared > 0 && declared > maxBytes) {
+            controller.abort();
+            return failed('DECLARED_SIZE_LIMIT');
+        }
+        if (!response.body) return failed('NO_RESPONSE_BODY');
         const reader = response.body.getReader();
         const chunks = [];
         let size = 0;
@@ -131,7 +140,7 @@ _PDF_FETCH_SCRIPT = """async ({url, maxBytes, timeoutMs, cache, returnBody}) => 
             size += value.byteLength;
             if (size > maxBytes) {
                 controller.abort();
-                return null;
+                return failed('STREAM_SIZE_LIMIT', {receivedBytes: size});
             }
             chunks.push(value);
         }
@@ -143,20 +152,23 @@ _PDF_FETCH_SCRIPT = """async ({url, maxBytes, timeoutMs, cache, returnBody}) => 
         }
         if (!(bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50
             && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d)) {
-            return null;
+            return failed('NOT_PDF', {receivedBytes: size,
+              documentType: new TextDecoder().decode(bytes.slice(0, 64)).trim()
+                .match(/^<!doctype html|^<html|^<script/i) ? 'html' : 'other'});
         }
         if (!returnBody) return true;
         let binary = '';
         for (let i = 0; i < bytes.length; i += 0x8000) {
             binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
         }
-        return {url: response.url || url, bodyBase64: btoa(binary)};
+        const result = {url: response.url || url, bodyBase64: btoa(binary)};
+        return diagnostics ? {...result, ...observed, ok: true, receivedBytes: size} : result;
     };
     const expired = new Promise(resolve => {
-        timer = setTimeout(() => {controller.abort(); resolve(null);}, timeoutMs);
+        timer = setTimeout(() => {controller.abort(); resolve(failed('TIMEOUT'));}, timeoutMs);
     });
     try {return await Promise.race([read(), expired]);}
-    catch (_) {return null;}
+    catch (error) {return failed('REQUEST_FAILED', {errorType: error.name});}
     finally {clearTimeout(timer); controller.abort();}
 }"""
 

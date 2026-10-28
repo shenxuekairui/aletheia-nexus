@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import re
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
@@ -19,7 +20,11 @@ import httpx
 from aletheia_nexus.acquire.access.browser_engine.downloads import CdpDownloadCapture
 from aletheia_nexus.acquire.access.browser_engine.observation import bounded_read
 from aletheia_nexus.acquire.access.browser_engine.viewer import _PDF_FETCH_SCRIPT
-from aletheia_nexus.acquire.access.browser_route import _resource_from_bytes
+from aletheia_nexus.acquire.access.browser_route import (
+    _resolve_page_challenge,
+    _resource_from_bytes,
+)
+from aletheia_nexus.acquire.access.models import ChallengeKind
 from aletheia_nexus.acquire.access.security import validate_browser_network_url
 from aletheia_nexus.acquire.discovery.models import FullTextCandidate
 from aletheia_nexus.acquire.fulltext.exceptions import AcquisitionTooLargeError
@@ -113,6 +118,31 @@ class SupplementBrowserTransport:
         raise SupplementBrowserError("browser_parent_page_not_available")
 
     def file_fetch(
+        self,
+        url,
+        *,
+        source_page,
+        extension,
+        output_dir,
+        max_bytes,
+        timeout,
+        diagnostics=None,
+    ):
+        start = len(self.diagnostics)
+        try:
+            return self._file_fetch(
+                url,
+                source_page=source_page,
+                extension=extension,
+                output_dir=output_dir,
+                max_bytes=max_bytes,
+                timeout=timeout,
+            )
+        finally:
+            if diagnostics is not None:
+                diagnostics.extend(self.diagnostics[start:])
+
+    def _file_fetch(
         self, url, *, source_page, extension, output_dir, max_bytes, timeout
     ):
         from .supplements import _official_link
@@ -164,6 +194,7 @@ class SupplementBrowserTransport:
                         "timeoutMs": max(1, int(timeout * 1000)),
                         "cache": "default",
                         "returnBody": True,
+                        "diagnostics": True,
                     },
                     timeout=timeout + 2,
                 )
@@ -171,6 +202,31 @@ class SupplementBrowserTransport:
                 source.unroute("**/*", safe_fetch)
             if blocked:
                 raise SupplementBrowserError("unsafe_attachment_redirect")
+            if isinstance(fetched, dict):
+                self.diagnostics.append(
+                    {
+                        "status": "BROWSER_PDF_FETCH",
+                        "http_status": fetched.get("status"),
+                        "content_type": fetched.get("contentType"),
+                        "reason": fetched.get("reason", "PDF_BYTES_RECEIVED"),
+                        "declared_bytes": fetched.get("declaredBytes"),
+                        "received_bytes": fetched.get("receivedBytes"),
+                        "document_type": fetched.get("documentType"),
+                        "error_type": fetched.get("errorType"),
+                        "url": redact_url_for_record(fetched.get("url") or url),
+                    }
+                )
+                if fetched.get("reason") in {
+                    "DECLARED_SIZE_LIMIT",
+                    "STREAM_SIZE_LIMIT",
+                }:
+                    raise AcquisitionTooLargeError(
+                        "Browser attachment exceeds the byte limit"
+                    )
+            else:
+                self.diagnostics.append(
+                    {"status": "BROWSER_PDF_FETCH", "reason": "NO_FETCH_DIAGNOSTICS"}
+                )
             if fetched and isinstance(fetched.get("bodyBase64"), str):
                 final = validate_browser_network_url(fetched["url"])
                 if not _official_link(source_page, final):
@@ -183,7 +239,7 @@ class SupplementBrowserTransport:
                 return _resource_from_bytes(
                     candidate=FullTextCandidate(doi=self.doi, url=url, provenance=()),
                     final_url=final,
-                    status=None,
+                    status=fetched.get("status"),
                     content_type="application/pdf",
                     body=body,
                     output_dir=output_dir,
@@ -205,6 +261,9 @@ class SupplementBrowserTransport:
         owned_urls, owned_guids, too_large, blocked = {url}, {}, [], []
         owned_frames, cancelled, completed = set(), set(), set()
         frame_session = None
+        retained = False
+        started = time.monotonic()
+        navigation_response, navigation_error, navigation_error_code = None, None, None
 
         def guard(route):
             if not str(route.request.url).lower().startswith(("http://", "https://")):
@@ -254,11 +313,27 @@ class SupplementBrowserTransport:
                 except Exception:
                     pass  # The byte-cap failure below still prevents saving it.
 
-        page.route("**/*", guard)
-        if capture.active:
-            capture.session.on("Browser.downloadWillBegin", begun)
-            capture.session.on("Browser.downloadProgress", progress)
+        def observed_response(response):
+            try:
+                if _root_request_url(response.request) == url:
+                    self.diagnostics.append(
+                        {
+                            "status": "NATIVE_ATTACHMENT_RESPONSE",
+                            "http_status": response.status,
+                            "content_type": response.headers.get("content-type"),
+                            "content_length": response.headers.get("content-length"),
+                            "url": redact_url_for_record(response.url),
+                        }
+                    )
+            except Exception:
+                pass
+
         try:
+            page.route("**/*", guard)
+            page.on("response", observed_response)
+            if capture.active:
+                capture.session.on("Browser.downloadWillBegin", begun)
+                capture.session.on("Browser.downloadProgress", progress)
             if not capture.active:
                 raise SupplementBrowserError("browser_native_capture_unavailable")
             frame_session = context.new_cdp_session(page)
@@ -276,17 +351,75 @@ class SupplementBrowserTransport:
 
             frame_session.on("Page.frameNavigated", navigated)
             try:
-                page.goto(
+                navigation_response = page.goto(
                     url,
                     wait_until="domcontentloaded",
                     timeout=timeout * 1000,
                     referer=source_page.split("?", 1)[0].split("#", 1)[0],
                 )
-            except Exception:
+            except Exception as exc:
                 # Native attachment navigation commonly reports download-started.
                 # Only a correlated completed transfer below is accepted.
-                pass
-            deadline = time.monotonic() + timeout
+                navigation_error = type(exc).__name__
+                match = re.search(r"net::[A-Z_]+", str(exc))
+                navigation_error_code = match.group(0) if match else None
+            self.diagnostics.append(
+                {
+                    "status": "NATIVE_ATTACHMENT_NAVIGATION",
+                    "http_status": getattr(navigation_response, "status", None),
+                    "error_type": navigation_error,
+                    "error_code": navigation_error_code,
+                }
+            )
+            deadline = started + timeout
+            if not owned_guids:
+                report, _, _ = _resolve_page_challenge(
+                    page,
+                    config=replace(
+                        self.session.config,
+                        interactive=False,
+                        wait_for_interaction=False,
+                        interaction_callback=None,
+                        auto_challenge_grace=min(
+                            self.session.config.auto_challenge_grace,
+                            max(0, deadline - time.monotonic()),
+                        ),
+                    ),
+                )
+                try:
+                    content_type = bounded_read(
+                        page, "evaluate", "document.contentType", timeout=2
+                    )
+                    title = bounded_read(page, "title", timeout=2)
+                except Exception:
+                    content_type, title = None, None
+                gate = {
+                    "status": "NATIVE_ATTACHMENT_PAGE",
+                    "challenge": report.kind.value,
+                    "content_type": content_type,
+                    "title": title[:200] if isinstance(title, str) else None,
+                    "url": redact_url_for_record(str(page.url)),
+                    "page_retained": False,
+                }
+                self.diagnostics.append(gate)
+                if report.kind in {
+                    ChallengeKind.BOT_CHALLENGE,
+                    ChallengeKind.CAPTCHA,
+                    ChallengeKind.AUTHENTICATION,
+                    ChallengeKind.SSO,
+                    ChallengeKind.MFA,
+                }:
+                    retained = True
+                    gate.update(
+                        page_retained=True,
+                        needs_manual_check=True,
+                        message="正文已保留；附件地址另需人工登录或验证。请在 AN 浏览器完成后选择仅补取 SI。",
+                    )
+                    raise SupplementBrowserError("attachment_interaction_required")
+                if report.kind == ChallengeKind.ACCESS_DENIED:
+                    raise SupplementBrowserError("attachment_access_denied")
+                if report.kind == ChallengeKind.ENTITLEMENT:
+                    raise SupplementBrowserError("attachment_entitlement_required")
             while time.monotonic() < deadline:
                 if blocked:
                     raise SupplementBrowserError("unsafe_attachment_redirect")
@@ -305,6 +438,13 @@ class SupplementBrowserTransport:
                                 "Browser attachment exceeds the byte limit"
                             )
                         body = path.read_bytes()
+                        self.diagnostics.append(
+                            {
+                                "status": "BROWSER_NATIVE_COMPLETED",
+                                "received_bytes": len(body),
+                                "owned_downloads": len(owned_guids),
+                            }
+                        )
                         return _resource_from_bytes(
                             candidate=FullTextCandidate(
                                 doi=self.doi, url=url, provenance=()
@@ -318,6 +458,18 @@ class SupplementBrowserTransport:
                 if not capture.active or page.is_closed():
                     break
                 page.wait_for_timeout(100)
+            self.diagnostics.append(
+                {
+                    "status": "BROWSER_NATIVE_INCOMPLETE",
+                    "owned_downloads": len(owned_guids),
+                    "completed_downloads": len(completed),
+                    "cancelled_downloads": len(cancelled),
+                    "reason": "OWNED_DOWNLOAD_NOT_COMPLETED"
+                    if owned_guids
+                    else "NO_OWNED_DOWNLOAD_STARTED",
+                    "elapsed_seconds": time.monotonic() - started,
+                }
+            )
             raise SupplementBrowserError("browser_attachment_delivery_not_completed")
         finally:
             # Restore browser defaults, but do not delete unrelated transfers the
@@ -357,5 +509,5 @@ class SupplementBrowserTransport:
                                 (capture.staging_dir / name).unlink(missing_ok=True)
                             except OSError:
                                 pass
-            if not page.is_closed():
+            if not retained and not page.is_closed():
                 page.close()

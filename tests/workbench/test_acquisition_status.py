@@ -54,6 +54,7 @@ def verified_service(tmp_path, monkeypatch):
     "status,truncated,expected",
     [
         ("FAILED", False, "PARTIAL"),
+        ("INTERACTION_REQUIRED", False, "PARTIAL"),
         ("PARTIAL", False, "PARTIAL"),
         ("NOT_FOUND", False, "PARTIAL"),
         ("NOT_SUPPORTED", False, "PARTIAL"),

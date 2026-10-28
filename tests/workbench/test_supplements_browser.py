@@ -144,6 +144,7 @@ def test_blocked_http_uses_explicit_session_and_saves_real_si_with_original_sour
     def blocked(*args, **kwargs):
         raise RuntimeError("public HTTP blocked")
 
+    monkeypatch.setattr(supplements, "_retrieve_official_file", blocked)
     result = supplements.acquire_supplements(
         main, page_urls=[PAGE], page_fetch=blocked, browser_session=explicit
     )
@@ -362,6 +363,9 @@ def test_native_capture_does_not_cancel_or_delete_unrelated_user_transfer(
             assert remove_files is False
 
     class Page:
+        def on(self, *args):
+            pass
+
         def route(self, pattern, handler):
             self.guard = handler
 
@@ -447,7 +451,10 @@ def test_native_capture_does_not_cancel_or_delete_unrelated_user_transfer(
         )
         assert adapter.diagnostics[-1]["needs_manual_check"] is True
     else:
-        assert adapter.diagnostics == []
+        assert not any(
+            d["status"] == "BROWSER_DOWNLOAD_CANCEL_UNCONFIRMED"
+            for d in adapter.diagnostics
+        )
 
 
 def test_shared_capture_guid_filter_cannot_select_other_tabs_same_url(tmp_path):
@@ -473,3 +480,85 @@ def test_shared_capture_guid_filter_cannot_select_other_tabs_same_url(tmp_path):
     assert capture.wait(page, 0, expected_url=wanted, expected_guid="unknown") is None
     # Existing callers without a GUID retain their original behavior.
     assert capture.wait(page, 0, expected_url=wanted)[0] == tmp_path / "unrelated"
+
+
+@pytest.mark.parametrize("interaction", [False, True])
+def test_dom_discovery_tries_public_file_before_browser_and_preserves_real_attachment_gate(
+    tmp_path, monkeypatch, interaction
+):
+    main = tmp_path / "main.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    with main.open("wb") as handle:
+        writer.write(handle)
+    register_local_pdf(main, output_dir=tmp_path, doi=DOI, title="Parent")
+    original = main.read_bytes(), validate_parser_input(main).sidecar_path.read_bytes()
+    calls = []
+
+    class Browser:
+        diagnostics = []
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def page_fetch(self, *args, **kwargs):
+            calls.append("browser_dom")
+            return SimpleNamespace(text=HTML, final_url=PAGE)
+
+        def file_fetch(self, url, *, diagnostics, **kwargs):
+            calls.append("browser_file")
+            diagnostics.append(
+                {
+                    "status": "NATIVE_ATTACHMENT_PAGE",
+                    "challenge": "BOT_CHALLENGE",
+                    "page_retained": True,
+                    "needs_manual_check": True,
+                }
+            )
+            raise supplements_browser.SupplementBrowserError(
+                "attachment_interaction_required"
+            )
+
+    def public_file(url, *, output_dir, diagnostics, **kwargs):
+        calls.append("public_file")
+        diagnostics.append(
+            {"status": "HTTP_FILE_RESPONSE", "http_status": 403 if interaction else 200}
+        )
+        if interaction:
+            raise RuntimeError("HTTP blocked")
+        path = Path(output_dir) / "public.part"
+        writer = PdfWriter()
+        writer.add_blank_page(width=120, height=100)
+        with path.open("wb") as handle:
+            writer.write(handle)
+        return SimpleNamespace(
+            local_path=path,
+            final_url=url,
+            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            http_status=200,
+        )
+
+    def blocked_page(*args, **kwargs):
+        raise RuntimeError("HTTP page blocked")
+
+    monkeypatch.setattr(supplements_browser, "SupplementBrowserTransport", Browser)
+    monkeypatch.setattr(supplements, "_retrieve_official_file", public_file)
+    result = supplements.acquire_supplements(
+        main, page_urls=[PAGE], page_fetch=blocked_page, browser_session=object()
+    )
+    assert calls == ["browser_dom", "public_file"] + (
+        ["browser_file"] if interaction else []
+    )
+    if interaction:
+        assert (
+            result["status"] == result["items"][0]["status"] == "INTERACTION_REQUIRED"
+        )
+        assert result["items"][0]["error"] == "attachment_interaction_required"
+        assert result["items"][0]["diagnostics"][-1]["page_retained"] is True
+    else:
+        assert result["status"] == "COMPLETED"
+        assert result["items"][0]["transport"] == "http"
+    assert (
+        main.read_bytes(),
+        validate_parser_input(main).sidecar_path.read_bytes(),
+    ) == original
