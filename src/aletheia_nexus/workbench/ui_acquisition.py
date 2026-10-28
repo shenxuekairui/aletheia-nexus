@@ -777,7 +777,7 @@ class AcquisitionPage:
                     value="public" if defaults["public_only"] else "institution",
                     label="获取策略",
                 ).classes("w-full")
-                from .defaults import browser_readiness
+                from .defaults import browser_profile_choices, browser_readiness
 
                 readiness = ui.label(browser_readiness(defaults)["message"]).classes(
                     "an-muted text-xs"
@@ -785,6 +785,17 @@ class AcquisitionPage:
                 with ui.expansion("来源与登录处理（可选）", icon="tune").classes(
                     "w-full"
                 ):
+                    sessions = browser_profile_choices(defaults["browser"])
+                    profile = ui.select(
+                        sessions["options"],
+                        value=defaults["browser"]["profile_name"],
+                        label="浏览器登录会话",
+                        with_input=True,
+                        new_value_mode="add-unique",
+                    ).classes("w-full")
+                    ui.label(sessions["message"]).classes("an-muted text-xs")
+                    for warning in sessions["warnings"]:
+                        ui.label(warning).classes("text-orange-9 text-xs")
                     source = ui.select(
                         {
                             "auto": "自动来源（可用时含CNKI）",
@@ -840,9 +851,11 @@ class AcquisitionPage:
                 "普通论文间隔控制开始下一篇的时间；CNKI间隔只用于CNKI路线，失败退避用于重试。"
                 "站点限流和权限拒绝仍服从既有边界。"
             )
-            read_advanced = parameter_editor(
-                {k: v for k, v in defaults.items() if k not in excluded},
-            )
+            advanced_defaults = {
+                k: deepcopy(v) for k, v in defaults.items() if k not in excluded
+            }
+            advanced_defaults["browser"].pop("profile_name")
+            read_advanced = parameter_editor(advanced_defaults)
         with ui.expansion("任务预设", icon="bookmarks").classes("w-full"):
             preset = ui.select(
                 ["", *self.ctx.settings.presets("acquisition")],
@@ -862,9 +875,11 @@ class AcquisitionPage:
             ui.button("载入并显示", on_click=guard(load_preset)).props("flat")
 
         def options():
+            advanced = read_advanced()
+            advanced["browser"]["profile_name"] = profile.value
             return _options(
                 {
-                    **read_advanced(),
+                    **advanced,
                     "include_si": include_si.value,
                     "public_only": strategy.value == "public",
                     "browser_enabled": strategy.value == "institution",
@@ -907,13 +922,19 @@ class AcquisitionPage:
             legacy = "parameters" not in value and "workflow" not in value
             recipe = read_acquisition_preset(value, workflow_defaults=workflow_defaults)
             engine, preferences = recipe["parameters"], recipe["workflow"]
-            advanced = {k: v for k, v in engine.items() if k not in excluded}
+            advanced = {k: deepcopy(v) for k, v in engine.items() if k not in excluded}
+            advanced["browser"].pop("profile_name")
             read_advanced._pending_updates(advanced)
             if not legacy:
                 read_translation.validate(preferences["title_translation"])
             read_advanced.apply(advanced)
             include_si.set_value(engine["include_si"])
             strategy.set_value("public" if engine["public_only"] else "institution")
+            if engine["browser"]["profile_name"] not in profile.options:
+                profile.set_options(
+                    [*profile.options, engine["browser"]["profile_name"]]
+                )
+            profile.set_value(engine["browser"]["profile_name"])
             source.set_value(engine["source_preference"])
             interaction.set_value(engine["interaction_policy"])
             timeout.set_value(engine["interaction_timeout"])
@@ -1068,7 +1089,7 @@ class AcquisitionPage:
             )
 
             def submit():
-                job = self.submit(
+                self.submit(
                     "acquisition",
                     f"获取 {len(requests)} 篇论文",
                     [r.get("doi") or r["title"] for r in requests],
@@ -1080,7 +1101,6 @@ class AcquisitionPage:
                         "postprocess": postprocess,
                     },
                 )
-                progress_panel.track(job)
 
             if show_preview:
                 state["batch"].confirm(
@@ -1101,7 +1121,7 @@ class AcquisitionPage:
                 ).props("outline")
             from .ui_acquisition_progress import AcquisitionProgressPanel
 
-            progress_panel = AcquisitionProgressPanel(self)
+            AcquisitionProgressPanel(self)
         if draft.get("report") and draft.get("rows"):
             preview_input(restored=draft)
         if getattr(self, "open_normalization_on_acquire", False):
