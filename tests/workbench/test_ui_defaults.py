@@ -34,12 +34,16 @@ def test_new_ui_uses_public_first_visible_institution_fallback_without_api_conse
     assert browser["headless"] is False and browser["interactive"] is True
     assert browser["channel"] is None and browser["launch_mode"] == "auto"
     assert browser["use_system_proxy"] is None and browser["direct_connection"] is False
-    assert browser["profile_name"] == "default" and browser["profile_root"] is None
+    assert (
+        browser["profile_name"] == "human-handoff" and browser["profile_root"] is None
+    )
     assert browser["cdp_endpoint"] is None
     assert get_acquisition_defaults() == original
     assert original["public_only"] is True and original["browser_enabled"] is False
     ui["browser"]["profile_name"] = "changed-only-in-caller"
-    assert defaults.ui_acquisition_defaults()["browser"]["profile_name"] == "default"
+    assert (
+        defaults.ui_acquisition_defaults()["browser"]["profile_name"] == "human-handoff"
+    )
 
 
 def test_new_workflow_parses_natively_without_enabling_ocr_or_paid_titles():
@@ -123,7 +127,7 @@ def test_first_use_wait_is_unlimited_at_real_acquisition_adapter_boundary(
     observed = []
 
     class Context:
-        def checkpoint(self):
+        def checkpoint(self, *, pump=None):
             pass
 
         def progress(self, *args, **kwargs):
@@ -135,7 +139,7 @@ def test_first_use_wait_is_unlimited_at_real_acquisition_adapter_boundary(
         def should_skip(self, *args):
             return False
 
-        def wait_interaction(self, details, *, timeout):
+        def wait_interaction(self, details, *, timeout, pump=None):
             observed.append((details, timeout))
             return "skip"
 

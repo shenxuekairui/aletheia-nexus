@@ -82,6 +82,14 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
         receipt = self.ctx.jobs.submit(
             kind, label, list(ids), worker, parameters=parameters, resume_of=resume_of
         )
+        if kind == "acquisition":
+            root = str(self.ctx.library.root)
+            self.ctx.settings.set(
+                "acquisition_live_task", {"id": receipt["id"], "library": root}
+            )
+            panel = getattr(self, "acquisition_progress_panel", None)
+            if panel is not None and not panel.body.is_deleted and panel.root == root:
+                panel.track(receipt)
         ui.notify(f"已加入任务中心：{label}", type="positive")
         return receipt
 
@@ -391,19 +399,23 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
 
         render_task_dialog(self)
 
-    def recover_acquisition_dialog(self, job):
+    async def recover_acquisition_dialog(self, job):
         from copy import deepcopy
 
-        from nicegui import ui
+        from nicegui import run, ui
 
+        from .acquisition import _options
+        from .acquisition_recovery import (
+            recovery_checkpoint,
+            recovery_preview,
+            recovery_requests,
+        )
+        from .defaults import browser_profile_choices
+
+        preview = await run.io_bound(recovery_preview, job, self.ctx.acquisition)
         parameters = job.get("parameters") or {}
-        requests = parameters.get("requests", [])
-        options = parameters.get("options", {})
         postprocess = deepcopy(parameters.get("postprocess", {}))
         previous_translation = (job.get("result") or {}).get("translation") or {}
-        checkpoint = (job.get("result") or {}).get("checkpoint") or job.get(
-            "checkpoint"
-        )
         adopted_parse_defaults = bool(
             postprocess.get("auto_parse") and "parse_options" not in postprocess
         )
@@ -414,13 +426,114 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     **self.ctx.settings.get("parsing", {}),
                 }
             )
-        if not requests:
-            raise ValueError("此任务没有可恢复的原始获取参数，请从获取页新建任务")
-        with ui.dialog() as dialog, ui.card().classes("w-[850px] max-w-[95vw]"):
-            ui.label("恢复获取任务").classes("text-xl font-semibold")
+        with ui.dialog() as dialog, ui.card().classes("w-[1150px] max-w-[96vw]"):
+            ui.label("重试获取失败 / 补取 SI").classes("text-xl font-semibold")
             ui.label(
-                f"原批次 {len(requests)} 篇。检查点中成功项仍需通过现有来源核验；未知或失败项按实际参数重新尝试。"
+                "默认只选未成功项。正文已验证但 SI 待补时，复用正文，只继续附件获取；"
+                "完整完成项不重新调度。请核对篇数、目录和标签后开始。"
+            ).classes("an-info w-full")
+            categories = {
+                "COMPLETE": "已完整完成",
+                "SI_INCOMPLETE": "正文有效，SI 待补",
+                "MAIN_FAILED": "正文未成功",
+                "NOT_STARTED": "未开始 / 已中断或跳过",
+                "NEEDS_REVIEW": "来源或检查点需先核对",
+            }
+            ui.label(
+                " · ".join(
+                    f"{label} {sum(row['category'] == key for row in preview['rows'])} 篇"
+                    for key, label in categories.items()
+                )
+            ).classes("text-sm")
+            table_rows = [
+                {
+                    **row,
+                    "category_label": categories[row["category"]],
+                    "main_label": status_label(row["main_status"]),
+                    "si_label": status_label(row["si_status"]),
+                    "target": str(self.ctx.library.root / row["folder"]),
+                    "tag_label": ", ".join(row["tags"]) or "无标签",
+                }
+                for row in preview["rows"]
+            ]
+            columns = [
+                {"name": key, "field": key, "label": label, "align": "left"}
+                for key, label in (
+                    ("title", "论文"),
+                    ("category_label", "本次处理"),
+                    ("main_label", "正文状态"),
+                    ("si_label", "SI 状态"),
+                    ("target", "实际保存目录"),
+                    ("tag_label", "保留标签"),
+                    ("reason", "核验与重试说明"),
+                )
+            ]
+            table = ui.table(
+                columns=columns,
+                rows=[row for row in table_rows if row["can_retry"]],
+                row_key="id",
+                selection="multiple",
+                pagination=10,
+                on_select=lambda _: selection_count(),
+            ).classes("an-task-table w-full")
+            table.selected = [row for row in table_rows if row["selected"]]
+            excluded = [row for row in table_rows if not row["can_retry"]]
+            if excluded:
+                with ui.expansion(
+                    f"不重复调度 / 来源需核对：{len(excluded)} 篇", icon="fact_check"
+                ).classes("w-full"):
+                    ui.table(
+                        columns=columns, rows=excluded, row_key="id", pagination=5
+                    ).classes("an-task-table w-full")
+            count = ui.label()
+
+            def selection_count():
+                count.set_text(f"本次将重试 {len(table.selected)} 篇；不包括未勾选项。")
+
+            selection_count()
+            with ui.row().classes("an-toolbar"):
+
+                def choose(category=None):
+                    table.selected = [
+                        row
+                        for row in table_rows
+                        if row["can_retry"]
+                        and (category is None or row["category"] == category)
+                    ]
+                    selection_count()
+
+                ui.button("选择全部可重试项", on_click=lambda: choose()).props("flat")
+                ui.button("仅补取 SI", on_click=lambda: choose("SI_INCOMPLETE")).props(
+                    "flat"
+                )
+            for warning in preview["warnings"]:
+                ui.label(warning).classes("text-orange-9 text-sm")
+            strategy = ui.select(
+                {"public": "仅公开获取", "institution": "公开 + 机构浏览器"},
+                value="public" if preview["options"]["public_only"] else "institution",
+                label="本次重试获取策略（其余超时、间隔与预算保留原参数）",
+            ).classes("w-full")
+            sessions = browser_profile_choices(preview["options"]["browser"])
+            profile = (
+                ui.select(
+                    sessions["options"],
+                    value=sessions["current"]
+                    if sessions["current"] in sessions["options"]
+                    else None,
+                    label="本次机构浏览器会话",
+                )
+                .classes("w-full")
+                .bind_visibility_from(
+                    strategy, "value", lambda value: value == "institution"
+                )
             )
+            ui.label(sessions["message"]).classes("an-muted text-xs")
+            for warning in sessions["warnings"]:
+                ui.label(warning).classes("text-orange-9 text-sm")
+            ui.label(
+                "需要机构权限时可在本次切换为公开 + 机构浏览器；登录或验证仍由你完成。"
+                "原请求的分类、标签与文件名覆盖保留，已移动的正文按来源哈希重新定位。"
+            ).classes("an-muted text-sm")
             ui.label(
                 f"自动解析：{'是' if postprocess.get('auto_parse') else '否'}；"
                 f"研究集合：{postprocess.get('collection') or '不加入'}。命名按原任务模板与当前可靠元数据执行。"
@@ -447,28 +560,59 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
             )
             json_view(
                 {
-                    "requests": requests,
-                    "options": options,
-                    "checkpoint": checkpoint,
+                    "preview": preview,
                     "postprocess": postprocess,
                     "previous_translation": previous_translation,
                 },
-                label="本次恢复的实际范围与参数",
+                label="原参数、检查点与来源核验（专家）",
             )
 
-            def start():
+            async def submit_retry():
+                selected_ids = [row["id"] for row in table.selected]
+                # Revalidate on confirmation. Previewed status or a stale path
+                # never authorizes reuse, even when a previous task said success.
+                fresh = await run.io_bound(
+                    recovery_preview, self.ctx.jobs.get(job["id"]), self.ctx.acquisition
+                )
+                requests = recovery_requests(fresh, selected_ids)
+                if strategy.value == "institution" and not profile.value:
+                    raise ValueError("请先选择有效的机构浏览器会话，再开始重试。")
+                options = _options(
+                    {
+                        **fresh["options"],
+                        "browser": {
+                            **fresh["options"]["browser"],
+                            "profile_name": profile.value
+                            or fresh["options"]["browser"]["profile_name"],
+                        },
+                        "public_only": strategy.value == "public",
+                        "browser_enabled": strategy.value == "institution",
+                        "resume": True,
+                    }
+                )
                 reviewed_postprocess = {
                     **postprocess,
                     "title_translation": read_translation(),
                 }
+                checkpoint = await run.io_bound(
+                    recovery_checkpoint, fresh, self.ctx.acquisition
+                )
                 reviewed_parameters = {
                     **parameters,
+                    "library": str(self.ctx.library.root),
+                    "requests": requests,
+                    "options": options,
                     "postprocess": reviewed_postprocess,
+                    "recovery": {
+                        "selected_ids": selected_ids,
+                        "source_checkpoint": fresh["checkpoint"],
+                        "source_checkpoint_sha256": fresh["checkpoint_sha256"],
+                    },
                 }
                 self.submit(
                     "acquisition",
-                    "恢复获取 " + job["label"],
-                    requests,
+                    f"重试 {len(requests)} 篇 · " + job["label"],
+                    [r.get("doi") or r["title"] for r in requests],
                     self.acquisition_worker(
                         requests,
                         options,
@@ -480,7 +624,24 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 )
                 dialog.close()
 
-            ui.button("确认恢复获取", icon="play_arrow", on_click=guard(start))
+            retry_state = {"busy": False}
+
+            async def start():
+                if retry_state["busy"]:
+                    return
+                retry_state["busy"] = True
+                start_button.disable()
+                try:
+                    await submit_retry()
+                except Exception:
+                    retry_state["busy"] = False
+                    start_button.enable()
+                    raise
+
+            start_button = ui.button(
+                "确认重试所选未成功项", icon="play_arrow", on_click=guard(start)
+            )
+            start_button.set_enabled(any(row["can_retry"] for row in table_rows))
             ui.button("关闭", on_click=dialog.close).props("flat")
         dialog.open()
 

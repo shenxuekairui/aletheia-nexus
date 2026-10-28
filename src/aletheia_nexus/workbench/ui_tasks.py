@@ -228,7 +228,7 @@ def render_task_dialog(controller):
                 if job["status"] in {"PARTIAL", "FAILED", "CANCELLED", "INTERRUPTED"}:
                     if job["kind"] == "acquisition":
                         ui.button(
-                            "核对并恢复 / 重试未成功项",
+                            "重试获取失败 / 补取 SI",
                             icon="restart_alt",
                             on_click=guard(
                                 lambda j=job: controller.recover_acquisition_dialog(j)
