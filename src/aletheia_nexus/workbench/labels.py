@@ -351,6 +351,7 @@ VALUE_LABELS = {
     "parse": "PDF 解析",
     "research": "科研任务",
     "acquisition": "论文获取",
+    "acquisition_prepared": "准备获取清单",
     "rename": "文件整理",
     "rollback": "验证回滚",
     "import": "导入文献",

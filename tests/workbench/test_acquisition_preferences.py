@@ -101,9 +101,14 @@ def test_saved_workflow_defaults_populate_actual_acquisition_form(tmp_path):
         def import_dialog(self):
             pass
 
+        def task_dialog(self):
+            pass
+
     page = Page()
     page.ctx = SimpleNamespace(
-        settings=settings, library=LibraryService(tmp_path / "library")
+        settings=settings,
+        library=LibraryService(tmp_path / "library"),
+        jobs=SimpleNamespace(list=lambda: []),
     )
     prior = set(ui.context.client.elements)
     page.acquisition_page()

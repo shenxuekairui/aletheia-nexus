@@ -128,6 +128,9 @@ def _mount_page(
         def import_dialog(self):
             pytest.fail("Importing is not part of this offline preview")
 
+        def task_dialog(self):
+            pytest.fail("Task history is not part of this offline preview")
+
     monkeypatch.setattr(ui_acquisition_batch, "AcquisitionBatchEditor", Editor)
     monkeypatch.setattr(
         "aletheia_nexus.workbench.ui_acquisition.guard", lambda callback: callback
@@ -147,7 +150,10 @@ def _mount_page(
     before = set(ui.context.client.elements)
     controller = Controller()
     controller.ctx = SimpleNamespace(
-        library=library, settings=settings, acquisition=acquisition
+        library=library,
+        settings=settings,
+        acquisition=acquisition,
+        jobs=SimpleNamespace(list=lambda: []),
     )
     controller.acquisition_page()
     elements = [

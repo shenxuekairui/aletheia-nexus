@@ -248,6 +248,12 @@ class AcquisitionPage:
             report = self.ctx.acquisition.run(
                 requests, options, context=context, checkpoint_path=checkpoint_path
             )
+            context.progress(
+                stage="整理已获取论文",
+                task_phase="postprocess",
+                current={},
+                item="",
+            )
             successful = {
                 r.get("pdf_path", r.get("pdf")): r
                 for r in report["items"]
@@ -523,12 +529,7 @@ class AcquisitionPage:
                                             "field": k,
                                             "headerName": label,
                                             "editable": k
-                                            not in {
-                                                "resolution",
-                                                "placement_state",
-                                                "input_group",
-                                                "placement_error",
-                                            },
+                                            in {"doi", "title", "filename"},
                                             "width": width,
                                             **(
                                                 {
@@ -579,8 +580,8 @@ class AcquisitionPage:
                                         for k, label, width in (
                                             ("doi", "DOI", 210),
                                             ("title", "标题", 260),
-                                            ("folder", "分类目录（可编辑）", 260),
-                                            ("tags", "本篇标签（可编辑）", 230),
+                                            ("folder", "最终保存目录", 260),
+                                            ("tags", "标签", 230),
                                             ("placement_state", "目录状态", 130),
                                             ("filename", "单篇文件基础名覆盖", 200),
                                             ("resolution", "身份阶段", 150),
@@ -706,6 +707,7 @@ class AcquisitionPage:
                     max_file_size=5_000_000,
                 ).props('accept=".txt,.csv,.json"').classes("w-full")
                 preview_area = ui.column().classes("w-full")
+                acquisition_actions = ui.column().classes("w-full gap-3")
             with ui.card().classes("an-card min-w-0 w-full"):
                 ui.label("2 · 分类与保存").classes("font-semibold text-lg")
                 ui.label(str(self.ctx.library.root)).classes(
@@ -775,6 +777,11 @@ class AcquisitionPage:
                     value="public" if defaults["public_only"] else "institution",
                     label="获取策略",
                 ).classes("w-full")
+                from .defaults import browser_readiness
+
+                readiness = ui.label(browser_readiness(defaults)["message"]).classes(
+                    "an-muted text-xs"
+                )
                 with ui.expansion("来源与登录处理（可选）", icon="tune").classes(
                     "w-full"
                 ):
@@ -867,6 +874,19 @@ class AcquisitionPage:
                 }
             )
 
+        def check_browser_configuration():
+            report = browser_readiness(options())
+            readiness.set_text(report["message"])
+            return report
+
+        strategy.on_value_change(guard(check_browser_configuration))
+        with readiness.parent_slot:
+            ui.button(
+                "检查本次浏览器配置",
+                icon="fact_check",
+                on_click=guard(check_browser_configuration),
+            ).props("flat dense size=sm")
+
         def workflow(require_consent=True):
             translated = read_translation(require_consent=require_consent)
             result = acquisition_workflow_preferences(
@@ -897,6 +917,7 @@ class AcquisitionPage:
             source.set_value(engine["source_preference"])
             interaction.set_value(engine["interaction_policy"])
             timeout.set_value(engine["interaction_timeout"])
+            check_browser_configuration()
             if legacy:
                 read_translation.clear_consent()
                 ui.notify(
@@ -1047,17 +1068,19 @@ class AcquisitionPage:
             )
 
             def submit():
-                self.submit(
+                job = self.submit(
                     "acquisition",
                     f"获取 {len(requests)} 篇论文",
                     [r.get("doi") or r["title"] for r in requests],
                     self.acquisition_worker(requests, config, postprocess),
                     {
+                        "library": str(self.ctx.library.root),
                         "requests": requests,
                         "options": config,
                         "postprocess": postprocess,
                     },
                 )
+                progress_panel.track(job)
 
             if show_preview:
                 state["batch"].confirm(
@@ -1066,15 +1089,19 @@ class AcquisitionPage:
             else:
                 submit()
 
-        with ui.row().classes("an-toolbar"):
-            ui.button(
-                "开始获取已启用论文", icon="download", on_click=guard(start)
-            ).props("size=lg")
-            ui.button(
-                "查看完整保存安排",
-                icon="folder_open",
-                on_click=guard(lambda: start(True)),
-            ).props("outline")
+        with acquisition_actions:
+            with ui.row().classes("an-toolbar"):
+                ui.button(
+                    "开始获取已启用论文", icon="download", on_click=guard(start)
+                ).props("size=lg")
+                ui.button(
+                    "查看完整保存安排",
+                    icon="folder_open",
+                    on_click=guard(lambda: start(True)),
+                ).props("outline")
+            from .ui_acquisition_progress import AcquisitionProgressPanel
+
+            progress_panel = AcquisitionProgressPanel(self)
         if draft.get("report") and draft.get("rows"):
             preview_input(restored=draft)
         if getattr(self, "open_normalization_on_acquire", False):
