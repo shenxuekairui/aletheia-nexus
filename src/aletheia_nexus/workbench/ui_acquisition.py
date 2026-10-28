@@ -8,25 +8,6 @@ from pathlib import Path
 from .labels import GRID_LOCALE, value_label
 from .ui_common import guard, json_view, parameter_editor, rows_table, split_tags
 
-ACQUISITION_LABELS = {
-    "timeout": "网络请求超时（秒）",
-    "base_timeout": "基础获取超时（秒）",
-    "request_timeout": "网络请求超时（秒）",
-    "cnki_delay_seconds": "CNKI文献间隔（秒）",
-    "bulk_interval": "普通批量论文间隔（秒）",
-    "max_item_attempts": "单篇批量重试次数（含首次）",
-    "retry_backoff": "失败重试退避基数（秒）",
-    "interaction_timeout": "人工交互等待（秒；0不限时）",
-    "navigation_timeout_ms": "浏览器导航超时（毫秒）",
-    "visible": "显示浏览器窗口",
-    "headless": "无头浏览器",
-    "use_system_proxy": "使用系统代理",
-    "max_si_files": "每篇最多SI文件数",
-    "si_max_bytes": "单个SI字节上限",
-    "public_only": "仅公开获取",
-    "browser_enabled": "允许机构浏览器获取",
-}
-
 
 class AcquisitionPage:
     def title_translation_controls(self, initial_options=None):
@@ -402,7 +383,6 @@ class AcquisitionPage:
             )
             read_advanced = parameter_editor(
                 {k: v for k, v in defaults.items() if k not in excluded},
-                labels=ACQUISITION_LABELS,
             )
         with ui.expansion("任务预设", icon="bookmarks").classes("w-full"):
             preset = ui.select(

@@ -444,7 +444,11 @@ class LibraryPage:
                     ui.label(
                         f"{value_label(attachment['role'])} · {Path(attachment['path']).name}"
                     )
-                    if Path(attachment["path"]).suffix.lower() == ".pdf":
+                    if (
+                        Path(attachment["path"]).suffix.lower() == ".pdf"
+                        and attachment["role"] == "SUPPLEMENT"
+                        and attachment.get("sidecar_path")
+                    ):
                         ui.button(
                             "查看",
                             on_click=guard(
@@ -455,7 +459,7 @@ class LibraryPage:
                         ).props("flat dense")
                     else:
                         ui.link(
-                            "下载本地附件",
+                            "打开 / 下载原始附件",
                             self.files.register(attachment["path"]),
                             new_tab=True,
                         )
@@ -523,14 +527,14 @@ class LibraryPage:
                     icon="attach_file",
                     on_click=guard(import_attachment),
                 )
+                from .supplements import _SUFFIXES
+
                 ui.upload(
                     label="或上传要关联的本地附件",
                     on_upload=upload_attachment,
                     auto_upload=True,
                     max_file_size=200_000_000,
-                ).props(
-                    'accept=".pdf,.xlsx,.xls,.csv,.tsv,.txt,.json,.zip,.tar,.gz,.bz2,.xz,.docx,.pptx,.png,.jpg,.jpeg,.tif,.tiff"'
-                )
+                ).props('accept="' + ",".join(sorted(_SUFFIXES)) + '"')
             json_view(paper, label="书目、来源、关联附件与诊断")
             ui.button("关闭", on_click=dialog.close).props("flat")
         dialog.open()
