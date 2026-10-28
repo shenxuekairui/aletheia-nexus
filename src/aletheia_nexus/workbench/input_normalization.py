@@ -44,7 +44,7 @@ from .settings import atomic_json, state_directory
 MAX_INPUT_CHARACTERS = 50_000
 MAX_INPUT_BYTES = 200_000
 MAX_OUTPUT_TOKENS = 65_536
-STRATEGY = "source-bound-acquisition-input/v3"
+STRATEGY = "source-bound-acquisition-input/v4"
 DEFAULT_OPTIONS = {
     "model": {
         "name": "deepseek-flash",
@@ -283,17 +283,63 @@ def _appears(value, quote):
     return " ".join(str(value).split()) in " ".join(quote.split())
 
 
+def _organization_context(text, occurrences):
+    """Read explicit organization independently of a model's bibliography.
+
+    A bounded shadow handles ``numbered DOI | unnamed title`` only when its
+    first field is already an unambiguous DOI/list. Unnamed fields are ignored
+    ONLY for organization parsing; the original text still gates every title,
+    author, year, journal and quote. Named folder/tags remain untouched.
+    """
+    named = re.compile(r"^(?:分类|文件夹|folder|标签|tags)\s*[=＝:：]", re.I)
+    heading = re.compile(r"^(?:#{2,3}\s+|[A-Z][.．、)]\s*|\[[^\[\]]+\](?:\s|$))")
+    by_line = {}
+    for occurrence in occurrences.values():
+        by_line.setdefault(occurrence["source_line"], []).append(occurrence["doi"])
+    shadow, declarations = [], []
+    for number, line in enumerate(text.splitlines(), 1):
+        parts = [part.strip() for part in re.split(r"[|\t]", line)]
+        first = parse_text_input(parts[0])["entries"] if number in by_line else []
+        first_dois = [entry["value"].get("doi") for entry in first]
+        if (
+            first_dois
+            and all(first_dois)
+            and sorted(first_dois) == sorted(by_line[number])
+        ):
+            fields = [part for part in parts[1:] if named.match(part)]
+            shadow.append(
+                " ".join(first_dois) + (" | " + " | ".join(fields) if fields else "")
+            )
+            if fields:
+                declarations.append(number)
+        else:
+            shadow.append(line)
+            if heading.match(line.strip()) or any(named.match(part) for part in parts):
+                declarations.append(number)
+    parsed = parse_text_input("\n".join(shadow))
+    entries = {}
+    for entry in parsed["entries"]:
+        entry["organization_source_lines"] = [
+            n for n in declarations if n <= entry["line"]
+        ]
+        entries[(entry["line"], entry["value"].get("doi"))] = entry
+    errors = {
+        e["line"]: e["error"]
+        for e in parsed["errors"]
+        if "分类组无效" in e["error"] or e["line"] in declarations
+    }
+    return entries, errors
+
+
 def _canonical(response, text, lines, offsets, occurrences):
     validate(response, RESPONSE_SCHEMA, "input_normalization.response")
     if not response["papers"]:
         raise ValueError("模型没有返回论文条目，请继续使用手动清单或补充原文。")
-    manual = {
-        (entry["line"], entry["value"].get("doi")): entry
-        for entry in parse_text_input(text)["entries"]
-    }
+    manual, organization_errors = _organization_context(text, occurrences)
     papers, source_map, entries, warnings = [], [], [], []
     returned_ids, returned_dois = set(), set()
-    for row in response["papers"]:
+    for submitted_row in response["papers"]:
+        row = deepcopy(submitted_row)
         model_id = row["id"]
         if model_id in returned_ids:
             raise ValueError("模型重复使用了同一输入标识，未采用本次清单。")
@@ -353,37 +399,64 @@ def _canonical(response, text, lines, offsets, occurrences):
             rf"(?<!\d){row['year']}(?!\d)", quote
         ):
             raise ValueError("模型的年份不在该论文原文引用中。")
-        org = row["organization"]
-        org_lines = _line_numbers(
-            row["organization_source_lines"], lines, allow_empty=True
-        )
-        org_text = "\n".join(lines[n - 1] for n in org_lines)
-        folder = normalize_folder(row["folder"]) if row["folder"] is not None else None
-        if org["folder"] == "none" and folder is not None:
-            raise ValueError("模型未区分继承分类与指定分类。")
-        if org["tags"] == "none" and row["tags"]:
-            raise ValueError("模型未区分继承标签与指定标签。")
-        existing = manual.get(
-            (occurrence["source_line"] if occurrence else numbers[0], doi)
-        )
+        assignment_line = occurrence["source_line"] if occurrence else numbers[0]
+        if assignment_line in organization_errors:
+            raise ValueError("原文明示的分类或标签无效，请修正原文后再采用清单。")
+        existing = manual.get((assignment_line, doi))
         if doi is None and existing is None:
             raise ValueError("模型把分类标题或组织指令当成了论文，请核对原文条目。")
+        org = row["organization"]
+        authoritative = set()
+        repaired_organization = []
         for field in ("folder", "tags"):
-            proposed = org[field] == "proposed"
             if existing and existing["assignment"][field + "_mode"] != "inherit":
                 wanted = existing["value"][field]
-                actual = folder if field == "folder" else tuple(row["tags"])
+                actual = row[field] if field == "folder" else tuple(row["tags"])
                 equal = (
                     wanted == actual
                     if field == "folder"
                     else set(wanted) == set(actual)
                 )
                 if org[field] != "explicit" or not equal:
-                    raise ValueError(
-                        "模型遗漏或更改了原文明示的分类或标签，请先核对本次清单。"
+                    repaired_organization.append(field)
+                    warnings.append(
+                        {
+                            "code": "SERVER_ORGANIZATION_RESTORED",
+                            "item_id": model_id,
+                            "field": field,
+                            "message": "已恢复原文明示的分类或标签；模型的遗漏或替换未被采用，请核对预览。",
+                        }
                     )
+                row[field] = wanted
+                org[field] = "explicit"
+                authoritative.add(field)
+        needs_model_org_source = any(
+            org[field] == "explicit" and field not in authoritative
+            for field in ("folder", "tags")
+        )
+        model_org_lines = (
+            _line_numbers(row["organization_source_lines"], lines, allow_empty=True)
+            if needs_model_org_source
+            else []
+        )
+        org_lines = sorted(
+            set(
+                model_org_lines
+                + (existing["organization_source_lines"] if authoritative else [])
+            )
+        )
+        org_text = "\n".join(lines[n - 1] for n in model_org_lines)
+        folder = normalize_folder(row["folder"]) if row["folder"] is not None else None
+        if org["folder"] == "none" and folder is not None:
+            raise ValueError("模型未区分继承分类与指定分类。")
+        if org["tags"] == "none" and row["tags"]:
+            raise ValueError("模型未区分继承标签与指定标签。")
+        for field in ("folder", "tags"):
+            proposed = org[field] == "proposed"
+            if field in authoritative:
+                continue
             if org[field] == "explicit":
-                if not org_lines:
+                if not model_org_lines:
                     raise ValueError("原文明示的分类或标签需要提供组织来源行号。")
                 values = (
                     folder.split("/")
@@ -479,6 +552,30 @@ def _canonical(response, text, lines, offsets, occurrences):
                 "span": span,
                 "quote": quote,
                 "organization": org,
+                "organization_anchor_basis": {
+                    field: "server_explicit_input_syntax"
+                    if field in authoritative
+                    else "model_draft"
+                    for field in ("folder", "tags")
+                },
+                "organization_parse_scope": {
+                    "from_line": 1,
+                    "through_line": assignment_line,
+                }
+                if authoritative
+                else None,
+                **(
+                    {
+                        "submitted_model_organization": {
+                            "folder": submitted_row["folder"],
+                            "tags": submitted_row["tags"],
+                            "organization": submitted_row["organization"],
+                            "source_lines": submitted_row["organization_source_lines"],
+                        }
+                    }
+                    if repaired_organization
+                    else {}
+                ),
                 "organization_source_lines": org_lines,
                 "assignment": assignment,
             }

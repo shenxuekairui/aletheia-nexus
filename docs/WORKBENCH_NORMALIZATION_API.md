@@ -151,6 +151,26 @@ http://127.0.0.1:8080/an-api/input-normalization
 - `source_map.assignment` 和 `preview.items[].assignment` 保留
   `folder_mode=inherit|custom|root`、`tags_mode=inherit|custom`。
 
+当前整理策略为 `source-bound-acquisition-input/v4`。原文锚定区分两种情况：
+
+- 只有 DOI，且标题、作者、年份和期刊均未提供的条目：先严格核对模型返回的标识与服务器预提取的
+  DOI occurrence，再由服务器原始行号、字符 `span` 和字面 DOI 构建出处。
+  `anchor_basis=server_explicit_doi_occurrence`、`model_quote_adopted=false` 明确表示未采用模型推测的引用。
+  若模型曾拼接组头、漏报行号或给出无效引用，记录 `SERVER_DOI_ANCHOR_REPAIRED`，并保留其原提交供审计；
+  不需要为这个冗余定位步骤重新发起收费请求。
+- 只要包含标题、作者、年份或期刊中的任一书目值，以及所有无 DOI 标题条目，仍须逐字回指连续的
+  原文引用，仅允许空白规范化。不能拼接被其它论文隔开的行、增加省略号或凭模型记忆补齐。
+
+原文明示的组织设置也由确定性解析保留，而不取决于模型是否再次正确抄写：
+明确组头、父子分类、行内命名字段、根目录和空标签是权威输入。
+模型遗漏、更换或误标为 `proposed` 时，恢复原值，记录 `SERVER_ORGANIZATION_RESTORED`；
+`organization_anchor_basis` 标明服务器语法来源，原提交保存在 `submitted_model_organization`。
+`organization_parse_scope` 表达生成这项设置所使用的原文前缀上下文；组织来源不是科学证据引用。
+
+针对 `编号 DOI | 未命名原题`，服务只在首字段已明确为 DOI 时，临时移除未命名字段以解析组织上下文，
+并保留命名分类/标签、组头与原始行号。原文、输入哈希和书目引用不被改写；未命名标题仍须通过上述原文核对。
+非法的原文明示分类不会被静默改成新目录。原文未指定的组织建议继续标为 `proposed`，需用户确认。
+
 `folder:null` 本身无法区分“继承默认”与“明确放到根目录”；`tags:[]` 本身也不能区分继承与明确清空。
 **采用时保留完整 `source_map` 和已验证的 `preview`，不要仅把 `papers` 重写为普通 CSV/JSON 再推断这些模式。**
 未设置组织字段才继承当前默认；根目录和无标签是明确覆盖。

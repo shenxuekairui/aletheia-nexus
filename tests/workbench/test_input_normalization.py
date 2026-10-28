@@ -398,8 +398,13 @@ def test_proposed_label_cannot_bypass_explicit_original_assignment(tmp_path, fie
     result = service(tmp_path, handler).normalize(
         "[甲] | 标签=待读\n10.1000/a", consent=True
     )
-    assert result["status"] == "FAILED" and result["canonical"] is None
-    assert "分类或标签" in result["diagnostics"][0]["message"]
+    assert result["status"] == "COMPLETED"
+    assert result["canonical"]["papers"][0]["folder"] == "甲"
+    assert result["canonical"]["papers"][0]["tags"] == ["待读"]
+    assert any(
+        w["code"] == "SERVER_ORGANIZATION_RESTORED" and w["field"] == field
+        for w in result["warnings"]
+    )
 
 
 def test_three_concurrent_calls_have_independent_ledgers_and_no_global_http_lock(
@@ -556,3 +561,109 @@ def test_metadata_still_rejects_spliced_header_quote_instead_of_server_repair(tm
     )
     assert result["status"] == "FAILED" and result["canonical"] is None
     assert "跨过" in result["diagnostics"][0]["message"]
+
+
+def test_hundred_doi_unnamed_title_rows_restore_four_explicit_groups(tmp_path):
+    lines = ["请保留全部原题，不补写资料。"]
+    for i in range(1, 101):
+        if (i - 1) % 25 == 0:
+            lines.append(f"## 实测组{(i - 1) // 25 + 1}")
+        lines.append(f"{i}. 10.9999/literal-{i:03} | Literal original title {i}")
+    text = "\n".join(lines)
+
+    def handler(request):
+        document = payload(request)
+        rows = []
+        for occurrence in document["explicit_dois"]:
+            row = paper(
+                document,
+                occurrence,
+                organization={"folder": "explicit", "tags": "none"},
+            )
+            row["title"] = row["quote"].split(" | ", 1)[1]
+            row[
+                "organization_source_lines"
+            ] = []  # Wrong/missing model context is redundant here.
+            rows.append(row)
+        return response(rows)
+
+    result = service(tmp_path, handler).normalize(text, {"max_cost": 1}, consent=True)
+    assert result["status"] == "COMPLETED", result["diagnostics"]
+    assert result["preview"]["count"] == 100
+    assert {p["folder"] for p in result["canonical"]["papers"]} == {
+        f"实测组{i}" for i in range(1, 5)
+    }
+    assert all(
+        p["title"].startswith("Literal original title")
+        for p in result["canonical"]["papers"]
+    )
+    assert (
+        len(
+            [
+                w
+                for w in result["warnings"]
+                if w["code"] == "SERVER_ORGANIZATION_RESTORED"
+            ]
+        )
+        == 100
+    )
+
+
+def test_server_organization_recovery_preserves_inline_root_and_clear_overrides(
+    tmp_path,
+):
+    text = "## 原分组 | 标签=待读\n1. 10.1000/a | Literal title | 分类=/ | 标签=[]"
+    result = service(
+        tmp_path,
+        lambda r: response(
+            [
+                paper(
+                    payload(r),
+                    title="Literal title",
+                    folder="错误目录",
+                    tags=["错误标签"],
+                    organization={"folder": "proposed", "tags": "proposed"},
+                )
+            ]
+        ),
+    ).normalize(text, consent=True)
+    assert result["status"] == "COMPLETED", result["diagnostics"]
+    assert result["canonical"]["papers"][0]["folder"] is None
+    assert result["canonical"]["papers"][0]["tags"] == []
+    assert result["preview"]["items"][0]["assignment"] == {
+        "folder_mode": "root",
+        "tags_mode": "custom",
+    }
+
+
+def test_shadow_organization_does_not_accept_invented_title_or_unsafe_user_folder(
+    tmp_path,
+):
+    result = service(
+        tmp_path,
+        lambda r: response(
+            [
+                paper(
+                    payload(r),
+                    title="Invented title",
+                    folder="组",
+                    organization={"folder": "explicit", "tags": "none"},
+                )
+            ]
+        ),
+    ).normalize("## 组\n10.1000/a | Literal title", consent=True)
+    assert result["status"] == "FAILED" and result["canonical"] is None
+    result = service(
+        tmp_path,
+        lambda r: response(
+            [
+                paper(
+                    payload(r),
+                    title="Literal title",
+                    folder="安全新名",
+                    organization={"folder": "proposed", "tags": "none"},
+                )
+            ]
+        ),
+    ).normalize("## ../不安全\n10.1000/a | Literal title", consent=True)
+    assert result["status"] == "FAILED" and result["canonical"] is None
