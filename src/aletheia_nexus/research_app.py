@@ -843,7 +843,7 @@ class ResearchApplication:
         receipt["latest_document"] = row
         self._save_job(receipt)
 
-    def get_run_status(self, job_id: str) -> dict:
+    def get_run_status(self, job_id: str, *, include_manifest=True) -> dict:
         if not re.fullmatch("[0-9a-f]{32}", job_id):
             raise ValueError("invalid job ID")
         status_path = self.path(self.workspace / "jobs" / job_id / "status.json")
@@ -867,7 +867,7 @@ class ResearchApplication:
                         )
             elif job_id not in self._jobs:
                 receipt["owner_state"] = "legacy_unrecorded; process ownership unknown"
-        if receipt.get("run_directory"):
+        if include_manifest and receipt.get("run_directory"):
             run = self.path(receipt["run_directory"])
             receipt["manifest"] = read_json(self.path(run / "manifest.json"))
         return receipt
@@ -1220,17 +1220,36 @@ class ResearchApplication:
             "network_access": False,
         }
 
-    def list_research_runs(self, *, limit=20) -> dict:
+    def list_research_runs(self, *, limit=20, directory: str | None = None) -> dict:
+        """Discover known local history layouts without following saved locators."""
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between1and100")
-        paths = [self.path(p) for p in (self.workspace / "jobs").glob("*/status.json")]
-        rows = []
-        for path in sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)[
-            :limit
-        ]:
-            receipt = self.get_run_status(path.parent.name)
-            rows.append(
-                {
+        selected = self.workspace if directory is None else self.path(directory)
+        if not selected.is_dir():
+            raise ValueError("history directory must exist")
+        roots = list(dict.fromkeys([self.workspace, selected]))
+        jobs, unavailable, groups = [], [], {}
+        ignored_views = 0
+
+        def local_file(run, value):
+            # Manifest filenames are data, never new filesystem authorization.
+            if not isinstance(value, str) or Path(value).is_absolute():
+                return None
+            try:
+                path = self.path(run / value)
+                return (
+                    str(path) if path.is_relative_to(run) and path.is_file() else None
+                )
+            except (OSError, ValueError, ProcessingError):
+                return None
+
+        for candidate in (self.workspace / "jobs").glob("*/status.json"):
+            try:
+                path = self.path(candidate)
+                if not path.is_relative_to(self.workspace):
+                    raise ProcessingError("path_outside_allowed_directories")
+                receipt = self.get_run_status(path.parent.name, include_manifest=False)
+                row = {
                     "kind": receipt.get("kind", "research"),
                     **{
                         k: receipt.get(k)
@@ -1243,6 +1262,150 @@ class ResearchApplication:
                             "usage",
                         )
                     },
+                    "history_kind": "application_job",
+                    "status_file": str(path),
+                    "_mtime": path.stat().st_mtime,
                 }
+                # Only associate this locator with an independently discovered
+                # manifest below. Never open a path supplied by the receipt.
+                row["run_directory"] = (
+                    str(self.path(receipt["run_directory"]))
+                    if receipt.get("run_directory")
+                    else None
+                )
+                jobs.append(row)
+            except (OSError, ValueError, KeyError, TypeError, ProcessingError) as exc:
+                unavailable.append(
+                    {"path": str(candidate), "error": self.error_code(exc)}
+                )
+
+        patterns = (
+            "manifest.json",
+            "planning/*/manifest.json",
+            "runs/*/manifest.json",
+            "research/runs/*/manifest.json",
+        )
+        candidates = set(
+            p for root in roots for pattern in patterns for p in root.glob(pattern)
+        )
+        for candidate in candidates:
+            try:
+                path = self.path(candidate)
+                if not any(path.is_relative_to(root) for root in roots):
+                    raise ProcessingError("path_outside_allowed_directories")
+                manifest = read_json(path)
+                if manifest.get("schema") != "aletheia-nexus/research-run/v1":
+                    raise ValueError("not a research run manifest")
+                if manifest.get("view_kind"):
+                    ignored_views += 1
+                    continue
+                run_id, status = manifest["run_id"], manifest["status"]
+                if (
+                    not isinstance(run_id, str)
+                    or not run_id
+                    or not isinstance(status, str)
+                ):
+                    raise ValueError("invalid run identity/status")
+                planning = manifest.get("phase") == "task_planning"
+                run = path.parent
+                result_files = [
+                    item.get("result") for item in manifest.get("items", [])
+                ]
+                if manifest.get("comparison", {}).get("result"):
+                    result_files.append(manifest["comparison"]["result"])
+                row = {
+                    "kind": "planning" if planning else "research",
+                    "history_kind": "task_planning" if planning else "research_run",
+                    "job_id": None,
+                    "run_id": run_id,
+                    "status": status,
+                    "task_fingerprint": manifest.get("task_fingerprint"),
+                    "request_fingerprint": manifest.get("request_fingerprint"),
+                    "run_directory": str(run),
+                    "manifest_file": str(path),
+                    "task_file": local_file(
+                        run, manifest.get("task_file", "task.json")
+                    ),
+                    "request_file": local_file(run, "request.json")
+                    if planning
+                    else None,
+                    "results": list(
+                        dict.fromkeys(
+                            p for value in result_files if (p := local_file(run, value))
+                        )
+                    ),
+                    "outputs": list(
+                        dict.fromkeys(
+                            p
+                            for value in manifest.get("outputs", [])
+                            if (p := local_file(run, value))
+                        )
+                    ),
+                    "usage": manifest.get("usage"),
+                    "error": manifest.get("error"),
+                    "errors": [
+                        {k: item.get(k) for k in ("id", "status", "error")}
+                        for item in manifest.get("items", [])
+                        if item.get("error")
+                    ],
+                    "_mtime": path.stat().st_mtime,
+                }
+                identity = (
+                    row["history_kind"],
+                    run_id,
+                    row["task_fingerprint"] or row["request_fingerprint"],
+                )
+                groups.setdefault(identity, []).append(row)
+            except (
+                OSError,
+                ValueError,
+                KeyError,
+                TypeError,
+                AttributeError,
+                ProcessingError,
+            ) as exc:
+                unavailable.append(
+                    {"path": str(candidate), "error": self.error_code(exc)}
+                )
+
+        rows, consumed_jobs = [], set()
+        for copies in groups.values():
+            linked = [
+                j
+                for j in jobs
+                if any(j["run_directory"] == c["run_directory"] for c in copies)
+            ]
+            # Prefer the actual application-owned run over a copied manifest.
+            row = max(
+                copies,
+                key=lambda c: (
+                    any(j["run_directory"] == c["run_directory"] for j in linked),
+                    bool(c["results"]),
+                    bool(c["task_file"]),
+                    c["_mtime"],
+                ),
             )
-        return {"runs": rows, "network_access": False}
+            row["manifest_files"] = sorted({c["manifest_file"] for c in copies})
+            if linked:
+                job = max(linked, key=lambda j: j["_mtime"])
+                row.update(
+                    {k: job[k] for k in ("kind", "job_id", "status", "status_file")}
+                )
+                row["history_kind"] = "application_job"
+                row["job_ids"] = [j["job_id"] for j in linked]
+                row["_mtime"] = max(row["_mtime"], job["_mtime"])
+                consumed_jobs.update(j["job_id"] for j in linked)
+            rows.append(row)
+        rows.extend(j for j in jobs if j["job_id"] not in consumed_jobs)
+        rows.sort(key=lambda row: row["_mtime"], reverse=True)
+        for row in rows:
+            row.pop("_mtime")
+        return {
+            "runs": rows[:limit],
+            "unavailable": unavailable,
+            "ignored_views": ignored_views,
+            "directories": [str(root) for root in roots],
+            "discovery_layouts": ["jobs/*/status.json (workspace only)", *patterns],
+            "usage_aggregated": False,
+            "network_access": False,
+        }

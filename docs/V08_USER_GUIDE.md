@@ -495,3 +495,19 @@ AN不访问网络、不调用模型，也不覆盖原始PDF、来源记录或既
 文件会创建新任务记录，并复用来源匹配的有效解析；旧任务历史保持不变。进程退出后查询
 可显示 `INTERRUPTED`，再次提交原选择即可复用已完成篇。需要重新解析或OCR时仍可使用
 单篇 `parse_document` 创建新工件。原同步 `prepare_documents` 入口继续可用。
+
+## MCP 查询已有规划与科研结果
+
+无需配置 API Key，可让客户端调用 `list_research_runs(limit=20)`，查看当前工作目录内的
+应用任务、自然语言规划成功或失败记录，以及原生 `research run` 的运行历史。
+每条记录返回状态和可用的 `manifest_file`、`task_file`、`results`、导出文件路径；
+用 `read_research_result(result)` 读取结果，再用 `export_research_results(results)`
+重新生成 Markdown、CSV、JSONL，无需重新调用模型。应用任务仍可用原 `job_id` 查询进度。
+
+旧输出目录可显式传入 `list_research_runs(directory="F:/papers/旧输出")`，目录必须位于
+服务器配置的 `--allow-dir` 或当前工作目录内。该参数补充当前工作目录，不扩大访问授权。
+程序只检查所选目录本身的 `manifest.json`，以及固定结构
+`planning/*/manifest.json`、`runs/*/manifest.json`、`research/runs/*/manifest.json`；
+应用 jobs 仅检查当前工作目录的 `jobs/*/status.json`，不会递归遍历其他文献或实验目录。
+重复运行清单按运行身份合并，离线审阅视图不当成新调用，费用只保留所属运行的记录而不汇总；
+损坏或不可读取的清单列在 `unavailable`。历史发现不会跟随清单里的目录指令或读取越界文件。
