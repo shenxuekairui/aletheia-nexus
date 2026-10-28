@@ -34,6 +34,7 @@ class ContextLease:
 
 def create_context(root: Path, workspace: Path):
     from .workbench.acquisition import AcquisitionService
+    from .workbench.defaults import bootstrap_ui_defaults
     from .workbench.input_normalization import InputNormalizationService
     from .workbench.jobs import TERMINAL, TaskManager
     from .workbench.library import LibraryService
@@ -44,6 +45,7 @@ def create_context(root: Path, workspace: Path):
     workspace = workspace.resolve()
     workspace.mkdir(parents=True, exist_ok=True)
     settings = SettingsStore(workspace)
+    bootstrap_ui_defaults(settings)
     context = SimpleNamespace(
         workspace=workspace, settings=settings, jobs=TaskManager(workspace)
     )

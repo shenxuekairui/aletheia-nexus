@@ -41,6 +41,7 @@ aletheia-nexus = "aletheia_nexus.cli:entrypoint"
 [project.optional-dependencies]
 ui = [
     "nicegui>=3.18,<4",
+    "playwright>=1.63,<2",
 ]
 mcp = [
     "mcp>=2.3,<3",
