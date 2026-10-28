@@ -22,7 +22,9 @@ def test_automatic_parsing_keeps_submission_snapshot_after_defaults_change(tmp_p
         {"ocr": True, "ocr_languages": "eng+chi_sim", "ocr_dpi": 240, "max_pages": 2},
     )
     snapshot = acquisition_postprocess_snapshot(
-        {"auto_parse": True}, WorkbenchResearch.parser_options(), settings.get("parsing")
+        {"auto_parse": True},
+        WorkbenchResearch.parser_options(),
+        settings.get("parsing"),
     )
     captured = []
 
