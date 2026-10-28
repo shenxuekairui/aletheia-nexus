@@ -202,17 +202,15 @@ def choose_library_folder(library, on_choose, initial=""):
 
     with ui.dialog() as dialog, ui.card().classes("w-[850px] max-w-[96vw] an-card"):
         ui.label("选择或新建分类目录").classes("text-xl font-semibold")
-        ui.label(f"授权文库：{library.root}").classes("an-muted text-xs break-all")
+        ui.label(f"当前文库：{library.root}").classes("an-muted text-xs break-all")
         status = ui.label("正在读取现有目录；不会读取 PDF 内容…").classes(
             "an-info w-full"
         )
         search = (
-            ui.input("搜索已加载的目录名称")
-            .props("clearable outlined dense")
-            .classes("w-full")
+            ui.input("查找已有目录").props("clearable outlined dense").classes("w-full")
         )
         relative = ui.input(
-            "当前目录相对路径（留空为文库根目录）", value=initial or ""
+            "分类位置（留空为文库根目录）", value=initial or ""
         ).classes("w-full")
         selected_path = ui.label("").classes("text-sm whitespace-pre-wrap break-all")
         state = {"revision": 0, "busy": False, "loaded": {""}}
@@ -236,9 +234,7 @@ def choose_library_folder(library, on_choose, initial=""):
             ui.button("文库根目录", on_click=lambda: relative.set_value("")).props(
                 "flat"
             )
-        child = ui.input("在当前目录下新建子目录（可选，填写一级名称）").classes(
-            "w-full"
-        )
+        child = ui.input("新建子目录名称").classes("w-full")
         new_path = ui.label("").classes(
             "an-muted text-sm whitespace-pre-wrap break-all"
         )
@@ -352,7 +348,7 @@ def choose_library_folder(library, on_choose, initial=""):
             tree.expand(None if search.value else ["dir:"])
             tree.select("dir:" + (initial or ""))
             status.set_text(
-                f"已显示 {report['count'] - 1} 个分类（含空目录）。忽略 SI、json、内部目录与链接；未读取 PDF 内容。"
+                f"显示 {report['count'] - 1} 个分类（含空目录）。选择一个已有目录，或在其下新建子目录。"
             )
             if report["truncated"] or report["warnings"]:
                 status.set_text(status.text + "\n" + "\n".join(report["warnings"]))

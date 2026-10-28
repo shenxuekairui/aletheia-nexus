@@ -217,7 +217,7 @@ def test_dialog_opens_without_creation_and_scans_through_background_io(
     relative = next(
         element
         for element in elements
-        if element.props.get("label") == "当前目录相对路径（留空为文库根目录）"
+        if element.props.get("label") == "分类位置（留空为文库根目录）"
     )
     relative.set_value(choice)
     asyncio.run(buttons["使用选中目录"]())
