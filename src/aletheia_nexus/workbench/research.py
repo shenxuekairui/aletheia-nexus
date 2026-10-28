@@ -599,6 +599,8 @@ class WorkbenchResearch:
             {
                 "id": m["id"],
                 "key": m["key"],
+                "title": m["source"].identity["title"],
+                "document_role": m["source"].identity["document_role"],
                 "versions": self.versions_for_key(m["key"]),
                 "active_artifact": self._active_versions().get(m["key"]),
             }

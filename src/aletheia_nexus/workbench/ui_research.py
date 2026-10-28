@@ -338,9 +338,12 @@ class ResearchPages:
                             artifact = version["document"]["artifact"]
                             with ui.row().classes("an-toolbar"):
                                 ui.label(
-                                    f"{material['id']} · {version['created_at']} · "
+                                    f"{material.get('title') or '未命名材料'} · "
+                                    f"{value_label(material.get('document_role', ''))} · "
+                                    f"{version['created_at']} · "
+                                    f"{value_label(version.get('status', ''))} · "
                                     f"{'当前版本' if material['active_artifact'] == artifact else '历史版本'}"
-                                )
+                                ).classes("whitespace-normal break-words")
                                 ui.button(
                                     "使用此解析版本",
                                     on_click=guard(
