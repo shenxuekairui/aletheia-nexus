@@ -479,11 +479,16 @@ class WorkbenchResearch:
         self._activate(material["key"], document)
         diagnostics = self.app.get_parse_diagnostics(document)
         if material_id == paper_id:
+            ocr_status, ocr_diagnostics = self.ocr_summary(
+                diagnostics, version["options"]
+            )
             self.library.update_metadata(
                 paper_id,
                 parse_status=diagnostics["status"],
                 artifact=artifact,
                 parse_options=version["options"],
+                ocr_status=ocr_status,
+                ocr_diagnostics=ocr_diagnostics,
             )
         return {"document": document, "diagnostics": diagnostics}
 

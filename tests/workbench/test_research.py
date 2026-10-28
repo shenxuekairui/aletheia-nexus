@@ -135,7 +135,9 @@ def test_selecting_old_version_changes_future_plans_only(research):
         research.local_plan("整理测量条件", ["p1"])["documents"][0]["artifact"]
         == second["artifact"]
     )
+    research.library.update_metadata("p1", ocr_status="USED")
     research.select_version("p1", first["artifact"])
+    assert research.library.get("p1")["metadata"]["ocr_status"] == "NOT_REQUESTED"
     assert (
         research.local_plan("整理测量条件", ["p1"])["documents"][0]["artifact"]
         == first["artifact"]
