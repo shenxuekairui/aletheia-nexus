@@ -1,0 +1,482 @@
+"""Library tables and actual, previewed organization operations."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from .ui_common import (
+    guard,
+    json_view,
+    parameter_editor,
+    rows_table,
+    split_tags,
+)
+
+COLUMNS = {
+    "title": "显示标题", "title_original": "原题", "title_zh": "中文译名",
+    "custom_name": "自定义名称", "first_author": "第一作者", "authors": "作者列表",
+    "year": "年份", "journal": "期刊", "doi": "DOI", "tags": "标签",
+    "folder": "分类目录", "collections": "研究集合", "filename": "真实文件名",
+    "path": "磁盘路径", "size": "大小 (bytes)", "si_count": "SI 数量",
+    "integrity": "来源状态", "download_source": "获取来源", "download_time": "获取时间",
+    "parse_status": "解析状态", "reading_status": "阅读状态", "research_tasks": "科研任务",
+}
+
+
+class LibraryPage:
+    def library_page(self):
+        from nicegui import ui
+        self.title("文献库", "按目录存放正文，分类内共享 SI；标签、集合与表格视图分别保存。")
+        all_rows = self.ctx.library.scan()["items"]
+        tags = sorted({t for row in all_rows for t in row.get("tags", [])})
+        folders = sorted({row["folder"] for row in all_rows if row["folder"]})
+        with ui.row().classes("an-toolbar w-full"):
+            query = ui.input("原题 / 中文译名 / DOI / 文件名", value=self.library_filters.get("query", ""))\
+                .props("outlined dense clearable").classes("grow min-w-72")
+            folder = ui.select(["", *folders], value=self.library_filters.get("folder", ""),
+                               label="分类目录", with_input=True).props("outlined dense clearable")
+            tag = ui.select(tags, value=self.library_filters.get("tags", []), label="标签",
+                            multiple=True, with_input=True).props("outlined dense use-chips clearable")
+            tag_mode = ui.select(["AND", "OR"], value=self.library_filters.get("tag_mode", "AND"),
+                                 label="标签组合").props("outlined dense").classes("w-24")
+            untranslated = ui.checkbox("未翻译", value=self.library_filters.get("untranslated", False))
+
+        with ui.row().classes("an-toolbar w-full"):
+            collection = ui.select(["", *self.ctx.library.collections()],
+                                   value=self.library_filters.get("collection", ""),
+                                   label="固定研究集合").props("outlined dense clearable")
+            saved = ui.select(["", *self.ctx.library.filters()], value="", label="保存筛选")\
+                .props("outlined dense clearable")
+            view_name = self.ctx.settings.get("active_view", "标准文献视图")
+            views = self.ctx.library.views()
+            if view_name not in views:
+                view_name = next(iter(views))
+            view = ui.select(list(views), value=view_name, label="表格视图").props("outlined dense")
+            ui.button("导入 PDF / 文件夹", icon="upload_file", on_click=guard(self.import_dialog)).props("outline")
+            ui.button("标签与分组", icon="label", on_click=guard(self.tags_dialog)).props("flat")
+
+        def filters():
+            return {"query": query.value or None, "folder": folder.value or None,
+                    "tags": tag.value or [], "tag_mode": tag_mode.value,
+                    "untranslated": untranslated.value,
+                    "collection": collection.value or None}
+
+        state = views[view_name]
+        visible = state.get("columns", list(COLUMNS))
+        columns = [{"field": key, "headerName": label, "hide": key not in visible,
+                    "sortable": True, "resizable": True, "filter": True,
+                    "minWidth": 100, "width": 200 if key.startswith("title") else 140,
+                    **({"pinned": "left", "checkboxSelection": True,
+                        "headerCheckboxSelection": True, "headerCheckboxSelectionCurrentPageOnly": True,
+                        "wrapText": state.get("wrap", True), "autoHeight": True,
+                        "width": 380} if key == "title" else {})}
+                   for key, label in COLUMNS.items()]
+        order = {key: n for n, key in enumerate(visible)}
+        columns.sort(key=lambda c: order.get(c["field"], len(order)))
+
+        with ui.row().classes("an-toolbar w-full"):
+            count = ui.label("").classes("an-muted grow")
+            ui.button("筛选", icon="filter_alt", on_click=guard(lambda: refresh())).props("outline")
+            ui.button("保存筛选条件", icon="filter_alt", on_click=guard(lambda: save_filter_dialog())).props("flat")
+            ui.button("列 / 排序 / 视图", icon="view_column", on_click=guard(lambda: columns_dialog())).props("flat")
+
+        grid = ui.aggrid({
+            "columnDefs": columns, "rowData": [], "rowSelection": "multiple",
+            "rowMultiSelectWithClick": False, "suppressRowClickSelection": True,
+            "pagination": True, "paginationPageSize": 50,
+            "paginationPageSizeSelector": [20, 50, 100],
+            "defaultColDef": {"resizable": True, "sortable": True},
+            ":getRowId": "params => params.data.id",
+            "animateRows": False,
+        }, theme="quartz").classes("an-library")
+
+        def title_for(row):
+            mode = self.ctx.settings.get("title_mode", "bilingual")
+            original = row.get("title_original") or row["title"]
+            zh, custom = row.get("title_zh"), row.get("custom_name")
+            if mode == "bilingual" and zh and zh != original:
+                return zh + "\n" + original
+            if mode == "zh":
+                return zh or original
+            if mode == "custom":
+                return custom or zh or original
+            return original
+
+        def refresh():
+            self.library_filters = filters()
+            report = self.ctx.library.scan(**self.library_filters)
+            self.library_rows = report["items"]
+            grid.options["rowData"] = [{**r, "title": title_for(r),
+                "path": r["pdf_path"], "tags": ", ".join(r["tags"]),
+                "authors": "; ".join(str(a) for a in r.get("authors", [])),
+                "collections": ", ".join(r.get("collections", []))}
+                for r in self.library_rows]
+            grid.update()
+            count.set_text(f"{len(self.library_rows)} 篇筛选结果 · 当前选择清单 {len(self.ctx.library.selection())} 篇")
+            if report["warnings"]:
+                ui.notify(f"文库有 {len(report['warnings'])} 项来源/文件诊断，请检查详情。", type="warning")
+
+        async def add_marked():
+            selected = await grid.get_selected_rows()
+            ids = [r["id"] for r in selected]
+            self.ctx.library.set_selection(ids, mode="add")
+            ui.notify(f"已添加 {len(ids)} 篇；跨页面保留并自动去重。")
+            count.set_text(f"{len(self.library_rows)} 篇筛选结果 · 当前选择清单 {len(self.ctx.library.selection())} 篇")
+
+        def add_all():
+            ids = [r["id"] for r in self.library_rows]
+            self.ctx.library.set_selection(ids, mode="add")
+            ui.notify(f"已将全部 {len(ids)} 篇筛选结果加入清单。")
+            count.set_text(f"{len(ids)} 篇筛选结果 · 当前选择清单 {len(self.ctx.library.selection())} 篇")
+
+        async def organize_marked():
+            ids = [r["id"] for r in await grid.get_selected_rows()]
+            self.organize_dialog(ids)
+
+        async def details(event):
+            row = event.args.get("data") or {}
+            if row.get("id"):
+                self.details_dialog(row["id"])
+
+        grid.on("rowDoubleClicked", guard(lambda: None))
+        grid.on("cellDoubleClicked", details)
+
+        async def persist_view():
+            current = self.ctx.library.views()[view.value]
+            current["column_state"] = await grid.run_grid_method("getColumnState")
+            current["columns"] = [c["colId"] for c in current["column_state"] if not c.get("hide")]
+            self.ctx.library.save_view(view.value, current)
+            self.ctx.settings.set("active_view", view.value)
+
+        # Column state contains order, width, visibility, pinned and sorting.
+        grid.on("columnResized", guard(persist_view))
+        grid.on("columnMoved", guard(persist_view))
+        grid.on("sortChanged", guard(persist_view))
+
+        def columns_dialog():
+            with ui.dialog() as dialog, ui.card().classes("w-[650px] max-w-[90vw]"):
+                ui.label("自定义表格视图").classes("text-lg font-semibold")
+                selected = ui.select(COLUMNS, value=visible, multiple=True,
+                                     label="显示列").props("use-chips").classes("w-full")
+                name = ui.input("保存视图名称", value=view.value).classes("w-full")
+                wrap = ui.checkbox("长标题换行", value=state.get("wrap", True))
+                ui.label("在表头拖动调整列顺序和宽度；点击表头排序，修改自动保存至当前视图。")
+
+                async def save():
+                    columns_state = await grid.run_grid_method("getColumnState")
+                    for col in columns_state:
+                        col["hide"] = col["colId"] not in selected.value
+                    self.ctx.library.save_view(name.value, {"columns": selected.value,
+                        "column_state": columns_state, "wrap": wrap.value})
+                    self.ctx.settings.set("active_view", name.value)
+                    dialog.close()
+                    self.page_content.refresh()
+
+                ui.button("保存视图", on_click=guard(save))
+                ui.button("关闭", on_click=dialog.close).props("flat")
+            dialog.open()
+
+        def save_filter_dialog():
+            with ui.dialog() as dialog, ui.card():
+                name = ui.input("筛选规则名称")
+                ui.label("保存条件，后续按当前文库重新运行；不会改变已有科研任务快照。")
+                ui.button("保存", on_click=guard(lambda: (
+                    self.ctx.library.save_filter(name.value, filters()), dialog.close())))
+            dialog.open()
+
+        async def restore_columns():
+            if state.get("column_state"):
+                await grid.run_grid_method("applyColumnState", {"state": state["column_state"],
+                                                                "applyOrder": True})
+        ui.timer(0.2, guard(restore_columns), once=True)
+        view.on_value_change(lambda e: (self.ctx.settings.set("active_view", e.value), self.page_content.refresh()))
+        saved.on_value_change(lambda e: (setattr(self, "library_filters", self.ctx.library.filters().get(e.value, {})),
+                                          self.page_content.refresh()) if e.value else None)
+        with ui.row().classes("an-toolbar w-full"):
+            ui.button("加入已勾选文献", icon="playlist_add", on_click=guard(add_marked))
+            ui.button("全选当前页面", on_click=guard(lambda: grid.run_grid_method("selectAll", "currentPage"))).props("outline")
+            ui.button("加入全部筛选结果", on_click=guard(add_all)).props("outline")
+            ui.button("整理已勾选文献", icon="drive_file_rename_outline", on_click=guard(organize_marked)).props("outline")
+            ui.button("选择清单", icon="checklist", on_click=guard(self.selection_dialog)).props("flat")
+            ui.label("双击任意文献查看详情 / PDF").classes("an-muted text-xs")
+        refresh()
+
+    def details_dialog(self, paper_id):
+        from nicegui import ui
+        paper = self.ctx.library.get(paper_id)
+        if paper is None:
+            raise ValueError("文献已移出当前文库，请刷新。")
+        with ui.dialog() as dialog, ui.card().classes("w-[1000px] max-w-[95vw] an-card"):
+            ui.label(paper["title_original"]).classes("text-xl font-semibold")
+            ui.label(f"{paper.get('doi') or '无 DOI'} · {paper.get('integrity','')} · {paper['pdf_path']}")\
+                .classes("an-muted text-xs break-all")
+            custom = ui.input("自定义显示名称", value=paper.get("custom_name") or "").classes("w-full")
+            translated = ui.textarea("中文译名（原题保持不变）", value=paper.get("title_zh") or "").classes("w-full")
+            confirmed = ui.checkbox("人工确认此译名", value=(paper.get("translation") or {}).get("confirmed", False))
+            tags = ui.input("标签（逗号分隔）", value=", ".join(paper["tags"])).classes("w-full")
+            reading = ui.select(["未读", "正在阅读", "已读", "重点"],
+                                value=paper.get("reading_status") or "未读", label="阅读状态")
+
+            def save():
+                if translated.value.strip() and (translated.value != (paper.get("title_zh") or "")
+                    or confirmed.value != (paper.get("translation") or {}).get("confirmed", False)):
+                    self.ctx.translation.edit(paper_id, translated.value, confirmed=confirmed.value)
+                self.ctx.library.update_metadata(paper_id, custom_name=custom.value, reading_status=reading.value)
+                self.ctx.library.update_tags([paper_id], add=split_tags(tags.value),
+                    remove=[t for t in paper["tags"] if t not in split_tags(tags.value)])
+                ui.notify("文献元数据已保存，来源和 PDF 未改变。")
+
+            with ui.row().classes("an-toolbar"):
+                ui.button("保存元数据", on_click=guard(save), icon="save")
+                ui.button("查看主文 PDF", on_click=guard(lambda:
+                    self.show_pdf(self.ctx.research.pdf_document(paper_id))), icon="picture_as_pdf")
+                ui.button("加入选择清单", on_click=guard(lambda:
+                    self.ctx.library.set_selection([paper_id], mode="add"))).props("outline")
+                ui.button("翻译 / 重命名 / 移动", on_click=guard(lambda:
+                    self.organize_dialog([paper_id]))).props("outline")
+                ui.button("解析 / 版本", on_click=guard(lambda:
+                    self.parse_dialog([paper_id]))).props("outline")
+            for attachment in paper.get("attachments", []):
+                with ui.row().classes("an-toolbar"):
+                    ui.label(f"{attachment['role']} · {Path(attachment['path']).name}")
+                    if Path(attachment["path"]).suffix.lower() == ".pdf":
+                        ui.button("查看", on_click=guard(lambda a=attachment:
+                            self.show_pdf(self.ctx.research.pdf_document(paper_id, a["id"])))).props("flat dense")
+                    else:
+                        ui.link("下载本地附件", self.files.register(attachment["path"]), new_tab=True)
+            json_view(paper, label="书目、来源、关联附件与诊断")
+            ui.button("关闭", on_click=dialog.close).props("flat")
+        dialog.open()
+
+    def import_dialog(self):
+        from nicegui import ui
+        with ui.dialog() as dialog, ui.card().classes("w-[800px] max-w-[95vw] an-card"):
+            ui.label("导入已有 PDF").classes("text-xl font-semibold")
+            ui.label("保留原始文件，将副本登记到当前文库。用户声明身份不标为来源 VERIFIED。")
+            folder = ui.input("目标分类（相对文库根目录）", value="").classes("w-full")
+            title = ui.input("原始标题（单篇可填；留空采用文件名）").classes("w-full")
+            tags = ui.input("标签（逗号分隔）").classes("w-full")
+            path = ui.input("本地 PDF 或文件夹绝对路径").classes("w-full")
+            recursive = ui.checkbox("递归导入文件夹", value=False)
+            status = ui.label("")
+
+            def import_paths(paths):
+                if not paths:
+                    raise ValueError("没有可导入的 PDF")
+                folder_value, tag_values, title_value = folder.value, split_tags(tags.value), title.value
+                def worker(context):
+                    rows = []
+                    for i, incoming in enumerate(paths):
+                        context.checkpoint()
+                        context.progress(i, len(paths), item=str(incoming), stage="import")
+                        try:
+                            row = self.ctx.library.import_pdf(incoming, title=title_value or None,
+                                folder=folder_value, tags=tag_values)
+                            rows.append({"path": str(incoming), "status": "REGISTERED", "paper": row})
+                            context.record(str(incoming), "REGISTERED")
+                        except Exception as exc:
+                            rows.append({"path": str(incoming), "status": "FAILED", "error": str(exc)[:500]})
+                            context.record(str(incoming), "FAILED", error=str(exc)[:500])
+                    return {"items": rows, "status": "COMPLETED" if all(
+                        r["status"] == "REGISTERED" for r in rows) else "PARTIAL"}
+                self.submit("import", f"导入 {len(paths)} 份 PDF", [str(p) for p in paths], worker,
+                            {"folder": folder_value, "tags": tag_values})
+                status.set_text(f"已加入任务中心：{len(paths)} 份 PDF")
+
+            def from_path():
+                incoming = Path(path.value).expanduser().resolve(strict=True)
+                paths = sorted(incoming.rglob("*.pdf") if recursive.value else incoming.glob("*.pdf"))\
+                    if incoming.is_dir() else [incoming]
+                import_paths(paths)
+
+            async def upload(event):
+                from uuid import uuid4
+                # Upload has no authority over a destination name or source identity.
+                target = Path(self.ctx.workspace) / "incoming" / (uuid4().hex + ".pdf")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                await event.file.save(target)
+                import_paths([target])
+
+            ui.button("导入路径", on_click=guard(from_path), icon="folder_open")
+            ui.upload(label="或选择本地 PDF 上传", on_upload=upload, multiple=True,
+                      auto_upload=True, max_file_size=200_000_000).props('accept=".pdf"').classes("w-full")
+            ui.button("关闭", on_click=dialog.close).props("flat")
+        dialog.open()
+
+    def tags_dialog(self):
+        from nicegui import ui
+        ids = self.ctx.library.selection()
+        with ui.dialog() as dialog, ui.card().classes("w-[700px] max-w-[95vw]"):
+            ui.label(f"标签与可选分组 · 当前选择 {len(ids)} 篇").classes("text-xl font-semibold")
+            add = ui.input("添加标签（逗号分隔）").classes("w-full")
+            remove = ui.input("移除标签（逗号分隔）").classes("w-full")
+            ui.button("应用到选择清单", on_click=guard(lambda: (
+                self.ctx.library.update_tags(ids, add=split_tags(add.value), remove=split_tags(remove.value)),
+                ui.notify(f"已处理 {len(ids)} 篇"))))
+            group = ui.input("标签分组名称").classes("w-full")
+            labels = ui.input("组内标签（逗号分隔）").classes("w-full")
+            ui.button("保存分组", on_click=guard(lambda:
+                self.ctx.library.save_tag_group(group.value, split_tags(labels.value))))
+            json_view(self.ctx.library.tag_groups(), label="已有标签分组")
+            ui.button("关闭", on_click=dialog.close).props("flat")
+        dialog.open()
+
+    def organize_dialog(self, ids):
+        from nicegui import ui
+
+        from .translation import DEFAULT_OPTIONS
+        if not ids:
+            raise ValueError("请先勾选文献或加入当前选择清单")
+        ids = list(dict.fromkeys(ids))
+        state = {"preview": None, "job": None, "loaded": False, "grid": None,
+                 "preview_form": None}
+        with ui.dialog() as dialog, ui.card().classes("w-[1400px] max-w-[97vw] an-card"):
+            ui.label(f"批量翻译、实际重命名与分类移动 · {len(ids)} 篇论文").classes("text-xl font-semibold")
+            ui.label("正文保存于分类根部；每篇关联附件迁移至该分类唯一 SI/。执行前逐项校验哈希与历史引用。")
+            with ui.row().classes("an-toolbar w-full"):
+                template_names = self.ctx.library.templates()
+                template_choice = ui.select(list(template_names), value=next(iter(template_names)), label="命名模板")
+                template = ui.input("实际命名模板", value=next(iter(template_names.values()))).classes("grow")
+                folder = ui.input("目标分类（留空保持原分类）")
+            template_choice.on_value_change(lambda e: template.set_value(template_names[e.value]))
+            with ui.row().classes("an-toolbar w-full"):
+                missing = ui.select({"fallback": "缺译名时回退原题", "skip": "缺译名时跳过",
+                                     "translate": "在本流程调用 DeepSeek 补齐"}, value="fallback",
+                                    label="缺失中文译名策略").classes("min-w-72")
+                preset_name = ui.input("模板保存名称")
+                ui.button("保存命名模板", on_click=guard(lambda:
+                    self.ctx.library.save_template(preset_name.value, template.value))).props("flat")
+            with ui.expansion("翻译、费用与重译", icon="translate").classes("w-full"):
+                read_translation = parameter_editor({**DEFAULT_OPTIONS, **self.ctx.settings.get("translation", {})})
+                consent = ui.checkbox("我授权将本批待翻译的原题发送到 DeepSeek，并接受所示费用上限", value=False)
+                force = ui.checkbox("重新翻译未人工确认的已有译名", value=False)
+                estimate_area = ui.column().classes("w-full")
+
+                def estimate():
+                    estimate_area.clear()
+                    with estimate_area:
+                        json_view(self.ctx.translation.estimate(ids, read_translation()), label="本批缓存、已确认与预算预览")
+                ui.button("查看翻译范围与预算", on_click=guard(estimate)).props("outline")
+
+                def translate_only():
+                    options = read_translation()
+                    grant, forced = consent.value, force.value
+                    if not grant:
+                        raise ValueError("请明确授权标题外发和费用")
+                    self.submit("translation", f"翻译 {len(ids)} 篇标题", ids,
+                        lambda c: self.ctx.translation.translate(ids, options, consent=grant,
+                                                                  context=c, force=forced), options)
+                ui.button("仅翻译标题", on_click=guard(translate_only), icon="translate")
+
+            with ui.expansion("批量显示名称与标签", icon="edit").classes("w-full"):
+                custom = ui.input("统一显示名称（仅变更显示字段）").classes("w-full")
+                add = ui.input("添加标签（逗号分隔）").classes("w-full")
+                remove = ui.input("移除标签（逗号分隔）").classes("w-full")
+                def metadata():
+                    for paper_id in ids:
+                        if custom.value:
+                            self.ctx.library.update_metadata(paper_id, custom_name=custom.value)
+                    self.ctx.library.update_tags(ids, add=split_tags(add.value), remove=split_tags(remove.value))
+                    ui.notify(f"已修改 {len(ids)} 篇的显示元数据")
+                ui.button("应用元数据", on_click=guard(metadata))
+            preview_area = ui.column().classes("w-full")
+            status = ui.label("").classes("an-info w-full")
+
+            def display_preview(preview):
+                state["preview"] = preview
+                preview_area.clear()
+                with preview_area:
+                    rows = [{"id": r["id"], "enabled": r["status"] == "READY",
+                             "final_stem": r.get("base_name", ""), "old_path": r.get("old_path", ""),
+                             "new_path": r.get("new_path", ""), "SI": r.get("si_directory", ""),
+                             "translation": r.get("translation_source", ""),
+                             "status": r["status"], "errors": "; ".join(r.get("errors", [])),
+                             "missing": ", ".join(r.get("missing_metadata", []))}
+                            for r in preview["items"]]
+                    state["grid"] = ui.aggrid({"columnDefs": [
+                        {"field": "enabled", "headerName": "执行", "editable": True, "width": 85},
+                        {"field": "final_stem", "headerName": "最终基础名称（可编辑）", "editable": True, "width": 350},
+                        *({"field": key, "headerName": label, "width": 250} for key, label in
+                          (("old_path", "原主文路径"), ("new_path", "新主文路径"), ("SI", "统一 SI/"),
+                           ("translation", "译名来源"), ("status", "状态"), ("errors", "冲突/风险"),
+                           ("missing", "缺失元数据")))],
+                        "rowData": rows, "defaultColDef": {"resizable": True},
+                        ":getRowId": "params => params.data.id"}, theme="quartz").classes("h-72 w-full")
+                    moves = [{"paper": r["id"], **m} for r in preview["items"] for m in r.get("moves", [])]
+                    with ui.expansion("每个主文、SI 与来源记录的完整旧/新路径", icon="compare_arrows").classes("w-full"):
+                        rows_table(moves, row_key="source")
+                    json_view(preview, label="预检、警告与历史引用风险")
+                status.set_text(f"可执行 {preview['executable']} 篇 · 跳过 {preview['skipped']} 篇。"
+                                "编辑名称或取消项目后，请点击“应用逐篇修改并重做预检”。")
+
+            def preview():
+                template_value, folder_value = template.value, folder.value or None
+                state["preview_form"] = (template.value, folder.value, missing.value)
+                if missing.value == "translate":
+                    options = read_translation()
+                    grant = consent.value
+                    if not grant:
+                        raise ValueError("请先授权 DeepSeek 标题外发与预算，或选择回退/跳过")
+                    def worker(context):
+                        translated = self.ctx.translation.translate(ids, options, consent=grant, context=context)
+                        return {"translation": translated, "preview": self.ctx.library.preview_rename(
+                            ids, template_value, folder=folder_value, missing_translation="skip")}
+                    receipt = self.submit("translation", f"补齐译名并预览 {len(ids)} 篇命名", ids, worker, options)
+                    state.update(job=receipt.get("job_id", receipt.get("id")), loaded=False)
+                    status.set_text("正在任务中心翻译缺失标题，完成后预览自动出现在此处。")
+                else:
+                    display_preview(self.ctx.library.preview_rename(ids, template_value,
+                        folder=folder_value, missing_translation=missing.value))
+
+            async def regenerate():
+                if state["grid"] is None:
+                    raise ValueError("请先生成预览")
+                changed = await state["grid"].get_client_data()
+                enabled = [r["id"] for r in changed if r.get("enabled")]
+                overrides = {r["id"]: r["final_stem"] for r in changed if r.get("enabled")}
+                state["preview_form"] = (template.value, folder.value, missing.value)
+                display_preview(self.ctx.library.preview_rename(enabled, template.value,
+                    folder=folder.value or None, overrides=overrides,
+                    missing_translation="skip" if missing.value != "fallback" else "fallback"))
+
+            async def execute():
+                preview_value = state["preview"]
+                if not preview_value or not preview_value["executable"]:
+                    raise ValueError("尚无可安全执行的预览")
+                current = await state["grid"].get_client_data()
+                expected = {r["id"]: r for r in preview_value["items"]}
+                changed = any(bool(r.get("enabled")) != (expected[r["id"]]["status"] == "READY")
+                    or (r.get("enabled") and r["final_stem"] != expected[r["id"]].get("base_name"))
+                    for r in current)
+                if changed or state["preview_form"] != (template.value, folder.value, missing.value):
+                    await regenerate()
+                    ui.notify("已按最新逐篇修改重新预检，请核对新路径后再次确认执行。", type="warning")
+                    return
+                # The exact original fingerprint is passed; the service rejects
+                # edited, stale or conflicting previews before moving any byte.
+                receipt = self.submit("rename", f"重命名/移动 {preview_value['executable']} 篇", ids,
+                    lambda c: (c.checkpoint(), self.ctx.library.execute_rename(preview_value))[1],
+                    {"preview": preview_value})
+                status.set_text(f"已提交实际文件操作 {receipt.get('job_id', receipt.get('id'))}；恢复记录保存在任务中心。")
+                state["preview"] = None
+
+            def load_result():
+                if not dialog.value or not state["job"] or state["loaded"]:
+                    return
+                job = self.ctx.jobs.get(state["job"])
+                result = job.get("result") or {}
+                if result.get("preview"):
+                    state["loaded"] = True
+                    display_preview(result["preview"])
+                elif job["status"] in {"FAILED", "INTERRUPTED", "CANCELLED"}:
+                    state["loaded"] = True
+                    status.set_text(f"翻译任务 {job['status']}，请在任务中心查看具体原因并重新生成预览。")
+
+            ui.timer(2, guard(load_result))
+            with ui.row().classes("an-toolbar"):
+                ui.button("生成完整预览", icon="preview", on_click=guard(preview))
+                ui.button("应用逐篇修改并重做预检", on_click=guard(regenerate)).props("outline")
+                ui.button("确认执行磁盘重命名 / 移动", icon="drive_file_rename_outline", on_click=guard(execute)).props("outline")
+                ui.button("关闭", on_click=dialog.close).props("flat")
+        dialog.open()
+
