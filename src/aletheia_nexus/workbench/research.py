@@ -867,11 +867,14 @@ class WorkbenchResearch:
         planning_max_cost=0.5,
         budget=None,
         parse_options=None,
+        context=None,
         transport=None,
     ) -> dict:
         if not consent:
             raise ProcessingError("explicit_planning_consent_required")
-        prepared = self.prepare(ids, include_si=include_si, parse_options=parse_options)
+        prepared = self.prepare(
+            ids, include_si=include_si, parse_options=parse_options, context=context
+        )
         if prepared["unparsed"]:
             raise ValueError("Resolve unavailable selected materials before planning")
         request = planning_request(
@@ -908,8 +911,53 @@ class WorkbenchResearch:
                 }
             )
             request["research_budget"] = template["budget"]
+
+        def planning_progress(snapshot):
+            if context is None:
+                return
+            calls = snapshot["calls"]
+            details = {
+                "planning_run_id": snapshot["run_id"],
+                "planning_directory": snapshot["run_directory"],
+                "planning_manifest": snapshot["manifest_file"],
+                "planning_status": snapshot["status"],
+                "planning_model": snapshot["model"],
+                "planning_calls": calls,
+                "planning_usage": snapshot["usage"],
+                "planning_budget": snapshot["planning_budget"],
+                "planning_task_file": snapshot["task_file"],
+                "billing_uncertain": any(
+                    c.get("estimated_cost") is None for c in calls
+                ),
+            }
+            context.progress(
+                len(calls),
+                snapshot["planning_budget"]["max_calls"],
+                item="自然语言科研规划（仅文献元数据）",
+                stage="自然语言科研规划",
+                **details,
+            )
+            context.record(
+                "planning:" + snapshot["run_id"], snapshot["status"], **details
+            )
+            # A failed call is a safe boundary before any separately charged
+            # retry; an in-flight request is never represented as withdrawn.
+            if not calls or snapshot["status"] == "FAILED":
+                context.checkpoint()
+
+        if context:
+            context.checkpoint()
         token = self.app.authorize("plan", request)
-        return draft_task(self.app, request, authorization=token, transport=transport)
+        result = draft_task(
+            self.app,
+            request,
+            authorization=token,
+            transport=transport,
+            progress=planning_progress,
+        )
+        # A repaired draft can contain a failed, charged call in its ledger.
+        # Successful native validation still completes this planning operation.
+        return {**result, "status": "COMPLETED"}
 
     def execute(
         self,

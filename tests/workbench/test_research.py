@@ -161,6 +161,69 @@ def test_metadata_planning_passes_parser_defaults_before_any_model_call(
         research.local_plan("参数检查", ["p1"], parse_options={"unsafe": True})
 
 
+@pytest.mark.parametrize("budget,expected_calls", [(0.001, 0), (0.5, 1)])
+def test_failed_planning_ledger_remains_in_persistent_workbench_task(
+    research, monkeypatch, tmp_path, budget, expected_calls
+):
+    import json
+    import time
+
+    import httpx
+
+    from aletheia_nexus.workbench.jobs import TaskManager
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "synthetic-key-no-real-http")
+    requests = []
+
+    def denied(http_request):
+        requests.append(http_request)
+        return httpx.Response(403, json={"error": "denied synthetic request"})
+
+    directory = tmp_path / "job-state"
+    manager = TaskManager(directory)
+    job = manager.submit(
+        "research",
+        "规划失败账本",
+        ["p1"],
+        lambda context: research.plan(
+            "核对条件",
+            ["p1"],
+            consent=True,
+            planning_max_cost=budget,
+            context=context,
+            transport=httpx.MockTransport(denied),
+        ),
+    )
+    deadline = time.monotonic() + 5
+    while manager.get(job["id"])["status"] not in {"FAILED", "CANCELLED", "COMPLETED"}:
+        assert time.monotonic() < deadline, manager.get(job["id"])
+        time.sleep(0.01)
+    manager.close(wait=True)
+    reopened = TaskManager(directory)
+    try:
+        receipt = reopened.get(job["id"])
+        assert receipt["status"] == "FAILED"
+        manifest = json.loads(
+            Path(receipt["planning_manifest"]).read_text(encoding="utf-8")
+        )
+        assert receipt["planning_run_id"] == manifest["run_id"]
+        assert receipt["planning_status"] == manifest["status"] == "FAILED"
+        assert receipt["planning_calls"] == manifest["calls"]
+        assert receipt["planning_usage"] == manifest["usage"]
+        assert (
+            len(requests)
+            == receipt["planning_usage"]["http_attempts"]
+            == expected_calls
+        )
+        assert receipt["billing_uncertain"] == bool(expected_calls)
+        assert any(
+            r["item_id"] == "planning:" + manifest["run_id"] for r in receipt["records"]
+        )
+        assert "synthetic-key-no-real-http" not in json.dumps(receipt)
+    finally:
+        reopened.close(wait=True)
+
+
 def test_legacy_parsed_artifact_discovered_without_reparse(research, monkeypatch):
     from aletheia_nexus.content.service import parse_document
 

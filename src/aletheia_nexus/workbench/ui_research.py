@@ -642,6 +642,10 @@ class ResearchPages:
             planning_cost = ui.number(
                 "自然语言规划单独费用上限（按模型计费币种）", value=0.5, min=0.01
             )
+            ui.label(
+                "规划与科研执行分别计费：规划每次按最多 16384 输出 Token 预留，"
+                "最多 2 次请求（含草案纠错/失败重试）；单次预留超过上限时不会发送请求。"
+            ).classes("an-muted text-sm")
             planning_consent = ui.checkbox(
                 "我授权仅将科研目标和选中文献元数据发送给DeepSeek生成计划（单独计费）",
                 value=False,
@@ -1123,6 +1127,7 @@ class ResearchPages:
                     planning_max_cost=cost,
                     budget=options,
                     parse_options=parse_options,
+                    context=context,
                 )
                 return self.ctx.research.configure_plan(
                     planned["task"], material_options, previous=planned

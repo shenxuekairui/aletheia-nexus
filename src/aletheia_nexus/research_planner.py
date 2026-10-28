@@ -156,7 +156,9 @@ def bind_draft(draft: dict, request: dict) -> dict:
     )
 
 
-def draft_task(app, request: dict, *, authorization: str, transport=None) -> dict:
+def draft_task(
+    app, request: dict, *, authorization: str, transport=None, progress=None
+) -> dict:
     # No HTTP, key lookup or metadata transmission before independent consent.
     app.consume(authorization, "plan", request)
     key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
@@ -182,20 +184,54 @@ def draft_task(app, request: dict, *, authorization: str, transport=None) -> dic
     write_json(directory / "request.json", request)
 
     def checkpoint():
+        known_costs = [
+            c["estimated_cost"]
+            for c in manifest["calls"]
+            if c.get("estimated_cost") is not None
+        ]
+        unknown = [c for c in manifest["calls"] if c.get("estimated_cost") is None]
         manifest["usage"] = {
             "http_attempts": len(manifest["calls"]),
             "currency": config.get("currency", "CNY"),
-            "estimated_cost": sum(
-                c.get("estimated_cost") or 0 for c in manifest["calls"]
-            ),
-            "unknown_usage_calls": sum(
-                c.get("usage") is None for c in manifest["calls"]
-            ),
+            "estimated_cost": sum(known_costs)
+            if known_costs
+            else None
+            if unknown
+            else 0,
+            "unknown_usage_calls": len(unknown),
+            "reserved_cost": sum(c.get("reserved_cost") or 0 for c in unknown),
             "elapsed_seconds": sum(
                 c.get("elapsed_seconds", 0) for c in manifest["calls"]
             ),
         }
         write_json(directory / "manifest.json", manifest, overwrite=True)
+        if progress is not None:
+            # Publish the exact durable run before any HTTP. Consumers never
+            # discover an unrelated request by choosing the latest directory.
+            progress(
+                deepcopy(
+                    {
+                        **{
+                            k: manifest[k]
+                            for k in (
+                                "run_id",
+                                "run_directory",
+                                "status",
+                                "model",
+                                "phase",
+                                "request_fingerprint",
+                                "calls",
+                                "usage",
+                            )
+                        },
+                        "manifest_file": str(directory / "manifest.json"),
+                        "planning_budget": limits,
+                        "task_file": str(directory / "task.json")
+                        if (directory / "task.json").is_file()
+                        else None,
+                    }
+                )
+            )
 
     budget = CallBudget(
         limits["max_calls"], limits["max_cost"], manifest["calls"], checkpoint
@@ -247,6 +283,7 @@ def draft_task(app, request: dict, *, authorization: str, transport=None) -> dic
             started_at=datetime.now(timezone.utc).isoformat(),
             input_sha256=digest(payload),
         )
+        manifest["status"] = "RUNNING"
         checkpoint()
         start = time.monotonic()
         retry = False
