@@ -25,6 +25,39 @@ aletheia-nexus research run task.json --output-dir research-output
 aletheia-nexus research run task.json --output-dir research-output --allow-remote
 ```
 
+## 可选的先读后提取
+
+开发版可以在原 `research-task/v1` 任务中设置
+`"extraction_strategy": "source_first"`。省略时继续直接提取，不改变旧任务或缓存。
+此策略先整理带对象、阶段、来源页和字段关联的原文证据清单，再把同一原始文本与图片
+连同该清单交给模型生成现有字段、步骤和结果；清单是可能出错的 AI 阅读草稿，不能代替原文。
+
+```json
+"extraction_strategy": "source_first"
+```
+
+自然语言入口可直接选择，不必编辑 JSON：
+
+```powershell
+aletheia-nexus research ask "整理这些论文的方法、条件和主要结果" --papers ./papers --output-dir ./research-output --extraction-strategy source_first
+```
+
+`--extraction-strategy direct` 选择直接提取；省略参数时保留任务原配置。
+加载已有任务时也可使用该参数，程序在预览与授权指纹生成前保存包含该选择的任务副本，
+用户原任务文件保持不变；旧策略的授权指纹不能授权改后的任务。
+也可继续使用 `research run task.json --output-dir research-output --allow-remote`；
+MCP 的任务校验和执行接受同一 `task.extraction_strategy` 参数与引擎。
+计划会说明两阶段额外调用。每个文献组、每轮新材料至少两次调用，均受原来的
+`budget.max_calls` 和 `budget.max_cost` 约束；程序不会自动提高预算。
+本地模式只准备材料，即使设置此策略也不调用模型。
+
+运行目录保留证据清单的输入、原始候选、来源材料指纹和阶段记录。
+清单成功而字段组装因技术问题失败时，同任务、材料、模型和提示词下重新运行可复用清单；
+任务、图片、材料、模型或提示词改变后重新读取。复用记录指向原运行及调用序号，
+历史失败、费用和耗时留在原清单中，不冒充新调用或零成本。
+来源验证、补材料、结果修订与导出继续使用原流程；仍需检查遗漏、条件归属和科学支持。
+这是可选策略，尚不承诺每类任务都优于直接提取。
+
 ## 模型和密钥
 
 首版只提供 DeepSeek Responses API 适配器，模型配置使用 `deepseek-flash`。

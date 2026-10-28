@@ -84,6 +84,11 @@ Clearly legible content in a supplied original page can support extraction. A no
 When a clearly legible glyph or value in a supplied original page conflicts with its extracted text, use the directly visible reading in the derived result. In the same field's context explicitly record that the visual reading differs from the supplied text, and cite the original page or region. This is an auditable derived reading, not permission to edit the PDF or canonical parsed artifact. Do not silently repair or infer an unreadable character; if the page does not settle it, retain uncertainty and request a clearer view.
 """
 
+FIELD_ONLY_INSTRUCTION = (
+    "Put scientific content in the configured fields and requested steps; "
+    "return claims: []. Keep necessary issues and material requests."
+)
+
 
 def digest(value: object) -> str:
     return hashlib.sha256(
@@ -251,6 +256,7 @@ TASK = obj(
         "synthesize": BOOLEAN,
         "include_steps": BOOLEAN,
         "include_claims": BOOLEAN,
+        "extraction_strategy": choice("direct", "source_first"),
         "export_formats": array(choice(*EXPORT_FORMATS)),
     },
     ["schema", "id", "type", "objective", "documents", "fields"],

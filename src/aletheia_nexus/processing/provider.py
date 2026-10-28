@@ -17,6 +17,13 @@ import httpx
 
 from .contracts import MODEL, PROMPT, PROMPT_VERSION, digest, validate
 from .review import REVIEW_PROMPT, REVIEW_VERSION, REVISION_PROMPT
+from .source_first import (
+    ASSEMBLY_PROMPT,
+    INVENTORY_PHASE,
+    INVENTORY_PROMPT,
+    SOURCE_FIRST_VERSION,
+    is_assembly_request,
+)
 
 MAX_INLINE_REQUEST_BYTES = 48 * 1024 * 1024
 # DeepSeek's documented per-image maximum, checked 2026-10-26:
@@ -284,12 +291,22 @@ class DeepSeekProvider:
         max_output_tokens: int,
     ) -> dict:
         phase = request.get("phase")
+        assembly = is_assembly_request(request)
         prompt = (
-            REVIEW_PROMPT
+            INVENTORY_PROMPT
+            if phase == INVENTORY_PHASE
+            else ASSEMBLY_PROMPT
+            if assembly
+            else REVIEW_PROMPT
             if phase == "evidence_review"
             else PROMPT + REVISION_PROMPT
             if phase == "document_revision"
             else PROMPT
+        )
+        prompt_version = (
+            SOURCE_FIRST_VERSION + (":assembly" if assembly else ":inventory")
+            if phase == INVENTORY_PHASE or assembly
+            else PROMPT_VERSION
         )
         serialized = json.dumps(request, ensure_ascii=False, allow_nan=False)
         content = [{"type": "input_text", "text": serialized}]
@@ -385,7 +402,7 @@ class DeepSeekProvider:
                         }
                         for image in images
                     ],
-                    "prompt_version": PROMPT_VERSION,
+                    "prompt_version": prompt_version,
                     "phase": phase,
                     "effective_prompt_sha256": digest(prompt),
                     "review_version": REVIEW_VERSION

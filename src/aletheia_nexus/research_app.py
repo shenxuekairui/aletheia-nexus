@@ -630,6 +630,14 @@ class ResearchApplication:
             + str({d["id"]: d.get("image_pages", []) for d in task["documents"]}),
             "SI只使用上述已关联来源；额外SI不会自动下载或绑定。",
             "模型：" + task.get("model", {}).get("name", "本地，无模型"),
+            "提取策略："
+            + (
+                "先读原文证据，再组装字段；每份材料至少2次模型调用，"
+                "补材料会再执行两阶段；共用下列调用及费用上限，不自动加预算。"
+                if task.get("extraction_strategy") == "source_first"
+                and task["mode"] != "local"
+                else "直接提取（本地模式不调用模型）。"
+            ),
             f"上限：{task['budget']['max_calls']} 次HTTP；"
             f"{task['budget'].get('max_cost', '未设置')} "
             + task.get("model", {}).get("currency", "CNY"),

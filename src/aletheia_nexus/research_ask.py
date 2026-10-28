@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from uuid import uuid4
 
+from aletheia_nexus.processing.contracts import digest
+from aletheia_nexus.processing.engine import write_json
 from aletheia_nexus.processing.provider import ProcessingError
 from aletheia_nexus.research_app import ResearchApplication, read_json
 from aletheia_nexus.research_planner import draft_task, planning_request
@@ -30,6 +33,11 @@ def main(argv: list[str] | None = None) -> int:
         "--task", type=Path, help="使用已保存/编辑的任务，不重新调用规划API"
     )
     ask.add_argument("--model-config", type=Path)
+    ask.add_argument(
+        "--extraction-strategy",
+        choices=("direct", "source_first"),
+        help="选择直接提取或先读后提取；不指定时使用任务原配置",
+    )
     ask.add_argument(
         "--max-cost", type=float, default=2, help="科研提取费用估算上限CNY"
     )
@@ -160,6 +168,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             task_file = Path(checked["task_file"])
         while True:
+            if args.extraction_strategy is not None:
+                selected = {
+                    **checked["task"],
+                    "extraction_strategy": args.extraction_strategy,
+                }
+                checked = app.validate_research_task(selected)
+                task_file = app.path(
+                    app.workspace
+                    / "tasks"
+                    / (digest(checked["task"])[:16] + "-" + uuid4().hex + ".json"),
+                    write=True,
+                )
+                write_json(task_file, checked["task"])
             print(checked["plan"])
             print(f"任务文件：{task_file}")
             fingerprint = app.binding("execute", checked["task"])

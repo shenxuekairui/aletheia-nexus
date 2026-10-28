@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from aletheia_nexus.content.export import write_ai_export
 
-from .contracts import digest, response_schema, validate_task
+from .contracts import FIELD_ONLY_INSTRUCTION, digest, response_schema, validate_task
 from .materials import Source, build_package, load_source, model_material
 from .provider import (
     CallBudget,
@@ -37,6 +37,16 @@ from .review import (
     revision_mode,
     revision_schema,
     validate_review,
+)
+from .source_first import (
+    ASSEMBLY_PROMPT,
+    INVENTORY_PROMPT,
+    SOURCE_FIRST_VERSION,
+    assembly_request,
+    check_inventory,
+    inventory_request,
+    inventory_schema,
+    strategy_identity,
 )
 
 
@@ -73,10 +83,7 @@ def _request(
     elif "include_claims" in task:
         request["include_claims"] = task["include_claims"]
         if phase == "document_extraction" and not task["include_claims"]:
-            request["instruction"] = (
-                "Put scientific content in the configured fields and requested steps; "
-                "return claims: []. Keep necessary issues and material requests."
-            )
+            request["instruction"] = FIELD_ONLY_INSTRUCTION
     if previous is not None:
         if previous_package is None:
             raise ValueError("supplement requires its previous material package")
@@ -168,6 +175,147 @@ def _restore_metadata_files(cached: dict, run_dir: Path, row: dict) -> None:
             write_json(
                 run_dir / item["file"], cached["metadata_artifacts"][item["file"]]
             )
+
+
+def _verify_inventory_artifact(artifact: dict, task: dict, package: dict) -> None:
+    body = {k: v for k, v in artifact.items() if k != "artifact_id"}
+    if artifact["artifact_id"] != "an:source-inventory:sha256:" + digest(body):
+        raise ValueError("source inventory artifact changed")
+    check_inventory(artifact["response"], task, package)
+    replay = project_response(artifact["raw_response"], inventory_schema(task, package))
+    if dict(replay) != artifact["response"]:
+        raise ValueError("source inventory response does not replay")
+
+
+def _inventory_artifacts(row: dict, run_dir: Path) -> dict:
+    return {
+        "source_inventories": row.get("source_inventories", []),
+        "source_inventory_artifacts": {
+            item["file"]: json.loads((run_dir / item["file"]).read_text("utf-8"))
+            for item in row.get("source_inventories", [])
+        },
+    }
+
+
+def _restore_inventory_artifacts(cached: dict, run_dir: Path, row: dict) -> None:
+    if cached.get("source_inventories"):
+        row["source_inventories"] = deepcopy(cached["source_inventories"])
+        for item in row["source_inventories"]:
+            item["reused"] = True
+            item["restored_from_result_cache"] = True
+            write_json(
+                run_dir / item["file"],
+                cached["source_inventory_artifacts"][item["file"]],
+            )
+
+
+def _source_inventory(
+    task: dict,
+    package: dict,
+    request: dict,
+    images: list,
+    provider: Provider,
+    provider_identity: dict,
+    budget: CallBudget,
+    run_dir: Path,
+    cache_dir: Path,
+    prefix: str,
+    row: dict,
+    *,
+    resume: bool,
+) -> dict:
+    """Retain one successful reading stage across an assembly failure."""
+    request = inventory_request(request)
+    schema = inventory_schema(task, package)
+    _within_input_budget(task, request)
+    binding = {
+        "task": task,
+        "package_id": package["artifact_id"],
+        "provider": provider_identity,
+        "request": request,
+        "schema": schema,
+        "version": SOURCE_FIRST_VERSION,
+        "instructions_sha256": digest(INVENTORY_PROMPT),
+        "images": [
+            {
+                **{k: v for k, v in image.items() if k != "bytes"},
+                "sha256": hashlib.sha256(image["bytes"]).hexdigest(),
+            }
+            for image in images
+        ],
+    }
+    fingerprint = digest(binding)
+    cache = cache_dir / ("source-inventory-" + fingerprint + ".json")
+    artifact = None
+    if resume and cache.is_file():
+        try:
+            candidate = json.loads(cache.read_text("utf-8"))
+            _verify_inventory_artifact(candidate, task, package)
+            if candidate["binding"] == binding:
+                artifact = candidate
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    reused = artifact is not None
+    filename = f"{prefix}.source-inventory.json"
+    row["phase"] = request["phase"]
+    budget.checkpoint()
+    if artifact is None:
+        write_json(run_dir / f"{prefix}.source-inventory.input.json", binding)
+        start = len(budget.calls)
+        try:
+            response = provider.generate(
+                request, schema, images, budget, task["budget"]["max_output_tokens"]
+            )
+        except ProcessingError as error:
+            write_json(
+                run_dir / f"{prefix}.source-inventory.failed.json",
+                {"code": error.code, "unvalidated": True, **(error.diagnostics or {})},
+            )
+            raise
+        raw = (
+            json.loads(response.metadata["raw_text"])
+            if isinstance(response, ProjectedResponse)
+            else deepcopy(response)
+        )
+        # Save unvalidated output even if location/shape checks fail afterwards.
+        write_json(run_dir / f"{prefix}.source-inventory.candidate.json", raw)
+        try:
+            response = _save_response_metadata(
+                response,
+                request,
+                schema,
+                run_dir / f"{prefix}.source-inventory.metadata.json",
+                row,
+            )
+            check_inventory(response, task, package)
+        except ValueError as error:
+            raise ProcessingError(
+                "invalid_source_inventory", {"validation": str(error)}
+            ) from None
+        artifact = {
+            "schema": "aletheia-nexus/source-inventory/v1",
+            "binding": binding,
+            "response": response,
+            "raw_response": raw,
+            "owner_run": str(run_dir),
+            "owner_call_indices": list(range(start, len(budget.calls))),
+        }
+        artifact["artifact_id"] = "an:source-inventory:sha256:" + digest(artifact)
+        write_json(cache, artifact, overwrite=True)
+    write_json(run_dir / filename, artifact)
+    row.setdefault("source_inventories", []).append(
+        {
+            "file": filename,
+            "sha256": digest(artifact),
+            "package_id": package["artifact_id"],
+            "fingerprint": fingerprint,
+            "reused": reused,
+            "usage_owner_run": artifact["owner_run"],
+            "usage_owner_call_indices": artifact["owner_call_indices"],
+        }
+    )
+    budget.checkpoint()
+    return artifact["response"]
 
 
 def _generate_checked(
@@ -478,6 +626,18 @@ def _restore_cache(
             restored_images.extend(images)
         if parent != result["package"]:
             return None
+        by_package = {p["artifact_id"]: p for p in chain}
+        for item in cached.get("source_inventories", []):
+            if Path(item["file"]).name != item["file"]:
+                return None
+            artifact = cached["source_inventory_artifacts"][item["file"]]
+            if digest(artifact) != item["sha256"]:
+                return None
+            if artifact["binding"]["provider"] != provider:
+                return None
+            if artifact["binding"]["task"] != task:
+                return None
+            _verify_inventory_artifact(artifact, task, by_package[item["package_id"]])
         reviews = cached.get("model_reviews", [])
         if len(reviews) != task["budget"]["max_review_rounds"]:
             return None
@@ -557,6 +717,8 @@ def run_task(
             raise ProcessingError("model_configuration_required")
         provider = DeepSeekProvider(task["model"], enabled=True)
     provider_identity = deepcopy(provider.identity) if remote else {"provider": "local"}
+    if remote:
+        provider_identity.update(strategy_identity(task))
     run_id = (
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     )
@@ -688,6 +850,7 @@ def run_task(
                         _save_image(run_dir, img)
                     row["reused"] = True
                     _restore_metadata_files(cached, run_dir, row)
+                    _restore_inventory_artifacts(cached, run_dir, row)
                     if cached.get("record_id_adjustments"):
                         row["record_id_adjustments"] = cached["record_id_adjustments"]
                     if cached.get("supplement_status"):
@@ -710,6 +873,35 @@ def run_task(
                             source.verify()
                         request = _request(task, package, previous, previous_package)
                         try:
+                            if task.get("extraction_strategy") == "source_first":
+                                inventory = _source_inventory(
+                                    task,
+                                    package,
+                                    request,
+                                    images,
+                                    provider,
+                                    provider_identity,
+                                    budget,
+                                    run_dir,
+                                    cache_dir,
+                                    f"{owner_id}.{round_number}",
+                                    row,
+                                    resume=resume,
+                                )
+                                request = assembly_request(request, inventory)
+                                row["phase"] = request["phase"]
+                                write_json(
+                                    run_dir
+                                    / f"{owner_id}.{round_number}.source-first-assembly.input.json",
+                                    {
+                                        "request": request,
+                                        "schema": response_schema(task),
+                                        "prompt_version": SOURCE_FIRST_VERSION,
+                                        "instructions_sha256": digest(ASSEMBLY_PROMPT),
+                                        "package_id": package["artifact_id"],
+                                    },
+                                )
+                                checkpoint()
                             response = _generate_checked(
                                 task,
                                 package,
@@ -859,6 +1051,11 @@ def run_task(
                                     "record_id_adjustments", []
                                 ),
                                 **_metadata_cache(row, run_dir),
+                                **(
+                                    _inventory_artifacts(row, run_dir)
+                                    if row.get("source_inventories")
+                                    else {}
+                                ),
                             },
                             overwrite=True,
                         )

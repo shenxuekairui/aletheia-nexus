@@ -131,6 +131,8 @@ def create_server(app: ResearchApplication):
     ) -> dict[str, Any]:
         """Validate a client-built task without another LLM. For goal-only planning,
         return a local authorization challenge first; planning sends metadata, not text.
+        task.extraction_strategy may be direct (default) or source_first; the latter
+        reads evidence then assembles fields within the same user-approved budget.
         """
         if task is not None:
             return app.validate_research_task(task)
@@ -145,6 +147,8 @@ def create_server(app: ResearchApplication):
     def validate_research_task(task: dict) -> dict[str, Any]:
         """Validate task, source paths, fields and budgets; show Chinese preview.
         Remote execution returns a separate task/source/budget-bound approval request.
+        Optional task.extraction_strategy=source_first uses two stages per material;
+        omission preserves direct extraction. Review its extra calls before approval.
         """
         result = app.validate_research_task(task)
         if result["task"]["mode"] != "local":
@@ -157,6 +161,7 @@ def create_server(app: ResearchApplication):
     ) -> dict[str, Any]:
         """Run existing run_task asynchronously. Return job ID; poll get_run_status.
         Default remote disabled. A local grant is required; no confirmed=true parameter.
+        task.extraction_strategy is shared with the CLI (direct or source_first).
         """
         return app.execute_research_task(task, authorization=authorization)
 
