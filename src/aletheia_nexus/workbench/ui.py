@@ -43,6 +43,12 @@ body { background:#f3f6fa; color:var(--an-ink); font-family:Inter,'Segoe UI','Mi
 .an-step-number { color:#bdcbd7; font-size:22px; font-weight:600; }
 .an-recent-row { padding:10px 0; border-top:1px solid #e8edf2; }
 .an-guide-section { border-bottom:1px solid #e5ebf0; padding:6px 0; }
+.an-root-path { max-width:32vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--an-muted); align-self:center; }
+.an-job-card { border:1px solid var(--an-line); border-radius:10px; background:#fff; }
+.an-job-card .q-expansion-item__content { padding:12px 18px 18px; }
+.an-task-table td { white-space:normal; max-width:360px; overflow-wrap:anywhere; vertical-align:top; }
+.an-task-table th { font-weight:600; color:var(--an-ink); background:#f4f8fa; }
+.an-task-dialog { padding:24px; }
 @media(max-width:1000px){ .an-main{padding:16px;} .an-parameter-grid{grid-template-columns:1fr 1fr;} }
 @media(max-width:1050px){ .an-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .an-overview-grid{grid-template-columns:1fr;} .an-hero-aside{display:none;} }
 """
@@ -99,14 +105,15 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
         file_url = self.files.register(source.pdf)
         url = file_url + f"#page={int(page)}&view=FitH"
         image_url = "/an-page/" + file_url.rsplit("/", 1)[-1] + f"/{int(page)}"
+        reading = {"page": int(page)}
 
         def content():
             with ui.row().classes("an-toolbar w-full"):
                 ui.label(title or source.identity["title"]).classes(
                     "font-semibold grow"
                 )
-                ui.link("在新标签页打开 PDF", url, new_tab=True)
-            ui.label(
+                pdf_link = ui.link("在新标签页打开 PDF", url, new_tab=True)
+            locator_label = ui.label(
                 f"{value_label(source.identity['document_role'])} · 物理 PDF 第 {page} 页 / "
                 f"{source.identity['page_count']} · {value_label(source.identity['identity_basis'])}"
             ).classes("an-muted text-xs")
@@ -118,9 +125,102 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
             with ui.tab_panels(tabs, value=image_tab).classes("w-full"):
                 with ui.tab_panel(image_tab).classes("p-0"):
                     if shutil.which("pdftoppm"):
+                        with ui.row().classes("an-toolbar w-full"):
+                            page_number = (
+                                ui.number(
+                                    "物理页码",
+                                    value=reading["page"],
+                                    min=1,
+                                    max=source.identity["page_count"],
+                                    step=1,
+                                )
+                                .props("outlined dense")
+                                .classes("w-28")
+                            )
+                            previous_page = (
+                                ui.button(
+                                    "上一页",
+                                    icon="chevron_left",
+                                    on_click=guard(
+                                        lambda: turn_page(reading["page"] - 1)
+                                    ),
+                                )
+                                .props("flat dense")
+                                .set_enabled(reading["page"] > 1)
+                            )
+                            next_page = (
+                                ui.button(
+                                    "下一页",
+                                    icon="chevron_right",
+                                    on_click=guard(
+                                        lambda: turn_page(reading["page"] + 1)
+                                    ),
+                                )
+                                .props("flat dense")
+                                .set_enabled(
+                                    reading["page"] < source.identity["page_count"]
+                                )
+                            )
+                            ui.button(
+                                "定位",
+                                icon="my_location",
+                                on_click=guard(lambda: turn_page(page_number.value)),
+                            ).props("flat dense")
+                            zoom_label = ui.label("显示比例 100%").classes(
+                                "an-muted text-xs"
+                            )
+                            zoom = ui.slider(
+                                min=100, max=250, step=25, value=100
+                            ).classes("w-40")
                         with ui.scroll_area().classes("w-full h-[70vh]"):
-                            ui.image(image_url).classes("w-full").props("fit=contain")
-                        ui.link("在新标签页放大原页图像", image_url, new_tab=True)
+                            page_image = (
+                                ui.image(image_url)
+                                .classes("w-full")
+                                .props("fit=contain")
+                            )
+                        image_link = ui.link(
+                            "在新标签页放大原页图像", image_url, new_tab=True
+                        )
+
+                        def turn_page(number):
+                            if (
+                                type(number) not in (int, float)
+                                or int(number) != number
+                                or not 1 <= number <= source.identity["page_count"]
+                            ):
+                                raise ValueError("物理页码超出文献范围")
+                            reading["page"] = int(number)
+                            page_number.set_value(int(number))
+                            next_url = (
+                                "/an-page/"
+                                + file_url.rsplit("/", 1)[-1]
+                                + f"/{int(number)}"
+                            )
+                            page_image.set_source(next_url)
+                            image_link.set_target(next_url)
+                            pdf_link.set_target(
+                                file_url + f"#page={int(number)}&view=FitH"
+                            )
+                            pdf_frame.props(
+                                f'src="{file_url}#page={int(number)}&view=FitH"'
+                            )
+                            previous_page.set_enabled(number > 1)
+                            next_page.set_enabled(
+                                number < source.identity["page_count"]
+                            )
+                            locator_label.set_text(
+                                f"{value_label(source.identity['document_role'])} · 当前物理第 {int(number)} 页 / {source.identity['page_count']} · 初始引用第 {int(page)} 页 · {value_label(source.identity['identity_basis'])}"
+                            )
+
+                        page_number.on(
+                            "keydown.enter", guard(lambda: turn_page(page_number.value))
+                        )
+                        zoom.on_value_change(
+                            lambda e: (
+                                page_image.style(f"width:{e.value}%;max-width:none"),
+                                zoom_label.set_text(f"显示比例 {int(e.value)}%"),
+                            )
+                        )
                     else:
                         ui.label(
                             "原页图像需要本地 Poppler 的 pdftoppm。请安装并加入系统 PATH，"
@@ -130,12 +230,35 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     ui.label(
                         "若浏览器不支持内嵌PDF，请切回原页图像或用上方链接在桌面浏览器打开。"
                     ).classes("an-muted text-xs")
-                    ui.element("iframe").props(
-                        f'src="{url}" title="PDF original"'
-                    ).classes("an-pdf")
-            with ui.expansion("原页文本与区域放大", icon="zoom_in").classes("w-full"):
-                ui.label("区域为 0–1 归一化坐标：左、上、右、下；默认整页。")
-                region = ui.input("区域", value="0,0,1,1").classes("w-full")
+                    pdf_frame = (
+                        ui.element("iframe")
+                        .props(f'src="{url}" title="PDF original"')
+                        .classes("an-pdf")
+                    )
+            with ui.expansion("局部放大与原文文字", icon="zoom_in").classes("w-full"):
+                regions = {
+                    "整页": [0, 0, 1, 1],
+                    "上半页": [0, 0, 1, 0.5],
+                    "下半页": [0, 0.5, 1, 1],
+                    "左半页": [0, 0, 0.5, 1],
+                    "右半页": [0.5, 0, 1, 1],
+                    "中央区域": [0.2, 0.2, 0.8, 0.8],
+                }
+                region_choice = (
+                    ui.select(list(regions), value="整页", label="选择要放大的区域")
+                    .props("outlined")
+                    .classes("w-full")
+                )
+                with ui.expansion("专家 · 自定义原页区域", icon="tune").classes(
+                    "w-full"
+                ):
+                    ui.label(
+                        "按左、上、右、下填写 0–1 坐标；对应当前物理页，原 PDF 不变。"
+                    )
+                    region = ui.input("原页区域坐标", value="0,0,1,1").classes("w-full")
+                region_choice.on_value_change(
+                    lambda e: region.set_value(",".join(map(str, regions[e.value])))
+                )
                 image_area = ui.column().classes("w-full")
 
                 async def render():
@@ -147,7 +270,7 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     metadata, png = await run.io_bound(
                         self.ctx.research.app.read_original_page,
                         document,
-                        int(page),
+                        reading["page"],
                         region=coordinates,
                     )
                     image_area.clear()
@@ -163,14 +286,14 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     report = await run.io_bound(
                         self.ctx.research.app.read_original_page_text,
                         document,
-                        int(page),
+                        reading["page"],
                     )
                     image_area.clear()
                     with image_area:
                         ui.code(report["text"]).classes("w-full max-h-96 overflow-auto")
                         json_view(report, label="原页读取诊断")
 
-                ui.button("读取区域图像", on_click=guard(render), icon="image")
+                ui.button("放大选定区域", on_click=guard(render), icon="image")
                 ui.button(
                     "读取此页文字层", on_click=guard(text), icon="text_snippet"
                 ).props("flat")
@@ -249,147 +372,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
         dialog.open()
 
     def task_dialog(self):
-        from nicegui import ui
+        from .ui_tasks import render_task_dialog
 
-        with (
-            ui.dialog() as dialog,
-            ui.card().classes("w-[1250px] max-w-[96vw] an-card"),
-        ):
-            ui.label("统一任务中心").classes("an-title")
-            ui.label(
-                "关闭页面后任务继续运行。暂停、跳过、取消在安全边界生效；正在进行的 HTTP / 文件步骤需先结束。"
-                "进程退出后的中断任务不会自动重发收费请求。"
-            ).classes("an-info")
-            live_status = ui.label("").classes(
-                "w-full whitespace-pre-wrap an-muted text-sm"
-            )
-
-            def update_summary():
-                if dialog.value:
-                    live_status.set_text(
-                        "\n".join(
-                            f"{j['label']} · {status_label(j['status'])} · {j.get('current_index', 0)}/{j.get('total', 0)} · {value_label(j.get('stage', ''))}"
-                            for j in self.ctx.jobs.list()[:12]
-                        )
-                    )
-
-            @ui.refreshable
-            def content():
-                jobs = self.ctx.jobs.list()
-                if not jobs:
-                    ui.label("尚无任务。")
-                for job in jobs:
-                    job_id = job.get("job_id", job.get("id"))
-                    with ui.expansion(
-                        f"{job.get('label', value_label(job.get('kind', '任务')))} · {status_label(job['status'])}",
-                        icon="task_alt",
-                    ).classes("w-full"):
-                        ui.label(f"ID {job_id}").classes("an-muted text-xs")
-                        progress = job.get("progress") or {}
-                        if isinstance(progress, dict):
-                            ui.label(json_text(progress)).classes(
-                                "text-xs whitespace-pre-wrap"
-                            )
-                        with ui.row().classes("an-toolbar"):
-                            for action, label, icon in (
-                                ("pause", "暂停后续", "pause"),
-                                ("resume", "恢复调度", "play_arrow"),
-                                ("continue", "验证后继续", "verified_user"),
-                                ("skip", "跳过当前", "skip_next"),
-                                ("cancel", "取消后续", "stop"),
-                            ):
-                                ui.button(
-                                    label,
-                                    icon=icon,
-                                    on_click=guard(
-                                        lambda a=action, j=job_id: (
-                                            self.ctx.jobs.control(j, a),
-                                            content.refresh(),
-                                        )
-                                    ),
-                                ).props("flat dense")
-                        result = job.get("result")
-                        if isinstance(result, dict):
-                            self.output_links(result)
-                        if job["status"] in {
-                            "FAILED",
-                            "PARTIAL",
-                            "INTERRUPTED",
-                            "CANCELLED",
-                        }:
-                            if job["kind"] == "acquisition":
-                                ui.button(
-                                    "核对并恢复 / 重试未成功项",
-                                    icon="restart_alt",
-                                    on_click=guard(
-                                        lambda j=job: self.recover_acquisition_dialog(j)
-                                    ),
-                                ).props("outline")
-                            elif job["kind"] == "translation":
-                                ui.button(
-                                    "重新审阅翻译范围与预算",
-                                    icon="translate",
-                                    on_click=guard(
-                                        lambda j=job: self.organize_dialog(j["items"])
-                                    ),
-                                ).props("outline")
-                        if job["kind"] == "research" and (
-                            job.get("parameters") or {}
-                        ).get("task"):
-
-                            def reuse(j=job):
-                                from copy import deepcopy
-
-                                self.current_task = deepcopy(j["parameters"]["task"])
-                                dialog.close()
-                                self.navigate("AI 研究")
-
-                            ui.button(
-                                "载入原契约，重新核对后执行",
-                                icon="history",
-                                on_click=guard(reuse),
-                            ).props("outline")
-                        json_view(job, label="逐项结果、检查点、费用与恢复记录")
-                with ui.expansion("文件操作日志与验证回滚", icon="restore").classes(
-                    "w-full"
-                ):
-                    for operation in self.ctx.library.operations():
-                        ui.label(
-                            f"{operation['id']} · {status_label(operation['status'])}"
-                        )
-                        json_view(operation, label="逐步移动与恢复证据")
-                        if operation["status"] != "ROLLED_BACK":
-                            ui.button(
-                                "验证并回滚此操作",
-                                on_click=guard(
-                                    lambda o=operation: self.submit(
-                                        "rollback",
-                                        "回滚 " + o["id"],
-                                        [],
-                                        lambda c: (
-                                            c.checkpoint(),
-                                            self.ctx.library.rollback(o["id"]),
-                                        )[1],
-                                        {"operation_id": o["id"]},
-                                    )
-                                ),
-                            ).props("outline")
-                # Native CLI/MCP runs are readable alongside workbench tasks.
-                with ui.expansion("原生科研运行历史", icon="history").classes("w-full"):
-                    for row in self.ctx.research.history():
-                        ui.label(
-                            f"{row['job_id']} · {status_label(row['status'])} · {'有诊断记录' if row.get('error') else ''}"
-                        )
-                        json_view(row)
-
-            content()
-            # Only the concise status line changes automatically. Reading a long
-            # diagnostic expansion must not collapse it every few seconds.
-            ui.timer(2, update_summary)
-            update_summary()
-            ui.button("刷新", on_click=content.refresh).props("flat")
-            ui.button("关闭", on_click=dialog.close).props("flat")
-        dialog.open()
+        render_task_dialog(self)
 
     def recover_acquisition_dialog(self, job):
         from copy import deepcopy
@@ -404,6 +389,16 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
         checkpoint = (job.get("result") or {}).get("checkpoint") or job.get(
             "checkpoint"
         )
+        adopted_parse_defaults = bool(
+            postprocess.get("auto_parse") and "parse_options" not in postprocess
+        )
+        if adopted_parse_defaults:
+            postprocess["parse_options"] = deepcopy(
+                {
+                    **self.ctx.research.parser_options(),
+                    **self.ctx.settings.get("parsing", {}),
+                }
+            )
         if not requests:
             raise ValueError("此任务没有可恢复的原始获取参数，请从获取页新建任务")
         with ui.dialog() as dialog, ui.card().classes("w-[850px] max-w-[95vw]"):
@@ -415,6 +410,11 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 f"自动解析：{'是' if postprocess.get('auto_parse') else '否'}；"
                 f"研究集合：{postprocess.get('collection') or '不加入'}。命名按原任务模板与当前可靠元数据执行。"
             )
+            if adopted_parse_defaults:
+                ui.label(
+                    "历史任务未保存解析配置；本次恢复采用当前解析默认设置的新快照，"
+                    "可在下方查看。执行期间修改默认设置不会改变此快照。"
+                ).classes("an-info w-full")
             if job.get("billing_uncertain") or previous_translation.get(
                 "billing_uncertain"
             ):
@@ -644,7 +644,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     button.classes("an-nav-active")
                 self.nav_buttons[label] = button
             ui.space()
-            ui.label(str(self.ctx.library.root)).classes("text-xs an-muted self-center")
+            ui.label(f"当前文库 · {self.ctx.library.root.name}").classes(
+                "an-root-path"
+            ).tooltip(str(self.ctx.library.root))
 
         @ui.refreshable
         def page_content():

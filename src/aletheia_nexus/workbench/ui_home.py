@@ -199,7 +199,12 @@ class HomePages:
                     ui.label(title).classes("font-semibold text-lg mt-3")
                     ui.label(detail).classes("an-muted text-sm min-h-10")
                     ui.button(
-                        "进入",
+                        {
+                            "获取论文": "获取论文",
+                            "文献库": "整理文库",
+                            "科研检索": "检索原文",
+                            "AI 研究": "新建研究",
+                        }[page],
                         icon="arrow_forward",
                         on_click=lambda p=page: self.navigate(p),
                     ).props("flat dense").classes("mt-3")

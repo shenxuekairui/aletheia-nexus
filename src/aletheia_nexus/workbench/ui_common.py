@@ -253,6 +253,73 @@ def parameter_editor(values, *, labels=None, prefix=""):
                 output[key] = element.value
         return output
 
+    def pending_updates(incoming):
+        import math
+
+        if not isinstance(incoming, dict):
+            raise ValueError("预设参数必须是一组命名参数")
+        unknown = set(incoming) - set(controls)
+        if unknown:
+            raise ValueError(
+                "预设包含当前表单不支持的参数："
+                + "、".join(field_label(k) for k in sorted(unknown))
+            )
+        updates = []
+        for key, value in incoming.items():
+            kind, element = controls[key]
+            title = field_label(key)
+            if kind == "nested":
+                updates.extend(element._pending_updates(value))
+            elif kind == "lines":
+                if not isinstance(value, (list, tuple)) or any(
+                    not isinstance(v, str) for v in value
+                ):
+                    raise ValueError(f"{title}需要文本列表")
+                updates.append((element, "\n".join(value)))
+            elif kind == "optional_boolean":
+                if value is not None and type(value) is not bool:
+                    raise ValueError(f"{title}需要系统默认、是或否")
+                updates.append(
+                    (element, "default" if value is None else "yes" if value else "no")
+                )
+            elif kind in {"integer", "number", "mebibytes"}:
+                if type(value) not in (int, float) or not math.isfinite(value):
+                    raise ValueError(f"{title}需要有效数值")
+                if kind == "integer" and int(value) != value:
+                    raise ValueError(f"{title}需要整数")
+                if kind == "mebibytes" and value < 0:
+                    raise ValueError(f"{title}不能为负数")
+                updates.append(
+                    (
+                        element,
+                        value / 1048576
+                        if kind == "mebibytes"
+                        else int(value)
+                        if kind == "integer"
+                        else value,
+                    )
+                )
+            elif kind == "nullable":
+                if value is not None and not isinstance(value, str):
+                    raise ValueError(f"{title}需要文本或留空")
+                updates.append((element, value or ""))
+            else:
+                expected_type = type(values[key])
+                if type(value) is not expected_type:
+                    raise ValueError(f"{title}的预设值类型不正确")
+                options = getattr(element, "options", None)
+                if options is not None and value not in options:
+                    raise ValueError(f"{title}的预设值已不受支持，请重新选择")
+                updates.append((element, value))
+        return updates
+
+    def apply(incoming):
+        # Validate the entire nested preset before updating a single control.
+        for element, value in pending_updates(incoming):
+            element.set_value(value)
+
+    read.apply = apply
+    read._pending_updates = pending_updates
     return read
 
 
