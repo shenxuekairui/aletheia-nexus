@@ -447,6 +447,37 @@ class LibraryService:
                     .as_posix(),
                 )
                 rows.append(chosen)
+            # Explicit registry ownership has priority across the entire library,
+            # not merely within the row being rendered. A legacy parent record
+            # lacks the main sidecar hash and cannot distinguish two declarations
+            # of identical PDF bytes. Never infer which declaration owns its SI.
+            explicit_paths = {
+                _key(self.path(info["path"])) for info in state["attachments"].values()
+            }
+            legacy_by_parent = {row["id"]: [] for row in rows}
+            for supplement in supplements:
+                if _key(Path(supplement["pdf_path"])) in explicit_paths:
+                    continue
+                parent = supplement.get("parent") or {}
+                matches = [
+                    row["id"]
+                    for row in rows
+                    if parent.get("pdf_sha256") == row["pdf_sha256"]
+                    and parent.get("article_id") == row["article_id"]
+                ]
+                if len(matches) == 1:
+                    legacy_by_parent[matches[0]].append(supplement)
+                else:
+                    result["warnings"].append(
+                        {
+                            "sidecar": supplement["sidecar_path"],
+                            "attachment_path": supplement["pdf_path"],
+                            "candidate_ids": matches,
+                            "error": "旧 SI 父文身份存在歧义，未自动关联；请从正确正文详情明确登记此附件。"
+                            if matches
+                            else "旧 SI 在当前文库中找不到对应父文，未自动关联；请恢复正文或明确检查父文身份。",
+                        }
+                    )
             for row in rows:
                 attached = {}
                 for attachment_id, info in state["attachments"].items():
@@ -462,39 +493,43 @@ class LibraryService:
                         if item.get("sidecar"):
                             item["sidecar_path"] = str(self.path(item["sidecar"]))
                         item["exists"] = Path(item["path"]).is_file()
+                        if isinstance(info.get("source"), str):
+                            try:
+                                source_receipt = self.path(info["source"])
+                                item["source_status"] = (
+                                    "PRESENT" if source_receipt.is_file() else "MISSING"
+                                )
+                            except ValueError:
+                                item["source_status"] = "UNSAFE"
+                            if item["source_status"] != "PRESENT":
+                                result["warnings"].append(
+                                    {
+                                        "sidecar": info["source"],
+                                        "paper_id": row["id"],
+                                        "attachment_path": item["path"],
+                                        "error": "附件的独立来源记录缺失或路径不安全。请恢复原始来源记录；正文状态保持独立，不会因此降级或伪造附件来源。",
+                                    }
+                                )
                         attached[info["sha256"] + ":" + info["role"]] = item
-                for supplement in supplements:
-                    parent = supplement.get("parent") or {}
-                    if (
-                        parent.get("pdf_sha256") == row["pdf_sha256"]
-                        and parent.get("article_id") == row["article_id"]
-                    ):
-                        path = Path(supplement["pdf_path"])
-                        if any(
-                            _key(Path(a["path"])) == _key(path)
-                            for a in attached.values()
-                        ):
-                            # A separately recorded attachment role is more
-                            # specific than the historical parser's generic
-                            # SUPPLEMENT declaration; never count the file twice.
-                            continue
-                        supplement_source, _ = self._source_payload(
-                            supplement["sidecar_path"]
-                        )
-                        digest = supplement_source["retrieval"]["sha256"]
-                        attached.setdefault(
-                            digest + ":SUPPLEMENT",
-                            {
-                                "id": "attachment_" + digest[:24],
-                                "path": str(path),
-                                "pdf_path": str(path),
-                                "sidecar_path": supplement["sidecar_path"],
-                                "role": "SUPPLEMENT",
-                                "sha256": digest,
-                                "exists": path.is_file(),
-                                "identity_basis": "local_declared",
-                            },
-                        )
+                for supplement in legacy_by_parent[row["id"]]:
+                    path = Path(supplement["pdf_path"])
+                    supplement_source, _ = self._source_payload(
+                        supplement["sidecar_path"]
+                    )
+                    digest = supplement_source["retrieval"]["sha256"]
+                    attached.setdefault(
+                        digest + ":SUPPLEMENT",
+                        {
+                            "id": "attachment_" + digest[:24],
+                            "path": str(path),
+                            "pdf_path": str(path),
+                            "sidecar_path": supplement["sidecar_path"],
+                            "role": "SUPPLEMENT",
+                            "sha256": digest,
+                            "exists": path.is_file(),
+                            "identity_basis": "local_declared",
+                        },
+                    )
                 row["attachments"] = list(attached.values())
                 row["si_count"] = sum(
                     a["role"] == "SUPPLEMENT" for a in attached.values()
@@ -1198,6 +1233,14 @@ class LibraryService:
         )
         with self._locked():
             state = self._load()
+            if any(
+                _key(self.path(existing["path"])) == _key(path)
+                and existing.get("parent_id") != main["id"]
+                for existing in state["attachments"].values()
+            ):
+                raise ValueError(
+                    "该附件路径已明确归属另一篇论文，不能重复登记到不同父文；请保留原关联并选择正确附件。"
+                )
             info = {
                 "parent_id": main["id"],
                 "parent_sha256": main["pdf_sha256"],
