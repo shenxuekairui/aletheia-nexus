@@ -394,3 +394,32 @@ def test_identical_source_copies_share_one_stable_grid_identity(library, tmp_pat
     assert report["items"][0]["pdf_path"] == row["pdf_path"]
     assert report["items"][0]["duplicate_paths"] == [str(target)]
     assert LibraryService(library.root).get(row["id"])["pdf_path"] == row["pdf_path"]
+
+
+def test_specific_attachment_role_never_duplicates_generic_pdf_supplement(
+    library, tmp_path
+):
+    row = add(library, tmp_path)
+    supplement = register_local_pdf(
+        pdf(tmp_path / "report.pdf", width=123),
+        output_dir=Path(row["pdf_path"]).parent / "SI",
+        title="Historical generic supplement",
+        role="SUPPLEMENT",
+        parent_pdf=row["pdf_path"],
+    )
+    library.register_attachment(row["pdf_path"], supplement, role="REPORTING_SUMMARY")
+    paper = library.get(row["id"])
+    assert len(paper["attachments"]) == 1 and paper["si_count"] == 0
+    assert paper["attachments"][0]["role"] == "REPORTING_SUMMARY"
+    preview = library.preview_rename([row["id"]], "new")
+    assert preview["executable"] == 1
+    assert (
+        len(
+            [
+                m
+                for m in preview["items"][0]["moves"]
+                if m["role"] == "REPORTING_SUMMARY"
+            ]
+        )
+        == 1
+    )

@@ -429,6 +429,14 @@ class LibraryService:
                         and parent.get("article_id") == row["article_id"]
                     ):
                         path = Path(supplement["pdf_path"])
+                        if any(
+                            _key(Path(a["path"])) == _key(path)
+                            for a in attached.values()
+                        ):
+                            # A separately recorded attachment role is more
+                            # specific than the historical parser's generic
+                            # SUPPLEMENT declaration; never count the file twice.
+                            continue
                         digest = _read(Path(supplement["sidecar_path"]))["retrieval"][
                             "sha256"
                         ]
