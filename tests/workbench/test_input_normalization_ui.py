@@ -4,7 +4,18 @@ from aletheia_nexus.workbench.task_view import task_costs, task_counts, task_row
 from aletheia_nexus.workbench.ui_input_normalization import (
     draft_fingerprint,
     normalization_preview_rows,
+    normalization_warning_summaries,
 )
+
+
+def test_large_model_batch_warning_summary_retains_count_without_repeating_rows():
+    warning = {"code": "SERVER_ORGANIZATION_RESTORED", "message": "已保留原文明示分类"}
+    summaries = normalization_warning_summaries([warning] * 100 + ["请核对标题"])
+    assert len(summaries) == 2
+    assert (
+        "100 项" in summaries[0] and "SERVER_ORGANIZATION_RESTORED" not in summaries[0]
+    )
+    assert summaries[1] == "请核对标题"
 
 
 def test_preview_keeps_explicit_root_and_no_tags_distinct_from_default():

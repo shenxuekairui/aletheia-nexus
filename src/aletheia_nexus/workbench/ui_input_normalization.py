@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 
 
 def draft_fingerprint(snapshot):
@@ -35,6 +36,16 @@ def normalization_preview_rows(preview):
             }
         )
     return rows
+
+
+def normalization_warning_summaries(warnings):
+    counts = Counter(
+        w if isinstance(w, str) else w.get("message", str(w)) for w in warnings
+    )
+    return [
+        message + (f"（{count} 项，逐项出处见下方账本）" if count > 1 else "")
+        for message, count in counts.items()
+    ]
 
 
 def normalization_dialog(controller, snapshot, apply_preview):
@@ -138,12 +149,10 @@ def normalization_dialog(controller, snapshot, apply_preview):
                     ui.label(user_message(diagnostic)).classes(
                         "text-red-8 text-sm whitespace-pre-wrap"
                     )
-                for warning in result.get("warnings", []):
-                    ui.label(
-                        warning
-                        if isinstance(warning, str)
-                        else warning.get("message", str(warning))
-                    ).classes("text-orange-9 text-sm")
+                for warning in normalization_warning_summaries(
+                    result.get("warnings", [])
+                ):
+                    ui.label(warning).classes("text-orange-9 text-sm")
                 preview = result.get("preview") or {}
                 if preview.get("items"):
                     rows_table(
