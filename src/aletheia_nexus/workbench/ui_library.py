@@ -463,7 +463,9 @@ class LibraryPage:
             requested_filters = filters()
             self.library_filters = requested_filters
             report = await run.io_bound(self.ctx.library.scan, **requested_filters)
-            if self.library_filters != requested_filters:
+            if self.library_filters != requested_filters or getattr(
+                grid, "is_deleted", False
+            ):
                 return
             self.library_rows = report["items"]
             rows = [
@@ -538,6 +540,12 @@ class LibraryPage:
                 )
             await show_marked_count()
 
+        async def refresh_metadata():
+            if not grid.is_deleted:
+                await refresh()
+
+        self._refresh_library_metadata = refresh_metadata
+
         async def clear_filters():
             for control, value in (
                 (query, ""),
@@ -592,6 +600,10 @@ class LibraryPage:
         async def organize_marked():
             ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
             self.organize_dialog(ids)
+
+        async def translate_marked():
+            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
+            self.title_translation_dialog(ids)
 
         async def details(event):
             row = event.args.get("data") or {}
@@ -724,6 +736,9 @@ class LibraryPage:
         )
         with ui.row().classes("an-toolbar w-full"):
             ui.button(
+                "补中文标题", icon="translate", on_click=guard(translate_marked)
+            ).props("outline")
+            ui.button(
                 "解析已勾选", icon="document_scanner", on_click=guard(parse_marked)
             )
             ui.button(
@@ -752,6 +767,11 @@ class LibraryPage:
             )
             ui.label("双击任意文献查看详情 / PDF").classes("an-muted text-xs")
         ui.timer(0.1, guard(refresh), once=True)
+
+    def title_translation_dialog(self, ids):
+        from .ui_title_translation import render_title_translation_dialog
+
+        return render_title_translation_dialog(self, ids)
 
     def details_dialog(self, paper_id):
         from nicegui import ui
@@ -807,6 +827,14 @@ class LibraryPage:
 
             with ui.row().classes("an-toolbar"):
                 ui.button("保存元数据", on_click=guard(save), icon="save")
+
+                def supplement_title():
+                    dialog.close()
+                    self.title_translation_dialog([paper_id])
+
+                ui.button(
+                    "补中文标题", icon="translate", on_click=guard(supplement_title)
+                ).props("outline")
                 ui.button(
                     "查看主文 PDF",
                     on_click=guard(

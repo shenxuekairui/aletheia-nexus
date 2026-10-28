@@ -113,7 +113,7 @@ def browser_profile_choices(browserconfig=None):
 def ui_workflow_defaults():
     """Native local parsing is automatic; OCR and paid translation stay opt-in."""
     return {
-        "template": "{title_original}",
+        "template": "{year}-{journal}-{title_zh}",
         "folder": "",
         "tags": [],
         "collection": "",

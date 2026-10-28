@@ -52,6 +52,7 @@ def test_new_workflow_parses_natively_without_enabling_ocr_or_paid_titles():
 
     workflow = acquisition_workflow_preferences(defaults.ui_workflow_defaults())
     assert workflow["auto_parse"] is True
+    assert workflow["template"] == "{year}-{journal}-{title_zh}"
     assert workflow["title_translation"]["enabled"] is False
     parser = WorkbenchResearch.parser_options()
     assert parser["ocr"] is False and parser["new_version"] is False

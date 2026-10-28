@@ -8,9 +8,18 @@ from aletheia_nexus.workbench.library import LibraryService
 from aletheia_nexus.workbench.ui_naming import (
     CUSTOM_TEMPLATE,
     NamingTemplateControl,
+    available_naming_templates,
     naming_template_catalog,
     validate_naming_template,
 )
+
+
+def test_original_title_option_is_available_without_migrating_old_saved_catalog():
+    saved = {"我的模板": "{custom_name}"}
+    library = SimpleNamespace(templates=lambda: saved.copy())
+    offered = available_naming_templates(library)
+    assert offered["年份-期刊-原题"] == "{year}-{journal}-{title_original}"
+    assert offered["我的模板"] == "{custom_name}" and len(saved) == 1
 
 
 class Field:

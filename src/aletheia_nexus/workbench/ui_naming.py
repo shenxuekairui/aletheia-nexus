@@ -6,6 +6,15 @@ from .ui_common import guard
 CUSTOM_TEMPLATE = "custom"
 
 
+def available_naming_templates(library):
+    # Old libraries keep their saved catalog. This new built-in is also offered
+    # there without rewriting their preferences or overwriting a user template.
+    return {
+        "年份-期刊-原题": "{year}-{journal}-{title_original}",
+        **library.templates(),
+    }
+
+
 def validate_naming_template(value):
     if not isinstance(value, str) or not value.strip():
         raise ValueError("请填写实际命名模板，或选择一个已有模板。")
@@ -38,7 +47,9 @@ class NamingTemplateControl:
 
         value = validate_naming_template(value)
         self.library = library
-        options, self._values = naming_template_catalog(library.templates())
+        options, self._values = naming_template_catalog(
+            available_naming_templates(library)
+        )
         with ui.column().classes("w-full gap-2"):
             self.choice = (
                 ui.select(options, value=self._key(value), label=label)
@@ -55,7 +66,8 @@ class NamingTemplateControl:
                 "期刊 {journal} · 第一作者 {first_author} · 显示名 {custom_name}"
             ).classes("an-muted text-xs whitespace-pre-wrap")
             ui.label(
-                "正文与对应 SI 使用同一基础名称；此处编辑不会调用翻译模型或移动已有文件。"
+                "正文与对应 SI 使用同一基础名称；模板中的中文译名缺失时可回退原题。"
+                "此处编辑不会调用翻译模型或移动已有文件。"
             ).classes("an-muted text-xs")
             with ui.row().classes("an-toolbar w-full"):
                 self.name = (
@@ -98,7 +110,9 @@ class NamingTemplateControl:
     def save(self, name):
         template = self.value
         self.library.save_template(name, template)
-        options, self._values = naming_template_catalog(self.library.templates())
+        options, self._values = naming_template_catalog(
+            available_naming_templates(self.library)
+        )
         selected = next(
             key
             for key, label in options.items()

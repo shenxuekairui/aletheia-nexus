@@ -38,7 +38,9 @@ def library_callback(name, namespace):
     return namespace[name]
 
 
-@pytest.mark.parametrize("action", ["parse_marked", "search_marked"])
+@pytest.mark.parametrize(
+    "action", ["parse_marked", "search_marked", "translate_marked"]
+)
 def test_direct_grid_action_uses_stable_ids_and_preserves_existing_tray(action):
     async def scenario():
         selected = [
@@ -55,6 +57,7 @@ def test_direct_grid_action_uses_stable_ids_and_preserves_existing_tray(action):
         controller = SimpleNamespace(
             library_rows=[{"id": "a"}, {"id": "b"}, {"id": "c"}],
             parse_dialog=opened.append,
+            title_translation_dialog=opened.append,
             navigate=navigated.append,
             ctx=SimpleNamespace(
                 library=SimpleNamespace(
@@ -75,7 +78,7 @@ def test_direct_grid_action_uses_stable_ids_and_preserves_existing_tray(action):
         )
         await callback()
         assert tray == ["older-paper"]
-        if action == "parse_marked":
+        if action in {"parse_marked", "translate_marked"}:
             assert opened == [["b", "a"]] and navigated == []
         else:
             assert navigated == ["科研检索"] and opened == []
@@ -87,7 +90,9 @@ def test_direct_grid_action_uses_stable_ids_and_preserves_existing_tray(action):
 
 
 @pytest.mark.parametrize("selected", [[], [{"id": "stale"}], [{"title": "missing ID"}]])
-@pytest.mark.parametrize("action", ["parse_marked", "search_marked", "organize_marked"])
+@pytest.mark.parametrize(
+    "action", ["parse_marked", "search_marked", "organize_marked", "translate_marked"]
+)
 def test_empty_or_stale_grid_selection_cannot_process_other_materials(selected, action):
     async def scenario():
         async def get_selected_rows():
@@ -97,6 +102,7 @@ def test_empty_or_stale_grid_selection_cannot_process_other_materials(selected, 
             library_rows=[{"id": "a"}],
             parse_dialog=lambda *_: pytest.fail("Unexpected parse"),
             organize_dialog=lambda *_: pytest.fail("Unexpected file operation"),
+            title_translation_dialog=lambda *_: pytest.fail("Unexpected translation"),
             navigate=lambda *_: pytest.fail("Unexpected navigation"),
         )
         callback = library_callback(
