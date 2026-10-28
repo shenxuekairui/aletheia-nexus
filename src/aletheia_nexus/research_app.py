@@ -976,21 +976,34 @@ class ResearchApplication:
             "network_access": False,
         }
 
-    def read_original_page(self, document: dict, page: int) -> tuple[dict, bytes]:
-        from aletheia_nexus.processing.materials import render_page
+    def read_original_page(
+        self, document: dict, page: int, *, region: list[float] | None = None
+    ) -> tuple[dict, bytes]:
+        from aletheia_nexus.processing.materials import render_page, render_page_region
 
         source = self.check_document(document, "direct")
         if type(page) is not int or not 1 <= page <= source.identity["page_count"]:
             raise ProcessingError("page_out_of_bounds")
-        png = render_page(source.pdf, page)
+        view = (
+            render_page_region(source.pdf, page, region) if region is not None else None
+        )
+        png = view["bytes"] if view else render_page(source.pdf, page)
         source.verify()
-        return {
+        metadata = {
             "document_id": document["id"],
             "page": page,
             "source": source.identity,
             "reading": "original_page_not_scientifically_verified",
             "network_access": False,
-        }, png
+        }
+        if view:
+            metadata["reading"] = "original_page_region_not_scientifically_verified"
+            metadata["source_view"] = {k: v for k, v in view.items() if k != "bytes"}
+            metadata["image_sha256"] = hashlib.sha256(png).hexdigest()
+            metadata["context"] = (
+                "Only the selected region is shown; read the full page when more context is needed."
+            )
+        return metadata, png
 
     def read_original_page_text(
         self, document: dict, page: int, max_characters: int = 40000

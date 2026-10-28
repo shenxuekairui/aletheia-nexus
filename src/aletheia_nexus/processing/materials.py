@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import struct
@@ -352,6 +353,46 @@ def render_page_tiles(pdf: Path, page: int) -> list[dict]:
                 }
             )
     return pieces
+
+
+def render_page_region(pdf: Path, page: int, region: list[float]) -> dict:
+    """Render a requested region in the displayed, rotated CropBox space.
+
+    This selects source pixels only. The caller decides relevance and whether
+    axes/captions/context are sufficient; bounds do not establish support.
+    """
+    if (
+        not isinstance(region, (list, tuple))
+        or len(region) != 4
+        or any(type(v) not in {int, float} or not math.isfinite(v) for v in region)
+        or not 0 <= region[0] < region[2] <= 1
+        or not 0 <= region[1] < region[3] <= 1
+    ):
+        raise ProcessingError("invalid_page_region")
+    overview = render_page(pdf, page, scale=3200)
+    if len(overview) < 24 or overview[12:16] != b"IHDR":
+        raise ProcessingError("invalid_page_image")
+    width, height = struct.unpack(">II", overview[16:24])
+    if not (1 <= width <= 3200 and 1 <= height <= 3200):
+        raise ProcessingError("page_image_budget_exceeded")
+    left, top = math.floor(width * region[0]), math.floor(height * region[1])
+    right, bottom = math.ceil(width * region[2]), math.ceil(height * region[3])
+    pixels = (left, top, right - left, bottom - top)
+    data = (
+        overview
+        if pixels == (0, 0, width, height)
+        else render_page(pdf, page, scale=3200, crop=pixels)
+    )
+    return {
+        "bytes": data,
+        "requested_region": list(region),
+        "region": [left / width, top / height, right / width, bottom / height],
+        "coordinates": "displayed-cropbox-normalized-top-left",
+        "full_render_size": [width, height],
+        "crop_pixels_xywh": list(pixels),
+        "renderer": "pdftoppm-cropbox-region3200/v1",
+        "view": "region",
+    }
 
 
 def _corpus(sources: list[Source]) -> Corpus:

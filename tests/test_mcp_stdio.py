@@ -2,7 +2,9 @@
 
 import asyncio
 import base64
+import json
 import shutil
+import struct
 import sys
 from copy import deepcopy
 
@@ -178,8 +180,43 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 assert not image.is_error
                 png = next(c for c in image.content if c.type == "image")
                 assert base64.b64decode(png.data).startswith(b"\x89PNG")
+                region = await client.call_tool(
+                    "read_original_page",
+                    {"document": documents[0], "page": 1, "region": [0, 0, 0.6, 0.4]},
+                )
+                assert not region.is_error
+                region_meta = json.loads(
+                    next(c.text for c in region.content if c.type == "text")
+                )
+                cropped_png = base64.b64decode(
+                    next(c.data for c in region.content if c.type == "image")
+                )
+                assert region_meta["source_view"]["requested_region"] == [
+                    0,
+                    0,
+                    0.6,
+                    0.4,
+                ]
+                assert (
+                    region_meta["source_view"]["coordinates"]
+                    == "displayed-cropbox-normalized-top-left"
+                )
+                assert region_meta["network_access"] is False
+                assert (
+                    list(struct.unpack(">II", cropped_png[16:24]))
+                    == region_meta["source_view"]["crop_pixels_xywh"][2:]
+                )
             else:
                 assert image.is_error
+            invalid_region = await client.call_tool(
+                "read_original_page",
+                {"document": documents[0], "page": 1, "region": [0, 0, 2, 1]},
+            )
+            assert invalid_region.is_error
+            assert (
+                json.loads(invalid_region.content[0].text)["error"]
+                == "invalid_page_region"
+            )
             history = await client.call_tool("list_research_runs", {})
             assert history.structured_content["runs"] == []
             revision_tool = next(

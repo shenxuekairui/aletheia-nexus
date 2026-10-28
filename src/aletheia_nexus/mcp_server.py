@@ -233,14 +233,20 @@ def create_server(app: ResearchApplication):
         return app.list_research_runs(limit=limit)
 
     @server.tool(structured_output=False)
-    def read_original_page(document: dict, page: int) -> Any:
+    def read_original_page(
+        document: dict, page: int, region: list[float] | None = None
+    ) -> Any:
         """Return a selected original PDF page as an MCP image with source identity.
         Only allowed documents can be read. No AN model is called; the host receives pixels.
+        Optional region=[x0,y0,x1,y1] selects a source crop at higher resolution.
+        Coordinates are0..1 from the top-left of the WHOLE displayed CropBox,
+        including page rotation, never relative to a previously cropped image.
+        Include both axes/legend/caption as needed; a valid crop is not scientific support.
         """
         from mcp.types import CallToolResult, ImageContent, TextContent
 
         try:
-            metadata, png = app.read_original_page(document, page)
+            metadata, png = app.read_original_page(document, page, region=region)
             return CallToolResult(
                 content=[
                     TextContent(
