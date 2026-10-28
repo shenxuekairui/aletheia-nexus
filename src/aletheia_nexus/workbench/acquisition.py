@@ -972,6 +972,10 @@ class AcquisitionService:
                             si = acquire_supplements(
                                 source.pdf_path,
                                 library=self.library,
+                                browser_session=session
+                                if options["browser_enabled"]
+                                and not options["public_only"]
+                                else None,
                                 max_files=options["max_si_files"],
                                 max_bytes=options["si_max_bytes"],
                                 timeout=options["timeout"],

@@ -22,6 +22,40 @@ def _add(keys, message):
 
 
 _add(
+    (
+        "attachment_host_not_covered",
+        "attachment_redirect_host_not_covered",
+        "unsafe_attachment_redirect",
+    ),
+    "附件链接或重定向离开了已核验的官方来源范围，已停止下载。请核对出版社的实际附件入口；已验证正文保留。",
+)
+_add(
+    ("attachment_exceeds_byte_limit", "Browser attachment exceeds the byte limit"),
+    "附件超过本次大小上限，已停止传输。请在高级获取设置中核对附件大小限制后再试；已保存文件不会被覆盖。",
+)
+_add(
+    ("official_attachment_checksum_mismatch",),
+    "附件内容与官方文件清单的校验值不符，未保存或关联。请保留诊断并在来源恢复后重试。",
+)
+_add(
+    ("browser_parent_page_not_available",),
+    "当前 AN 浏览器会话中没有可核验的本篇官方文章页。请在同一会话打开该论文并完成人工验证，再补取 SI。",
+)
+_add(
+    ("browser_attachment_delivery_not_completed",),
+    "浏览器未交付完整附件，可能仍在等待下载、登录或验证。请检查已打开的官方页面，之后只重试未完成的附件。",
+)
+_add(
+    ("browser_native_capture_unavailable",),
+    "当前浏览器不支持安全捕获附件下载，尚未发送下载请求。请检查浏览器运行时，或在官方页面手动保存后从文献详情关联附件。",
+)
+_add(
+    ("browser_download_owner_not_confirmed",),
+    "无法确认本次附件下载所属的临时页面，尚未发送请求。请保留当前浏览器页面，检查诊断后重试。",
+)
+
+
+_add(
     ("AcquisitionAccessBlockedError",),
     "来源页面拒绝当前访问，无法检查其附件。可核对网络与合法访问权限后改用机构浏览器；已验证正文的状态不受影响。",
 )
