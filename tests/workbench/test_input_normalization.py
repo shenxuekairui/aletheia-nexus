@@ -450,3 +450,30 @@ def test_group_heading_cannot_become_an_extra_title_only_paper(tmp_path):
 
     result = service(tmp_path, handler).normalize("[分类标题]\n10.1000/a", consent=True)
     assert result["status"] == "FAILED" and result["canonical"] is None
+
+
+def test_root_and_inherit_with_same_paper_fields_keep_distinct_source_bindings(
+    tmp_path,
+):
+    def handler(request):
+        document = payload(request)
+        a, b = document["explicit_dois"]
+        return response(
+            [
+                paper(document, a),
+                paper(
+                    document,
+                    b,
+                    organization_source_lines=[2],
+                    organization={"folder": "explicit", "tags": "none"},
+                ),
+            ]
+        )
+
+    result = service(tmp_path, handler).normalize(
+        "10.1000/a\n10.1000/a | 分类=/", consent=True
+    )
+    assert result["status"] == "COMPLETED"
+    rows = result["preview"]["items"]
+    assert rows[0]["normalization_ids"] != rows[1]["normalization_ids"]
+    assert len(rows[0]["normalization_ids"]) == len(rows[1]["normalization_ids"]) == 1

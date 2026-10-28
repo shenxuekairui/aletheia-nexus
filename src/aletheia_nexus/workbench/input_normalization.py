@@ -411,6 +411,7 @@ def _canonical(response, text, lines, offsets, occurrences):
                     "input_sha256": hashlib.sha256(text.encode()).hexdigest(),
                     "span": span,
                     "request": paper,
+                    "assignment": assignment,
                 }
             )[:24]
         )
@@ -443,6 +444,7 @@ def _canonical(response, text, lines, offsets, occurrences):
             row["id"]
             for row in source_map
             if row["paper_sha256"] == digest(item["request"])
+            and row["assignment"] == item["assignment"]
         ]
     preview["library_path_validation_pending"] = True
     referenced = {
