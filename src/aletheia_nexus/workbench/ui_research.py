@@ -1199,7 +1199,7 @@ class ResearchPages:
         options = {
             r[
                 "path"
-            ]: f"{r['objective'][:60]} · {r['records']} 条 · 修订 {r['revisions']}"
+            ]: f"{r.get('title', r['objective'])[:65]} · {r['records']} 条 · 修订 {r['revisions']} · {r.get('run', '')[-8:]}"
             for r in rows
         }
         current = (
@@ -1286,9 +1286,11 @@ class ResearchPages:
                                     ),
                                     "unit": value.get("unit") or "",
                                     "status": value.get("status", ""),
-                                    "confirmation": result["validation"]
-                                    .get("record_states", {})
-                                    .get(record["id"], ""),
+                                    "confirmation": value_label(
+                                        result["validation"]
+                                        .get("record_states", {})
+                                        .get(record["id"], "")
+                                    ),
                                     "context": value.get("context", ""),
                                 }
                             )

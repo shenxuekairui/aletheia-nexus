@@ -1089,11 +1089,20 @@ class WorkbenchResearch:
         for path in sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True):
             try:
                 value = self.app.read_research_result(str(path))
+                titles = list(
+                    dict.fromkeys(
+                        d["source"]["title"]
+                        for d in value["package"]["documents"]
+                        if d["source"].get("document_role") == "ARTICLE"
+                    )
+                )
                 rows.append(
                     {
                         "path": str(path),
                         "id": value["artifact_id"],
                         "objective": value["task"]["objective"],
+                        "title": " / ".join(titles) or value["task"]["objective"],
+                        "run": path.parent.name,
                         "records": len(value["response"].get("records", [])),
                         "revisions": len(value["history"]),
                         "validation": value["validation"],

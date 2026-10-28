@@ -50,9 +50,11 @@ browser = [
 ]
 ocr = [
     "Pillow>=12.3,<13",
+    "numpy>=2,<3",
 ]
 image-ocr = [
     "Pillow>=12.3,<13",
+    "numpy>=2,<3",
     "rapidocr==3.10.0",
     "onnxruntime>=1.23,<2",
 ]

@@ -257,5 +257,6 @@ class LiveResearchRuns:
             if tracker["mode"] == "local"
             else base["group_count"],
             "items": manifest.get("items", []),
+            "comparison": deepcopy(manifest.get("comparison")),
             "observed_only": True,
         }

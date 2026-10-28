@@ -314,6 +314,16 @@ def render_task_dialog(controller):
                             ui.label(f"当前论文：{current['title']}").classes("text-sm")
                         if observed.get("notice"):
                             ui.label(observed["notice"]).classes("an-muted text-xs")
+                        comparison = observed.get("comparison")
+                        if comparison:
+                            ui.label(
+                                f"跨论文比较：{status_label(comparison.get('status'))}"
+                                + (
+                                    " · " + user_message(comparison["error"])
+                                    if comparison.get("error")
+                                    else ""
+                                )
+                            ).classes("an-info w-full text-sm")
                         if isinstance(observed.get("calls"), list):
                             costs = task_costs({"result": observed})
                             for cost in costs:
