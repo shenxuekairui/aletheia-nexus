@@ -8,6 +8,7 @@ from copy import deepcopy
 from .labels import CHOICES, GRID_LOCALE, value_label
 from .messages import user_message
 from .ui_common import guard, json_text, json_view, parameter_editor, rows_table
+from .ui_parameters import parameter_sections
 from .ui_presets import preset_controls
 
 FIELD_TYPES = {
@@ -177,8 +178,23 @@ class ResearchPages:
                 **self.ctx.research.parser_options(),
                 **self.ctx.settings.get("parsing", {}),
             }
-            read_options = parameter_editor(
+            read_options = parameter_sections(
                 current,
+                common=("ocr", "ocr_languages", "max_pages", "new_version"),
+                advanced=(
+                    "ocr_dpi",
+                    "image_ocr",
+                    "ocr_timeout_seconds",
+                    "ocr_max_raster_pixels",
+                    "merge_paragraph_lines",
+                    "max_blocks",
+                    "max_text_characters",
+                ),
+                expert=(
+                    "column_split_ratio",
+                    "heading_font_ratio",
+                    "min_text_characters",
+                ),
                 labels={
                     "ocr": "启用原生优先OCR",
                     "ocr_languages": "OCR语言（例如eng或eng+chi_sim）",
@@ -593,8 +609,16 @@ class ResearchPages:
                 "min_interval_seconds": 1,
                 **(self.current_task or {}).get("model", {}),
             }
-            read_model = parameter_editor(model_options)
-            read_budget = parameter_editor(
+            read_model = parameter_sections(
+                model_options,
+                common=("name", "reasoning_effort", "currency"),
+                advanced=tuple(
+                    k
+                    for k in model_options
+                    if k not in {"name", "reasoning_effort", "currency"}
+                ),
+            )
+            read_budget = parameter_sections(
                 {
                     "max_calls": 10,
                     "max_cost": 2.0,
@@ -605,7 +629,14 @@ class ResearchPages:
                     "max_supplement_rounds": 0,
                     "max_review_rounds": 0,
                     **(self.current_task or {}).get("budget", {}),
-                }
+                },
+                common=("max_calls", "max_cost", "max_images", "max_output_tokens"),
+                advanced=(
+                    "max_input_characters",
+                    "max_repair_rounds",
+                    "max_supplement_rounds",
+                    "max_review_rounds",
+                ),
             )
             planning_cost = ui.number(
                 "自然语言规划单独费用上限（按模型计费币种）", value=0.5, min=0.01
@@ -622,6 +653,20 @@ class ResearchPages:
                 "未勾选时补充轮数必须为0；历史任务和预设不会继承本次额外页授权。"
             ).classes("an-muted text-sm")
 
+            with ui.expansion("研究规则与取材范围", icon="rule").classes("w-full"):
+                read_material_options = parameter_editor(
+                    {
+                        "rules": (self.current_task or {}).get("rules", []),
+                        "query": (self.current_task or {}).get("query", ""),
+                        "context_pages": (self.current_task or {}).get(
+                            "context_pages", 1
+                        ),
+                    }
+                )
+                ui.label(
+                    "规则逐行填写；取材关键词用于原文筛选，上下文页数为0–10。明确选页优先，命中不代表科学关系成立。"
+                ).classes("an-muted text-sm")
+
             def read_preset():
                 return {
                     "model": read_model(),
@@ -630,6 +675,7 @@ class ResearchPages:
                     "type": task_type.value,
                     "include_steps": include_steps.value,
                     "synthesize": compare.value,
+                    **read_material_options(),
                 }
 
             def apply_preset(parameters):
@@ -640,15 +686,27 @@ class ResearchPages:
                     "type",
                     "include_steps",
                     "synthesize",
+                    "rules",
+                    "query",
+                    "context_pages",
                 }
                 if not isinstance(parameters, dict) or set(parameters) - allowed:
                     raise ValueError(
-                        "科研预设只接受模型、预算、材料模式、任务类型、步骤和比较参数"
+                        "科研预设只接受模型、预算、取材、规则、材料模式、任务类型、步骤和比较参数"
                     )
                 pending = []
                 for key, read in (("model", read_model), ("budget", read_budget)):
                     if key in parameters:
                         pending.extend(read._pending_updates(parameters[key]))
+                pending.extend(
+                    read_material_options._pending_updates(
+                        {
+                            k: parameters[k]
+                            for k in ("rules", "query", "context_pages")
+                            if k in parameters
+                        }
+                    )
+                )
                 if "mode" in parameters and parameters["mode"] not in CHOICES["mode"]:
                     raise ValueError("科研预设中的材料模式不受支持")
                 if "type" in parameters and parameters["type"] not in CHOICES["type"]:
@@ -698,6 +756,13 @@ class ResearchPages:
             compare.set_value(bool(task.get("synthesize")))
             read_model.apply(task.get("model", {}))
             read_budget.apply(task.get("budget", {}))
+            read_material_options.apply(
+                {
+                    "rules": task.get("rules", []),
+                    "query": task.get("query", ""),
+                    "context_pages": task.get("context_pages", 1),
+                }
+            )
             planning_consent.set_value(False)
             extra_pages_consent.set_value(False)
             plan_area.clear()
@@ -801,6 +866,9 @@ class ResearchPages:
                                 map(str, doc.get("image_pages", []))
                             ),
                             "artifact": doc.get("artifact", ""),
+                            "image_layout": "整页与分块"
+                            if doc.get("image_layout") == "page_and_tiles"
+                            else "整页",
                         }
                     )
                 state["documents"] = ui.aggrid(
@@ -818,7 +886,18 @@ class ResearchPages:
                                 {
                                     "field": key,
                                     "headerName": label,
-                                    "editable": key in {"pages", "image_pages"},
+                                    "editable": key
+                                    in {"pages", "image_pages", "image_layout"},
+                                    **(
+                                        {
+                                            "cellEditor": "agSelectCellEditor",
+                                            "cellEditorParams": {
+                                                "values": ["整页", "整页与分块"]
+                                            },
+                                        }
+                                        if key == "image_layout"
+                                        else {}
+                                    ),
                                     "width": 180,
                                 }
                                 for key, label in (
@@ -827,6 +906,7 @@ class ResearchPages:
                                     ("identity", "身份依据"),
                                     ("pages", "文本页码（留空全部）"),
                                     ("image_pages", "图像页码（留空不发图）"),
+                                    ("image_layout", "图像处理（高级）"),
                                     ("artifact", "固定解析版本"),
                                 )
                             ),
@@ -870,7 +950,14 @@ class ResearchPages:
                         synthesize=compare.value,
                         model=read_model(),
                         budget=read_budget(),
+                        rules=read_material_options()["rules"],
+                        context_pages=read_material_options()["context_pages"],
                     )
+                    query_value = read_material_options()["query"].strip()
+                    if query_value:
+                        value["query"] = query_value
+                    else:
+                        value.pop("query", None)
                     reverse_types = {v: k for k, v in FIELD_TYPES.items()}
                     value["fields"] = [
                         {
@@ -886,6 +973,11 @@ class ResearchPages:
                         if not row.get("enabled"):
                             continue
                         doc = deepcopy(by_id[row["id"]])
+                        layout = {"整页": "page", "整页与分块": "page_and_tiles"}[
+                            row["image_layout"]
+                        ]
+                        if layout != "page" or "image_layout" in doc:
+                            doc["image_layout"] = layout
                         for key in ("pages", "image_pages"):
                             selected = page_numbers(row[key])
                             if selected:
@@ -906,7 +998,7 @@ class ResearchPages:
                         raise ValueError(
                             "补充轮数大于0会允许同文献其它页外发；请明确授权，或将补充轮数设为0"
                         )
-                    checked = self.ctx.research.app.validate_research_task(value)
+                    checked = self.ctx.research.validate_plan(value)
                     check_area.clear()
                     with check_area:
                         ui.label(checked["plan"]).classes(
@@ -961,6 +1053,7 @@ class ResearchPages:
             )
             steps, synthesis = include_steps.value, compare.value
             requested_mode = mode.value
+            material_options = read_material_options()
             if not goal_value.strip() or not ids:
                 raise ValueError("请先选择论文并输入科研目标")
 
@@ -977,7 +1070,10 @@ class ResearchPages:
                 )
                 task["include_steps"] = steps
                 task["synthesize"] = synthesis
-                return {"task": task, "requested_mode": requested_mode}
+                return {
+                    **self.ctx.research.configure_plan(task, material_options),
+                    "requested_mode": requested_mode,
+                }
 
             receipt = self.submit(
                 "research",
@@ -989,6 +1085,7 @@ class ResearchPages:
                     "include_si": si,
                     "model": model,
                     "budget": budget,
+                    "material_options": material_options,
                 },
             )
             state.update(
@@ -1001,11 +1098,10 @@ class ResearchPages:
             options = read_budget()
             goal_value, si, model = goal.value, include_si.value, read_model()
             cost = planning_cost.value
-            receipt = self.submit(
-                "research",
-                "自然语言科研规划（仅元数据）",
-                ids,
-                lambda c: self.ctx.research.plan(
+            material_options = read_material_options()
+
+            def worker(context):
+                planned = self.ctx.research.plan(
                     goal_value,
                     ids,
                     include_si=si,
@@ -1015,7 +1111,16 @@ class ResearchPages:
                     max_calls=options["max_calls"],
                     planning_max_cost=cost,
                     budget=options,
-                ),
+                )
+                return self.ctx.research.configure_plan(
+                    planned["task"], material_options, previous=planned
+                )
+
+            receipt = self.submit(
+                "research",
+                "自然语言科研规划（仅元数据）",
+                ids,
+                worker,
                 {"goal": goal_value, "planning_max_cost": cost, "model": model},
             )
             state.update(

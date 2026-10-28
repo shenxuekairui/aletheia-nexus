@@ -677,6 +677,11 @@ _add(
     "补充材料页面需要本次明确授权。请核对所属文献、实际补充页码、外发范围及预算，再确认是否发送给模型。",
 )
 
+_add(
+    ("supplement_parent_ambiguous_same_pdf_bytes",),
+    "同时选中了相同PDF的多个来源声明，SI无法唯一归属。请在本次选择中保留一个主文身份，或移除SI后重新核对计划；没有发送模型请求。",
+)
+
 _PREFIXES = (
     (
         "source changed after preview:",

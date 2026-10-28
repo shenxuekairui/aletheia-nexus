@@ -192,6 +192,58 @@ class WorkbenchResearch:
             return {**receipt, "library_warnings": warnings}
         return receipt
 
+    def validate_plan(self, task):
+        checked = self.app.validate_research_task(task)
+        mains = {}
+        for source in checked["documents"]:
+            if source["document_role"] == "ARTICLE":
+                mains.setdefault(source["pdf_sha256"], []).append(source["id"])
+        if any(
+            source["document_role"] == "SUPPLEMENT"
+            and len(mains.get((source.get("parent") or {}).get("pdf_sha256"), [])) > 1
+            for source in checked["documents"]
+        ):
+            raise ProcessingError("supplement_parent_ambiguous_same_pdf_bytes")
+        return checked
+
+    def configure_plan(self, task, parameters, *, previous=None):
+        if not isinstance(parameters, dict) or set(parameters) - {
+            "rules",
+            "query",
+            "context_pages",
+        }:
+            raise ValueError("取材参数仅支持研究规则、关键词和上下文页数")
+        if "rules" in parameters and (
+            not isinstance(parameters["rules"], list)
+            or any(not isinstance(rule, str) for rule in parameters["rules"])
+        ):
+            raise ValueError("研究规则需要逐行文本列表")
+        if "query" in parameters and not isinstance(parameters["query"], str):
+            raise ValueError("取材关键词需要文本")
+        value = deepcopy(task)
+        value["rules"] = list(
+            dict.fromkeys([*value.get("rules", []), *parameters.get("rules", [])])
+        )
+        if parameters.get("query", "").strip():
+            value["query"] = parameters["query"].strip()
+        else:
+            value.pop("query", None)
+        if "context_pages" in parameters:
+            value["context_pages"] = parameters["context_pages"]
+        checked = self.validate_plan(value)
+        path = (
+            self.workspace
+            / "preparations"
+            / ("configured-plan-" + uuid4().hex + ".json")
+        )
+        write_json(path, checked["task"])
+        return {
+            **(previous or {}),
+            **checked,
+            "task_file": str(path),
+            "planner_task_file": (previous or {}).get("task_file"),
+        }
+
     @staticmethod
     def ocr_summary(diagnostics, options):
         count = (diagnostics.get("quality") or {}).get("ocr_supplemented_blocks", 0)
@@ -280,6 +332,10 @@ class WorkbenchResearch:
                             "title": paper.get("title_original")
                             or paper.get("title")
                             or "文献来源异常",
+                            "document_role": "ARTICLE"
+                            if entry["id"] == paper_id
+                            else "SUPPLEMENT",
+                            "original_pdf": entry["pdf"],
                             "error": self.app.error_code(exc),
                             "reason": str(exc)[:1000],
                         }
@@ -402,6 +458,8 @@ class WorkbenchResearch:
                     "paper_id": material["paper_id"],
                     "title": material["source"].identity["title"],
                     "role": material["source"].identity["document_role"],
+                    "document_role": material["source"].identity["document_role"],
+                    "original_pdf": material["pdf"],
                     "document": document,
                     "reused": reused,
                     **diagnostics,
@@ -422,6 +480,9 @@ class WorkbenchResearch:
                 row = {
                     "id": material["id"],
                     "status": "FAILED",
+                    "title": material["source"].identity["title"],
+                    "document_role": material["source"].identity["document_role"],
+                    "original_pdf": material["pdf"],
                     "error": self.app.error_code(exc),
                     "detail": str(exc)[:1000],
                 }
@@ -824,7 +885,7 @@ class WorkbenchResearch:
         context=None,
         provider=None,
     ) -> dict:
-        checked = self.app.validate_research_task(task)
+        checked = self.validate_plan(task)
         task = checked["task"]
         if task["mode"] != "local" and not consent:
             raise ProcessingError("explicit_research_consent_required")
@@ -1000,7 +1061,7 @@ class WorkbenchResearch:
             )
         task.update(documents=documents, mode="hybrid", allow_remote=True)
         task["budget"]["max_supplement_rounds"] = 0
-        checked = self.app.validate_research_task(task)
+        checked = self.validate_plan(task)
         return {
             "task": checked["task"],
             "plan": checked["plan"],

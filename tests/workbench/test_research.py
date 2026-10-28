@@ -168,6 +168,39 @@ def test_same_pdf_bytes_with_distinct_source_declarations_keep_distinct_ids(rese
     assert task["documents"][0]["pdf"] == task["documents"][1]["pdf"]
     assert task["documents"][0]["sidecar"] != task["documents"][1]["sidecar"]
     assert research.execute(task)["status"] == "PREPARED"
+    si = register_local_pdf(
+        research.library.get("p2")["pdf_path"],
+        output_dir=research.library.root / "SI",
+        title="Declared fixture supplement",
+        role="SUPPLEMENT",
+        parent_pdf=first["pdf_path"],
+        parent_sidecar=first["sidecar_path"],
+    )
+    first["attachments"].append(
+        {
+            "id": "si_same_bytes_test",
+            "path": str(si),
+            "role": "SUPPLEMENT",
+            "sidecar_path": str(acquisition_sidecar_path(si)),
+        }
+    )
+    prepared = research.prepare(["p1", "p3"], include_si=True)
+    task.update(
+        documents=research._clean_documents(prepared["documents"]),
+        mode="parsed",
+        allow_remote=True,
+    )
+    calls = []
+    original_authorize = research.app.authorize
+    research.app.authorize = lambda *args, **kwargs: calls.append(True)
+    try:
+        with pytest.raises(
+            ProcessingError, match="supplement_parent_ambiguous_same_pdf_bytes"
+        ):
+            research.execute(task, consent=True)
+        assert not calls
+    finally:
+        research.app.authorize = original_authorize
 
 
 def test_human_revision_and_unicode_export_name(research):
@@ -371,6 +404,27 @@ def test_planning_preserves_user_limits_and_defaults_adaptive_pages_off(
     assert request["research_budget"]["max_supplement_rounds"] == 0
 
 
+def test_rules_and_material_selection_configure_a_valid_saved_plan(research):
+    task = research.local_plan("核对测量条件", ["p1"])
+    configured = research.configure_plan(
+        task,
+        {
+            "rules": ["区分制备与性能测试", "保留原始单位"],
+            "query": "sample",
+            "context_pages": 0,
+        },
+    )
+    saved = configured["task"]
+    assert saved["rules"] == ["区分制备与性能测试", "保留原始单位"]
+    assert saved["query"] == "sample" and saved["context_pages"] == 0
+    assert Path(configured["task_file"]).is_file()
+    assert research.execute(saved)["status"] == "PREPARED"
+    with pytest.raises(ValueError):
+        research.configure_plan(task, {"context_pages": 11})
+    with pytest.raises(ValueError, match="逐行文本"):
+        research.configure_plan(task, {"rules": "not a list"})
+
+
 def test_parse_source_failure_isolated_and_real_metadata_recorded(research):
     Path(research.library.get("p2")["pdf_path"]).write_bytes(b"changed, invalid PDF")
     receipt = research.parse(["p1", "p2"])
@@ -379,6 +433,9 @@ def test_parse_source_failure_isolated_and_real_metadata_recorded(research):
         "p1": "PARSED",
         "p2": "FAILED",
     }
+    parsed = next(r for r in receipt["items"] if r["id"] == "p1")
+    assert parsed["title"] == "Alpha catalysis" and parsed["document_role"] == "ARTICLE"
+    assert parsed["original_pdf"] == research.library.get("p1")["pdf_path"]
     metadata = research.library.get("p1")["metadata"]
     assert metadata["ocr_status"] == "NOT_REQUESTED"
     assert metadata["ocr_diagnostics"]["ocr_text_blocks"] == 0
