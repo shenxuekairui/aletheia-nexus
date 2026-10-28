@@ -158,3 +158,53 @@ def test_panel_reopens_saved_receipt_without_submitting_and_scopes_by_library(
         assert not other.choices
     finally:
         reopened.close(wait=True)
+
+
+@pytest.mark.parametrize("action", ["skip", "continue"])
+def test_stale_inline_control_does_not_affect_a_new_phase(
+    tmp_path, monkeypatch, action
+):
+    pytest.importorskip("nicegui")
+    from nicegui import ui
+
+    from aletheia_nexus.workbench import ui_acquisition_progress as module
+
+    job = {
+        "id": "stale-control",
+        "kind": "acquisition",
+        "label": "实时任务",
+        "status": "RUNNING" if action == "skip" else "INTERACTION_REQUIRED",
+        "parameters": {"library": str(tmp_path)},
+    }
+    controls, clicked = {}, []
+    original_button = ui.button
+
+    def capture(label, **kwargs):
+        controls[label] = kwargs.get("on_click")
+        return original_button(label, **kwargs)
+
+    monkeypatch.setattr(ui, "button", capture)
+    monkeypatch.setattr(module, "guard", lambda callback: callback)
+    monkeypatch.setattr(
+        ui, "timer", lambda *a, **k: SimpleNamespace(activate=lambda: None)
+    )
+    manager = SimpleNamespace(
+        list=lambda: [job],
+        get=lambda _: job,
+        control=lambda *args: clicked.append(args),
+    )
+    controller = SimpleNamespace(
+        ctx=SimpleNamespace(
+            jobs=manager,
+            library=SimpleNamespace(root=tmp_path),
+            settings=SettingsStore(tmp_path / "workspace"),
+        ),
+        task_dialog=lambda: None,
+    )
+    with ui.column():
+        AcquisitionProgressPanel(controller)
+    job.update(status="RUNNING", task_phase="postprocess")
+    label = "跳过下一篇" if action == "skip" else "验证后继续"
+    with pytest.raises(ValueError, match="阶段已变化|不再等待"):
+        controls[label]()
+    assert clicked == []

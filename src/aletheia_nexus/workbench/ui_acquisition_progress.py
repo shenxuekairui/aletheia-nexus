@@ -7,6 +7,7 @@ from .labels import status_label, value_label
 from .messages import user_message
 from .task_view import state_color, task_counts, task_rows
 from .ui_common import guard, rows_table
+from .ui_tasks import skip_control
 
 
 def _paper_key(request):
@@ -211,6 +212,18 @@ class AcquisitionProgressPanel:
                 ):
 
                     def control(a=action):
+                        latest = self.manager.get(self.job_id)
+                        if a == "skip" and not skip_control(latest)[1]:
+                            raise ValueError(
+                                "任务阶段已变化，当前不能跳过论文。请查看最新进度后再操作。"
+                            )
+                        if (
+                            a == "continue"
+                            and latest["status"] != "INTERACTION_REQUIRED"
+                        ):
+                            raise ValueError(
+                                "当前任务已不再等待人工操作，请查看最新进度。"
+                            )
                         self.manager.control(self.job_id, a)
                         self.refresh()
 
