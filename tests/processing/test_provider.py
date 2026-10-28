@@ -10,9 +10,85 @@ from aletheia_nexus.processing.provider import (
     DeepSeekProvider,
     ProcessingError,
     ProjectedResponse,
+    _wire_schema,
     accounted_cost,
     project_response,
 )
+
+
+def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenance(
+    monkeypatch,
+):
+    schema = obj(
+        {
+            "records": {
+                "type": "array",
+                "items": obj({"id": TEXT, "fields": obj({}), "step": TEXT}),
+            }
+        }
+    )
+    original = deepcopy(schema)
+    raw = {"records": [{"id": "preparation", "fields": None, "step": "reported operation"}]}
+
+    def handler(request):
+        payload = json.loads(request.content)
+        member = payload["text"]["format"]["schema"]["properties"]["records"]["items"]
+        assert member["properties"]["fields"] == {"type": "null"}
+        assert member["required"] == ["id", "fields", "step"]
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": [
+                    {"type": "message", "content": [{"type": "output_text", "text": json.dumps(raw)}]}
+                ],
+            },
+        )
+
+    adapter = provider(monkeypatch, handler)
+    result = adapter.generate({}, schema, [], CallBudget(1), 100)
+    assert schema == original
+    assert adapter.identity["adapter_version"] == "8"
+    assert result == {"records": [{"id": "preparation", "fields": {}, "step": "reported operation"}]}
+    assert isinstance(result, ProjectedResponse)
+    assert json.loads(result.metadata["raw_text"]) == raw
+    assert result.metadata["changes"] == [
+        {
+            "operation": "replace",
+            "path": ["records", 0, "fields"],
+            "before": None,
+            "value": {},
+            "reason": "wire_placeholder_for_empty_object",
+        }
+    ]
+    replay = project_response(raw, schema)
+    assert replay == result
+    assert replay.metadata["changes"] == result.metadata["changes"]
+
+
+@pytest.mark.parametrize("value", [{"temperature": 40}, "reported text", []])
+def test_empty_member_projection_never_discards_unexpected_content(value):
+    with pytest.raises(ValueError):
+        project_response({"fields": value}, obj({"fields": obj({})}))
+
+
+def test_empty_member_missing_is_not_invented_and_nonempty_null_is_not_filled():
+    with pytest.raises(ValueError):
+        project_response({}, obj({"fields": obj({})}))
+    with pytest.raises(ValueError):
+        project_response({"fields": None}, obj({"fields": obj({"condition": TEXT})}))
+
+
+def test_nullable_readings_and_empty_array_items_keep_their_contract():
+    schema = obj({"reading": {"type": ["object", "null"]}})
+    result = project_response({"reading": None}, schema)
+    assert result == {"reading": None}
+    assert not isinstance(result, ProjectedResponse)
+    assert _wire_schema(schema)["properties"]["reading"]["anyOf"] == [
+        {"type": "object"}, {"type": "null"}
+    ]
+    items = {"type": "array", "items": obj({})}
+    assert _wire_schema(items) == items
 
 
 def test_known_usage_settles_reservation_but_unknown_failure_keeps_it():

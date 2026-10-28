@@ -104,6 +104,17 @@ def project_response(
                     )
             for key in value:
                 if key in properties:
+                    if value[key] is None and _empty_object_schema(properties[key]):
+                        value[key] = {}
+                        changes.append(
+                            {
+                                "operation": "replace",
+                                "path": [*path, key],
+                                "before": None,
+                                "value": {},
+                                "reason": "wire_placeholder_for_empty_object",
+                            }
+                        )
                     visit(value[key], properties[key], [*path, key])
         elif isinstance(value, list) and "items" in contract:
             for index, item in enumerate(value):
@@ -128,10 +139,29 @@ def project_response(
     )
 
 
-def _wire_schema(schema: dict) -> dict:
-    """DeepSeek requires anyOf for nullable containers; local contracts stay intact."""
+def _empty_object_schema(schema: dict) -> bool:
+    return schema == {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False,
+    }
+
+
+def _wire_schema(schema: dict, *, empty_placeholder: bool = False) -> dict:
+    """Adapt container syntax while preserving the locally validated contract.
+
+    DeepSeek rejects empty object schemas. An exactly empty object member has
+    one legal value, so use a null wire placeholder and trace its restoration.
+    Root schemas, array items and nullable scientific values retain their types.
+    """
+    if empty_placeholder and _empty_object_schema(schema):
+        return {"type": "null"}
     converted = {
-        key: {name: _wire_schema(child) for name, child in value.items()}
+        key: {
+            name: _wire_schema(child, empty_placeholder=True)
+            for name, child in value.items()
+        }
         if key == "properties"
         else _wire_schema(value)
         if key == "items"
@@ -235,7 +265,7 @@ class DeepSeekProvider:
     def identity(self) -> dict:
         return {
             "provider": "deepseek-responses",
-            "adapter_version": "7",
+            "adapter_version": "8",
             "temperature": 0,
             "model": self.config["name"],
             "config": self.config,
