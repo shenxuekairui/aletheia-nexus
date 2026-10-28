@@ -99,6 +99,20 @@ def read_acquisition_preset(
     )
 
 
+def acquisition_postprocess_snapshot(workflow, parser_defaults, parser_overrides=None):
+    """Freeze local parsing scope at submission; keep it outside engine options."""
+    result = deepcopy(workflow)
+    if result.get("auto_parse"):
+        if not isinstance(parser_defaults, dict) or (
+            parser_overrides is not None and not isinstance(parser_overrides, dict)
+        ):
+            raise ValueError("自动解析设置必须是一组命名参数。")
+        result["parse_options"] = deepcopy(
+            {**parser_defaults, **(parser_overrides or {})}
+        )
+    return result
+
+
 class AcquisitionPage:
     def title_translation_controls(
         self, initial_options=None, *, initial_enabled=False
@@ -312,8 +326,19 @@ class AcquisitionPage:
                     collection_name, list(dict.fromkeys([*old, *paper_ids]))
                 )
             if postprocess.get("auto_parse") and paper_ids:
+                parse_options = deepcopy(postprocess.get("parse_options"))
+                if parse_options is None:
+                    # Historical trusted callers may lack a snapshot. The UI
+                    # recovery dialog creates a reviewed snapshot before submit;
+                    # never fetch mutable settings from this worker.
+                    report.setdefault("warnings", []).append(
+                        "历史任务未记录解析配置；本次仅使用内置解析默认，不读取运行中的全局设置。"
+                    )
                 parsed = self.ctx.research.parse(
-                    paper_ids, context=context, include_si=options["include_si"]
+                    paper_ids,
+                    options=parse_options,
+                    context=context,
+                    include_si=options["include_si"],
                 )
                 report["parsing"] = parsed
                 if parsed["status"] != "COMPLETED":
@@ -745,7 +770,11 @@ class AcquisitionPage:
             if not requests:
                 raise ValueError("没有启用的论文")
             config = options()
-            postprocess = workflow()
+            postprocess = acquisition_postprocess_snapshot(
+                workflow(),
+                self.ctx.research.parser_options(),
+                self.ctx.settings.get("parsing", {}),
+            )
             self.submit(
                 "acquisition",
                 f"获取 {len(requests)} 篇论文",
