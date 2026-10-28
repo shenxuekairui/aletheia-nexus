@@ -108,10 +108,10 @@ def test_saved_workflow_defaults_populate_actual_acquisition_form(tmp_path):
     prior = set(ui.context.client.elements)
     page.acquisition_page()
     controls = elements_since(prior)
-    assert controls["分类目录（可直接输入新分类）"].value == "电合成/羧酸"
-    assert controls["标签（逗号分隔）"].value == "重点, 待阅读"
+    assert controls["批次默认目录（未单独指定时）"].value == "电合成/羧酸"
+    assert controls["批次默认标签（逗号分隔）"].value == "重点, 待阅读"
     assert controls["成功论文加入固定研究集合（可选）"].value == "长期研究"
-    assert controls["主文与 SI 统一命名模板"].value == "{year}-{title_zh}"
+    assert controls["实际模板（可直接修改）"].value == "{year}-{title_zh}"
     assert controls["成功后自动创建本地解析"].value is True
     assert controls["同时尝试获取 SI"].value is False
     assert controls["入库后自动翻译缺失的英文标题"].value is True
