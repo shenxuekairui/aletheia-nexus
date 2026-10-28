@@ -477,3 +477,41 @@ def test_root_and_inherit_with_same_paper_fields_keep_distinct_source_bindings(
     rows = result["preview"]["items"]
     assert rows[0]["normalization_ids"] != rows[1]["normalization_ids"]
     assert len(rows[0]["normalization_ids"]) == len(rows[1]["normalization_ids"]) == 1
+
+
+@pytest.mark.parametrize("spliced", [True, False])
+def test_group_header_cannot_be_spliced_over_another_paper_into_a_quote(
+    tmp_path, spliced
+):
+    def handler(request):
+        document = payload(request)
+        first, second = document["explicit_dois"]
+        rows = [
+            paper(
+                document,
+                item,
+                quote=item["doi"],
+                folder="分组",
+                organization_source_lines=[1],
+                organization={"folder": "explicit", "tags": "none"},
+            )
+            for item in (first, second)
+        ]
+        if spliced:
+            rows[1].update(source_lines=[1, 3], quote="A. 分组\n2. 10.1000/b")
+        return response(rows)
+
+    result = service(tmp_path, handler).normalize(
+        "A. 分组\n1. 10.1000/a\n2. 10.1000/b", consent=True
+    )
+    assert result["status"] == ("FAILED" if spliced else "COMPLETED")
+    if spliced:
+        assert (
+            result["canonical"] is None
+            and "跨过" in result["diagnostics"][0]["message"]
+        )
+    else:
+        assert [item["source_lines"] for item in result["canonical"]["source_map"]] == [
+            [2],
+            [3],
+        ]

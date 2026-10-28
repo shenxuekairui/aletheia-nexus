@@ -44,7 +44,7 @@ from .settings import atomic_json, state_directory
 MAX_INPUT_CHARACTERS = 50_000
 MAX_INPUT_BYTES = 200_000
 MAX_OUTPUT_TOKENS = 65_536
-STRATEGY = "source-bound-acquisition-input/v1"
+STRATEGY = "source-bound-acquisition-input/v2"
 DEFAULT_OPTIONS = {
     "model": {
         "name": "deepseek-flash",
@@ -72,6 +72,16 @@ with :1, :2 when distinct titles share a line. Do not turn group headings into p
 source_lines are original 1-based integer line numbers. quote must be verbatim source
 text from those lines (whitespace folding allowed), contain this paper's DOI/title,
 and contain no different DOI. Every bibliographic value must occur within quote.
+For DOI-only list entries, use a MINIMAL literal DOI token or its original paper
+line as quote, and source_lines=[that explicit_dois.source_line] ONLY. Do NOT put
+category/group headers in quote or source_lines: put them in organization_source_lines.
+NEVER splice non-contiguous lines, skip intervening text, or add ellipses to a quote.
+For multi-line bibliography, use one contiguous source substring and include EVERY
+non-empty line crossed by that substring in source_lines. A header on line 1 plus
+a paper on line 3 is NOT a quote when another paper occurs on line 2.
+Example: line 1 'A. Topic', line 2 '1. 10.1000/a', line 3 '2. 10.1000/b'.
+For b use source_lines=[3], quote='10.1000/b', organization_source_lines=[1].
+NEVER use source_lines=[1,3] with quote='A. Topic\\n2. 10.1000/b'.
 Missing bibliographic fields are null or empty authors. Do not translate titles.
 For explicit classification syntax, preserve the exact user assignments:
 A. Group or [Group] starts a top-level category; ## Parent / ### Child yields Parent/Child.
