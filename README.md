@@ -28,7 +28,9 @@ API 密钥从环境读取，远程调用需明确勾选授权；启动和浏览�
 
 参见[工作台手册与支持矩阵](docs/WORKBENCH_USER_GUIDE.md)、
 [十分钟开始与输入改进](docs/WORKBENCH_USABILITY.md)、[实施审计](docs/WORKBENCH_IMPLEMENTATION.md)
-和[验收记录](docs/WORKBENCH_ACCEPTANCE.md)。
+和[原阶段验收记录](docs/WORKBENCH_ACCEPTANCE.md)。
+最新的[多目录、SI、中文整理及规模验收](docs/WORKBENCH_NORMALIZATION_ACCEPTANCE.md)
+记录实际成功、人工待办、费用与安装结果；开发分支不承诺所有出版社均可自动获取。
 UI 工程验收与 v0.8 科学提取质量验收分别记录，不修改现有科学性能结论。
 
 开发分支新增 opt-in 的 AI 文献整理、字段提取与比较工作流，使用 DeepSeek Flash，
