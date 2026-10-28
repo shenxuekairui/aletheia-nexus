@@ -118,7 +118,8 @@ def test_twenty_five_explicit_dois_are_complete_and_reversed_outputs_map_by_id(
     }
     assert all(not p["title"] for p in result["canonical"]["papers"])
     assert all(
-        p["quote"].strip() == text.splitlines()[p["source_lines"][0] - 1]
+        p["quote"] in text.splitlines()[p["source_lines"][0] - 1]
+        and text[p["span"][0] : p["span"][1]] == p["quote"]
         for p in result["canonical"]["source_map"]
     )
     assert not result["billing_uncertain"] and result[
@@ -238,8 +239,8 @@ def test_proposed_organization_is_flagged_but_never_becomes_identity_evidence(tm
             "organization_source_lines": [1],
         },
         {"folder": "../unsafe", "organization": {"folder": "proposed", "tags": "none"}},
-        {"source_lines": [99]},
-        {"quote": "not in source"},
+        {"source_lines": [99], "title": "a"},
+        {"quote": "not in source", "title": "a"},
         {"year": 2026},
         {"authors": ["Invented Author"]},
         {"journal": "Invented Journal"},
@@ -504,14 +505,54 @@ def test_group_header_cannot_be_spliced_over_another_paper_into_a_quote(
     result = service(tmp_path, handler).normalize(
         "A. 分组\n1. 10.1000/a\n2. 10.1000/b", consent=True
     )
-    assert result["status"] == ("FAILED" if spliced else "COMPLETED")
+    assert result["status"] == "COMPLETED"
     if spliced:
-        assert (
-            result["canonical"] is None
-            and "跨过" in result["diagnostics"][0]["message"]
+        assert any(
+            w["code"] == "SERVER_DOI_ANCHOR_REPAIRED" for w in result["warnings"]
         )
-    else:
-        assert [item["source_lines"] for item in result["canonical"]["source_map"]] == [
-            [2],
-            [3],
+        assert result["canonical"]["source_map"][1]["submitted_model_source_lines"] == [
+            1,
+            3,
         ]
+    assert [item["source_lines"] for item in result["canonical"]["source_map"]] == [
+        [2],
+        [3],
+    ]
+    assert all(
+        item["anchor_basis"] == "server_explicit_doi_occurrence"
+        and not item["model_quote_adopted"]
+        for item in result["canonical"]["source_map"]
+    )
+
+
+def test_metadata_still_rejects_spliced_header_quote_instead_of_server_repair(tmp_path):
+    def handler(request):
+        document = payload(request)
+        first, second = document["explicit_dois"]
+        return response(
+            [
+                paper(
+                    document,
+                    first,
+                    folder="分组",
+                    organization_source_lines=[1],
+                    organization={"folder": "explicit", "tags": "none"},
+                ),
+                paper(
+                    document,
+                    second,
+                    title="Known title",
+                    source_lines=[1, 3],
+                    quote="A. 分组\n2. 10.1000/b Known title",
+                    folder="分组",
+                    organization_source_lines=[1],
+                    organization={"folder": "explicit", "tags": "none"},
+                ),
+            ]
+        )
+
+    result = service(tmp_path, handler).normalize(
+        "A. 分组\n1. 10.1000/a\n2. 10.1000/b Known title", consent=True
+    )
+    assert result["status"] == "FAILED" and result["canonical"] is None
+    assert "跨过" in result["diagnostics"][0]["message"]

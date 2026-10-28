@@ -44,7 +44,7 @@ from .settings import atomic_json, state_directory
 MAX_INPUT_CHARACTERS = 50_000
 MAX_INPUT_BYTES = 200_000
 MAX_OUTPUT_TOKENS = 65_536
-STRATEGY = "source-bound-acquisition-input/v2"
+STRATEGY = "source-bound-acquisition-input/v3"
 DEFAULT_OPTIONS = {
     "model": {
         "name": "deepseek-flash",
@@ -304,7 +304,36 @@ def _canonical(response, text, lines, offsets, occurrences):
             raise ValueError("模型新增或错配了原文未声明的DOI，未采用本次清单。")
         if occurrence:
             returned_dois.add(model_id)
-        numbers, span, quote = _quote_span(row, text, lines, offsets, occurrence)
+        doi_only = (
+            occurrence is not None
+            and row["title"] in (None, "")
+            and not row["authors"]
+            and row["year"] is None
+            and row["journal"] in (None, "")
+        )
+        anchor_repaired = False
+        if doi_only:
+            # The authenticated source binding is already the server's exact
+            # occurrence ID + normalized DOI. Do not make identity depend on
+            # a model guessing a redundant line/quote for an empty citation.
+            try:
+                _, _, submitted = _quote_span(row, text, lines, offsets, occurrence)
+                anchor_repaired = set(extract_dois(submitted)) != {doi}
+            except ValueError:
+                anchor_repaired = True
+            numbers = [occurrence["source_line"]]
+            span = list(occurrence["span"])
+            quote = text[span[0] : span[1]]
+            if anchor_repaired:
+                warnings.append(
+                    {
+                        "code": "SERVER_DOI_ANCHOR_REPAIRED",
+                        "item_id": model_id,
+                        "message": "此条只有原文明示DOI；已用服务器原始位置构建出处，模型提交的引用未用作证据。",
+                    }
+                )
+        else:
+            numbers, span, quote = _quote_span(row, text, lines, offsets, occurrence)
         if not doi and not re.fullmatch(
             rf"L{numbers[0]:04}(?::[1-9]\d{{0,3}})?", model_id
         ):
@@ -433,6 +462,19 @@ def _canonical(response, text, lines, offsets, occurrences):
                 "paper_key": request.key,
                 "paper_sha256": digest(paper),
                 "source_lines": numbers,
+                "anchor_basis": "server_explicit_doi_occurrence"
+                if doi_only
+                else "validated_model_quote",
+                "model_quote_adopted": not doi_only,
+                "model_anchor_repaired": anchor_repaired,
+                **(
+                    {
+                        "submitted_model_source_lines": row["source_lines"],
+                        "submitted_model_quote": row["quote"],
+                    }
+                    if anchor_repaired
+                    else {}
+                ),
                 "source_line_ids": [f"L{n:04}" for n in numbers],
                 "span": span,
                 "quote": quote,
