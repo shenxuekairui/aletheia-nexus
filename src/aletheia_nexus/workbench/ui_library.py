@@ -112,6 +112,17 @@ def view_title(row, view, *, default_mode="bilingual"):
     return original
 
 
+def marked_library_ids(selected_rows, visible_rows):
+    """Use current stable IDs for a one-step action, without changing the tray."""
+    known = {row["id"] for row in visible_rows}
+    ids = list(dict.fromkeys(row.get("id") for row in selected_rows))
+    if not ids:
+        raise ValueError("请先在文献列表左侧勾选要处理的论文。")
+    if any(paper_id not in known for paper_id in ids):
+        raise ValueError("表格选择已过期，请刷新文献列表后重新勾选。")
+    return ids
+
+
 class _ImportPostprocessContext:
     """A 'skip next file' request must never become a paid title-batch skip."""
 
@@ -286,7 +297,7 @@ class LibraryPage:
         )
 
     def library_page(self):
-        from nicegui import ui
+        from nicegui import run, ui
 
         self.title(
             "文献库", "按目录存放正文，分类内共享 SI；标签、集合与表格视图分别保存。"
@@ -399,9 +410,15 @@ class LibraryPage:
 
         with ui.row().classes("an-toolbar w-full"):
             count = ui.label("").classes("an-muted grow")
+            marked_count = ui.label("表格已勾选 0 篇").classes("an-muted")
             ui.button(
-                "筛选", icon="filter_alt", on_click=guard(lambda: refresh())
+                "刷新 / 应用筛选", icon="refresh", on_click=guard(lambda: refresh())
             ).props("outline")
+            ui.button(
+                "清除筛选",
+                icon="filter_alt_off",
+                on_click=guard(lambda: clear_filters()),
+            ).props("flat")
             ui.button(
                 "保存筛选条件",
                 icon="filter_alt",
@@ -442,9 +459,12 @@ class LibraryPage:
                 default_mode=self.ctx.settings.get("title_mode", "bilingual"),
             )
 
-        def refresh():
-            self.library_filters = filters()
-            report = self.ctx.library.scan(**self.library_filters)
+        async def refresh():
+            requested_filters = filters()
+            self.library_filters = requested_filters
+            report = await run.io_bound(self.ctx.library.scan, **requested_filters)
+            if self.library_filters != requested_filters:
+                return
             self.library_rows = report["items"]
             grid.options["rowData"] = [
                 {
@@ -472,9 +492,13 @@ class LibraryPage:
                 }
                 for r in self.library_rows
             ]
-            grid.update()
+            # NiceGUI's grid.update destroys/recreates the grid. Updating only
+            # rowData preserves stable-ID checks, column widths and sorting.
+            await grid.run_grid_method(
+                "setGridOption", "rowData", grid.options["rowData"]
+            )
             count.set_text(
-                f"{len(self.library_rows)} 篇筛选结果 · 当前选择清单 {len(self.ctx.library.selection())} 篇"
+                f"{len(self.library_rows)} 篇筛选结果 · 跨页面选择清单 {len(self.ctx.library.selection())} 篇"
             )
             diagnostic_area.clear()
             with diagnostic_area:
@@ -513,26 +537,61 @@ class LibraryPage:
                     f"文库有 {len(report['warnings'])} 项来源/文件诊断，请检查详情。",
                     type="warning",
                 )
+            await show_marked_count()
+
+        async def clear_filters():
+            for control, value in (
+                (query, ""),
+                (folder, ""),
+                (tag, []),
+                (tag_mode, "AND"),
+                (untranslated, False),
+                (parsed, ""),
+                (collection, ""),
+                (saved, ""),
+            ):
+                control.set_value(value)
+            await refresh()
+
+        query.on("keydown.enter", guard(refresh))
+
+        async def show_marked_count():
+            marked_count.set_text(
+                f"表格已勾选 {len(await grid.get_selected_rows())} 篇"
+            )
+
+        grid.on("selectionChanged", guard(show_marked_count))
 
         async def add_marked():
             selected = await grid.get_selected_rows()
-            ids = [r["id"] for r in selected]
+            ids = marked_library_ids(selected, self.library_rows)
             self.ctx.library.set_selection(ids, mode="add")
             ui.notify(f"已添加 {len(ids)} 篇；跨页面保留并自动去重。")
             count.set_text(
-                f"{len(self.library_rows)} 篇筛选结果 · 当前选择清单 {len(self.ctx.library.selection())} 篇"
+                f"{len(self.library_rows)} 篇筛选结果 · 跨页面选择清单 {len(self.ctx.library.selection())} 篇"
             )
 
         def add_all():
             ids = [r["id"] for r in self.library_rows]
+            if not ids:
+                raise ValueError("当前筛选没有论文，请调整或清除筛选条件。")
             self.ctx.library.set_selection(ids, mode="add")
             ui.notify(f"已将全部 {len(ids)} 篇筛选结果加入清单。")
             count.set_text(
-                f"{len(ids)} 篇筛选结果 · 当前选择清单 {len(self.ctx.library.selection())} 篇"
+                f"{len(ids)} 篇筛选结果 · 跨页面选择清单 {len(self.ctx.library.selection())} 篇"
             )
 
+        async def parse_marked():
+            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
+            self.parse_dialog(ids)
+
+        async def search_marked():
+            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
+            self.search_handoff = {"ids": ids, "label": "文库勾选文献"}
+            self.navigate("科研检索")
+
         async def organize_marked():
-            ids = [r["id"] for r in await grid.get_selected_rows()]
+            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
             self.organize_dialog(ids)
 
         async def details(event):
@@ -665,7 +724,15 @@ class LibraryPage:
             )
         )
         with ui.row().classes("an-toolbar w-full"):
-            ui.button("加入已勾选文献", icon="playlist_add", on_click=guard(add_marked))
+            ui.button(
+                "解析已勾选", icon="document_scanner", on_click=guard(parse_marked)
+            )
+            ui.button(
+                "检索已勾选", icon="manage_search", on_click=guard(search_marked)
+            ).props("outline")
+            ui.button(
+                "加入选择清单", icon="playlist_add", on_click=guard(add_marked)
+            ).props("outline")
             ui.button(
                 "全选当前页面",
                 on_click=guard(
@@ -681,8 +748,11 @@ class LibraryPage:
             ui.button(
                 "选择清单", icon="checklist", on_click=guard(self.selection_dialog)
             ).props("flat")
+            ui.label("直接解析/检索只处理表格勾选；选择清单用于跨页面积累。").classes(
+                "an-muted text-xs"
+            )
             ui.label("双击任意文献查看详情 / PDF").classes("an-muted text-xs")
-        refresh()
+        ui.timer(0.1, guard(refresh), once=True)
 
     def details_dialog(self, paper_id):
         from nicegui import ui
@@ -863,7 +933,23 @@ class LibraryPage:
             ui.label(
                 "保留原始文件并将副本登记到当前文库。已有AN来源记录保留原状态；未登记PDF采用用户声明身份，不标为VERIFIED。"
             )
-            folder = ui.input("目标分类（相对文库根目录）", value="").classes("w-full")
+            with ui.row().classes("an-toolbar w-full"):
+                folder = ui.input("目标分类（留空为文库根目录）", value="").classes(
+                    "grow"
+                )
+
+                def choose_folder():
+                    from .ui_folders import choose_library_folder
+
+                    choose_library_folder(
+                        self.ctx.library, folder.set_value, initial=folder.value or ""
+                    )
+
+                ui.button(
+                    "选已有 / 新建分类",
+                    icon="create_new_folder",
+                    on_click=guard(choose_folder),
+                ).props("outline")
             title = ui.input("原始标题（单篇可填；留空采用文件名）").classes("w-full")
             tags = self.tag_input("标签（输入可查找，回车新建）")
             path = ui.input("本地 PDF 或文件夹绝对路径").classes("w-full")
