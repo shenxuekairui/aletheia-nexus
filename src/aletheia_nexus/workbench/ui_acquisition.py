@@ -273,6 +273,9 @@ class AcquisitionPage:
                 report["status"] = "PARTIAL"
             template = postprocess.get("template")
             if template:
+                from .acquisition import normalize_request
+
+                preserve_names = set(postprocess.get("preserve_existing_names_for", []))
                 # The download engine has now resolved real bibliographic metadata.
                 # A DOI-only input must never force the DOI itself as the title.
                 rename_ids = [
@@ -280,6 +283,11 @@ class AcquisitionPage:
                     for r in papers
                     if not (successful[r["pdf_path"]].get("request") or {}).get(
                         "filename"
+                    )
+                    and (
+                        not preserve_names
+                        or normalize_request(successful[r["pdf_path"]]["request"]).key
+                        not in preserve_names
                     )
                 ]
                 if rename_ids:

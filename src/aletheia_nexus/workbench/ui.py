@@ -404,7 +404,7 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
 
         from nicegui import run, ui
 
-        from .acquisition import _options
+        from .acquisition import _options, normalize_request
         from .acquisition_recovery import (
             recovery_checkpoint,
             recovery_preview,
@@ -593,6 +593,12 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 reviewed_postprocess = {
                     **postprocess,
                     "title_translation": read_translation(),
+                    "preserve_existing_names_for": [
+                        normalize_request(row["request"]).key
+                        for row in fresh["rows"]
+                        if row["id"] in selected_ids
+                        and row["category"] == "SI_INCOMPLETE"
+                    ],
                 }
                 checkpoint = await run.io_bound(
                     recovery_checkpoint, fresh, self.ctx.acquisition
