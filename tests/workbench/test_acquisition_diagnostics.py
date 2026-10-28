@@ -19,7 +19,7 @@ class Context:
         self.gates = 0
         self.records = []
 
-    def checkpoint(self):
+    def checkpoint(self, **kwargs):
         if self.cancel and self.gates:
             raise TaskCancelled("cancelled_during_interaction")
 
@@ -98,6 +98,82 @@ def test_cancellation_wins_over_skip_without_retry_or_later_dispatch(
         )
     assert entered == ["10.1000/one"]
     assert context.records[-1][0][1] == "CANCELLED"
+
+
+def test_browser_event_wait_failure_stops_without_native_retry_or_later_paper(
+    tmp_path, monkeypatch
+):
+    entered = []
+
+    class BrokenWait(Context):
+        def wait_interaction(self, details, **kwargs):
+            assert callable(kwargs["pump"])
+            raise RuntimeError("https://user:private@publisher.example/?ticket=secret")
+
+    def fetch(request, *, browser_session, **kwargs):
+        entered.append(request.doi)
+        browser_session.config.interaction_callback(
+            ChallengeReport(ChallengeKind.CAPTCHA),
+            "https://publisher.example/login?ticket=secret",
+        )
+        pytest.fail("a broken dispatcher must not continue acquisition")
+
+    monkeypatch.setattr(native_batch, "_acquire_item", fetch)
+    context = BrokenWait()
+    with pytest.raises(ValueError, match="无法继续处理浏览器事件") as failure:
+        AcquisitionService(tmp_path).run(
+            ["10.1000/one", "10.1000/two"],
+            {
+                "public_only": False,
+                "browser_enabled": True,
+                "include_si": False,
+                "max_item_attempts": 3,
+                "retry_backoff": 0,
+            },
+            context,
+        )
+    assert entered == ["10.1000/one"]
+    assert context.records[-1][0][1] == "ERROR"
+    assert context.records[-1][1]["error_type"] == "RuntimeError"
+    assert "secret" not in str(failure.value) + json.dumps(context.records)
+
+
+def test_acquisition_passes_same_owned_event_pump_to_wait_and_pause_checkpoint(
+    tmp_path, monkeypatch
+):
+    pumps = []
+
+    class ContinuingContext(Context):
+        def checkpoint(self, **kwargs):
+            if "pump" in kwargs:
+                pumps.append(kwargs["pump"])
+                kwargs["pump"](0)
+
+        def wait_interaction(self, details, **kwargs):
+            pumps.append(kwargs["pump"])
+            kwargs["pump"](0)
+            return "continue"
+
+    def batch(requests, *, browser_session, **kwargs):
+        browser_session.config.interaction_callback(
+            ChallengeReport(ChallengeKind.CAPTCHA), "https://publisher.example/check"
+        )
+        return SimpleNamespace(
+            items=[
+                BatchAcquisitionItem(
+                    requests[0], requests[0].doi, BatchItemStatus.EXHAUSTED
+                )
+            ]
+        )
+
+    monkeypatch.setattr(acquisition, "acquire_full_text_batch_maximized", batch)
+    result = AcquisitionService(tmp_path).run(
+        ["10.1000/one"],
+        {"public_only": False, "browser_enabled": True, "include_si": False},
+        ContinuingContext(),
+    )
+    assert result["items"][0]["status"] == "EXHAUSTED"
+    assert len(pumps) == 2 and pumps[0] == pumps[1]
 
 
 def test_normal_engine_failure_projects_readable_reason_route_and_redacted_trace(

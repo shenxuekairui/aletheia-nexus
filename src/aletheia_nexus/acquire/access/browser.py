@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
+from threading import get_ident
 from urllib.parse import parse_qs, urlsplit
 
 from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
@@ -567,6 +568,7 @@ class BrowserSession:
         self._use_system_proxy = self.config.resolved_use_system_proxy
         self.profile_dir = browser_profile_dir(self.config)
         self._manager = None
+        self._event_thread_id = None
         self._context = None
         self._attached_browser = None
         self._attached_external = False
@@ -604,6 +606,27 @@ class BrowserSession:
     def __exit__(self, exc_type, exc, tb):
         self.close()
         return False
+
+    def pump_events(self, seconds: float = 0.25) -> None:
+        """Service browser events during a caller's cooperative human wait.
+
+        Keep request guards and download callbacks responsive on Playwright's
+        owning thread. This never starts a browser, navigates, reloads, clicks,
+        or decides that authentication has succeeded.
+        """
+        if isinstance(seconds, bool) or not math.isfinite(seconds) or seconds < 0:
+            raise ValueError("browser event wait must be finite and nonnegative")
+        if self._context is None:
+            time.sleep(seconds)
+            return
+        if self._event_thread_id != get_ident():
+            raise RuntimeError("Browser events must be processed on the owning thread")
+        pages = [page for page in self._context.pages if not page.is_closed()]
+        if not pages:
+            raise BrowserCapabilityUnavailable(
+                "The browser has no live page during the human interaction wait"
+            )
+        pages[0].wait_for_timeout(seconds * 1000)
 
     def _ensure_started(self):
         _validate_config(self.config)
@@ -698,6 +721,7 @@ class BrowserSession:
                 ) from exc
 
             self._manager = manager
+            self._event_thread_id = get_ident()
             self._context = context
             self._attached_browser = browser
             self._attached_external = True
@@ -763,6 +787,7 @@ class BrowserSession:
             max_bytes=self.config.max_bytes,
         )
         self._manager = manager
+        self._event_thread_id = get_ident()
         self._context = context
         self._context_closed = False
         if hasattr(context, "on"):
@@ -800,6 +825,7 @@ class BrowserSession:
         normal_lease, self._normal_lease = self._normal_lease, None
         self._context = None
         self._manager = None
+        self._event_thread_id = None
         self._attached_browser = None
         self._attached_external = False
         self._blocked_unsafe_urls = []

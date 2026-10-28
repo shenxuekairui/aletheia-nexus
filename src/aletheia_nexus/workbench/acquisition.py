@@ -743,11 +743,16 @@ class AcquisitionService:
                         "stage": "browser_interaction",
                     },
                     timeout=options["interaction_timeout"] or None,
+                    pump=session.pump_events,
                 )
                 # Cancellation wins even if it arrived with a skip/continue.
-                context.checkpoint()
+                context.checkpoint(pump=session.pump_events)
             except TaskCancelled as exc:
                 raise _CancelAcquisition(exc) from exc
+            except Exception as exc:
+                # Do not let legacy Exception-as-retry handling restart a page
+                # whose human interaction dispatcher has stopped working.
+                raise _BrowserWaitFailed(exc) from exc
             if decision == "skip":
                 interaction_skipped = True
                 # The legacy engine catches all Exception values as retryable.
@@ -849,6 +854,25 @@ class AcquisitionService:
                             attempts=None,
                         )
                     raise stopped.original
+                except _BrowserWaitFailed as stopped:
+                    reason = (
+                        "人工验证期间无法继续处理浏览器事件，已停止调度；"
+                        "请检查浏览器窗口后创建恢复任务。"
+                    )
+                    if context:
+                        context.record(
+                            current.key,
+                            "ERROR",
+                            main_status="ERROR",
+                            phase="人工验证浏览器事件处理失败",
+                            reason=reason,
+                            error_type=type(stopped.original).__name__,
+                            request=asdict(current),
+                            route=interaction_route,
+                            folder=str(destination(self.root, current.folder)),
+                            checkpoint=str(checkpoint),
+                        )
+                    raise ValueError(reason) from None
                 row = {
                     "id": current.key,
                     "request": asdict(current),
@@ -985,6 +1009,7 @@ class AcquisitionService:
                                 "resume_instruction": "当前论文未获取，继续只调度后续；可使用相同检查点重试当前项。",
                             },
                             timeout=options["interaction_timeout"] or None,
+                            pump=session.pump_events,
                         )
                     else:
                         return {
@@ -1032,5 +1057,10 @@ class _SkipInteraction(BaseException):
 
 
 class _CancelAcquisition(BaseException):
+    def __init__(self, original):
+        self.original = original
+
+
+class _BrowserWaitFailed(BaseException):
     def __init__(self, original):
         self.original = original

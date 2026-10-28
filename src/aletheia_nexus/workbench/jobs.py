@@ -67,23 +67,38 @@ class TaskContext:
             controls["skip"] = False
             return skip
 
-    def checkpoint(self) -> None:
+    def checkpoint(self, *, pump=None) -> None:
         manager = self.manager
         with manager._condition:
             control = manager._controls[self.job_id]
             if control["cancel"]:
                 raise TaskCancelled("cancelled_at_safe_boundary")
-            if control["pause"]:
-                manager._update(
-                    self.job_id,
-                    status="PAUSED",
-                    stage="等待恢复；当前操作已到达安全边界",
-                )
-                while control["pause"] and not control["cancel"]:
-                    manager._condition.wait(timeout=1)
+            if not control["pause"]:
+                return
+            manager._update(
+                self.job_id,
+                status="PAUSED",
+                stage="等待恢复；当前操作已到达安全边界",
+            )
+        while True:
+            with manager._condition:
                 if control["cancel"]:
                     raise TaskCancelled("cancelled_at_safe_boundary")
-                manager._update(self.job_id, status="RUNNING")
+                if not control["pause"]:
+                    manager._update(self.job_id, status="RUNNING")
+                    return
+                if pump is None:
+                    manager._condition.wait(timeout=1)
+                    continue
+            # Playwright's synchronous dispatcher belongs to this worker. Never
+            # hold the task-control lock while processing browser callbacks.
+            try:
+                pump(0.25)
+            except Exception:
+                with manager._condition:
+                    if control["cancel"]:
+                        raise TaskCancelled("cancelled_at_safe_boundary") from None
+                raise
 
     def progress(self, index=0, total=None, item=None, stage=None, **details):
         values = {"current_index": index, **details}
@@ -105,7 +120,12 @@ class TaskContext:
             )
             self.manager._save(receipt)
 
-    def wait_interaction(self, details, timeout=None) -> str:
+    def wait_interaction(self, details, timeout=None, *, pump=None) -> str:
+        """Wait for a human decision, optionally servicing an owned event loop.
+
+        ``pump(seconds)`` runs on the waiting worker, outside the control lock.
+        It must only process events, never navigate or resolve a challenge.
+        """
         if timeout is not None and timeout < 0:
             raise ValueError("interaction timeout cannot be negative")
         manager = self.manager
@@ -116,9 +136,17 @@ class TaskContext:
             manager._update(
                 self.job_id, status="INTERACTION_REQUIRED", interaction=details
             )
-            while not control["continue"] and not control["skip"]:
+        while True:
+            with manager._condition:
                 if control["cancel"]:
                     raise TaskCancelled("cancelled_during_interaction")
+                if control["continue"] or control["skip"]:
+                    action = "skip" if control["skip"] else "continue"
+                    control["skip"] = control["continue"] = False
+                    manager._update(
+                        self.job_id, status="RUNNING", interaction_resolution=action
+                    )
+                    return action
                 if deadline is not None and time.monotonic() >= deadline:
                     manager._update(
                         self.job_id,
@@ -126,15 +154,24 @@ class TaskContext:
                         interaction_resolution="timeout_skip",
                     )
                     return "skip"
-                manager._condition.wait(timeout=0.25)
-            if control["cancel"]:
-                raise TaskCancelled("cancelled_during_interaction")
-            action = "skip" if control["skip"] else "continue"
-            control["skip"] = control["continue"] = False
-            manager._update(
-                self.job_id, status="RUNNING", interaction_resolution=action
-            )
-            return action
+                delay = 0.25
+                if deadline is not None:
+                    delay = min(delay, max(0.0, deadline - time.monotonic()))
+                if pump is None:
+                    manager._condition.wait(timeout=delay)
+                    continue
+            try:
+                pump(delay)
+            except Exception as exc:
+                with manager._condition:
+                    if control["cancel"]:
+                        raise TaskCancelled("cancelled_during_interaction") from None
+                    manager._update(
+                        self.job_id,
+                        interaction_resolution="event_processing_failed",
+                        interaction_error_type=type(exc).__name__,
+                    )
+                raise
 
 
 class TaskManager:
