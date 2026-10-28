@@ -1091,9 +1091,9 @@ class WorkbenchResearch:
                 value = self.app.read_research_result(str(path))
                 titles = list(
                     dict.fromkeys(
-                        d["source"]["title"]
-                        for d in value["package"]["documents"]
-                        if d["source"].get("document_role") == "ARTICLE"
+                        d["identity"]["title"]
+                        for d in value["sources"]
+                        if d["identity"].get("document_role") == "ARTICLE"
                     )
                 )
                 rows.append(
