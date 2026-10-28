@@ -258,6 +258,10 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 "--workspace",
                 str(workspace),
             ],
+            env={
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
         )
         async with Client(
             params,
@@ -280,6 +284,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 "export_research_results",
                 "search_documents",
                 "read_document_context",
+                "read_native_table",
                 "get_parse_diagnostics",
                 "read_research_result",
                 "revise_research_result",

@@ -149,7 +149,9 @@ def test_background_preparation_progress_partial_and_reuse(app, monkeypatch):
     assert repeated["job_id"] != job["job_id"]
     assert repeated["status"] == "PARTIAL"
     assert repeated["documents"] == completed["documents"]
-    assert all(row["reused"] for row in repeated["items"] if row["status"] == "PREPARED")
+    assert all(
+        row["reused"] for row in repeated["items"] if row["status"] == "PREPARED"
+    )
     assert len(calls) == 2
     assert read_json(Path(completed["directory"]) / "status.json") == before
     assert {p: sha256_file(p) for p in artifacts} == artifacts
@@ -276,6 +278,58 @@ def test_one_use_grant_binds_task_sources_budget_and_scope(app):
     Path(doc["pdf"]).write_bytes(b"changed")
     with pytest.raises((ProcessingError, ValueError, RuntimeError)):
         service.consume(token, "execute", task)
+
+
+def test_long_notes_have_bounded_preview_but_full_input_and_authorization(app):
+    from aletheia_nexus.processing.engine import _request
+    from aletheia_nexus.processing.materials import build_package
+
+    service, pdf = app
+    doc = service.prepare_documents([str(pdf)])["documents"][0]
+    note = "温度25 µM；H₂O\n" * 4000 + "甲"
+    doc["notes"] = ["仅处理所选文献。", note]
+    task = task_for([doc], mode="parsed")
+    before = deepcopy(task)
+    checked = service.validate_research_task(task)
+    assert len(checked["plan"]) < 2000
+    assert "仅处理所选文献。" in checked["plan"]
+    assert f"{len(note)}字符" in checked["plan"]
+    assert "documents[0].notes" in checked["plan"]
+    assert "全文将在确认后随所选文献发送给模型" in checked["plan"]
+    assert note not in checked["plan"]
+    sources = [
+        service.check_document(d, "parsed") for d in checked["task"]["documents"]
+    ]
+    package, _ = build_package(checked["task"], sources)
+    request = _request(checked["task"], package)
+    assert request["material"]["documents"][0]["notes"] == doc["notes"]
+    assert checked["task"]["documents"][0]["notes"] == doc["notes"]
+    assert task == before
+    challenge = service.authorization_request("execute", task)
+    assert read_json(Path(challenge["authorization_request"]))["payload"] == task
+
+    changed = deepcopy(task)
+    changed["documents"][0]["notes"][1] = note[:-1] + "乙"
+    other = service.validate_research_task(changed)
+    assert other["plan"] == checked["plan"]
+    assert other["task_fingerprint"] != checked["task_fingerprint"]
+    assert service.binding("execute", changed) != service.binding("execute", task)
+    token = service.authorize("execute", task)
+    with pytest.raises(ProcessingError, match="changed"):
+        service.consume(token, "execute", changed)
+    service.consume(token, "execute", task)
+
+
+def test_short_notes_remain_visible_in_local_plan(app):
+    service, pdf = app
+    doc = service.prepare_documents([str(pdf)])["documents"][0]
+    doc["notes"] = ["保留原单位 µM，不换算。", "附件关系由用户确认。"]
+    checked = service.validate_research_task(task_for([doc]))
+    for note in doc["notes"]:
+        assert "注意：" + note in checked["plan"]
+    assert "计划不展开" not in checked["plan"]
+    assert "本地模式不发送给远程模型" in checked["plan"]
+    assert checked["task"]["documents"][0]["notes"] == doc["notes"]
 
 
 def test_default_remote_disabled_and_challenge_is_not_consent(app):

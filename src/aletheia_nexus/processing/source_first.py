@@ -12,6 +12,7 @@ from .contracts import (
     obj,
     validate,
 )
+from .readings import readings_identity
 
 SOURCE_FIRST_VERSION = "source-first/2"
 INVENTORY_PHASE = "source_evidence_inventory"
@@ -63,6 +64,7 @@ def strategy_identity(task: dict) -> dict:
         "extraction_strategy": "source_first",
         "source_first_version": SOURCE_FIRST_VERSION,
         "source_first_prompt_sha256": digest([INVENTORY_PROMPT, ASSEMBLY_PROMPT]),
+        **readings_identity(task),
     }
 
 

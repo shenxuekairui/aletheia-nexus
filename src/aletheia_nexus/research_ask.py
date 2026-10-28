@@ -39,6 +39,11 @@ def main(argv: list[str] | None = None) -> int:
         help="选择直接提取或先读后提取；不指定时使用任务原配置",
     )
     ask.add_argument(
+        "--source-assembly",
+        choices=("model", "preserve_readings"),
+        help="可选保留AI首读笔记；需任务关闭步骤/额外claims和复核，仅支持文本字段",
+    )
+    ask.add_argument(
         "--material-presentation",
         choices=("compact",),
         help="可选的精简材料呈现；不指定时保留任务原配置",
@@ -178,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
                 overrides["extraction_strategy"] = args.extraction_strategy
             if args.material_presentation is not None:
                 overrides["material_presentation"] = args.material_presentation
+            if args.source_assembly is not None:
+                overrides["source_assembly"] = args.source_assembly
             if overrides:
                 selected = {**checked["task"], **overrides}
                 checked = app.validate_research_task(selected)

@@ -257,6 +257,7 @@ TASK = obj(
         "include_steps": BOOLEAN,
         "include_claims": BOOLEAN,
         "extraction_strategy": choice("direct", "source_first"),
+        "source_assembly": choice("model", "preserve_readings"),
         "material_presentation": choice("compact"),
         "export_formats": array(choice(*EXPORT_FORMATS)),
     },
@@ -337,6 +338,23 @@ def validate_task(payload: dict) -> dict:
     if "max_cost" in budget and budget["max_cost"] <= 0:
         raise ValueError("cost budget must be positive")
     task["budget"] = budget
+    if task.get("source_assembly") == "preserve_readings":
+        if task.get("extraction_strategy") != "source_first":
+            raise ValueError(
+                "preserve_readings requires extraction_strategy source_first"
+            )
+        if (
+            task.get("include_steps") is not False
+            or task.get("include_claims") is not False
+            or budget["max_review_rounds"] != 0
+            or task["type"] == "procedure"
+            or any(f["type"] not in {"string", "string_list"} for f in task["fields"])
+        ):
+            raise ValueError(
+                "preserve_readings provides one reading-note record per main source; "
+                "requires string/string_list fields, include_steps=false, "
+                "include_claims=false and max_review_rounds=0; procedures are unsupported"
+            )
     if "model" in task:
         model = {
             "timeout_seconds": 300,

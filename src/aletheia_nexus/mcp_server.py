@@ -187,6 +187,21 @@ def create_server(app: ResearchApplication):
         return app.search_documents(documents, query, limit=limit, mode=mode)
 
     @tool
+    def read_native_table(path: str, sheets: list[str] | None = None) -> dict[str, Any]:
+        """Read an allowed original XLSX as complete selected-sheet coordinate notes.
+        No key, network or model call. Select exact sheet names, or omit for all.
+        Fixed limits:10000 populated/formula cells,64MiB actually read XML parts,
+        200000 notes characters; excess fails, never returns a truncated table.
+        Returns source SHA, counts and table_notes for document.notes. The caller
+        must establish any main/SI relationship; no VERIFIED identity is minted.
+        Formulas/cache/merged ranges and semantic sub/superscripts are preserved,
+        not evaluated. Charts/images/layout are not read. Raw rPr/XML stay in the
+        local original workbook, not in tool output. Host-model privacy applies
+        to returned content. Paths use the existing allowed-root boundary.
+        """
+        return app.read_native_table(path, sheets)
+
+    @tool
     def read_document_context(
         document: dict,
         pages: list[int] | None = None,

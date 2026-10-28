@@ -35,12 +35,25 @@ from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
 from aletheia_nexus.processing.contracts import digest, validate_task
 from aletheia_nexus.processing.engine import run_task, write_json
 from aletheia_nexus.processing.materials import load_source
+from aletheia_nexus.processing.native_table import (
+    NATIVE_TABLE_VERSION,
+    NativeTableLimitError,
+    native_table_notes,
+    read_native_xlsx,
+)
 from aletheia_nexus.processing.provider import ProcessingError
+from aletheia_nexus.processing.readings import readings_identity
 from aletheia_nexus.processing.results import (
     export_results,
     revise_result,
     verify_result,
 )
+
+NATIVE_TABLE_LIMITS = {
+    "max_cells": 10000,
+    "max_uncompressed_bytes": 64 * 1024 * 1024,
+    "max_chars": 200000,
+}
 
 
 def read_json(path: Path) -> dict:
@@ -613,12 +626,32 @@ class ResearchApplication:
     @staticmethod
     def plan(task: dict, sources: list) -> str:
         lines = [f"研究目标：{task['objective']}", "文献："]
-        for source in sources:
+        for index, source in enumerate(sources):
             lines.append(
                 f"  {source.config['id']} · {source.identity['title']} "
                 f"({source.identity['document_role']})"
             )
-            lines.extend("  注意：" + note for note in source.config.get("notes", []))
+            notes = source.config.get("notes", [])
+            visible_chars = hidden_count = hidden_chars = 0
+            for note in notes:
+                if len(note) <= 400 and visible_chars + len(note) <= 1000:
+                    lines.append("  注意：" + note)
+                    visible_chars += len(note)
+                else:
+                    hidden_count += 1
+                    hidden_chars += len(note)
+            if hidden_count:
+                lines.append(
+                    f"  补充材料/备注：另有{hidden_count}条，共{hidden_chars}字符，计划不展开。"
+                    f"完整内容见保存任务的 documents[{index}].notes；"
+                    "自然语言入口会显示任务文件路径，MCP校验返回的task也包含全文。"
+                )
+            if notes:
+                lines.append(
+                    "  备注/补充材料全文将在确认后随所选文献发送给模型（含未展开部分）。"
+                    if task["mode"] != "local"
+                    else "  备注/补充材料全文保留在任务与本地材料中；本地模式不发送给远程模型。"
+                )
         lines.append("提取信息：")
         lines.extend(
             f"  {f.get('label', f['id'])}：{f['description']}" for f in task["fields"]
@@ -632,7 +665,12 @@ class ResearchApplication:
             "模型：" + task.get("model", {}).get("name", "本地，无模型"),
             "提取策略："
             + (
-                "先读原文证据，再组装字段；每份材料至少2次模型调用，"
+                "每篇1次首读，按原字段分配保留读法笔记，不作第二次科学改写；"
+                "每篇仅一条笔记记录，读法与关系未经科学确认。"
+                + ("另有原引擎跨篇综合调用及费用。" if task["synthesize"] else "")
+                if task.get("source_assembly") == "preserve_readings"
+                and task["mode"] != "local"
+                else "先读原文证据，再组装字段；每份材料至少2次模型调用，"
                 "补材料会再执行两阶段；共用下列调用及费用上限，不自动加预算。"
                 if task.get("extraction_strategy") == "source_first"
                 and task["mode"] != "local"
@@ -647,12 +685,21 @@ class ResearchApplication:
         ]
         if task.get("material_presentation") == "compact":
             lines.append("材料呈现：精简（compact）；按当前材料范围和预算执行。")
+        if task.get("source_assembly") == "preserve_readings":
+            lines.append(
+                "交付形式：每篇一条原读法笔记；字段未获条目不等于原文未报告。"
+                "不生成多阶段实验记录或人工确认；本地模式仅准备材料，不执行首读。"
+            )
         return "\n".join(lines)
 
     def binding(self, scope: str, payload: dict) -> str:
         if scope == "execute":
             validated = self.validate_research_task(payload)
-            payload = {"task": validated["task"], "sources": validated["documents"]}
+            payload = {
+                "task": validated["task"],
+                "sources": validated["documents"],
+                **readings_identity(validated["task"]),
+            }
         elif scope == "acquire":
             from .research_acquisition import public_acquisition_plan
 
@@ -982,6 +1029,64 @@ class ResearchApplication:
             "unsearched": failures,
             "network_access": False,
             "interpretation": "字面检索；未命中不代表原文没有报告。可继续读取完整上下文与原页。",
+        }
+
+    def read_native_table(self, path: str, sheets: list[str] | None = None) -> dict:
+        """Read selected native XLSX cells locally; never assert an SI identity."""
+        source = self.path(path)
+        if source.suffix.lower() != ".xlsx":
+            raise ProcessingError("native_table_format_unsupported")
+        try:
+            view = read_native_xlsx(
+                source,
+                sheets=sheets,
+                max_cells=NATIVE_TABLE_LIMITS["max_cells"],
+                max_uncompressed_bytes=NATIVE_TABLE_LIMITS["max_uncompressed_bytes"],
+            )
+            notes = native_table_notes(view, max_chars=NATIVE_TABLE_LIMITS["max_chars"])
+        except ValueError as exc:
+            return {
+                "ok": False,
+                "error": "native_table_resource_limit"
+                if isinstance(exc, NativeTableLimitError)
+                else "invalid_native_table",
+                "detail": str(exc),
+                "limits": dict(NATIVE_TABLE_LIMITS),
+                "network_access": False,
+                "new_files": False,
+            }
+        if sha256_file(source) != view["source_workbook_sha256"]:
+            raise ProcessingError("native_table_source_changed")
+        return {
+            "ok": True,
+            "source": {
+                "path": str(source),
+                "sha256": view["source_workbook_sha256"],
+                "format": "xlsx",
+                "identity_verified": False,
+                "parent_document_assigned": False,
+            },
+            "reader_version": NATIVE_TABLE_VERSION,
+            "sheet_count": len(view["sheets"]),
+            "cell_count": view["populated_cells"],
+            "selected_sheets": [
+                {"name": s["sheet"], "cells": s["populated_cells"], "state": s["state"]}
+                for s in view["sheets"]
+            ],
+            "unselected_sheets": view["unselected_sheets"],
+            "table_notes": notes,
+            "complete_selected_sheet_cell_view": True,
+            "limits": dict(NATIVE_TABLE_LIMITS),
+            "scope": [
+                "完整返回选定工作表的原始单元格坐标和值；不是图表或版面视觉理解。",
+                "公式仅保留原式、声明和已有缓存，不重算，也不证明缓存或科学内容正确。",
+                "此工具不核验来源身份或自动绑定主文/SI；确认关系后可将table_notes追加到document.notes数组。",
+                "原始rPr/XML保留在本地原工作簿；返回投影只含必要文字和上/下标等语义属性。",
+                "内容会返回MCP客户端，其模型和隐私设置由客户端管理；AN不调用模型或网络。",
+            ],
+            "warnings": view["warnings"],
+            "network_access": False,
+            "new_files": False,
         }
 
     def read_document_context(

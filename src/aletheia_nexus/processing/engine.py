@@ -23,8 +23,10 @@ from .provider import (
     Provider,
     project_response,
 )
+from .readings import READINGS_VERSION, preserve_readings
 from .results import (
     assign_record_ids,
+    check_response,
     export_prepared,
     export_results,
     make_result,
@@ -904,31 +906,52 @@ def run_task(
                                     row,
                                     resume=resume,
                                 )
-                                request = assembly_request(request, inventory)
-                                row["phase"] = request["phase"]
-                                write_json(
-                                    run_dir
-                                    / f"{owner_id}.{round_number}.source-first-assembly.input.json",
-                                    {
-                                        "request": request,
-                                        "schema": response_schema(task),
-                                        "prompt_version": SOURCE_FIRST_VERSION,
-                                        "instructions_sha256": digest(ASSEMBLY_PROMPT),
-                                        "package_id": package["artifact_id"],
-                                    },
-                                )
+                                if task.get("source_assembly") == "preserve_readings":
+                                    response = preserve_readings(
+                                        task, package, inventory, owner_id
+                                    )
+                                    row["phase"] = "preserve_readings"
+                                    write_json(
+                                        run_dir
+                                        / f"{owner_id}.{round_number}.readings-render.json",
+                                        {
+                                            "renderer": READINGS_VERSION,
+                                            "source_inventory": row[
+                                                "source_inventories"
+                                            ][-1],
+                                            "response": response,
+                                        },
+                                    )
+                                    check_response(response, task, package)
+                                else:
+                                    request = assembly_request(request, inventory)
+                                    row["phase"] = request["phase"]
+                                    write_json(
+                                        run_dir
+                                        / f"{owner_id}.{round_number}.source-first-assembly.input.json",
+                                        {
+                                            "request": request,
+                                            "schema": response_schema(task),
+                                            "prompt_version": SOURCE_FIRST_VERSION,
+                                            "instructions_sha256": digest(
+                                                ASSEMBLY_PROMPT
+                                            ),
+                                            "package_id": package["artifact_id"],
+                                        },
+                                    )
                                 checkpoint()
-                            response = _generate_checked(
-                                task,
-                                package,
-                                request,
-                                images,
-                                provider,
-                                budget,
-                                run_dir,
-                                f"{owner_id}.{round_number}",
-                                row,
-                            )
+                            if task.get("source_assembly") != "preserve_readings":
+                                response = _generate_checked(
+                                    task,
+                                    package,
+                                    request,
+                                    images,
+                                    provider,
+                                    budget,
+                                    run_dir,
+                                    f"{owner_id}.{round_number}",
+                                    row,
+                                )
                         except (ProcessingError, ValueError) as exc:
                             if previous is None:
                                 raise
