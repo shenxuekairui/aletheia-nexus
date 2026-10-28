@@ -15,9 +15,12 @@ from aletheia_nexus.research_planner import planning_request
 app = application_fixture
 
 
-@pytest.mark.parametrize("strategy", ["direct", "source_first"])
+@pytest.mark.parametrize(
+    ("strategy", "presentation"),
+    [("direct", None), ("source_first", None), (None, "compact"), ("source_first", "compact")],
+)
 def test_cli_strategy_applied_to_new_draft_without_extra_planning(
-    app, monkeypatch, capsys, strategy
+    app, monkeypatch, capsys, strategy, presentation
 ):
     service, pdf = app
     planning_calls = []
@@ -33,6 +36,11 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
         return {**checked, "task_file": str(original)}
 
     monkeypatch.setattr("aletheia_nexus.research_ask.draft_task", draft)
+    selected_args = []
+    if strategy:
+        selected_args += ["--extraction-strategy", strategy]
+    if presentation:
+        selected_args += ["--material-presentation", presentation]
     assert (
         main(
             [
@@ -43,8 +51,7 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
                 "--output-dir",
                 str(service.workspace),
                 "--allow-planning",
-                "--extraction-strategy",
-                strategy,
+                *selected_args,
                 "--non-interactive",
                 "--save-only",
             ]
@@ -55,20 +62,33 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
     saved = list((service.workspace / "tasks").glob("*.json"))
     assert len(saved) == 1
     task = json.loads(saved[0].read_text(encoding="utf-8"))
-    assert task["extraction_strategy"] == strategy
+    if strategy:
+        assert task["extraction_strategy"] == strategy
+    else:
+        assert "extraction_strategy" not in task
+    if presentation:
+        assert task["material_presentation"] == presentation
+    else:
+        assert "material_presentation" not in task
     original = json.loads(
         (service.workspace / "planning/mock/task.json").read_text(encoding="utf-8")
     )
     assert "extraction_strategy" not in original
+    assert "material_presentation" not in original
     output = capsys.readouterr().out
     assert service.binding("execute", task) in output
     if strategy == "source_first":
         assert "至少2次模型调用" in output
+    assert ("材料呈现：精简（compact）" in output) == (presentation == "compact")
     assert not (service.workspace / "research").exists()
 
 
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [("extraction_strategy", "source_first"), ("material_presentation", "compact")],
+)
 def test_cli_strategy_loaded_task_requires_new_confirmation_and_executes_saved_selection(
-    app, monkeypatch, capsys
+    app, monkeypatch, capsys, option, value
 ):
     service, pdf = app
     documents = service.prepare_documents([str(pdf)])["documents"]
@@ -85,8 +105,8 @@ def test_cli_strategy_loaded_task_requires_new_confirmation_and_executes_saved_s
         str(service.workspace),
         "--task",
         str(path),
-        "--extraction-strategy",
-        "source_first",
+        "--" + option.replace("_", "-"),
+        value,
         "--non-interactive",
         "--execute",
         "--allow-remote",
@@ -98,7 +118,7 @@ def test_cli_strategy_loaded_task_requires_new_confirmation_and_executes_saved_s
     saved = list((service.workspace / "tasks").glob("*.json"))
     assert len(saved) == 1
     selected = json.loads(saved[0].read_text(encoding="utf-8"))
-    assert selected["extraction_strategy"] == "source_first"
+    assert selected[option] == value
     binding = service.binding("execute", selected)
     assert binding != old_binding
     executed = []
@@ -115,7 +135,8 @@ def test_cli_strategy_loaded_task_requires_new_confirmation_and_executes_saved_s
     assert main([*arguments, binding]) == 0
     assert executed == [selected]
     assert path.read_bytes() == original
-    assert "至少2次模型调用" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert ("至少2次模型调用" if option == "extraction_strategy" else "材料呈现：精简（compact）") in output
 
 
 def test_cli_strategy_new_copy_preserves_user_edit_under_same_digest_name(app):
@@ -142,13 +163,20 @@ def test_cli_strategy_new_copy_preserves_user_edit_under_same_digest_name(app):
     assert json.loads(second.read_text(encoding="utf-8"))["objective"] == task["objective"]
 
 
-def test_cli_local_saved_plan_execution_without_key(app, monkeypatch):
+@pytest.mark.parametrize("presentation", [None, "compact"])
+def test_cli_local_saved_plan_execution_without_key(app, monkeypatch, presentation):
     service, pdf = app
     documents = service.prepare_documents([str(pdf)])["documents"]
     task = service.validate_research_task(task_for(documents))["task"]
     path = service.workspace / "local-task.json"
     write_json(path, task)
+    expected = {**task, **({"material_presentation": presentation} if presentation else {})}
+    original = path.read_bytes()
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "aletheia_nexus.processing.engine.DeepSeekProvider",
+        lambda *args, **kwargs: pytest.fail("local mode must not create a remote provider"),
+    )
     assert (
         main(
             [
@@ -159,14 +187,22 @@ def test_cli_local_saved_plan_execution_without_key(app, monkeypatch):
                 str(service.workspace),
                 "--task",
                 str(path),
+                *(["--material-presentation", presentation] if presentation else []),
                 "--non-interactive",
                 "--execute",
                 "--confirm-plan",
-            service.binding("execute", task),
+            service.binding("execute", expected),
             ]
         )
         == 0
     )
+    assert path.read_bytes() == original
+    if presentation:
+        saved = list((service.workspace / "tasks").glob("*.json"))
+        assert len(saved) == 1
+        assert json.loads(saved[0].read_text(encoding="utf-8"))["material_presentation"] == presentation
+    else:
+        assert "material_presentation" not in json.loads(path.read_text(encoding="utf-8"))
 
 
 def test_cli_noninteractive_does_not_accept_model_plan_as_user_consent(app):

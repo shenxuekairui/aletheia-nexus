@@ -58,6 +58,23 @@ MCP 的任务校验和执行接受同一 `task.extraction_strategy` 参数与引
 来源验证、补材料、结果修订与导出继续使用原流程；仍需检查遗漏、条件归属和科学支持。
 这是可选策略，尚不承诺每类任务都优于直接提取。
 
+## 可选的精简材料呈现
+
+开发版可显式选择 `material_presentation=compact`，与提取策略独立配置：
+它仅省略重复的材料结构默认标记，原文、数值、图表和图片不删减；请求附带恢复默认值
+的元数据，完整材料包仍单独保存。该选项尚待更多新论文验证，不是默认设置。
+
+```powershell
+aletheia-nexus research ask "整理这些论文的方法与条件" --papers ./papers --output-dir ./research-output --material-presentation compact
+```
+
+加载已保存任务时同样支持该参数。程序在展示计划、生成授权指纹之前，先保存包含该
+选择的新任务副本；原任务文件保持原样，旧指纹不能授权不同的材料呈现配置。
+省略参数时保留任务原配置，不为旧任务注入默认值。也可在 `research-task/v1` 中设置
+`"material_presentation": "compact"`，由原 `research run` 或 MCP 校验、执行入口使用。
+这项选择不增加调用预算或允许目录，本地模式仍不调用远程模型。
+它是可选的材料表达方式，不能代替实际来源完整性和科研准确率核验。
+
 ## 模型和密钥
 
 首版只提供 DeepSeek Responses API 适配器，模型配置使用 `deepseek-flash`。

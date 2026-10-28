@@ -645,6 +645,8 @@ class ResearchApplication:
             + ", ".join(task.get("export_formats", ["markdown", "csv", "jsonl"])),
             "定位不等于科学支持；AI结果不会标为人工确认。",
         ]
+        if task.get("material_presentation") == "compact":
+            lines.append("材料呈现：精简（compact）；按当前材料范围和预算执行。")
         return "\n".join(lines)
 
     def binding(self, scope: str, payload: dict) -> str:

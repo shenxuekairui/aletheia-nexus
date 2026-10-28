@@ -39,6 +39,11 @@ def main(argv: list[str] | None = None) -> int:
         help="选择直接提取或先读后提取；不指定时使用任务原配置",
     )
     ask.add_argument(
+        "--material-presentation",
+        choices=("compact",),
+        help="可选的精简材料呈现；不指定时保留任务原配置",
+    )
+    ask.add_argument(
         "--max-cost", type=float, default=2, help="科研提取费用估算上限CNY"
     )
     ask.add_argument("--max-calls", type=int, default=10)
@@ -168,11 +173,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             task_file = Path(checked["task_file"])
         while True:
+            overrides = {}
             if args.extraction_strategy is not None:
-                selected = {
-                    **checked["task"],
-                    "extraction_strategy": args.extraction_strategy,
-                }
+                overrides["extraction_strategy"] = args.extraction_strategy
+            if args.material_presentation is not None:
+                overrides["material_presentation"] = args.material_presentation
+            if overrides:
+                selected = {**checked["task"], **overrides}
                 checked = app.validate_research_task(selected)
                 task_file = app.path(
                     app.workspace

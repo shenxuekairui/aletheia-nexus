@@ -257,6 +257,7 @@ TASK = obj(
         "include_steps": BOOLEAN,
         "include_claims": BOOLEAN,
         "extraction_strategy": choice("direct", "source_first"),
+        "material_presentation": choice("compact"),
         "export_formats": array(choice(*EXPORT_FORMATS)),
     },
     ["schema", "id", "type", "objective", "documents", "fields"],

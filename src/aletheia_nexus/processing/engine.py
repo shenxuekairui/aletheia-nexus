@@ -14,6 +14,7 @@ from aletheia_nexus.content.export import write_ai_export
 
 from .contracts import FIELD_ONLY_INSTRUCTION, digest, response_schema, validate_task
 from .materials import Source, build_package, load_source, model_material
+from .presentation import compact_material, presentation_identity
 from .provider import (
     CallBudget,
     DeepSeekProvider,
@@ -116,7 +117,11 @@ def _request(
             "requested_context": deepcopy(previous["requests"]),
             "current_coverage": coverage,
         }
-    return request
+    return (
+        compact_material(request)
+        if task.get("material_presentation") == "compact"
+        else request
+    )
 
 
 def _within_input_budget(task: dict, request: dict) -> None:
@@ -356,6 +361,11 @@ def _generate_checked(
         suffix = "" if repair == 0 else f".repair{repair}"
         try:
             schema = output_schema or response_schema(task, comparison=comparison)
+            if task.get("material_presentation") == "compact":
+                write_json(
+                    run_dir / f"{prefix}.request{suffix}.json",
+                    {"request": request, "schema": schema},
+                )
             response = provider.generate(
                 request,
                 schema,
@@ -472,6 +482,11 @@ def _review_candidate(
                     part = None
                     batch_stem = f"{stem}.batch{batch + 1}.attempt{repair + 1}"
                     try:
+                        if task.get("material_presentation") == "compact":
+                            save(
+                                f"{batch_stem}.request.json",
+                                {"request": request, "schema": review_schema()},
+                            )
                         part = provider.generate(
                             request,
                             review_schema(),
@@ -719,6 +734,7 @@ def run_task(
     provider_identity = deepcopy(provider.identity) if remote else {"provider": "local"}
     if remote:
         provider_identity.update(strategy_identity(task))
+    provider_identity.update(presentation_identity(task))
     run_id = (
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     )
