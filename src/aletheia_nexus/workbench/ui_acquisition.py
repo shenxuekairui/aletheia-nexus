@@ -788,7 +788,9 @@ class AcquisitionPage:
                     sessions = browser_profile_choices(defaults["browser"])
                     profile = ui.select(
                         sessions["options"],
-                        value=defaults["browser"]["profile_name"],
+                        value=sessions["current"]
+                        if sessions["current"] in sessions["options"]
+                        else None,
                         label="浏览器登录会话",
                         with_input=True,
                         new_value_mode="add-unique",
@@ -875,8 +877,12 @@ class AcquisitionPage:
             ui.button("载入并显示", on_click=guard(load_preset)).props("flat")
 
         def options():
+            if strategy.value == "institution" and not profile.value:
+                raise ValueError("请先选择或输入有效的浏览器登录会话名称。")
             advanced = read_advanced()
-            advanced["browser"]["profile_name"] = profile.value
+            advanced["browser"]["profile_name"] = (
+                profile.value or defaults["browser"]["profile_name"]
+            )
             return _options(
                 {
                     **advanced,
