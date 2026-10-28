@@ -256,6 +256,56 @@ def test_fetch_redirect_to_other_host_cannot_be_accepted(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_browser_network_url_normalization_keeps_redirect_guard_bound_before_http(
+    tmp_path, monkeypatch
+):
+    source = page()
+    handlers, actions = [], []
+    source.route = lambda pattern, handler: handlers.append(handler)
+    source.unroute = lambda *args: None
+    transport = supplements_browser.SupplementBrowserTransport(
+        fake_session(source), doi=DOI
+    )
+    transport.pages[PAGE] = source
+
+    def read(*args, **kwargs):
+        # Browser-internal viewer requests retain the original guard behavior.
+        internal = SimpleNamespace(
+            url="chrome-extension://fixture/internal", redirected_from=None
+        )
+        handlers[0](
+            SimpleNamespace(
+                request=internal, fallback=lambda: actions.append("internal_allowed")
+            )
+        )
+        original = SimpleNamespace(url=FILE, redirected_from=None)
+        redirect = SimpleNamespace(
+            url="https://uncovered.example/other.pdf", redirected_from=original
+        )
+        handlers[0](
+            SimpleNamespace(
+                request=redirect,
+                abort=lambda _: actions.append("redirect_blocked"),
+                fallback=lambda: pytest.fail("foreign redirect reached HTTP"),
+            )
+        )
+        return None
+
+    monkeypatch.setattr(supplements_browser, "bounded_read", read)
+    with pytest.raises(
+        supplements_browser.SupplementBrowserError, match="unsafe_attachment_redirect"
+    ):
+        transport.file_fetch(
+            FILE + "#supplementary-section",
+            source_page=PAGE,
+            extension=".pdf",
+            output_dir=tmp_path,
+            max_bytes=100,
+            timeout=1,
+        )
+    assert actions == ["internal_allowed", "redirect_blocked"]
+
+
 @pytest.mark.parametrize(
     "oversized,timed_out,cancel_failures",
     [

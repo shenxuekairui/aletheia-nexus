@@ -14,6 +14,8 @@ import time
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
+import httpx
+
 from aletheia_nexus.acquire.access.browser_engine.downloads import CdpDownloadCapture
 from aletheia_nexus.acquire.access.browser_engine.observation import bounded_read
 from aletheia_nexus.acquire.access.browser_engine.viewer import _PDF_FETCH_SCRIPT
@@ -33,7 +35,7 @@ class SupplementBrowserError(ValueError):
 def _root_request_url(request):
     while request.redirected_from is not None:
         request = request.redirected_from
-    return request.url
+    return str(httpx.URL(request.url))
 
 
 class SupplementBrowserTransport:
@@ -115,7 +117,7 @@ class SupplementBrowserTransport:
     ):
         from .supplements import _official_link
 
-        validate_browser_network_url(url)
+        url = str(httpx.URL(validate_browser_network_url(url)))
         if not _official_link(source_page, url):
             raise SupplementBrowserError("attachment_host_not_covered")
         if source_page not in self.pages:
@@ -129,6 +131,13 @@ class SupplementBrowserTransport:
             blocked = []
 
             def safe_fetch(route):
+                if (
+                    not str(route.request.url)
+                    .lower()
+                    .startswith(("http://", "https://"))
+                ):
+                    route.fallback()
+                    return
                 try:
                     target = validate_browser_network_url(str(route.request.url))
                 except (TypeError, ValueError):
@@ -198,6 +207,9 @@ class SupplementBrowserTransport:
         frame_session = None
 
         def guard(route):
+            if not str(route.request.url).lower().startswith(("http://", "https://")):
+                route.fallback()
+                return
             try:
                 target = validate_browser_network_url(str(route.request.url))
             except (TypeError, ValueError):
