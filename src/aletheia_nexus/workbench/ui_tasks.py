@@ -151,6 +151,21 @@ def render_task_dialog(controller):
                     )
                 if isinstance(result, dict):
                     controller.output_links(result)
+                    if job["kind"] == "input_normalization":
+
+                        def review_input(j=job):
+                            controller.ctx.settings.set(
+                                "input_normalization_last_job", j["id"]
+                            )
+                            controller.open_normalization_on_acquire = True
+                            dialog.close()
+                            controller.navigate("获取论文")
+
+                        ui.button(
+                            "回到输入页核对整理结果",
+                            icon="fact_check",
+                            on_click=guard(review_input),
+                        ).props("outline")
                     if job["kind"] == "parse" and result.get("items"):
                         from .ui_research import render_parse_summary
 

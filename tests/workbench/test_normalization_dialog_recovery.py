@@ -28,7 +28,7 @@ def test_saved_running_then_failed_preview_restores_controls_and_shows_diagnosti
         return element
 
     class Timer:
-        def __init__(self, interval, callback, active=False):
+        def __init__(self, interval, callback, active=False, once=False):
             self.callback, self.active = callback, active
             timers.append(self)
 

@@ -346,6 +346,7 @@ VALUE_LABELS = {
     "direct": "选定原页图像",
     "source_checked": "来源已核对",
     "translation": "标题翻译",
+    "input_normalization": "AI 整理输入",
     "parse": "PDF 解析",
     "research": "科研任务",
     "acquisition": "论文获取",

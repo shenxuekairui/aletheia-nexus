@@ -376,6 +376,7 @@ class AcquisitionPage:
             "grid": None,
             "batch": None,
             "dirty": draft.get("dirty", False),
+            "placement_refresh": lambda *_: None,
         }
         defaults = _options(self.ctx.settings.get("acquisition", {}))
         workflow_defaults = acquisition_workflow_preferences(
@@ -389,8 +390,8 @@ class AcquisitionPage:
             workflow_defaults["tags"] = draft.get(
                 "default_tags", workflow_defaults["tags"]
             )
-        with ui.row().classes("w-full gap-5 items-start"):
-            with ui.card().classes("an-card grow min-w-[450px]"):
+        with ui.row().classes("w-full an-acquisition-layout"):
+            with ui.card().classes("an-card min-w-0 w-full"):
                 ui.label("1 · 添加论文").classes("font-semibold text-lg")
                 value = (
                     ui.textarea(
@@ -423,13 +424,18 @@ class AcquisitionPage:
                             "preview_text": state.get("preview_text"),
                         },
                     )
+                    state["placement_refresh"](rows)
 
-                def preview_input(text=None, format=None, restored=None):
+                def preview_input(
+                    text=None, format=None, restored=None, report_override=None
+                ):
                     if text is not None:
                         value.set_value(text)
                     report = (
                         restored["report"]
                         if restored
+                        else report_override
+                        if report_override is not None
                         else self.ctx.acquisition.preview_inputs(
                             value.value if text is None else text, format=format
                         )
@@ -643,8 +649,36 @@ class AcquisitionPage:
 
                 with ui.row().classes("an-toolbar"):
                     ui.button(
-                        "规范化与预览", icon="fact_check", on_click=guard(preview_input)
+                        "手动整理并预览",
+                        icon="fact_check",
+                        on_click=guard(preview_input),
                     )
+
+                    async def normalization_snapshot():
+                        return {
+                            "text": value.value or "",
+                            "rows": await read_edited_grid(state["grid"])
+                            if state["grid"] is not None
+                            else [],
+                            "default_folder": folder.value or "",
+                            "default_tags": split_tags(tags.value),
+                            "library": str(self.ctx.library.root),
+                        }
+
+                    def normalize_with_model():
+                        from .ui_input_normalization import normalization_dialog
+
+                        normalization_dialog(
+                            self,
+                            normalization_snapshot,
+                            lambda report: preview_input(report_override=report),
+                        )
+
+                    ui.button(
+                        "AI 整理输入",
+                        icon="auto_awesome",
+                        on_click=guard(normalize_with_model),
+                    ).props("outline")
                     ui.button(
                         "导入已有 PDF",
                         icon="upload_file",
@@ -669,14 +703,20 @@ class AcquisitionPage:
                     auto_upload=True,
                     max_file_size=5_000_000,
                 ).props('accept=".txt,.csv,.json"').classes("w-full")
-            with ui.card().classes("an-card w-[390px] max-w-full"):
+                preview_area = ui.column().classes("w-full")
+            with ui.card().classes("an-card min-w-0 w-full"):
                 ui.label("2 · 分类与保存").classes("font-semibold text-lg")
                 ui.label(str(self.ctx.library.root)).classes(
                     "an-muted text-xs break-all"
                 )
+                from .ui_acquisition_groups import render_acquisition_groups
+
+                state["placement_refresh"] = render_acquisition_groups(
+                    self, lambda: state["batch"], preview_input
+                )
                 folder = (
                     ui.input(
-                        "分类目录（可直接输入新分类）",
+                        "批次默认目录（未单独指定时）",
                         value=workflow_defaults["folder"],
                     )
                     .props("outlined")
@@ -695,7 +735,8 @@ class AcquisitionPage:
                 ).props("outline")
                 tags = (
                     ui.input(
-                        "标签（逗号分隔）", value=", ".join(workflow_defaults["tags"])
+                        "批次默认标签（逗号分隔）",
+                        value=", ".join(workflow_defaults["tags"]),
                     )
                     .props("outlined")
                     .classes("w-full")
@@ -711,16 +752,11 @@ class AcquisitionPage:
                     .props("outlined")
                     .classes("w-full")
                 )
-                templates = self.ctx.library.templates()
-                naming_options = {v: k for k, v in templates.items()}
-                naming_options.setdefault(
-                    workflow_defaults["template"], "已保存的命名格式"
+                from .ui_naming import NamingTemplateControl
+
+                naming = NamingTemplateControl(
+                    self.ctx.library, workflow_defaults["template"]
                 )
-                naming = ui.select(
-                    naming_options,
-                    value=workflow_defaults["template"],
-                    label="主文与 SI 统一命名模板",
-                ).classes("w-full")
                 ui.label(
                     "缺失译名或书目信息时回退已有原题；入库后可在整理流程补齐译名并预览改名。"
                 ).classes("an-muted text-xs")
@@ -763,7 +799,6 @@ class AcquisitionPage:
                         value=defaults["interaction_timeout"],
                         min=0,
                     )
-        preview_area = ui.column().classes("w-full")
 
         def text_changed():
             if state["preview"]:
@@ -871,9 +906,7 @@ class AcquisitionPage:
             tags.set_value(", ".join(preferences["tags"]))
             collection.set_value(preferences["collection"])
             auto_parse.set_value(preferences["auto_parse"])
-            choices = dict(naming.options)
-            choices.setdefault(preferences["template"], "预设命名格式")
-            naming.set_options(choices, value=preferences["template"])
+            naming.apply(preferences["template"])
             read_translation.apply(preferences["title_translation"])
             ui.notify("获取参数及整理偏好已载入；本次费用授权未复用。", type="positive")
 
@@ -1042,3 +1075,6 @@ class AcquisitionPage:
             ).props("outline")
         if draft.get("report") and draft.get("rows"):
             preview_input(restored=draft)
+        if getattr(self, "open_normalization_on_acquire", False):
+            self.open_normalization_on_acquire = False
+            normalize_with_model()

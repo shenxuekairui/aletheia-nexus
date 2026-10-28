@@ -22,6 +22,7 @@ class ContextLease:
             "acquisition",
             "research",
             "translation",
+            "input_normalization",
             "switch_root",
         }:
             if self._generation != self._context.generation:
@@ -33,6 +34,7 @@ class ContextLease:
 
 def create_context(root: Path, workspace: Path):
     from .workbench.acquisition import AcquisitionService
+    from .workbench.input_normalization import InputNormalizationService
     from .workbench.jobs import TERMINAL, TaskManager
     from .workbench.library import LibraryService
     from .workbench.research import WorkbenchResearch
@@ -46,6 +48,7 @@ def create_context(root: Path, workspace: Path):
         workspace=workspace, settings=settings, jobs=TaskManager(workspace)
     )
     context.generation = 0
+    context.input_normalization = InputNormalizationService(workspace)
     context.lease = lambda: ContextLease(context)
 
     def switch_root(value):

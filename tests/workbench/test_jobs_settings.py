@@ -152,6 +152,7 @@ def test_file_operation_failure_cannot_appear_completed(
     [
         ("import", {"title_translation": {"enabled": True}}),
         ("acquisition", {"postprocess": {"title_translation": {"enabled": True}}}),
+        ("input_normalization", {}),
     ],
 )
 def test_interrupted_ingestion_keeps_translation_billing_uncertainty(

@@ -171,7 +171,12 @@ class TaskManager:
                         billing_uncertain=bool(
                             receipt.get("billing_uncertain")
                             or receipt["kind"]
-                            in {"translation", "research", "planning"}
+                            in {
+                                "translation",
+                                "research",
+                                "planning",
+                                "input_normalization",
+                            }
                             or (
                                 receipt.get("parameters", {}).get("postprocess") or {}
                             ).get("translate_titles")

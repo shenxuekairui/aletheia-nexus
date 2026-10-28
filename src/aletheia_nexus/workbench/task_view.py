@@ -24,6 +24,18 @@ def task_rows(job: dict) -> list[dict]:
     items = result.get("items")
     if not isinstance(items, list) and result.get("native_runs"):
         items = [item for run in result["native_runs"] for item in run.get("items", [])]
+    if job.get("kind") == "input_normalization":
+        items = [
+            {
+                "id": item["id"],
+                "request": item["request"],
+                "status": "PREPARED",
+                "phase": "输入已整理，尚未获取",
+                "folder": item["request"].get("folder") or "默认 / 根目录",
+            }
+            for item in (result.get("preview") or {}).get("items", [])
+            if not item.get("duplicate")
+        ]
     if not isinstance(items, list) and isinstance(result.get("preview"), dict):
         items = []
         for item in result["preview"].get("items", []):
@@ -146,7 +158,14 @@ def attachment_rows(job: dict) -> list[dict]:
 def task_costs(job: dict) -> list[dict]:
     result = job.get("result") or {}
     summaries = []
-    reports = [("科研模型", result)]
+    label = (
+        "AI 整理输入"
+        if job.get("kind") == "input_normalization"
+        else "标题翻译"
+        if job.get("kind") == "translation"
+        else "科研模型"
+    )
+    reports = [(label, result)]
     if isinstance(job.get("planning_calls"), list):
         reports.append(
             (
@@ -174,7 +193,9 @@ def task_costs(job: dict) -> list[dict]:
             model = (report.get("options") or {}).get("model") or {}
             summaries.append(
                 {
-                    "label": "标题翻译" if report.get("options") else label,
+                    "label": "标题翻译"
+                    if report.get("options") and label == "科研模型"
+                    else label,
                     "calls": len(calls),
                     "currency": (usage or {}).get("currency")
                     or model.get("currency", "CNY"),

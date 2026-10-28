@@ -49,6 +49,8 @@ body { background:#f3f6fa; color:var(--an-ink); font-family:Inter,'Segoe UI','Mi
 .an-task-table td { white-space:normal; max-width:360px; overflow-wrap:anywhere; vertical-align:top; }
 .an-task-table th { font-weight:600; color:var(--an-ink); background:#f4f8fa; }
 .an-task-dialog { padding:24px; }
+.an-acquisition-layout { display:grid!important; grid-template-columns:minmax(0,1fr) 390px; gap:20px; align-items:start; }
+@media(max-width:1000px){ .an-acquisition-layout { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:1000px){ .an-main{padding:16px;} .an-parameter-grid{grid-template-columns:1fr 1fr;} }
 @media(max-width:1050px){ .an-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .an-overview-grid{grid-template-columns:1fr;} .an-hero-aside{display:none;} }
 """
@@ -682,6 +684,10 @@ def build_ui(context):
     from fastapi import HTTPException
     from fastapi.responses import FileResponse, Response
     from nicegui import app, ui
+
+    from .normalization_api import install_normalization_api
+
+    context.normalization_api = install_normalization_api(context, app=app)
 
     files = FileRegistry([context.library.root, context.workspace])
 
