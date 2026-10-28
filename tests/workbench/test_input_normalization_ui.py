@@ -28,6 +28,13 @@ def test_large_model_batch_warning_summary_retains_count_without_repeating_rows(
         "100 项" in summaries[0] and "SERVER_ORGANIZATION_RESTORED" not in summaries[0]
     )
     assert summaries[1] == "请核对标题"
+    model_notes = [
+        {"code": "MODEL_WARNING", "message": "Line 1 is not a paper"},
+        {"code": "MODEL_WARNING", "message": "Keep original titles"},
+    ]
+    summaries = normalization_warning_summaries(model_notes)
+    assert len(summaries) == 1 and "2 项" in summaries[0]
+    assert model_notes[0]["message"] == "Line 1 is not a paper"
 
 
 def test_preview_keeps_explicit_root_and_no_tags_distinct_from_default():

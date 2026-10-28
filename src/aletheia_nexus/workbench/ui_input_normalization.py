@@ -41,7 +41,12 @@ def normalization_preview_rows(preview):
 
 def normalization_warning_summaries(warnings):
     counts = Counter(
-        w if isinstance(w, str) else w.get("message", str(w)) for w in warnings
+        w
+        if isinstance(w, str)
+        else "模型提供了额外的整理说明，原始内容保留在下方出处账本中。"
+        if w.get("code") == "MODEL_WARNING"
+        else w.get("message", str(w))
+        for w in warnings
     )
     return [
         message + (f"（{count} 项，逐项出处见下方账本）" if count > 1 else "")
@@ -216,7 +221,28 @@ def normalization_dialog(controller, snapshot, apply_preview, *, text_hint=""):
                         "分类和标签可能包含模型建议，请人工核对；此处没有完成 PDF 身份验证。"
                     ).classes("an-muted text-sm")
                 if result:
-                    json_view(result, label="来源行、规范化数据与请求账本")
+                    # A hundred papers can generate tens of thousands of syntax
+                    # spans. Keep the ordinary review lightweight; render the
+                    # full audit only when explicitly opened.
+                    with ui.expansion(
+                        "专家 · 来源行、规范化数据与请求账本", icon="data_object"
+                    ).classes("w-full") as audit:
+                        audit_area = ui.column().classes("w-full")
+                    rendered = {"value": False}
+
+                    def show_audit(
+                        event, payload=result, area=audit_area, loaded=rendered
+                    ):
+                        if event.value and not loaded["value"]:
+                            from .ui_common import json_text
+
+                            with area:
+                                ui.code(json_text(payload), language="json").classes(
+                                    "w-full max-h-[600px] overflow-auto"
+                                )
+                            loaded["value"] = True
+
+                    audit.on_value_change(show_audit)
             adopt_button.set_visibility(
                 bool((result.get("preview") or {}).get("items"))
                 and job["status"] in TERMINAL
