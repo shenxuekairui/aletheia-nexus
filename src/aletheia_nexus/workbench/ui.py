@@ -197,9 +197,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                                 + f"/{int(number)}"
                             )
                             page_image.set_source(next_url)
-                            image_link.set_target(next_url)
-                            pdf_link.set_target(
-                                file_url + f"#page={int(number)}&view=FitH"
+                            image_link.props(f'href="{next_url}"')
+                            pdf_link.props(
+                                f'href="{file_url}#page={int(number)}&view=FitH"'
                             )
                             pdf_frame.props(
                                 f'src="{file_url}#page={int(number)}&view=FitH"'
