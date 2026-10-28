@@ -250,6 +250,8 @@ class DeepSeekProvider:
         *,
         enabled: bool = False,
         transport: httpx.BaseTransport | None = None,
+        instructions: str | None = None,
+        prompt_version: str | None = None,
     ):
         if not enabled:
             raise ProcessingError("remote_disabled")
@@ -260,6 +262,11 @@ class DeepSeekProvider:
             raise ProcessingError("missing_api_key")
         self._transport = transport
         self._last_call = 0.0
+        # Trusted application services may reuse authentication, transport and
+        # accounting for a small independent operation (e.g. title translation).
+        # Scientific callers retain the exact default prompt and cache identity.
+        self._instructions = instructions
+        self._prompt_version = prompt_version or PROMPT_VERSION
 
     @property
     def identity(self) -> dict:
@@ -269,8 +276,8 @@ class DeepSeekProvider:
             "temperature": 0,
             "model": self.config["name"],
             "config": self.config,
-            "prompt_version": PROMPT_VERSION,
-            "prompt_sha256": digest(PROMPT),
+            "prompt_version": self._prompt_version,
+            "prompt_sha256": digest(self._instructions or PROMPT),
             "review_version": REVIEW_VERSION,
             "review_prompt_sha256": digest([REVIEW_PROMPT, REVISION_PROMPT]),
         }
@@ -284,7 +291,7 @@ class DeepSeekProvider:
         max_output_tokens: int,
     ) -> dict:
         phase = request.get("phase")
-        prompt = (
+        prompt = self._instructions or (
             REVIEW_PROMPT
             if phase == "evidence_review"
             else PROMPT + REVISION_PROMPT
@@ -385,7 +392,7 @@ class DeepSeekProvider:
                         }
                         for image in images
                     ],
-                    "prompt_version": PROMPT_VERSION,
+                    "prompt_version": self._prompt_version,
                     "phase": phase,
                     "effective_prompt_sha256": digest(prompt),
                     "review_version": REVIEW_VERSION

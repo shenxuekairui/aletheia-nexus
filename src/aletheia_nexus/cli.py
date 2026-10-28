@@ -960,6 +960,7 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus browser-install\n"
             "  aletheia-nexus library [DIRECTORY] [--folder NAME] [--tag TAG]\n"
+            "  aletheia-nexus ui [--library DIRECTORY] [--workspace DIRECTORY]\n"
             "  aletheia-nexus --version\n\n"
             "Use 'aletheia-nexus COMMAND --help' for command options."
         )
@@ -1045,6 +1046,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
         ) as exc:
             print(f"Browser provisioning failed: {type(exc).__name__}", file=sys.stderr)
             return 2
+    if args[0] == "ui":
+        from aletheia_nexus.ui_cli import main as ui_main
+
+        return ui_main(args[1:])
     if args[0] == "acquire":
         return main(args[1:])
     if args[0] == "research":

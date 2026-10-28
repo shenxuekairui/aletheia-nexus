@@ -39,6 +39,9 @@ Source = "https://github.com/shenxuekairui/aletheia-nexus"
 aletheia-nexus = "aletheia_nexus.cli:entrypoint"
 
 [project.optional-dependencies]
+ui = [
+    "nicegui>=3.18,<4",
+]
 mcp = [
     "mcp>=2.3,<3",
 ]
