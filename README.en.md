@@ -1,5 +1,23 @@
 # Aletheia Nexus
 
+The development branch includes an optional **local NiceGUI research workbench**.
+It has not been released to PyPI. From this source checkout:
+
+```console
+python -m pip install -e ".[ui]"
+aletheia-nexus ui --library /path/to/library
+```
+
+The browser opens at `http://127.0.0.1:8080`. Existing libraries remain usable.
+The workbench connects acquisition, category-level shared `SI/` attachments,
+library organization, title translation, previewed physical batch renaming,
+saved table views, parsing, keyword evidence search, research and result review.
+Remote model operations require explicit consent; credentials stay in the environment.
+See the [workbench guide and support matrix](docs/WORKBENCH_USER_GUIDE.md),
+[implementation audit](docs/WORKBENCH_IMPLEMENTATION.md), and
+[acceptance record](docs/WORKBENCH_ACCEPTANCE.md). UI delivery does not establish
+scientific extraction accuracy or change the existing v0.8 evaluation conclusions.
+
 The development branch adds opt-in literature processing and field extraction with
 DeepSeek Flash, with local, source-linked results. See the [v0.8 development guide](docs/V08_USER_GUIDE.md)
 and [audit/design](docs/V08_DESIGN.md). This is unreleased work; the v0.7.3 release

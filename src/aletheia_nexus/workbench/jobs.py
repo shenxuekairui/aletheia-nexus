@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from aletheia_nexus.research_app import _lock_job_owner
 
-from .settings import SECRET_KEY, atomic_json
+from .settings import SECRET_KEY, atomic_json, state_directory
 
 TERMINAL = {"COMPLETED", "PARTIAL", "FAILED", "CANCELLED", "INTERRUPTED"}
 
@@ -127,6 +127,8 @@ class TaskContext:
                     )
                     return "skip"
                 manager._condition.wait(timeout=0.25)
+            if control["cancel"]:
+                raise TaskCancelled("cancelled_during_interaction")
             action = "skip" if control["skip"] else "continue"
             control["skip"] = control["continue"] = False
             manager._update(
@@ -137,8 +139,9 @@ class TaskContext:
 
 class TaskManager:
     def __init__(self, state_dir: str | Path, max_workers=3):
-        self.directory = Path(state_dir).resolve() / "tasks"
-        self.directory.mkdir(parents=True, exist_ok=True)
+        self.directory = state_directory(state_dir, "tasks")
+        if (self.directory / ".owner.lock").is_symlink():
+            raise ValueError("任务归属锁不能使用符号链接")
         self._owner = _lock_job_owner(self.directory / ".owner.lock", create=True)
         if self._owner is None:
             raise RuntimeError("This workspace already has an active task manager")
@@ -165,8 +168,32 @@ class TaskManager:
                         status="INTERRUPTED",
                         stage="后台进程已终止；须人工核对后创建恢复任务",
                         interrupted_at=now(),
-                        billing_uncertain=receipt["kind"]
-                        in {"translation", "research"},
+                        billing_uncertain=bool(
+                            receipt.get("billing_uncertain")
+                            or receipt["kind"]
+                            in {"translation", "research", "planning"}
+                            or (
+                                receipt.get("parameters", {}).get("postprocess") or {}
+                            ).get("translate_titles")
+                            or receipt.get("parameters", {}).get("translate_titles")
+                            or (
+                                (
+                                    (
+                                        receipt.get("parameters", {}).get("postprocess")
+                                        or {}
+                                    ).get("title_translation")
+                                    or {}
+                                ).get("enabled")
+                            )
+                            or (
+                                (
+                                    receipt.get("parameters", {}).get(
+                                        "title_translation"
+                                    )
+                                    or {}
+                                ).get("enabled")
+                            )
+                        ),
                     )
                     receipt["events"].append({"at": now(), "status": "INTERRUPTED"})
                     self._save(receipt)
@@ -235,6 +262,7 @@ class TaskManager:
                 "rename",
                 "import",
                 "organize",
+                "rollback",
             }:
                 while not self._materials.acquire(timeout=0.25):
                     context.checkpoint()
@@ -247,6 +275,15 @@ class TaskManager:
             with self._condition:
                 statuses = {r["status"] for r in self._receipts[job_id]["records"]}
             state = result.get("status") if isinstance(result, dict) else None
+            if state == "ROLLBACK_REQUIRED":
+                self._update(job_id, needs_recovery=True)
+                state = "FAILED"
+            elif state == "ROLLED_BACK":
+                state = (
+                    "COMPLETED"
+                    if self._receipts[job_id]["kind"] == "rollback"
+                    else "FAILED"
+                )
             if state not in {"COMPLETED", "PARTIAL", "FAILED", "CANCELLED"}:
                 state = (
                     "PARTIAL"

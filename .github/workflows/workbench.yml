@@ -1,0 +1,44 @@
+name: Local workbench
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    paths:
+      - "src/aletheia_nexus/workbench/**"
+      - "src/aletheia_nexus/ui_cli.py"
+      - "tests/workbench/**"
+      - "scripts/verify_workbench.py"
+      - "pyproject.toml"
+      - ".github/workflows/workbench.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workbench:
+    if: >-
+      github.event_name != 'pull_request' ||
+      !github.event.pull_request.draft ||
+      (github.event.action == 'labeled' && github.event.label.name == 'ci:full')
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e ".[dev,ui]"
+      - run: python -m pip check
+      - run: python -m ruff check src/aletheia_nexus/workbench src/aletheia_nexus/ui_cli.py tests/workbench scripts/verify_workbench.py
+      - run: python -m pytest -q tests/workbench
+      - run: python scripts/verify_workbench.py --output workbench-acceptance
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workbench-${{ matrix.os }}
+          path: workbench-acceptance/acceptance.json

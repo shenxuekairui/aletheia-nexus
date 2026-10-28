@@ -9,6 +9,28 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
+class ContextLease:
+    """A stale browser page cannot silently write to a newly selected library."""
+
+    def __init__(self, context):
+        self._context, self._generation = context, context.generation
+
+    def __getattr__(self, key):
+        if key in {
+            "root",
+            "library",
+            "acquisition",
+            "research",
+            "translation",
+            "switch_root",
+        }:
+            if self._generation != self._context.generation:
+                raise ValueError(
+                    "文库已在另一个页面切换；请刷新当前页面后继续，未执行此操作"
+                )
+        return getattr(self._context, key)
+
+
 def create_context(root: Path, workspace: Path):
     from .workbench.acquisition import AcquisitionService
     from .workbench.jobs import TERMINAL, TaskManager
@@ -23,6 +45,8 @@ def create_context(root: Path, workspace: Path):
     context = SimpleNamespace(
         workspace=workspace, settings=settings, jobs=TaskManager(workspace)
     )
+    context.generation = 0
+    context.lease = lambda: ContextLease(context)
 
     def switch_root(value):
         target = Path(value).expanduser().resolve()
@@ -41,6 +65,7 @@ def create_context(root: Path, workspace: Path):
             context.research.close()
         context.root, context.library, context.research = target, library, research
         context.acquisition, context.translation = acquisition, translation
+        context.generation += 1
         settings.set("library_root", str(target))
 
     context.switch_root = switch_root
@@ -102,6 +127,7 @@ def main(argv=None) -> int:
         reload=False,
         show=not args.no_open,
         title="Aletheia Nexus · 科研工作台",
+        language="zh-CN",
         storage_secret=secrets.token_urlsafe(32),
         binding_refresh_interval=0.2,
     )

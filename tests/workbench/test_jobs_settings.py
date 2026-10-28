@@ -111,3 +111,64 @@ def test_settings_presets_and_job_redaction(tmp_path, monkeypatch):
     text = (tmp_path / "tasks" / (job["id"] + ".json")).read_text()
     assert "private-test-value" not in text
     assert json.loads(text)["result"]["api_key"] == "[REDACTED]"
+
+
+def test_cancel_wins_over_simultaneous_interaction_continue(tmp_path):
+    manager = TaskManager(tmp_path)
+    job = manager.submit(
+        "acquisition",
+        "interaction",
+        ["one"],
+        lambda c: c.wait_interaction({"paper": "one"}),
+    )
+    wait_for(manager, job["id"], {"INTERACTION_REQUIRED"})
+    with manager._condition:
+        manager.control(job["id"], "cancel")
+        manager.control(job["id"], "continue")
+    wait_for(manager, job["id"], {"CANCELLED"})
+    manager.close(wait=True)
+
+
+@pytest.mark.parametrize(
+    "kind,result_status,expected,recovery",
+    [
+        ("rename", "ROLLED_BACK", "FAILED", False),
+        ("rename", "ROLLBACK_REQUIRED", "FAILED", True),
+        ("rollback", "ROLLED_BACK", "COMPLETED", False),
+    ],
+)
+def test_file_operation_failure_cannot_appear_completed(
+    tmp_path, kind, result_status, expected, recovery
+):
+    manager = TaskManager(tmp_path)
+    job = manager.submit(kind, "organize", ["one"], lambda c: {"status": result_status})
+    result = wait_for(manager, job["id"], {expected})
+    assert result.get("needs_recovery", False) == recovery
+    manager.close(wait=True)
+
+
+@pytest.mark.parametrize(
+    "kind,parameters",
+    [
+        ("import", {"title_translation": {"enabled": True}}),
+        ("acquisition", {"postprocess": {"title_translation": {"enabled": True}}}),
+    ],
+)
+def test_interrupted_ingestion_keeps_translation_billing_uncertainty(
+    tmp_path, kind, parameters
+):
+    atomic_json(
+        tmp_path / "tasks" / "old.json",
+        {
+            "schema": "aletheia-nexus/workbench-task/v1",
+            "id": "old",
+            "kind": kind,
+            "parameters": parameters,
+            "status": "RUNNING",
+            "events": [],
+            "created_at": "2020",
+        },
+    )
+    manager = TaskManager(tmp_path)
+    assert manager.get("old")["billing_uncertain"]
+    manager.close(wait=True)

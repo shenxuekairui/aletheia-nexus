@@ -18,7 +18,10 @@ SECRET_KEY = re.compile(
 
 def atomic_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.is_symlink() or path.parent.is_symlink():
+    if any(
+        p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction())
+        for p in (path, *path.parents)
+    ):
         raise ValueError("state files cannot be symbolic links")
     temporary = path.with_name(path.name + "." + uuid4().hex + ".part")
     try:
@@ -30,6 +33,15 @@ def atomic_json(path: Path, payload: object) -> None:
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def state_directory(root: str | Path, name: str) -> Path:
+    root = Path(root).resolve()
+    target = root / name
+    if target.resolve() != target or not target.resolve().is_relative_to(root):
+        raise ValueError("状态子目录不能通过符号链接或目录联接改变位置")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
 
 
 def check_preferences(value: object) -> None:

@@ -137,4 +137,30 @@ def test_tiny_budget_blocks_http_and_manual_unconfirmed_is_preserved(
     result = service.translate(["a"], {"max_cost": 0.0000001}, consent=True)
     assert result["items"][0]["error"] == "cost_budget_exhausted"
     service.edit("b", "人工编辑", confirmed=False)
+    estimate = service.estimate(["b"])
+    assert estimate["confirmed"] == ["b"]
+    assert estimate["pending"] == []
     assert service.translate(["b"])["items"][0]["status"] == "PRESERVED_MANUAL"
+
+
+def test_missing_token_details_keeps_billing_uncertain(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fake-test-key")
+
+    def handler(request):
+        body = response([{"id": "a", "title": "甲"}]).json()
+        body["usage"] = {"total_tokens": 100}
+        return httpx.Response(200, json=body)
+
+    service = TranslationService(
+        Library(), tmp_path, transport=httpx.MockTransport(handler)
+    )
+    result = service.translate(["a"], consent=True)
+    assert result["billing_uncertain"]
+    assert result["accounted_cost"] > 0
+
+
+def test_other_languages_cannot_pollute_chinese_title_field(tmp_path):
+    service = TranslationService(Library(), tmp_path)
+    with pytest.raises(ValueError, match="简体中文和繁体中文"):
+        service.translate(["a"], {"target_language": "en"})
+    assert "title_zh" not in service.library.items["a"]

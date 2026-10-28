@@ -25,7 +25,7 @@ from aletheia_nexus.processing.provider import (
 )
 
 from .jobs import now, safe_data
-from .settings import atomic_json
+from .settings import atomic_json, state_directory
 
 STRATEGY = "scientific-title/v1"
 TITLE_PROMPT = """Translate scientific paper TITLES to the requested language only.
@@ -73,11 +73,10 @@ def translation_options(options=None) -> dict:
     ):
         if type(result[key]) is not int or not low <= result[key] <= high:
             raise ValueError(f"{key} must be between {low} and {high}")
-    if (
-        not isinstance(result["target_language"], str)
-        or not 1 <= len(result["target_language"]) <= 40
-    ):
-        raise ValueError("invalid target language")
+    if result["target_language"] not in {"zh-CN", "zh-TW"}:
+        raise ValueError(
+            "标题翻译当前支持简体中文和繁体中文；不会将其他语言写入中文译名"
+        )
     for key in ("max_cost",):
         if (
             type(result[key]) not in (int, float)
@@ -108,8 +107,7 @@ def translation_options(options=None) -> dict:
 class TranslationService:
     def __init__(self, library, state_dir: str | Path, *, transport=None):
         self.library = library
-        self.directory = Path(state_dir).resolve() / "translations"
-        self.directory.mkdir(parents=True, exist_ok=True)
+        self.directory = state_directory(state_dir, "translations")
         self.transport = transport
         self._lock = RLock()
 
@@ -136,7 +134,7 @@ class TranslationService:
 
     def _cached(self, title, options):
         key = self._key(title, options)
-        path = self.directory / "cache" / (key + ".json")
+        path = state_directory(self.directory, "cache") / (key + ".json")
         if path.is_file() and not path.is_symlink():
             value = json.loads(path.read_text(encoding="utf-8"))
             if (
@@ -153,8 +151,9 @@ class TranslationService:
         confirmed, cached, pending = [], [], []
         for paper_id in dict.fromkeys(ids):
             item = self.library.get(paper_id)
-            if item.get("title_zh") and (item.get("translation") or {}).get(
-                "confirmed"
+            previous = item.get("translation") or {}
+            if item.get("title_zh") and (
+                previous.get("confirmed") or previous.get("source") == "manual"
             ):
                 confirmed.append(paper_id)
             elif self._cached(self._original(item), options):
@@ -235,6 +234,21 @@ class TranslationService:
 
         def save():
             atomic_json(path, safe_data(receipt))
+            if context and receipt["calls"]:
+                context.progress(
+                    len(receipt["items"]),
+                    len(ids),
+                    stage="标题翻译",
+                    translation_call_count=len(receipt["calls"]),
+                    translation_accounted_cost=sum(
+                        accounted_cost(c) or 0 for c in receipt["calls"]
+                    ),
+                    billing_uncertain=any(
+                        c.get("status") == "started" or c.get("estimated_cost") is None
+                        for c in receipt["calls"]
+                    ),
+                    translation_receipt=str(path),
+                )
 
         def record(paper_id, status, **details):
             receipt["items"].append({"id": paper_id, "status": status, **details})
@@ -359,7 +373,7 @@ class TranslationService:
             accounted_cost(c) or 0 for c in receipt["calls"]
         )
         receipt["billing_uncertain"] = any(
-            c.get("usage") is None for c in receipt["calls"]
+            c.get("estimated_cost") is None for c in receipt["calls"]
         )
         receipt["receipt"] = str(path)
         save()

@@ -8,7 +8,25 @@ Aletheia Nexus（AN）是一个 **local-first（本地优先）的科研知识�
 
 简单来说，你可以交给 AN 一个 DOI 或一份文献清单，得到的不只是下载文件，还包括“这是不是目标论文、从哪里获得、文件是否改变过”的记录。继续解析后，提取出的内容可以回到原始 PDF 的页码和位置。
 
-AN 目前以 Python 包和命令行工具提供这些能力，不是带图形界面的文献管理器，也不是已经能够独立完成科研的 Agent。
+AN 的正式版以 Python 包和命令行工具提供这些能力。当前开发分支新增可选 NiceGUI 本地科研工作台；科学结论仍需研究者核对。
+
+### 开发版：本地科研工作台
+
+在本分支源码目录安装并启动（尚未正式发布到 PyPI）：
+
+```powershell
+python -m pip install -e ".[ui]"
+aletheia-nexus ui --library "D:\文献库"
+```
+
+自动打开 `http://127.0.0.1:8080`，可使用现有文库，无需重新下载。获取、文库、科研检索、
+AI 研究和成果共用底层服务；支持分类共享 `SI/`、独立标题翻译、中文批量真实改名及可保存文库视图。
+机构获取按需安装 `.[ui,browser]` 并配置已有合法浏览器会话；OCR 仍需本地可选依赖。
+API 密钥从环境读取，远程调用需明确勾选授权；启动和浏览文库不会自动调用模型。
+
+参见[工作台手册与支持矩阵](docs/WORKBENCH_USER_GUIDE.md)、
+[实施审计](docs/WORKBENCH_IMPLEMENTATION.md)和[验收记录](docs/WORKBENCH_ACCEPTANCE.md)。
+UI 工程验收与 v0.8 科学提取质量验收分别记录，不修改现有科学性能结论。
 
 开发分支新增 opt-in 的 AI 文献整理、字段提取与比较工作流，使用 DeepSeek Flash，
 结果保存在本地。参见 [v0.8 当前交付状态](docs/V08_STATUS.md)和[开发版使用指南](docs/V08_USER_GUIDE.md)；这是未发布功能，
