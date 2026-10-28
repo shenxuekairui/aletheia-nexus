@@ -63,9 +63,23 @@ def acquisition_progress(job):
     rows = task_rows(
         {"kind": "acquisition", "status": job["status"], "result": {"items": items}}
     )
+    attachments = [
+        row["si_status"] for row in rows if row["si_status"] != "NOT_REQUESTED"
+    ]
     return {
         "rows": rows,
         "counts": task_counts(rows),
+        "attachments": {
+            "total": len(attachments),
+            "completed": attachments.count("COMPLETED"),
+            "running": attachments.count("RUNNING"),
+            "interaction": sum(
+                s in {"INTERACTION_REQUIRED", "AUTH_REQUIRED"} for s in attachments
+            ),
+            "failed": attachments.count("FAILED"),
+            "partial": attachments.count("PARTIAL"),
+            "not_found": attachments.count("NOT_FOUND"),
+        },
         "current": (
             job.get("current_item")
             if job.get("task_phase") == "postprocess"
@@ -162,6 +176,12 @@ class AcquisitionProgressPanel:
             ui.label(
                 f"正文成功 {counts['success']} · 失败 {counts['failed']} · 等待人工 {counts['interaction']} · 跳过 {counts['skipped']} · 其余未完成 {counts['pending'] + counts['partial']} · 共 {counts['total']} 篇"
             ).classes("an-info w-full")
+            attachments = progress["attachments"]
+            if attachments["total"]:
+                ui.label(
+                    f"附件（含 SI）：完成 {attachments['completed']} · 处理中 {attachments['running']} · 需人工 {attachments['interaction']} · "
+                    f"失败 {attachments['failed']} · 部分 {attachments['partial']} · 未发现 {attachments['not_found']}"
+                ).classes("text-sm")
             if progress["current"] and job["status"] not in TERMINAL:
                 ui.label("当前论文 / 文件：" + str(progress["current"])).classes(
                     "text-sm break-all"

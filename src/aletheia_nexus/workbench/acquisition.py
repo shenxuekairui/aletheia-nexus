@@ -961,6 +961,9 @@ class AcquisitionService:
                         )
 
                         try:
+                            row.update(
+                                si_status="RUNNING", phase="正文已验证，正在获取附件"
+                            )
                             if context:
                                 context.progress(
                                     index - 1,

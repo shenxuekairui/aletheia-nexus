@@ -54,12 +54,13 @@ def test_current_main_success_is_visible_while_si_is_being_acquired():
             "current_item": {
                 "request": paper,
                 "status": "VERIFIED",
-                "si_status": "NOT_ATTEMPTED",
+                "si_status": "RUNNING",
             },
         }
     )
     assert progress["counts"]["success"] == 1
-    assert progress["rows"][0]["si_status"] == "NOT_ATTEMPTED"
+    assert progress["rows"][0]["si_status"] == "RUNNING"
+    assert progress["attachments"]["running"] == 1
 
 
 def test_current_interaction_and_unstarted_papers_are_distinct():

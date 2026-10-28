@@ -376,6 +376,14 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                         lambda: self.organize_dialog(self.ctx.library.selection())
                     ),
                 )
+
+                def translate_selected():
+                    entry = self.title_translation_dialog(self.ctx.library.selection())
+                    entry.on("hide", lambda: selected_rows.refresh())
+
+                ui.button(
+                    "补中文标题", icon="translate", on_click=guard(translate_selected)
+                ).props("outline")
                 ui.button(
                     "解析",
                     icon="document_scanner",

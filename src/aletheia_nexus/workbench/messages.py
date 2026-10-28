@@ -53,6 +53,18 @@ _add(
     ("browser_download_owner_not_confirmed",),
     "无法确认本次附件下载所属的临时页面，尚未发送请求。请保留当前浏览器页面，检查诊断后重试。",
 )
+_add(
+    ("attachment_interaction_required",),
+    "附件下载地址另外要求人工登录或验证。请在保留的 AN 浏览器附件页完成操作，再选择“仅补取 SI”；已验证正文保留。",
+)
+_add(
+    ("attachment_access_denied",),
+    "官方附件来源拒绝当前访问，请核对页面说明和合法访问权限；已验证正文保留。",
+)
+_add(
+    ("attachment_entitlement_required",),
+    "官方附件需要当前会话尚未取得的访问权限。请按出版社要求登录或联系机构，软件不会绕过限制。",
+)
 
 
 _add(
