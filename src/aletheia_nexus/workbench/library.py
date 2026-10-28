@@ -142,6 +142,11 @@ class LibraryService:
         self._lock = RLock()
         self._catalog = None
         self._catalog_fingerprint = None
+        self._source_payloads = {}
+        self._file_stats = {}
+        self._last_rows = {}
+        self._last_row_stats = {}
+        self._last_attachments = {}
         if self.state_path.is_symlink() or self.state_dir.is_symlink():
             raise ValueError("library state must not be a symbolic link")
 
@@ -209,14 +214,21 @@ class LibraryService:
             finally:
                 handle.close()
 
-    @staticmethod
-    def _id(row):
-        payload = _read(Path(row["sidecar_path"]))
-        material = (
-            payload["retrieval"]["sha256"]
-            + ":"
-            + sha256_file(Path(row["sidecar_path"]))
-        )
+    def _source_payload(self, path):
+        path = Path(path)
+        stat = self._file_stats.get(str(path))
+        if stat is None:
+            current = path.stat()
+            stat = (current.st_mtime_ns, current.st_size, current.st_ino)
+        cached = self._source_payloads.get(str(path))
+        if cached is None or cached[0] != stat:
+            cached = (stat, _read(path), sha256_file(path))
+            self._source_payloads[str(path)] = cached
+        return cached[1], cached[2]
+
+    def _id(self, row):
+        payload, source_hash = self._source_payload(row["sidecar_path"])
+        material = payload["retrieval"]["sha256"] + ":" + source_hash
         return "paper_" + hashlib.sha256(material.encode()).hexdigest()[:24]
 
     def _source_fingerprint(self):
@@ -238,10 +250,16 @@ class LibraryService:
             for path in (sidecar, pdf, labels):
                 try:
                     stat = path.stat()
+                    self._file_stats[str(path)] = (
+                        stat.st_mtime_ns,
+                        stat.st_size,
+                        stat.st_ino,
+                    )
                     entries.append(
                         (str(path), stat.st_mtime_ns, stat.st_size, stat.st_ino)
                     )
                 except OSError:
+                    self._file_stats[str(path)] = None
                     entries.append((str(path), None))
         return tuple(entries)
 
@@ -267,11 +285,14 @@ class LibraryService:
         with self._locked():
             state = self._load()
             fingerprint = self._source_fingerprint()
-            if (
+            catalog_changed = (
                 refresh
                 or self._catalog is None
                 or fingerprint != self._catalog_fingerprint
-            ):
+            )
+            if refresh:
+                self._source_payloads.clear()
+            if catalog_changed:
                 self._catalog = scan_library(self.root)
                 self._catalog_fingerprint = fingerprint
             result = deepcopy(self._catalog)
@@ -282,8 +303,9 @@ class LibraryService:
             }
             for row in result["items"]:
                 try:
-                    self.path(row["pdf_path"])
-                    self.path(row["sidecar_path"], existing=True)
+                    if catalog_changed:
+                        self.path(row["pdf_path"])
+                        self.path(row["sidecar_path"], existing=True)
                     if Path(row["pdf_path"]).is_relative_to(self.state_dir):
                         continue
                     if row["document_role"] != "ARTICLE":
@@ -293,7 +315,7 @@ class LibraryService:
                     stored = state["papers"].setdefault(
                         paper_id, {"metadata": {}, "aliases": []}
                     )
-                    source = _read(Path(row["sidecar_path"]))
+                    source, _ = self._source_payload(row["sidecar_path"])
                     meta = stored.get("metadata", {})
                     target = source.get("target", {})
                     org = source.get("organization", {})
@@ -382,7 +404,8 @@ class LibraryService:
                     (
                         row
                         for row in copies
-                        if self._relative(row["pdf_path"]) == preferred
+                        if Path(row["pdf_path"]).relative_to(self.root).as_posix()
+                        == preferred
                     ),
                     copies[0],
                 )
@@ -397,13 +420,16 @@ class LibraryService:
                             "paths": chosen["duplicate_paths"],
                         }
                     )
-                if state["papers"][paper_id].get("pdf") != self._relative(
-                    chosen["pdf_path"]
+                if (
+                    state["papers"][paper_id].get("pdf")
+                    != Path(chosen["pdf_path"]).relative_to(self.root).as_posix()
                 ):
                     changed = True
                 state["papers"][paper_id].update(
-                    pdf=self._relative(chosen["pdf_path"]),
-                    sidecar=self._relative(chosen["sidecar_path"]),
+                    pdf=Path(chosen["pdf_path"]).relative_to(self.root).as_posix(),
+                    sidecar=Path(chosen["sidecar_path"])
+                    .relative_to(self.root)
+                    .as_posix(),
                 )
                 rows.append(chosen)
             for row in rows:
@@ -437,9 +463,10 @@ class LibraryService:
                             # specific than the historical parser's generic
                             # SUPPLEMENT declaration; never count the file twice.
                             continue
-                        digest = _read(Path(supplement["sidecar_path"]))["retrieval"][
-                            "sha256"
-                        ]
+                        supplement_source, _ = self._source_payload(
+                            supplement["sidecar_path"]
+                        )
+                        digest = supplement_source["retrieval"]["sha256"]
                         attached.setdefault(
                             digest + ":SUPPLEMENT",
                             {
@@ -459,6 +486,23 @@ class LibraryService:
                 )
             if changed:
                 _write(self.state_path, state)
+            self._last_rows = {row["id"]: deepcopy(row) for row in rows}
+            self._last_row_stats = {
+                row["id"]: {
+                    path: self._file_stats.get(path)
+                    for path in (
+                        row["pdf_path"],
+                        row["sidecar_path"],
+                        str(
+                            find_json_path(
+                                Path(row["pdf_path"]).with_suffix(".library.json")
+                            )
+                        ),
+                    )
+                }
+                for row in rows
+            }
+            self._last_attachments = deepcopy(state["attachments"])
             filtered = []
             selected_ids = set(ids) if ids is not None else None
             if collection:
@@ -510,6 +554,77 @@ class LibraryService:
             }
 
     def get(self, paper_id):
+        # Per-title translation and selection actions must not rescan every PDF.
+        # A row cache only serves metadata; file mutations and research material
+        # loading always perform their own full source/hash validation.
+        with self._locked():
+            state = self._load()
+            cached = self._last_rows.get(paper_id)
+            stored = state["papers"].get(paper_id)
+            valid = bool(cached and stored)
+            if valid:
+                valid = (
+                    str(self.root / stored["pdf"]) == cached["pdf_path"]
+                    and state["attachments"] == self._last_attachments
+                )
+            if valid:
+                for path, expected in self._last_row_stats.get(paper_id, {}).items():
+                    try:
+                        stat = Path(path).stat()
+                        actual = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+                    except OSError:
+                        actual = None
+                    if actual != expected:
+                        valid = False
+                        break
+            if valid:
+                row = deepcopy(cached)
+                meta = deepcopy(stored.get("metadata", {}))
+                source, _ = self._source_payload(row["sidecar_path"])
+                target, org = source.get("target", {}), source.get("organization", {})
+                authors = (
+                    meta.get("authors")
+                    or target.get("authors")
+                    or org.get("authors")
+                    or []
+                )
+                if isinstance(authors, str):
+                    authors = [authors]
+                first = authors[0] if authors else ""
+                if isinstance(first, dict):
+                    first = (
+                        first.get("name")
+                        or " ".join(
+                            str(first.get(k) or "") for k in ("given", "family")
+                        ).strip()
+                    )
+                row.update(
+                    metadata=meta,
+                    title_zh=meta.get("title_zh", ""),
+                    translation=deepcopy(meta.get("translation", {})),
+                    custom_name=meta.get("custom_name", ""),
+                    authors=authors,
+                    first_author=first,
+                    year=meta.get("year")
+                    or target.get("year")
+                    or org.get("year")
+                    or "",
+                    journal=meta.get("journal")
+                    or target.get("journal")
+                    or org.get("journal")
+                    or "",
+                    parse_status=meta.get("parse_status", "UNPARSED"),
+                    reading_status=meta.get("reading_status", "未读"),
+                    research_tasks=deepcopy(meta.get("research_tasks", [])),
+                    collections=[
+                        name
+                        for name, members in state["collections"].items()
+                        if paper_id in members
+                    ],
+                )
+                for attachment in row["attachments"]:
+                    attachment["exists"] = Path(attachment["path"]).is_file()
+                return row
         return next((r for r in self.scan()["items"] if r["id"] == paper_id), None)
 
     def update_metadata(self, paper_id, **fields):
@@ -901,7 +1016,7 @@ class LibraryService:
             missing = [key for key in used if not values[key]]
             errors, warnings = [], []
             if "title_zh" in missing:
-                if missing_translation == "skip":
+                if missing_translation == "skip" and not overrides.get(paper_id):
                     errors.append(
                         "missing Chinese translation; translate here or choose original-title fallback"
                     )

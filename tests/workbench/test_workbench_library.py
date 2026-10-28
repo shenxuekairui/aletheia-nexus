@@ -276,6 +276,14 @@ def test_missing_translation_policies_and_template_validation(library, tmp_path)
     assert fallback["executable"] == 1
     assert "None" not in fallback["items"][0]["new_name"]
     assert fallback["items"][0]["missing_metadata"] == ["year", "title_zh"]
+    manual = library.preview_rename(
+        [row["id"]],
+        "{title_zh}",
+        missing_translation="skip",
+        overrides={row["id"]: "人工最终文件名"},
+    )
+    assert manual["executable"] == 1
+    assert manual["items"][0]["new_name"] == "人工最终文件名.pdf"
     with pytest.raises(ValueError, match="unsupported field"):
         library.preview_rename([row["id"]], "{title_original.__class__}")
     library.save_template("组合", "{year}-{custom_name}")
@@ -423,3 +431,45 @@ def test_specific_attachment_role_never_duplicates_generic_pdf_supplement(
         )
         == 1
     )
+
+
+def test_cached_single_paper_lookup_observes_metadata_labels_and_source_changes(
+    library, tmp_path, monkeypatch
+):
+    import aletheia_nexus.workbench.library as module
+
+    row = add(library, tmp_path)
+    calls = []
+    original = module.scan_library
+
+    def track(root):
+        calls.append(root)
+        return original(root)
+
+    monkeypatch.setattr(module, "scan_library", track)
+    library.update_metadata(
+        row["id"],
+        title_zh="中文更新",
+        custom_name="单篇",
+        year=2025,
+        authors=["A. Author"],
+    )
+    item = library.get(row["id"])
+    assert (
+        item["title_zh"] == "中文更新"
+        and item["first_author"] == "A. Author"
+        and item["year"] == 2025
+    )
+    assert not calls
+    library.update_tags([row["id"]], add=["new tag"])
+    assert "new tag" in library.get(row["id"])["tags"]
+    assert len(calls) == 1
+    # A changed source declaration acquires a different logical identity;
+    # the prior translated title must not follow it just because the path matches.
+    sidecar = Path(row["sidecar_path"])
+    value = json.loads(sidecar.read_text(encoding="utf-8"))
+    value["target"]["title"] = "A different source declaration"
+    sidecar.write_text(json.dumps(value), encoding="utf-8")
+    assert library.get(row["id"]) is None
+    replacement = library.scan()["items"][0]
+    assert replacement["id"] != row["id"] and replacement["title_zh"] == ""
