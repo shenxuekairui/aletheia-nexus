@@ -306,11 +306,18 @@ def acquire_supplements(
             candidates.append(candidate["url"])
         candidates.append("https://doi.org/" + main.doi)
     directory = main.pdf_path.parent / "SI"
-    if directory.is_symlink() or not directory.resolve().is_relative_to(
-        main.pdf_path.parent.resolve()
+    if (
+        directory.is_symlink()
+        or (hasattr(directory, "is_junction") and directory.is_junction())
+        or not directory.resolve().is_relative_to(main.pdf_path.parent.resolve())
     ):
         raise ValueError("unsafe_SI_directory")
-    if (directory / "json").is_symlink():
+    records = directory / "json"
+    if (
+        records.is_symlink()
+        or (hasattr(records, "is_junction") and records.is_junction())
+        or not records.resolve().is_relative_to(directory.resolve())
+    ):
         raise ValueError("unsafe_SI_record_directory")
     discoveries, errors, seen = [], [], set()
     page_fetch, file_fetch = page_fetch or retrieve_page, file_fetch or retrieve_to_temp
