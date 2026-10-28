@@ -129,6 +129,7 @@ http://127.0.0.1:8080/an-api/input-normalization
 | `result.preview` | 共用获取预览，包括错误、重复和冲突 |
 | `result.preview.library_path_validation_pending` | 模型侧仅完成相对目录字符串校验，尚需结合实际文库校验保存位置 |
 | `result.calls`、`result.usage`、`result.accounted_cost` | 已记录调用、用量与费用估算；失败响应也可能已经计费 |
+| `result.known_cost`、`result.reserved_cost` | 已知费用估算与未知请求的预留金额；`accounted_cost` 是保守占用，不等于已确认实际账单 |
 | `result.diagnostics` / `error` | 脱敏后的诊断代码及可读原因 |
 
 接口过滤内部文件路径、来源工件定位、请求头、响应头和密钥，不把原始供应商响应直接作为成功结果返回。
@@ -143,6 +144,8 @@ http://127.0.0.1:8080/an-api/input-normalization
 - `papers` 是合法 `PaperRequest` 字段的逐篇字典，保留 DOI、原题及原文确实给出的书目信息。
 - `source_map` 保留逐篇稳定编号、`paper_key`、从 1 开始的原文行号 `source_lines`、行标识及引用片段 `quote`。
   输入中明确出现的每次 DOI 均须有对应关系；模型不能增加原文不存在的 DOI 或静默漏掉原 DOI。
+  `paper_sha256` 绑定完整请求，`preview.items[].normalization_ids` 关联这些稳定来源编号；
+  同一 DOI 的不同分类/标签候选不能仅按 `paper_key` 配对或合并。
 - `source_map.organization.folder` / `.tags` 区分原文明确值 `explicit`、模型建议 `proposed` 和未设置 `none`。
   模型建议仍需确认，不应被当作原文已经指定的分类。
 - `source_map.assignment` 和 `preview.items[].assignment` 保留
