@@ -73,7 +73,10 @@ def test_history_uses_exact_child_links_and_distinguishes_ai_from_human():
     assert [r["at"] for r in rows] == [r["at"] for r in result["history"]]
 
 
-def test_ordinary_revision_widgets_really_submit_unit_raw_and_status(monkeypatch):
+@pytest.mark.parametrize("source", ["human", "assistant"])
+def test_ordinary_revision_widgets_really_submit_unit_raw_and_status(
+    monkeypatch, source
+):
     pytest.importorskip("nicegui")
     from nicegui import ui
 
@@ -118,6 +121,23 @@ def test_ordinary_revision_widgets_really_submit_unit_raw_and_status(monkeypatch
     assert not unit.parent_slot.parent.visible
     status.set_value("normalized")
     assert unit.parent_slot.parent.visible
+    source_control = labeled("修订来源")
+    assert source_control.value == "human"
+    confirm = next(
+        item
+        for item in elements
+        if getattr(item, "text", "")
+        == "我已逐项核对此记录/主张的全部科学内容与证据，标为人工确认"
+    )
+    confirm.set_value(True)
+    if source == "assistant":
+        source_control.set_value("assistant")
+        assert not confirm.value and not confirm.enabled
+        source_control.set_value("human")
+        assert not confirm.value and confirm.enabled
+        source_control.set_value("assistant")
+    else:
+        confirm.set_value(False)
     raw.set_value("25 C")
     unit.set_value("K")
     labeled("值").set_value(298.15)
@@ -135,3 +155,5 @@ def test_ordinary_revision_widgets_really_submit_unit_raw_and_status(monkeypatch
     assert replacement["unit"] == "K"
     assert replacement["status"] == "normalized"
     assert not saved[0][1]["confirm"]
+    assert saved[0][1]["authority"] == source
+    assert saved[0][1]["human"] == (source == "human")

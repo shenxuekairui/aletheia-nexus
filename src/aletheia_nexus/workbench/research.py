@@ -1226,8 +1226,19 @@ class WorkbenchResearch:
         author,
         confirm=False,
         human=False,
+        authority="human",
     ):
-        if not human:
+        if authority not in {"human", "assistant"}:
+            raise ValueError("修订来源必须为人工或 AI 辅助。")
+        if authority == "assistant":
+            if confirm is not False:
+                raise ValueError("人工科学确认不能用于 AI 辅助修订。")
+            return self.app.revise_research_result(
+                str(result_path),
+                {**target, "replacement": replacement, "reason": reason},
+                client_identity=author,
+            )
+        if human is not True:
             raise ProcessingError("explicit_human_revision_required")
         parent_path = self.app.path(result_path)
         parent = read_json(parent_path)

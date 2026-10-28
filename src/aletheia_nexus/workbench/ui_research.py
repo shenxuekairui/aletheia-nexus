@@ -1324,7 +1324,7 @@ class ResearchPages:
                             on_click=guard(lambda: show_selected()),
                         )
                         ui.button(
-                            "人工修订 / 确认",
+                            "修订 / 人工确认",
                             icon="edit",
                             on_click=guard(
                                 lambda: self.revision_dialog(current, result)
@@ -1490,7 +1490,16 @@ class ResearchPages:
             ui.dialog() as dialog,
             ui.card().classes("w-[1000px] max-w-[95vw] an-card"),
         ):
-            ui.label("人工修订结果（创建新版本）").classes("text-xl font-semibold")
+            ui.label("修订结果（创建新版本）").classes("text-xl font-semibold")
+            authority = ui.select(
+                {"human": "人工修订", "assistant": "AI 辅助修订"},
+                value="human",
+                label="修订来源",
+            ).classes("w-full")
+            ui.label(
+                "请如实记录修订来源。AI 辅助修订保留为待人工核对，不能作人工科学确认；"
+                "保存本地修订不会调用模型或产生新的 API 费用。"
+            ).classes("an-muted text-sm")
             target = ui.select(
                 choices, value=next(iter(choices)), label="修订条目"
             ).classes("w-full")
@@ -1501,6 +1510,12 @@ class ResearchPages:
                 "我已逐项核对此记录/主张的全部科学内容与证据，标为人工确认", value=False
             )
             state = {"target": None, "replacement": None, "controls": {}}
+
+            def update_confirmation():
+                confirm.set_value(False)
+                confirm.set_enabled(
+                    authority.value == "human" and not target.value.startswith("issue:")
+                )
 
             def load():
                 kind, key = target.value.split(":", 1)
@@ -1621,8 +1636,7 @@ class ResearchPages:
                             .classes("w-full")
                         )
                     json_view(original, label="不可变父版本条目")
-                confirm.set_enabled(kind != "issue")
-                confirm.set_value(False)
+                update_confirmation()
 
             def save():
                 kind = target.value.split(":", 1)[0]
@@ -1651,14 +1665,18 @@ class ResearchPages:
                     replacement,
                     reason=reason.value,
                     author=author.value,
-                    confirm=confirm.value if kind != "issue" else False,
-                    human=True,
+                    confirm=confirm.value
+                    if kind != "issue" and authority.value == "human"
+                    else False,
+                    human=authority.value == "human",
+                    authority=authority.value,
                 )
                 self.current_result = receipt["result"]
                 dialog.close()
                 self.page_content.refresh()
 
             target.on_value_change(lambda _: load())
+            authority.on_value_change(lambda _: update_confirmation())
             load()
             ui.button("保存独立修订版本", icon="save", on_click=guard(save))
             ui.button("关闭", on_click=dialog.close).props("flat")

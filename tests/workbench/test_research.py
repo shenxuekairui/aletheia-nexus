@@ -321,7 +321,7 @@ def test_same_pdf_bytes_with_distinct_source_declarations_keep_distinct_ids(rese
         research.app.authorize = original_authorize
 
 
-def test_human_revision_and_unicode_export_name(research):
+def test_human_revision_and_unicode_export_name(research, monkeypatch):
     import hashlib
     import json
     import zipfile
@@ -426,6 +426,56 @@ def test_human_revision_and_unicode_export_name(research):
         assert any(name.endswith("history.json") for name in archive.namelist())
         assert any(name.endswith("task.json") for name in archive.namelist())
     assert path.read_bytes() == parent_bytes
+    source_bytes = {
+        Path(pdf): Path(pdf).read_bytes()
+        for pdf in [
+            research.library.get("p1")["pdf_path"],
+            *(document["pdf"] for document in task["documents"]),
+        ]
+    }
+    human_version = Path(revised["result"]).read_bytes()
+    assistant_entry = research.app.revise_research_result
+    delegated = []
+
+    def tracked_assistant(*args, **kwargs):
+        delegated.append((args, kwargs))
+        return assistant_entry(*args, **kwargs)
+
+    monkeypatch.setattr(research.app, "revise_research_result", tracked_assistant)
+    for invalid_confirm in (True, None, 0, "false"):
+        with pytest.raises(ValueError, match="人工科学确认不能用于"):
+            research.revise(
+                revised["result"],
+                {"record_id": "r1"},
+                replacement,
+                reason="AI 辅助核对格式",
+                author="自动化验收",
+                authority="assistant",
+                confirm=invalid_confirm,
+            )
+    assert not delegated
+    assisted = research.revise(
+        revised["result"],
+        {"record_id": "r1"},
+        replacement,
+        reason="AI 辅助核对格式，仍需人工核实科学内容",
+        author="自动化验收",
+        authority="assistant",
+    )
+    assert len(delegated) == 1
+    assert delegated[0][1] == {"client_identity": "自动化验收"}
+    assert "confirm" not in delegated[0][0][1]
+    assert assisted["authority"] == "assistant" and assisted["confirmed"] is False
+    assert assisted["network_access"] is False
+    assistant_child = research.read_result(assisted["result"])
+    assert assistant_child["history"][-1]["authority"] == "assistant"
+    assert assistant_child["history"][-1]["author"] == "自动化验收"
+    assert not assistant_child["history"][-1]["confirm"]
+    assert assistant_child["validation"]["record_states"]["r1"] != "human_confirmed"
+    assert revision_history_rows(assistant_child)[-1]["authority"] == "AI 修订"
+    assert Path(revised["result"]).read_bytes() == human_version
+    assert path.read_bytes() == parent_bytes
+    assert all(pdf.read_bytes() == before for pdf, before in source_bytes.items())
 
 
 def test_extra_pages_require_fresh_execution_consent(research, monkeypatch):
