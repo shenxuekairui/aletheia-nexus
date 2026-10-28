@@ -1029,7 +1029,7 @@ class LibraryPage:
         dialog.open()
 
     def organize_dialog(self, ids):
-        from nicegui import ui
+        from nicegui import run, ui
 
         from .translation import DEFAULT_OPTIONS
 
@@ -1286,15 +1286,16 @@ class LibraryPage:
                     "编辑名称或取消项目后，请点击“应用逐篇修改并重做预检”。"
                 )
 
-            def preview():
+            async def preview():
                 template_value, target = template.value, target_options()
+                missing_policy = missing.value
                 state["preview_form"] = (
                     template.value,
                     target_mode.value,
                     folder.value,
                     missing.value,
                 )
-                if missing.value == "translate":
+                if missing_policy == "translate":
                     options = read_translation()
                     grant = consent.value
                     if not grant:
@@ -1330,12 +1331,14 @@ class LibraryPage:
                         "正在任务中心翻译缺失标题，完成后预览自动出现在此处。"
                     )
                 else:
+                    status.set_text("正在后台检查来源、附件与历史引用，请稍候。")
                     display_preview(
-                        self.ctx.library.preview_rename(
+                        await run.io_bound(
+                            self.ctx.library.preview_rename,
                             ids,
                             template_value,
                             **target,
-                            missing_translation=missing.value,
+                            missing_translation=missing_policy,
                         )
                     )
 
@@ -1353,8 +1356,10 @@ class LibraryPage:
                     folder.value,
                     missing.value,
                 )
+                status.set_text("正在后台重新检查逐篇修改与历史引用，请稍候。")
                 display_preview(
-                    self.ctx.library.preview_rename(
+                    await run.io_bound(
+                        self.ctx.library.preview_rename,
                         enabled,
                         template.value,
                         **target_options(),
