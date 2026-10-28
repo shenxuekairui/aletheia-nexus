@@ -22,7 +22,12 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from aletheia_nexus.acquire.access.batch import acquire_full_text_batch_maximized
-from aletheia_nexus.acquire.access.browser import BrowserSession
+from aletheia_nexus.acquire.access.browser import (
+    BrowserSession,
+)
+from aletheia_nexus.acquire.access.browser import (
+    _validate_config as _validate_browser_config,
+)
 from aletheia_nexus.acquire.access.models import BrowserAccessConfig
 from aletheia_nexus.acquire.access.service import acquire_full_text_maximized
 from aletheia_nexus.acquire.metadata.crossref import CROSSREF_API, parse_crossref_work
@@ -265,6 +270,8 @@ def normalize_request(value) -> PaperRequest:
 
 
 def _options(value: dict | None) -> dict:
+    from .acquisition_labels import PARAMETER_LABELS, PARAMETER_RANGES
+
     if value is not None and not isinstance(value, dict):
         raise ValueError("acquisition options must be an object")
     supplied = value or {}
@@ -297,12 +304,26 @@ def _options(value: dict | None) -> dict:
                 raise ValueError(name + " must be a finite non-negative number")
             if isinstance(default, int) and type(actual) is not int:
                 raise ValueError(name + " must be an integer")
-    if (
-        result["max_item_attempts"] < 1
-        or result["max_si_files"] < 1
-        or result["si_max_bytes"] < 1
-    ):
-        raise ValueError("item attempts and SI limits must be positive")
+    # These bounds mirror the existing engine/attachment validators. Check
+    # before discovery/metadata network work; native batches redact unexpected
+    # exceptions to a type name, which would otherwise lose the invalid field.
+    for path, rules in PARAMETER_RANGES.items():
+        if not any(key in rules for key in ("min", "exclusive_min", "max")):
+            continue
+        actual = (
+            result["browser"][path[8:]] if path.startswith("browser.") else result[path]
+        )
+        label = PARAMETER_LABELS[path]
+        if type(actual) not in (int, float) or not math.isfinite(actual):
+            raise ValueError(label + "必须填写有限数值，请核对类型与单位。")
+        if rules.get("integer") and type(actual) is not int:
+            raise ValueError(label + "必须填写整数。")
+        if "min" in rules and actual < rules["min"]:
+            raise ValueError(f"{label}不能小于 {rules['min']}。")
+        if "exclusive_min" in rules and actual <= rules["exclusive_min"]:
+            raise ValueError(f"{label}必须大于 {rules['exclusive_min']}。")
+        if "max" in rules and actual > rules["max"]:
+            raise ValueError(f"{label}不能大于 {rules['max']}。")
     if not result["browser_enabled"] and not result["public_only"]:
         raise ValueError(
             "disable public_only only after explicitly enabling browser access"
@@ -315,6 +336,17 @@ def _options(value: dict | None) -> dict:
         raise ValueError(
             "official authenticated APIs require the full access strategy; public_only disables them"
         )
+    browser_options = dict(result["browser"])
+    browser_options.update(
+        interactive=result["interaction_policy"] != "skip"
+        and browser_options["interactive"],
+        wait_for_interaction=False,
+        interaction_timeout=max(1.0, result["interaction_timeout"] or 180.0),
+    )
+    _validate_browser_config(BrowserAccessConfig(**browser_options))
+    # browser_profile_dir also accepts path-like values, but opens no files.
+    if browser_options["profile_root"] is not None:
+        Path(browser_options["profile_root"])
     return result
 
 
