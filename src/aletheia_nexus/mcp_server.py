@@ -238,9 +238,17 @@ def create_server(app: ResearchApplication):
         return app.revise_research_result(result, revision, client_identity=identity)
 
     @tool
-    def list_research_runs(limit: int = 20) -> dict[str, Any]:
-        """List local job history and recorded costs without a model or API key."""
-        return app.list_research_runs(limit=limit)
+    def list_research_runs(
+        limit: int = 20, directory: str | None = None
+    ) -> dict[str, Any]:
+        """Discover local jobs, planning and native research histories; no API key.
+        Default workspace only. Optional directory must be inside allowed roots.
+        Reads only fixed manifest layouts, never recursively scans other folders
+        or follows stored external paths. Run identities are deduplicated; usage
+        is shown per owning run, not summed across copies or review views.
+        Returned result paths work with read_research_result and re-export.
+        """
+        return app.list_research_runs(limit=limit, directory=directory)
 
     @server.tool(structured_output=False)
     def read_original_page(

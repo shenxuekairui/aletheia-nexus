@@ -11,14 +11,124 @@ from pathlib import Path
 
 import pytest
 from test_research_app import task_for, write_pdf
+from test_research_history import planning_history
 from test_research_revision_app import save_fixture_result
 
 from aletheia_nexus.content.gate import sha256_file
+from aletheia_nexus.processing.engine import write_json
 from aletheia_nexus.research_app import ResearchApplication
 
 pytest.importorskip("mcp")
 from mcp import Client, StdioServerParameters
 from mcp.types import Implementation
+
+
+def test_stdio_history_optional_directory_read_and_reexport_without_key(
+    tmp_path, monkeypatch
+):
+    papers = tmp_path / "论文"
+    papers.mkdir()
+    workspace = tmp_path / "results"
+    pdf = papers / "历史论文.pdf"
+    write_pdf(
+        pdf,
+        [[(50, 650, 12, "A sample was measured at 25 C.")]],
+        title="History fixture",
+    )
+    fixture_app = ResearchApplication([papers], workspace)
+    try:
+        parent, result = save_fixture_result(fixture_app, pdf)
+    finally:
+        fixture_app.close()
+    original_bytes = parent.read_bytes()
+    history_root = papers / "旧输出"
+    native = history_root / "runs/native-run"
+    write_json(native / "sample.result.json", result)
+    write_json(native / "task.json", result["task"])
+    manifest = {
+        "schema": "aletheia-nexus/research-run/v1",
+        "run_id": "native-run",
+        "status": "PARTIAL",
+        "task_fingerprint": "fixture-task",
+        "task_file": "task.json",
+        "items": [{"result": "sample.result.json"}],
+        "outputs": [],
+        "usage": {"http_attempts": 0, "estimated_cost": 0},
+    }
+    write_json(native / "manifest.json", manifest)
+    write_json(history_root / "runs/copy/manifest.json", manifest)
+    planning_history(workspace, "success", "COMPLETED", result["task"])
+    planning_history(workspace, "failure", "FAILED")
+    for name in ("DEEPSEEK_API_KEY", "QWEN_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    async def run():
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-m",
+                "aletheia_nexus.mcp_server",
+                "serve",
+                "--allow-dir",
+                str(papers),
+                "--workspace",
+                str(workspace),
+            ],
+        )
+        async with Client(params, read_timeout_seconds=30) as client:
+            tools = await client.list_tools()
+            history_tool = next(
+                t for t in tools.tools if t.name == "list_research_runs"
+            )
+            assert "directory" in history_tool.input_schema["properties"]
+            reply = await client.call_tool(
+                "list_research_runs", {"directory": str(history_root)}
+            )
+            assert not reply.is_error and reply.structured_content["ok"]
+            history = reply.structured_content
+            assert (
+                history["network_access"] is False
+                and history["usage_aggregated"] is False
+            )
+            assert len(history["runs"]) == 3
+            assert {
+                r["status"] for r in history["runs"] if r["kind"] == "planning"
+            } == {"COMPLETED", "FAILED"}
+            row = next(r for r in history["runs"] if r["kind"] == "research")
+            assert len(row["manifest_files"]) == 2
+            # Prefer the canonical copy with results; mirrored manifests must not
+            # hide valid result files because their own folder lacks the bytes.
+            assert row["results"] == [str(native / "sample.result.json")]
+            loaded = await client.call_tool(
+                "read_research_result", {"result": row["results"][0]}
+            )
+            assert loaded.structured_content["artifact_id"] == result["artifact_id"]
+            assert loaded.structured_content["network_access"] is False
+            exported = await client.call_tool(
+                "export_research_results",
+                {
+                    "results": row["results"],
+                    "name": "history-reuse",
+                    "formats": ["markdown", "csv", "jsonl"],
+                },
+            )
+            assert exported.structured_content["ok"]
+            assert exported.structured_content["network_access"] is False
+            out = Path(exported.structured_content["directory"])
+            assert all(
+                (out / name).is_file()
+                for name in exported.structured_content["outputs"]
+            )
+            denied = await client.call_tool(
+                "list_research_runs", {"directory": str(tmp_path / "outside")}
+            )
+            assert denied.structured_content == {
+                "ok": False,
+                "error": "path_outside_allowed_directories",
+            }
+
+    asyncio.run(run())
+    assert parent.read_bytes() == original_bytes
 
 
 def test_stdio_background_preparation_partial_reuse_and_scope(tmp_path, monkeypatch):
@@ -44,11 +154,17 @@ def test_stdio_background_preparation_partial_reuse_and_scope(tmp_path, monkeypa
         params = StdioServerParameters(
             command=sys.executable,
             args=[
-                "-m", "aletheia_nexus.mcp_server", "serve",
-                "--allow-dir", str(papers), "--workspace", str(workspace),
+                "-m",
+                "aletheia_nexus.mcp_server",
+                "serve",
+                "--allow-dir",
+                str(papers),
+                "--workspace",
+                str(workspace),
             ],
         )
         async with Client(params, read_timeout_seconds=30) as client:
+
             async def wait(job_id):
                 deadline = asyncio.get_running_loop().time() + 20
                 while asyncio.get_running_loop().time() < deadline:
@@ -57,10 +173,12 @@ def test_stdio_background_preparation_partial_reuse_and_scope(tmp_path, monkeypa
                     status = reply.structured_content
                     if status["status"] not in {"QUEUED", "RUNNING"}:
                         return status
-                    await asyncio.sleep(.05)
+                    await asyncio.sleep(0.05)
                 pytest.fail("background preparation did not finish")
 
-            created = await client.call_tool("prepare_documents_job", {"paths": selected})
+            created = await client.call_tool(
+                "prepare_documents_job", {"paths": selected}
+            )
             assert not created.is_error and created.structured_content["ok"]
             first_id = created.structured_content["job_id"]
             first = await wait(first_id)
@@ -75,13 +193,19 @@ def test_stdio_background_preparation_partial_reuse_and_scope(tmp_path, monkeypa
                 for document in first["documents"]
                 for key in ("pdf", "sidecar", "artifact")
             }
-            second_job = await client.call_tool("prepare_documents_job", {"paths": selected})
+            second_job = await client.call_tool(
+                "prepare_documents_job", {"paths": selected}
+            )
             second_id = second_job.structured_content["job_id"]
             assert second_id != first_id
             second = await wait(second_id)
             assert second["status"] == "PARTIAL"
             assert second["documents"] == first["documents"]
-            assert all(item["reused"] for item in second["items"] if item["status"] == "PREPARED")
+            assert all(
+                item["reused"]
+                for item in second["items"]
+                if item["status"] == "PREPARED"
+            )
             assert {p: sha256_file(p) for p in protected} == protected
             before = set((workspace / "jobs").iterdir())
             denied = await client.call_tool(
@@ -89,7 +213,8 @@ def test_stdio_background_preparation_partial_reuse_and_scope(tmp_path, monkeypa
                 {"paths": [selected[0], str(tmp_path / "outside.pdf")]},
             )
             assert denied.structured_content == {
-                "ok": False, "error": "path_outside_allowed_directories"
+                "ok": False,
+                "error": "path_outside_allowed_directories",
             }
             assert set((workspace / "jobs").iterdir()) == before
             old = await client.call_tool("get_run_status", {"job_id": first_id})
