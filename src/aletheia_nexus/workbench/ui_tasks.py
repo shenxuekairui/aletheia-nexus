@@ -7,6 +7,42 @@ from .task_view import attachment_rows, state_color, task_costs, task_counts, ta
 from .ui_common import guard, json_view, rows_table
 
 
+def skip_control(job):
+    kind, status = job["kind"], job["status"]
+    unavailable = (
+        status in TERMINAL
+        or status == "CANCEL_REQUESTED"
+        or (job.get("interaction") or {}).get("stage") == "paper_boundary"
+        or kind in {"acquisition", "acquire"}
+        and job.get("task_phase") == "postprocess"
+        or kind == "import"
+        and job.get("import_phase") == "postprocess"
+    )
+    labels = {
+        "acquisition": "跳过下一篇论文",
+        "acquire": "跳过下一篇论文",
+        "parse": "跳过下一份文件",
+        "translation": "跳过下一批标题",
+        "import": "跳过下一份文件",
+    }
+    if unavailable or kind not in labels:
+        return "此阶段不支持跳过", False
+    return (
+        "跳过当前论文"
+        if status == "INTERACTION_REQUIRED" and kind in {"acquisition", "acquire"}
+        else labels[kind],
+        True,
+    )
+
+
+def continue_label(job):
+    return (
+        "继续后续论文"
+        if (job.get("interaction") or {}).get("stage") == "paper_boundary"
+        else "验证后继续"
+    )
+
+
 def render_task_dialog(controller):
     from nicegui import ui
 
@@ -239,7 +275,12 @@ def render_task_dialog(controller):
                             "重新审阅翻译范围与预算",
                             icon="translate",
                             on_click=guard(
-                                lambda j=job: controller.organize_dialog(j["items"])
+                                lambda j=job: (
+                                    controller.title_translation_dialog(j["items"])
+                                    if (j.get("parameters") or {}).get("title_entry")
+                                    == "focused"
+                                    else controller.organize_dialog(j["items"])
+                                )
                             ),
                         ).props("outline")
                 task = (job.get("parameters") or {}).get("task") or (
@@ -394,27 +435,7 @@ def render_task_dialog(controller):
                             latest["kind"] in {"rename", "rollback"}
                             and latest["status"] != "QUEUED"
                         )
-                        can_skip = latest["kind"] in {
-                            "acquisition",
-                            "acquire",
-                            "parse",
-                            "translation",
-                            "import",
-                        } and not (
-                            latest["kind"] == "import"
-                            and latest.get("import_phase") == "postprocess"
-                        )
-                        skip_label = (
-                            "跳过当前论文"
-                            if latest["status"] == "INTERACTION_REQUIRED"
-                            else {
-                                "acquisition": "跳过下一篇论文",
-                                "acquire": "跳过下一篇论文",
-                                "parse": "跳过下一份文件",
-                                "translation": "跳过下一批标题",
-                                "import": "跳过下一份文件",
-                            }.get(latest["kind"], "此阶段不支持跳过")
-                        )
+                        skip_label, can_skip = skip_control(latest)
                         for action, label, icon, enabled in (
                             (
                                 "pause",
@@ -431,8 +452,10 @@ def render_task_dialog(controller):
                             ),
                             (
                                 "continue",
-                                "验证后继续",
-                                "verified_user",
+                                continue_label(latest),
+                                "arrow_forward"
+                                if interaction.get("stage") == "paper_boundary"
+                                else "verified_user",
                                 latest["status"] == "INTERACTION_REQUIRED",
                             ),
                             (
@@ -450,15 +473,28 @@ def render_task_dialog(controller):
                                 and not atomic,
                             ),
                         ):
+
+                            def control(a=action):
+                                current = manager.get(job_id)
+                                if a == "skip" and not skip_control(current)[1]:
+                                    ui.notify(
+                                        "任务已进入不支持跳过的阶段，请核对最新进度。"
+                                    )
+                                elif (
+                                    a == "continue"
+                                    and current["status"] != "INTERACTION_REQUIRED"
+                                ):
+                                    ui.notify(
+                                        "当前没有等待人工处理的操作，请核对最新进度。"
+                                    )
+                                else:
+                                    manager.control(job_id, a)
+                                update_live()
+
                             ui.button(
                                 label,
                                 icon=icon,
-                                on_click=guard(
-                                    lambda a=action: (
-                                        manager.control(job_id, a),
-                                        update_live(),
-                                    )
-                                ),
+                                on_click=guard(control),
                             ).props("flat dense").set_enabled(enabled)
                         if atomic and latest["status"] not in TERMINAL:
                             ui.label(
