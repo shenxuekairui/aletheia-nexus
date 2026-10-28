@@ -5,19 +5,25 @@ from __future__ import annotations
 GUIDE = [
     (
         "首次使用",
-        "从一处文库开始",
+        "十分钟开始：先完成一篇文献的小闭环",
         [
-            "点击右上角“设置”，选择或创建文献库根目录。分类目录负责正文的实际保存位置；标签和研究集合用于逻辑组织。",
-            "已有 AN 文库可直接使用，无需重新下载。导入其它 PDF 时选择“文献库 → 导入 PDF / 文件夹”；已存在的有效来源记录会保留，未登记文件按人工声明身份登记。",
+            "第一步：可先使用主页显示的当前文库，也可点击“查看 / 更换文库”或右上角“设置”，填写本地文库目录。已有 AN 文库可直接打开；分类负责实际保存位置，标签和集合用于逻辑组织。",
+            "第二步：点击“导入本地 PDF”，在弹窗中选择本地文件即可，不需要填写文件路径。也可点“粘贴 DOI / 标题”，输入第一篇文献后预览，再由你启动获取。主页的公开示例只填入 DOI，不会立即下载。",
+            "第三步：打开文献库，勾选论文并点击“解析已勾选 → 开始解析”。完成后进入“科研检索”，输入正文中的一个关键词，打开命中证据的原页。遇到部分解析，先查看页覆盖和警告。",
+            "完成上述小闭环无需 API 密钥或远程模型。接着可添加标签、保存集合和选择材料；准备好后，再到“AI 研究”本地创建可编辑计划，审阅范围与预算。",
+            "只上传单个 PDF 时按用户声明身份登记。已有 AN 资料可直接打开原文库，或从带来源记录的本地路径导入，以保留已有有效来源；解析状态仍不代表科学内容准确。",
             "工作区保存任务历史、科研材料快照、翻译缓存和成果。备份时同时保留文库与工作区。文库切换前需要结束正在进行的任务，旧浏览器页面需刷新。",
-            "推荐依次完成：获取或导入一篇论文 → 打开原文 → 添加标签 → 解析 → 检索 → 加入选择清单 → 本地创建研究计划。默认不会产生模型费用。",
         ],
     ),
     (
         "获取论文",
         "确认身份，再获取正文与 SI",
         [
-            "粘贴 DOI、中英文完整标题，或上传 TXT、CSV、JSON 清单，先点击“规范化与预览”。重复输入会合并，错误行会列出原因。",
+            "粘贴 DOI、中英文完整标题，或上传 TXT、CSV、JSON 清单，先点击“规范化与预览”。“1. DOI”等编号会正确识别；完全相同的论文与设置可去重。同一 DOI 的分类、标签或书目约束不同会列出冲突，需停用多余候选或统一设置。错误行会列出原因。",
+            "不必制作 CSV：用“A. 羧酸还原”或“[羧酸还原]”开始一组，下面粘贴编号 DOI；该组继承你明确写下的分类。需要父子目录时用“## 电催化”及“### 羧酸还原”，形成“电催化/羧酸还原”。这不是模型对研究主题的自动判断。",
+            "组头可写“A. 羧酸还原 | 标签=待读,电催化”，也可在组内另起一行写“标签=待读,电催化”。逐篇覆盖示例：“10.1038/s41467-019-08805-x | 分类=电催化/重点 | 标签=已读”；字段之间也可使用制表符。逐篇标签替换组标签，不会自动合并。",
+            "未指定字段时跟随组设置，组也未指定时跟随批次默认。写“分类=/”或“分类=根目录”明确保存到文库根；写“标签=”或“标签=[]”明确不加标签。非法目录会报错，系统不会静默改名或沿用前一组。",
+            "预览后仍可逐篇调整：双击论文行，或勾选多行再统一设置分类与标签。用“选已有 / 新建目录”查看当前文库的已有分类，或新建子目录；核对最终目录和标签后再开始获取。新分类仅是保存位置，不影响论文身份。",
             "没有 DOI 的英文标题需先选中表中论文，再点击“解析 / 确认当前选中标题”。根据标题、作者、年份、期刊核对候选；相近结果不会被自动当成同一论文。中文标题继续使用 CNKI 身份核对流程。",
             "设置分类目录、标签和主文/SI统一命名模板。分类中正文直接平铺，所有关联附件共用该分类的 SI/ 子目录。正文成功与 SI 获取状态独立报告。",
             "自动 SI 获取目前限于论文 DOI 一致的官方页面中明确标识的附件链接；受保护附件可能无法取得。非 PDF 附件先安全保存和登记，不承诺能够解析。",
@@ -96,6 +102,80 @@ GUIDE = [
 
 
 class HomePages:
+    def start_with_example(self):
+        """Fill a public example; acquisition still requires its own preview/start."""
+        self.acquisition_example_text = "10.1038/s41467-019-08805-x"
+        self.navigate("获取论文")
+
+    def first_steps(self, active):
+        from nicegui import ui
+
+        with ui.card().classes("an-card w-full gap-4 mt-3"):
+            with ui.row().classes("w-full justify-between items-center"):
+                with ui.column().classes("gap-1"):
+                    ui.label("十分钟开始").classes("an-section-title")
+                    ui.label("先完成一篇文献的入库、解析和检索。").classes("an-muted")
+                ui.button(
+                    "查看首次操作指南", icon="menu_book", on_click=self.guide_dialog
+                ).props("flat")
+            with ui.grid(columns=3).classes("w-full an-parameter-grid gap-5"):
+                with ui.column().classes("gap-3 min-w-0"):
+                    ui.badge("01 · 确认文库").props("outline color=teal-7")
+                    ui.label("可先使用当前目录，也可打开已有文库。").classes("text-sm")
+                    ui.label(str(self.ctx.library.root)).classes(
+                        "an-muted text-xs break-all"
+                    )
+                    ui.button(
+                        "查看 / 更换文库",
+                        icon="folder_open",
+                        on_click=self.settings_dialog,
+                    ).props("outline")
+                with ui.column().classes("gap-3 min-w-0"):
+                    ui.badge("02 · 放入第一篇").props("outline color=teal-7")
+                    ui.label(
+                        "已有 PDF 可直接导入；在线获取先确认 DOI 或标题。"
+                    ).classes("text-sm")
+                    ui.button(
+                        "导入本地 PDF", icon="upload_file", on_click=self.import_dialog
+                    ).props("unelevated color=teal-7")
+                    ui.button(
+                        "粘贴 DOI / 标题",
+                        icon="content_paste",
+                        on_click=lambda: self.navigate("获取论文"),
+                    ).props("outline")
+                    ui.button(
+                        "填入公开论文示例",
+                        icon="lightbulb_outline",
+                        on_click=self.start_with_example,
+                    ).props("flat dense")
+                    ui.label("示例只填入 DOI，下载由你另行启动。").classes(
+                        "an-muted text-xs"
+                    )
+                with ui.column().classes("gap-3 min-w-0"):
+                    ui.badge("03 · 解析后搜一次").props("outline color=teal-7")
+                    ui.label(
+                        "在文库勾选论文，点击“解析已勾选”；完成后用正文关键词检索并核对原页。"
+                    ).classes("text-sm")
+                    ui.button(
+                        "打开文库并解析",
+                        icon="document_scanner",
+                        on_click=lambda: self.navigate("文献库"),
+                    ).props("outline")
+                    ui.button(
+                        "打开科研检索",
+                        icon="manage_search",
+                        on_click=lambda: self.navigate("科研检索"),
+                    ).props("flat")
+            ui.label("本地导入、原生解析和关键词检索无需 API 密钥或远程模型。").classes(
+                "an-info text-sm w-full"
+            )
+            if active:
+                ui.button(
+                    f"查看正在处理的 {len(active)} 个任务",
+                    icon="pending_actions",
+                    on_click=self.task_dialog,
+                ).props("outline")
+
     def home_page(self):
         from nicegui import ui
 
@@ -138,6 +218,9 @@ class HomePages:
                     ui.button(
                         "阅读操作指南", icon="menu_book", on_click=self.guide_dialog
                     ).props("flat color=white").classes("mt-2")
+        if not papers:
+            self.first_steps(active)
+            return
         with ui.grid(columns=4).classes("w-full an-stat-grid gap-4 mt-2"):
             for number, label, icon, detail in (
                 (len(papers), "文库论文", "description", "正文按逻辑身份计数"),
