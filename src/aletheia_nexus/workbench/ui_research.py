@@ -8,6 +8,7 @@ from copy import deepcopy
 from .labels import CHOICES, GRID_LOCALE, value_label
 from .messages import user_message
 from .ui_common import guard, json_text, json_view, parameter_editor, rows_table
+from .ui_grids import read_edited_grid
 from .ui_parameters import parameter_sections
 from .ui_presets import preset_controls
 from .ui_revisions import render_revision_history, revised_field
@@ -790,6 +791,7 @@ class ResearchPages:
                 state["fields"] = ui.aggrid(
                     {
                         "localeText": GRID_LOCALE,
+                        "stopEditingWhenCellsLoseFocus": True,
                         "columnDefs": [
                             {
                                 "field": key,
@@ -824,10 +826,10 @@ class ResearchPages:
                     theme="quartz",
                 ).classes("h-56 w-full")
 
-                def add_field():
+                async def add_field():
                     from uuid import uuid4
 
-                    rows = state["fields"].options["rowData"]
+                    rows = await read_edited_grid(state["fields"])
                     rows.append(
                         {
                             "id": "field_" + uuid4().hex[:10],
@@ -838,20 +840,22 @@ class ResearchPages:
                             "scope": "",
                         }
                     )
+                    state["fields"].options["rowData"] = rows
                     state["fields"].update()
 
                 async def remove_fields():
+                    rows = await read_edited_grid(state["fields"])
                     selected = await state["fields"].get_selected_rows()
                     keys = {r["id"] for r in selected}
                     state["fields"].options["rowData"] = [
-                        r
-                        for r in await state["fields"].get_client_data()
-                        if r["id"] not in keys
+                        r for r in rows if r["id"] not in keys
                     ]
                     state["fields"].update()
 
                 with ui.row().classes("an-toolbar"):
-                    ui.button("添加字段", icon="add", on_click=add_field).props("flat")
+                    ui.button("添加字段", icon="add", on_click=guard(add_field)).props(
+                        "flat"
+                    )
                     ui.button(
                         "移除选中字段", icon="remove", on_click=guard(remove_fields)
                     ).props("flat")
@@ -879,6 +883,7 @@ class ResearchPages:
                 state["documents"] = ui.aggrid(
                     {
                         "localeText": GRID_LOCALE,
+                        "stopEditingWhenCellsLoseFocus": True,
                         "columnDefs": [
                             {
                                 "field": "enabled",
@@ -970,11 +975,11 @@ class ResearchPages:
                             "type": reverse_types.get(r["type"], r["type"]),
                             "unit": r.get("unit") or None,
                         }
-                        for r in await state["fields"].get_client_data()
+                        for r in await read_edited_grid(state["fields"])
                     ]
                     by_id = {d["id"]: d for d in value["documents"]}
                     docs = []
-                    for row in await state["documents"].get_client_data():
+                    for row in await read_edited_grid(state["documents"]):
                         if not row.get("enabled"):
                             continue
                         doc = deepcopy(by_id[row["id"]])

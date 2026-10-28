@@ -14,6 +14,7 @@ from .ui_common import (
     rows_table,
     split_tags,
 )
+from .ui_grids import read_edited_grid
 
 COLUMNS = {
     "title": "显示标题",
@@ -1237,6 +1238,7 @@ class LibraryPage:
                     state["grid"] = ui.aggrid(
                         {
                             "localeText": GRID_LOCALE,
+                            "stopEditingWhenCellsLoseFocus": True,
                             "columnDefs": [
                                 {
                                     "field": "enabled",
@@ -1340,7 +1342,7 @@ class LibraryPage:
             async def regenerate():
                 if state["grid"] is None:
                     raise ValueError("请先生成预览")
-                changed = await state["grid"].get_client_data()
+                changed = await read_edited_grid(state["grid"])
                 enabled = [r["id"] for r in changed if r.get("enabled")]
                 overrides = {
                     r["id"]: r["final_stem"] for r in changed if r.get("enabled")
@@ -1367,7 +1369,7 @@ class LibraryPage:
                 preview_value = state["preview"]
                 if not preview_value or not preview_value["executable"]:
                     raise ValueError("尚无可安全执行的预览")
-                current = await state["grid"].get_client_data()
+                current = await read_edited_grid(state["grid"])
                 expected = {r["id"]: r for r in preview_value["items"]}
                 changed = any(
                     bool(r.get("enabled")) != (expected[r["id"]]["status"] == "READY")

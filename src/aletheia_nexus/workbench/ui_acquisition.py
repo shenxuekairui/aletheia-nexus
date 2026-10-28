@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .labels import GRID_LOCALE, value_label
 from .ui_common import guard, json_view, parameter_editor, rows_table, split_tags
+from .ui_grids import read_edited_grid
 
 
 def acquisition_workflow_preferences(value=None, *, translation_defaults=None):
@@ -403,6 +404,7 @@ class AcquisitionPage:
                         state["grid"] = ui.aggrid(
                             {
                                 "localeText": GRID_LOCALE,
+                                "stopEditingWhenCellsLoseFocus": True,
                                 "columnDefs": [
                                     {
                                         "field": "enabled",
@@ -751,7 +753,7 @@ class AcquisitionPage:
             if state["grid"] is None:
                 raise ValueError("请先生成输入预览")
             rows = [
-                r for r in await state["grid"].get_client_data() if r.get("enabled")
+                r for r in await read_edited_grid(state["grid"]) if r.get("enabled")
             ]
             request_map = {e["id"]: e["request"] for e in state["preview"]["items"]}
             requests = []
