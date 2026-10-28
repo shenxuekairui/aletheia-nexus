@@ -87,6 +87,16 @@ def create_server(app: ResearchApplication):
         return app.prepare_documents(paths)
 
     @tool
+    def prepare_documents_job(paths: list[str]) -> dict[str, Any]:
+        """Prepare selected PDFs in the background; return a job ID immediately.
+        Poll get_run_status for per-file progress, valid documents and failures.
+        No model or network calls. Originals and previous parses stay unchanged.
+        Repeating the selection creates a new job and reuses valid existing parses;
+        an interrupted old job and its history are retained.
+        """
+        return app.prepare_documents_job(paths)
+
+    @tool
     def import_local_document(
         pdf: str, title: str, doi: str | None = None
     ) -> dict[str, Any]:

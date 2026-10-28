@@ -7,16 +7,96 @@ import shutil
 import struct
 import sys
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 from test_research_app import task_for, write_pdf
 from test_research_revision_app import save_fixture_result
 
+from aletheia_nexus.content.gate import sha256_file
 from aletheia_nexus.research_app import ResearchApplication
 
 pytest.importorskip("mcp")
 from mcp import Client, StdioServerParameters
 from mcp.types import Implementation
+
+
+def test_stdio_background_preparation_partial_reuse_and_scope(tmp_path, monkeypatch):
+    papers = tmp_path / "论文"
+    papers.mkdir()
+    workspace = tmp_path / "results"
+    selected = []
+    for number in range(2):
+        pdf = papers / f"方法{number}.pdf"
+        write_pdf(
+            pdf,
+            [[(50, 700, 12, f"Self-authored method {number}: measured at 25 C.")]],
+            title=f"Method {number}",
+        )
+        selected.append(str(pdf))
+    broken = papers / "损坏.pdf"
+    broken.write_bytes(b"not a PDF")
+    selected.append(str(broken))
+    original_hashes = {Path(p): sha256_file(Path(p)) for p in selected}
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    async def run():
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-m", "aletheia_nexus.mcp_server", "serve",
+                "--allow-dir", str(papers), "--workspace", str(workspace),
+            ],
+        )
+        async with Client(params, read_timeout_seconds=30) as client:
+            async def wait(job_id):
+                deadline = asyncio.get_running_loop().time() + 20
+                while asyncio.get_running_loop().time() < deadline:
+                    reply = await client.call_tool("get_run_status", {"job_id": job_id})
+                    assert not reply.is_error and reply.structured_content["ok"]
+                    status = reply.structured_content
+                    if status["status"] not in {"QUEUED", "RUNNING"}:
+                        return status
+                    await asyncio.sleep(.05)
+                pytest.fail("background preparation did not finish")
+
+            created = await client.call_tool("prepare_documents_job", {"paths": selected})
+            assert not created.is_error and created.structured_content["ok"]
+            first_id = created.structured_content["job_id"]
+            first = await wait(first_id)
+            assert first["kind"] == "preparation" and first["status"] == "PARTIAL"
+            assert first["completed"] == first["total"] == 3
+            assert len(first["documents"]) == 2 and len(first["failures"]) == 1
+            assert first["items"][-1]["path"] == str(broken.resolve())
+            assert first["latest_document"]["status"] == "FAILED"
+            assert first["model_calls"] == 0 and first["network_access"] is False
+            protected = {
+                Path(document[key]): sha256_file(Path(document[key]))
+                for document in first["documents"]
+                for key in ("pdf", "sidecar", "artifact")
+            }
+            second_job = await client.call_tool("prepare_documents_job", {"paths": selected})
+            second_id = second_job.structured_content["job_id"]
+            assert second_id != first_id
+            second = await wait(second_id)
+            assert second["status"] == "PARTIAL"
+            assert second["documents"] == first["documents"]
+            assert all(item["reused"] for item in second["items"] if item["status"] == "PREPARED")
+            assert {p: sha256_file(p) for p in protected} == protected
+            before = set((workspace / "jobs").iterdir())
+            denied = await client.call_tool(
+                "prepare_documents_job",
+                {"paths": [selected[0], str(tmp_path / "outside.pdf")]},
+            )
+            assert denied.structured_content == {
+                "ok": False, "error": "path_outside_allowed_directories"
+            }
+            assert set((workspace / "jobs").iterdir()) == before
+            old = await client.call_tool("get_run_status", {"job_id": first_id})
+            assert old.structured_content == first
+
+    asyncio.run(run())
+    assert {p: sha256_file(p) for p in original_hashes} == original_hashes
 
 
 def test_stdio_local_tools_and_permissions(tmp_path):
@@ -65,6 +145,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
                 "get_acquisition_status",
                 "acquire_documents",
                 "prepare_documents",
+                "prepare_documents_job",
                 "import_local_document",
                 "parse_document",
                 "draft_research_task",

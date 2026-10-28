@@ -423,21 +423,28 @@ class ResearchApplication:
             self.path(path)
         return source
 
-    def prepare_documents(self, paths: list[str]) -> dict:
+    def _preparation_paths(self, paths: list[str]) -> list[Path]:
+        if not paths:
+            raise ValueError("select unique PDF paths")
+        selected = [self.path(p) for p in paths]
+        if len(selected) != len(set(selected)):
+            raise ValueError("select unique PDF paths")
+        for original in selected:
+            self.path(acquisition_sidecar_path(original))
+        return selected
+
+    def prepare_documents(self, paths: list[str], *, progress=None) -> dict:
         """Prepare only selected PDFs, preserving existing trusted source records.
 
         Unregistered files are declared as individual articles with explicit identity
         uncertainty. A new SI relationship is never inferred from filenames/model input.
         Use the existing local import command to declare a supplement and its parent.
         """
-        if not paths or len(paths) != len(set(paths)):
-            raise ValueError("select unique PDF paths")
         documents, failures, warnings = [], [], []
         # Validate every selected boundary before writing anything.
-        selected = [self.path(p) for p in paths]
-        for original in selected:
-            self.path(acquisition_sidecar_path(original))
-        for original in selected:
+        selected = self._preparation_paths(paths)
+        for index, original in enumerate(selected, 1):
+            item = {"path": str(original), "completed": index, "total": len(selected)}
             try:
                 if original.suffix.lower() != ".pdf":
                     raise ValueError("PDF required")
@@ -500,15 +507,26 @@ class ResearchApplication:
                         continue
                     artifact = candidate
                     break
+                reused = artifact is not None
                 if artifact is None:
                     artifact = destination / ("parsed-" + uuid4().hex + ".parsed.json")
                     parse_document(pdf, sidecar_path=sidecar, output_path=artifact)
                 config["artifact"] = str(artifact)
-                self.check_document(config, "parsed")
+                source = self.check_document(config, "parsed")
                 documents.append(config)
                 warnings.extend(notes)
+                item.update(
+                    status="PREPARED",
+                    document=deepcopy(config),
+                    reused=reused,
+                    parse_status=source.artifact.document["status"],
+                )
             except Exception as exc:
-                failures.append({"path": str(original), "error": self.error_code(exc)})
+                failure = {"path": str(original), "error": self.error_code(exc)}
+                failures.append(failure)
+                item.update(status="FAILED", error=failure["error"])
+            if progress is not None:
+                progress(item)
         receipt = {
             "schema": "aletheia-nexus/document-preparation/v1",
             "documents": documents,
@@ -520,6 +538,57 @@ class ResearchApplication:
         path = self.workspace / "preparations" / (uuid4().hex + ".json")
         write_json(self.path(path, write=True), receipt)
         return {**receipt, "preparation_file": str(path)}
+
+    def prepare_documents_job(self, paths: list[str], *, background=True) -> dict:
+        """Prepare selected PDFs through the existing local workflow and job owner.
+
+        Repeating the same selection starts a new history entry and reuses valid
+        parses. It does not replace or silently resume the previous job.
+        """
+        selected = [str(p) for p in self._preparation_paths(paths)]
+        job_id = uuid4().hex
+        directory = self.path(self.workspace / "jobs" / job_id, write=True)
+        write_json(directory / "preparation-request.json", {"paths": selected})
+        receipt = {
+            "job_id": job_id,
+            "kind": "preparation",
+            "status": "QUEUED",
+            "directory": str(directory),
+            "error": None,
+            "completed": 0,
+            "total": len(selected),
+            "items": [],
+            "model_calls": 0,
+            "network_access": False,
+        }
+
+        def progress(row):
+            receipt["items"].append(deepcopy(row))
+            receipt["completed"] = row["completed"]
+            self._progress(receipt, row)
+
+        def execute():
+            receipt["status"] = "RUNNING"
+            self._save_job(receipt)
+            try:
+                prepared = self.prepare_documents(selected, progress=progress)
+                receipt.update(prepared)
+                partial = prepared["failures"] or any(
+                    item.get("parse_status") == "PARTIAL" for item in receipt["items"]
+                )
+                receipt["status"] = (
+                    "FAILED"
+                    if not prepared["documents"]
+                    else "PARTIAL"
+                    if partial
+                    else "COMPLETED"
+                )
+            except Exception as exc:
+                receipt.update(status="FAILED", error=self.error_code(exc))
+            self._save_job(receipt)
+            return deepcopy(receipt)
+
+        return self._start_job(receipt, execute, background=background)
 
     def validate_research_task(self, payload: dict) -> dict:
         task = validate_task(payload)

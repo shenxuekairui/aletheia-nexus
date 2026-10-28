@@ -4,6 +4,7 @@ import json
 import runpy
 from copy import deepcopy
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -90,6 +91,83 @@ def test_folder_prepare_reuse_and_local_execution(app, monkeypatch):
     assert job["usage"]["http_attempts"] == 0
     status = service.get_run_status(job["job_id"])
     assert status["manifest"]["mode"] == "local"
+
+
+def test_background_preparation_progress_partial_and_reuse(app, monkeypatch):
+    import aletheia_nexus.research_app as module
+
+    service, original = app
+    other = original.parent / "第二篇.pdf"
+    write_pdf(
+        other,
+        [[(50, 700, 12, "A different self-authored preparation method.")]],
+        title="Second fixture",
+    )
+    broken = original.parent / "损坏.pdf"
+    broken.write_bytes(b"not a PDF")
+    selected = [str(original), str(other), str(broken)]
+    hashes = {p: sha256_file(p) for p in (original, other, broken)}
+    entered, release = Event(), Event()
+    native_parse, calls = module.parse_document, []
+
+    def observed_parse(*args, **kwargs):
+        calls.append(args[0])
+        if len(calls) == 2:
+            entered.set()
+            assert release.wait(5), "test did not release second parse"
+        return native_parse(*args, **kwargs)
+
+    monkeypatch.setattr(module, "parse_document", observed_parse)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    job = service.prepare_documents_job(selected)
+    try:
+        assert entered.wait(5), "background preparation did not reach second PDF"
+        running = service.get_run_status(job["job_id"])
+        assert running["kind"] == "preparation"
+        assert running["status"] == "RUNNING"
+        assert running["completed"] == 1 and running["total"] == 3
+        assert running["latest_document"]["path"] == str(original.resolve())
+        assert running["items"][0]["reused"] is False
+    finally:
+        release.set()
+    service._jobs[job["job_id"]].result(timeout=10)
+    completed = service.get_run_status(job["job_id"])
+    assert completed["status"] == "PARTIAL"
+    assert completed["completed"] == completed["total"] == 3
+    assert len(completed["documents"]) == 2
+    assert completed["failures"][0]["path"] == str(broken.resolve())
+    assert completed["items"][-1]["status"] == "FAILED"
+    assert completed["model_calls"] == 0 and not completed["network_access"]
+    assert Path(completed["preparation_file"]).is_file()
+    artifacts = {
+        Path(d[k]): sha256_file(Path(d[k]))
+        for d in completed["documents"]
+        for k in ("pdf", "sidecar", "artifact")
+    }
+    before = read_json(Path(completed["directory"]) / "status.json")
+    repeated = service.prepare_documents_job(selected, background=False)
+    assert repeated["job_id"] != job["job_id"]
+    assert repeated["status"] == "PARTIAL"
+    assert repeated["documents"] == completed["documents"]
+    assert all(row["reused"] for row in repeated["items"] if row["status"] == "PREPARED")
+    assert len(calls) == 2
+    assert read_json(Path(completed["directory"]) / "status.json") == before
+    assert {p: sha256_file(p) for p in artifacts} == artifacts
+    assert {p: sha256_file(p) for p in hashes} == hashes
+
+
+def test_background_preparation_scope_is_checked_before_job_files(app, tmp_path):
+    service, original = app
+    before = set(service.workspace.rglob("*"))
+    with pytest.raises(ProcessingError, match="path_outside_allowed_directories"):
+        service.prepare_documents_job([str(original), str(tmp_path / "outside.pdf")])
+    with pytest.raises(ValueError, match="unique PDF"):
+        service.prepare_documents_job([])
+    with pytest.raises(ValueError, match="unique PDF"):
+        service.prepare_documents_job(
+            [str(original), str(original.parent) + "/./" + original.name]
+        )
+    assert set(service.workspace.rglob("*")) == before
 
 
 def test_worker_finishing_between_status_read_and_owner_probe(app, monkeypatch):
