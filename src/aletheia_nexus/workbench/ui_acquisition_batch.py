@@ -290,6 +290,20 @@ class AcquisitionBatchEditor:
                 ).props("flat")
         self.grid.on("selectionChanged", guard(self.refresh_count))
         self.grid.on("cellValueChanged", guard(self.refresh))
+        with ui.expansion("逐篇命名与诊断（高级）", icon="tune").classes("w-full"):
+            details = ui.checkbox("显示单篇文件名、身份阶段和设置诊断列", value=False)
+            ui.label(
+                "展开列后可直接编辑单篇文件基础名；留空使用上方统一命名模板。"
+            ).classes("an-muted text-sm")
+            details.on_value_change(
+                guard(
+                    lambda: self.grid.run_grid_method(
+                        "setColumnsVisible",
+                        ["filename", "resolution", "placement_error"],
+                        bool(details.value),
+                    )
+                )
+            )
 
     async def open_row(self, row_id=None):
         from nicegui import ui
