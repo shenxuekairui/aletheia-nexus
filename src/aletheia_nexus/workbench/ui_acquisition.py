@@ -595,6 +595,7 @@ class AcquisitionPage:
                                 "suppressRowClickSelection": True,
                                 "pagination": True,
                                 "paginationPageSize": 25,
+                                "paginationPageSizeSelector": [25, 50, 100],
                                 ":getRowId": "params => params.data.id",
                             },
                             theme="quartz",
