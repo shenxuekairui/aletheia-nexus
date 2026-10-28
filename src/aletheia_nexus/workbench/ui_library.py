@@ -951,8 +951,6 @@ class LibraryPage:
                 ).props("outline")
             title = ui.input("原始标题（单篇可填；留空采用文件名）").classes("w-full")
             tags = self.tag_input("标签（输入可查找，回车新建）")
-            path = ui.input("本地 PDF 或文件夹绝对路径").classes("w-full")
-            recursive = ui.checkbox("递归导入文件夹", value=False)
             read_translation = self.title_translation_controls()
             status = ui.label("")
 
@@ -1020,14 +1018,23 @@ class LibraryPage:
                 await event.file.save(target)
                 import_paths([target], upload_title=Path(event.file.name).stem)
 
-            ui.button("导入路径", on_click=guard(from_path), icon="folder_open")
             ui.upload(
-                label="或选择本地 PDF 上传",
+                label="选择或拖入 PDF（可多选，选择后导入）",
                 on_upload=upload,
                 multiple=True,
                 auto_upload=True,
                 max_file_size=200_000_000,
             ).props('accept=".pdf"').classes("w-full")
+            with ui.expansion(
+                "从本地文件夹或已有AN来源导入", icon="folder_open"
+            ).classes("w-full"):
+                ui.label(
+                    "普通 PDF 可直接在上方选择上传。整批文件夹或已有 AN 文献请按路径导入；"
+                    "已有来源 JSON 应保留在原来的旁置位置，系统会核验并保留其来源身份。"
+                ).classes("an-muted text-sm")
+                path = ui.input("本地 PDF 或文件夹绝对路径").classes("w-full")
+                recursive = ui.checkbox("递归导入文件夹", value=False)
+                ui.button("按路径导入", on_click=guard(from_path), icon="folder_open")
             ui.button("关闭", on_click=dialog.close).props("flat")
         dialog.open()
 
