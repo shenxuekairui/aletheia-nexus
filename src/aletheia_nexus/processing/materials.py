@@ -201,7 +201,11 @@ def load_source(config: dict, base: Path, mode: str) -> Source:
     artifact = None
     if config.get("artifact") and not (mode == "direct" and config.get("pdf")):
         artifact = ParsedArtifact.load((base / config["artifact"]).resolve())
-    existing = artifact.document["source"] if artifact else None
+    # A freshly loaded artifact has not escaped this function. Read its validated
+    # defensive snapshot once; each property access otherwise validates and
+    # deep-copies the entire document for the same identity/correction checks.
+    artifact_document = artifact.document if artifact else None
+    existing = artifact_document["source"] if artifact_document else None
     locators = existing.get("locators", {}) if existing else {}
 
     def locate(key: str, locator: str) -> Path | None:
@@ -233,7 +237,7 @@ def load_source(config: dict, base: Path, mode: str) -> Source:
         for key in ("pdf_sha256", "acquisition_sidecar_sha256", "doi", "page_count"):
             if existing[key] != identity[key]:
                 raise ProcessingError("source_identity_mismatch")
-        if artifact.document["schema"].endswith("/v3") and any(
+        if artifact_document["schema"].endswith("/v3") and any(
             existing.get(k) != identity[k]
             for k in (
                 "document_role",
@@ -244,13 +248,15 @@ def load_source(config: dict, base: Path, mode: str) -> Source:
             )
         ):
             raise ProcessingError("source_identity_mismatch")
-    if mode != "direct" and (not artifact or artifact.document["status"] == "FAILED"):
+    if mode != "direct" and (not artifact or artifact_document["status"] == "FAILED"):
         raise ProcessingError("parser_problem")
     for key in ("pages", "image_pages"):
         if any(p > gated.page_count for p in config.get(key, [])):
             raise ProcessingError("page_out_of_bounds")
     corrections = config.get("corrections", [])
-    blocks = {b["id"]: b for b in artifact.document["blocks"]} if artifact else {}
+    blocks = (
+        {b["id"]: b for b in artifact_document["blocks"]} if artifact_document else {}
+    )
     if len({c["block_id"] for c in corrections}) != len(corrections):
         raise ValueError("one correction per block per task revision")
     for correction in corrections:
