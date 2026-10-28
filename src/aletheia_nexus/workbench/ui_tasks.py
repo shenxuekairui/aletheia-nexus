@@ -254,7 +254,12 @@ def render_task_dialog(controller):
                             color=state_color(latest["status"]),
                         )
                         ui.label(
-                            f"{value_label(latest.get('stage') or latest['kind'])} · 进度 {latest.get('current_index', 0)}/{latest.get('total', 0)}"
+                            f"{value_label(latest.get('stage') or latest['kind'])} · "
+                            + (
+                                f"已完成 {latest.get('total', 0)} 项"
+                                if latest["status"] == "COMPLETED"
+                                else f"进度 {latest.get('current_index', 0)}/{latest.get('total', 0)}"
+                            )
                         ).classes("text-sm")
                         ui.label(f"任务编号 {job_id[:10]}").classes("an-muted text-xs")
                     interaction = latest.get("interaction") or {}
