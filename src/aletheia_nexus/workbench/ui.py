@@ -319,22 +319,35 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
             ui.card().classes("w-[1050px] max-w-[95vw] an-card"),
         ):
             ui.label("当前文献选择清单").classes("an-title")
-            ids = self.ctx.library.selection()
-            rows = [self.ctx.library.get(i) for i in ids]
-            rows = [r for r in rows if r]
-            ui.label(f"共 {len(rows)} 篇论文；AI执行前另行确认主文和 SI 材料范围。")
-            for row in rows:
-                with ui.row().classes("an-toolbar w-full"):
-                    ui.label(row.get("title_zh") or row["title"]).classes("grow")
-                    ui.badge(f"SI {row.get('si_count', 0)}").props("outline")
-                    ui.button(
-                        icon="close",
-                        on_click=guard(
-                            lambda i=row["id"]: self.ctx.library.set_selection(
-                                [i], mode="remove"
-                            )
-                        ),
-                    ).props("flat round dense")
+            summary = ui.label()
+
+            def change_selection(ids, mode="replace"):
+                self.ctx.library.set_selection(ids, mode=mode)
+                selected_rows.refresh()
+
+            @ui.refreshable
+            def selected_rows():
+                rows = [self.ctx.library.get(i) for i in self.ctx.library.selection()]
+                rows = [r for r in rows if r]
+                summary.set_text(
+                    f"共 {len(rows)} 篇论文；AI执行前另行确认主文和 SI 材料范围。"
+                )
+                if not rows:
+                    ui.label("选择清单为空，可从文库或检索结果继续添加。").classes(
+                        "an-muted"
+                    )
+                for row in rows:
+                    with ui.row().classes("an-toolbar w-full"):
+                        ui.label(row.get("title_zh") or row["title"]).classes("grow")
+                        ui.badge(f"SI {row.get('si_count', 0)}").props("outline")
+                        ui.button(
+                            icon="close",
+                            on_click=guard(
+                                lambda i=row["id"]: change_selection([i], mode="remove")
+                            ),
+                        ).props("flat round dense").tooltip("移出当前选择清单")
+
+            selected_rows()
             collection = ui.input("保存为固定研究集合").classes("w-full")
             with ui.row().classes("an-toolbar"):
                 ui.button(
@@ -365,9 +378,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     icon="science",
                     on_click=lambda: (dialog.close(), self.navigate("AI 研究")),
                 )
-                ui.button(
-                    "清空", on_click=guard(lambda: self.ctx.library.set_selection([]))
-                ).props("flat")
+                ui.button("清空", on_click=guard(lambda: change_selection([]))).props(
+                    "flat"
+                )
                 ui.button("关闭", on_click=dialog.close).props("flat")
         dialog.open()
 
