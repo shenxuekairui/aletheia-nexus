@@ -278,7 +278,7 @@ class AcquisitionGroupPanel:
     def render(self):
         from nicegui import ui
 
-        ui.label("本批多个目录").classes("font-semibold text-lg")
+        ui.label("本批保存安排").classes("font-semibold text-lg")
         batch = self.get_batch()
         if batch is None:
             ui.label("先整理清单，再为不同分组分别选择目录与标签。").classes(
@@ -294,6 +294,13 @@ class AcquisitionGroupPanel:
         groups = summarize_input_groups(rows, batch.default_folder())
         if not groups:
             ui.label("清单中尚无可设置的论文，请检查输入。").classes("an-muted text-sm")
+            return
+        if len(groups) == 1 and groups[0]["name"] == "未分组":
+            for folder, count in groups[0]["folders"].items():
+                ui.label(f"{folder} · {count} 篇").classes("text-sm break-all")
+            ui.label(
+                "需要分别存入不同目录时，在左侧勾选部分论文，点击“设置所选”即可。"
+            ).classes("an-muted text-sm")
             return
         for group in groups:
             with ui.card().classes("an-card w-full p-3 gap-2"):
