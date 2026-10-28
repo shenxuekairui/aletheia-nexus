@@ -9,8 +9,100 @@ from .labels import GRID_LOCALE, value_label
 from .ui_common import guard, json_view, parameter_editor, rows_table, split_tags
 
 
+def acquisition_workflow_preferences(value=None, *, translation_defaults=None):
+    """Persist a workflow choice, never the permission granted for one request."""
+    from aletheia_nexus.core.organization import normalize_folder
+
+    from .library import LibraryService
+    from .translation import translation_options
+
+    value = {} if value is None else deepcopy(value)
+    if not isinstance(value, dict) or value.keys() - {
+        "template",
+        "folder",
+        "tags",
+        "collection",
+        "auto_parse",
+        "title_translation",
+    }:
+        raise ValueError("获取工作流偏好包含不支持的设置。")
+    template = value.get("template", "{title_original}")
+    LibraryService._check_template(template)
+    folder = normalize_folder(value.get("folder") or None) or ""
+    tags = value.get("tags", [])
+    if not isinstance(tags, (list, tuple)) or any(
+        not isinstance(t, str)
+        or not t.strip()
+        or len(t) > 80
+        or any(ord(c) < 32 for c in t)
+        for t in tags
+    ):
+        raise ValueError("标签必须是非空文本列表，每个标签最多80个字符。")
+    collection = value.get("collection", "")
+    if not isinstance(collection, str) or len(collection) > 120:
+        raise ValueError("固定研究集合名称必须是最多120个字符的文本。")
+    automatic = value.get("auto_parse", False)
+    translated = value.get("title_translation", {})
+    if translated is None:
+        translated = {}
+    if not isinstance(translated, dict) or translated.keys() - {
+        "enabled",
+        "options",
+        "consent",
+    }:
+        raise ValueError("标题翻译偏好包含不支持的设置。")
+    enabled = translated.get("enabled", False)
+    if type(automatic) is not bool or type(enabled) is not bool:
+        raise ValueError("自动解析和自动标题翻译偏好必须为开启或关闭。")
+    return {
+        "template": template,
+        "folder": folder,
+        "tags": list(dict.fromkeys(t.strip() for t in tags)),
+        "collection": collection.strip(),
+        "auto_parse": automatic,
+        "title_translation": {
+            "enabled": enabled,
+            "options": translation_options(
+                translated.get("options", translation_defaults)
+            ),
+        },
+    }
+
+
+def acquisition_recipe(parameters, workflow=None, *, translation_defaults=None):
+    from .acquisition import _options
+
+    return {
+        "parameters": _options(parameters),
+        "workflow": acquisition_workflow_preferences(
+            workflow, translation_defaults=translation_defaults
+        ),
+    }
+
+
+def read_acquisition_preset(
+    value, *, workflow_defaults=None, translation_defaults=None
+):
+    """Read new recipes and the previous flat engine-only preset format."""
+    if not isinstance(value, dict):
+        raise ValueError("获取预设必须是一组命名参数。")
+    if "parameters" in value or "workflow" in value:
+        if value.keys() - {"parameters", "workflow"}:
+            raise ValueError("获取预设包含不支持的设置。")
+        return acquisition_recipe(
+            value.get("parameters", {}),
+            value.get("workflow", workflow_defaults),
+            translation_defaults=translation_defaults,
+        )
+    return acquisition_recipe(
+        value, workflow_defaults, translation_defaults=translation_defaults
+    )
+
+
 class AcquisitionPage:
-    def title_translation_controls(self, initial_options=None):
+    def title_translation_controls(
+        self, initial_options=None, *, initial_enabled=False
+    ):
         from nicegui import ui
 
         from .translation import translation_options
@@ -18,7 +110,9 @@ class AcquisitionPage:
         current = translation_options(
             initial_options or self.ctx.settings.get("translation", {})
         )
-        enabled = ui.checkbox("入库后自动翻译缺失的英文标题", value=False)
+        enabled = ui.checkbox(
+            "入库后自动翻译缺失的英文标题", value=bool(initial_enabled)
+        )
         cost = ui.number(
             "本批标题翻译费用上限（按模型计费币种）",
             value=current["max_cost"],
@@ -32,14 +126,38 @@ class AcquisitionPage:
                 {k: v for k, v in current.items() if k != "max_cost"}
             )
 
-        def options():
-            if enabled.value and not consent.value:
+        def options(require_consent=True):
+            if require_consent and enabled.value and not consent.value:
                 raise ValueError("请明确授权标题外发与费用，或关闭入库后自动翻译")
-            return {
+            result = {
                 "enabled": enabled.value,
-                "consent": consent.value,
-                "options": {**read(), "max_cost": cost.value},
+                "options": translation_options({**read(), "max_cost": cost.value}),
             }
+            if require_consent:
+                result["consent"] = bool(consent.value)
+            return result
+
+        def validate(configuration):
+            configuration = acquisition_workflow_preferences(
+                {"title_translation": configuration}
+            )["title_translation"]
+            read._pending_updates(
+                {k: v for k, v in configuration["options"].items() if k != "max_cost"}
+            )
+            return configuration
+
+        def apply(configuration):
+            configuration = validate(configuration)
+            read.apply(
+                {k: v for k, v in configuration["options"].items() if k != "max_cost"}
+            )
+            cost.set_value(configuration["options"]["max_cost"])
+            enabled.set_value(configuration["enabled"])
+            consent.set_value(False)
+
+        options.apply = apply
+        options.validate = validate
+        options.clear_consent = lambda: consent.set_value(False)
 
         return options
 
@@ -154,7 +272,9 @@ class AcquisitionPage:
                         if current:
                             row = successful[paper["pdf_path"]]
                             row.update(
-                                pdf=current["pdf_path"], sidecar=current["sidecar_path"]
+                                pdf=current["pdf_path"],
+                                sidecar=current["sidecar_path"],
+                                folder=str(Path(current["pdf_path"]).parent),
                             )
                             attachments = {
                                 (a["sha256"], a["role"]): a
@@ -174,6 +294,17 @@ class AcquisitionPage:
                                 supplements["si_directory"] = str(
                                     Path(current["pdf_path"]).parent / "SI"
                                 )
+                            # A later parse/cancellation must not leave the
+                            # durable item receipt pointing at pre-rename files.
+                            context.record(
+                                row.get("id", paper["id"]),
+                                row["status"],
+                                **{
+                                    k: v
+                                    for k, v in row.items()
+                                    if k not in {"id", "status"}
+                                },
+                            )
             collection_name = postprocess.get("collection")
             if collection_name and paper_ids:
                 old = self.ctx.library.collections().get(collection_name, [])
@@ -194,17 +325,18 @@ class AcquisitionPage:
     def acquisition_page(self):
         from nicegui import ui
 
-        from .acquisition import get_acquisition_defaults
+        from .acquisition import _options
 
         self.title(
             "获取论文",
             "先确认论文身份，再交给现有可信获取引擎；正文与 SI 分别报告结果。",
         )
         state = {"preview": None, "grid": None}
-        defaults = {
-            **get_acquisition_defaults(),
-            **self.ctx.settings.get("acquisition", {}),
-        }
+        defaults = _options(self.ctx.settings.get("acquisition", {}))
+        workflow_defaults = acquisition_workflow_preferences(
+            self.ctx.settings.get("acquisition_workflow", {}),
+            translation_defaults=self.ctx.settings.get("translation", {}),
+        )
         with ui.row().classes("w-full gap-5 items-start"):
             with ui.card().classes("an-card grow min-w-[450px]"):
                 ui.label("1 · 添加论文").classes("font-semibold text-lg")
@@ -315,28 +447,49 @@ class AcquisitionPage:
                     "an-muted text-xs break-all"
                 )
                 folder = (
-                    ui.input("分类目录（可直接输入新分类）", value="")
+                    ui.input(
+                        "分类目录（可直接输入新分类）",
+                        value=workflow_defaults["folder"],
+                    )
                     .props("outlined")
                     .classes("w-full")
                 )
-                tags = ui.input("标签（逗号分隔）").props("outlined").classes("w-full")
+                tags = (
+                    ui.input(
+                        "标签（逗号分隔）", value=", ".join(workflow_defaults["tags"])
+                    )
+                    .props("outlined")
+                    .classes("w-full")
+                )
                 collection = (
-                    ui.input("成功论文加入固定研究集合（可选）")
+                    ui.input(
+                        "成功论文加入固定研究集合（可选）",
+                        value=workflow_defaults["collection"],
+                    )
                     .props("outlined")
                     .classes("w-full")
                 )
                 templates = self.ctx.library.templates()
+                naming_options = {v: k for k, v in templates.items()}
+                naming_options.setdefault(
+                    workflow_defaults["template"], "已保存的命名格式"
+                )
                 naming = ui.select(
-                    {v: k for k, v in templates.items()},
-                    value=next(iter(templates.values())),
+                    naming_options,
+                    value=workflow_defaults["template"],
                     label="主文与 SI 统一命名模板",
                 ).classes("w-full")
                 ui.label(
                     "缺失译名或书目信息时回退已有原题；入库后可在整理流程补齐译名并预览改名。"
                 ).classes("an-muted text-xs")
                 include_si = ui.switch("同时尝试获取 SI", value=defaults["include_si"])
-                auto_parse = ui.switch("成功后自动创建本地解析", value=False)
-                read_translation = self.title_translation_controls()
+                auto_parse = ui.switch(
+                    "成功后自动创建本地解析", value=workflow_defaults["auto_parse"]
+                )
+                read_translation = self.title_translation_controls(
+                    workflow_defaults["title_translation"]["options"],
+                    initial_enabled=workflow_defaults["title_translation"]["enabled"],
+                )
                 strategy = ui.select(
                     {"public": "仅公开获取", "institution": "公开 + 机构浏览器"},
                     value="public" if defaults["public_only"] else "institution",
@@ -391,39 +544,104 @@ class AcquisitionPage:
                 label="载入预设",
             )
             preset_name = ui.input("保存为预设名称")
-            ui.label("载入后保存为全局默认并刷新此页面；本批设置仍在开始前完整显示。")
+            ui.label(
+                "预设载入实际表单，保留当前论文清单；标题外发与费用授权每次重新勾选。"
+            )
 
             def load_preset():
-                self.ctx.settings.set(
-                    "acquisition",
-                    self.ctx.settings.load_preset("acquisition", preset.value),
-                )
-                self.page_content.refresh()
+                if not preset.value:
+                    raise ValueError("请先选择获取预设。")
+                apply_recipe(self.ctx.settings.load_preset("acquisition", preset.value))
 
             ui.button("载入并显示", on_click=guard(load_preset)).props("flat")
 
         def options():
-            return {
-                **read_advanced(),
-                "include_si": include_si.value,
-                "public_only": strategy.value == "public",
-                "browser_enabled": strategy.value == "institution",
-                "source_preference": source.value,
-                "interaction_policy": interaction.value,
-                "interaction_timeout": timeout.value,
-            }
+            return _options(
+                {
+                    **read_advanced(),
+                    "include_si": include_si.value,
+                    "public_only": strategy.value == "public",
+                    "browser_enabled": strategy.value == "institution",
+                    "source_preference": source.value,
+                    "interaction_policy": interaction.value,
+                    "interaction_timeout": timeout.value,
+                }
+            )
+
+        def workflow(require_consent=True):
+            translated = read_translation(require_consent=require_consent)
+            result = acquisition_workflow_preferences(
+                {
+                    "template": naming.value,
+                    "folder": folder.value,
+                    "tags": split_tags(tags.value),
+                    "collection": collection.value,
+                    "auto_parse": auto_parse.value,
+                    "title_translation": translated,
+                }
+            )
+            if require_consent:
+                result["title_translation"]["consent"] = translated["consent"]
+            return result
+
+        def apply_recipe(value):
+            legacy = "parameters" not in value and "workflow" not in value
+            recipe = read_acquisition_preset(value, workflow_defaults=workflow_defaults)
+            engine, preferences = recipe["parameters"], recipe["workflow"]
+            advanced = {k: v for k, v in engine.items() if k not in excluded}
+            read_advanced._pending_updates(advanced)
+            if not legacy:
+                read_translation.validate(preferences["title_translation"])
+            read_advanced.apply(advanced)
+            include_si.set_value(engine["include_si"])
+            strategy.set_value("public" if engine["public_only"] else "institution")
+            source.set_value(engine["source_preference"])
+            interaction.set_value(engine["interaction_policy"])
+            timeout.set_value(engine["interaction_timeout"])
+            if legacy:
+                read_translation.clear_consent()
+                ui.notify(
+                    "旧版获取预设已载入；当前整理偏好保留，本次费用授权已清除。",
+                    type="positive",
+                )
+                return
+            folder.set_value(preferences["folder"])
+            tags.set_value(", ".join(preferences["tags"]))
+            collection.set_value(preferences["collection"])
+            auto_parse.set_value(preferences["auto_parse"])
+            choices = dict(naming.options)
+            choices.setdefault(preferences["template"], "预设命名格式")
+            naming.set_options(choices, value=preferences["template"])
+            read_translation.apply(preferences["title_translation"])
+            ui.notify("获取参数及整理偏好已载入；本次费用授权未复用。", type="positive")
+
+        def save_preset():
+            recipe = acquisition_recipe(options(), workflow(require_consent=False))
+            self.ctx.settings.save_preset("acquisition", preset_name.value, recipe)
+            preset.set_options(
+                ["", *self.ctx.settings.presets("acquisition")],
+                value=preset_name.value.strip(),
+            )
+            ui.notify(
+                "已保存获取参数、分类与后处理偏好；未保存外发授权。", type="positive"
+            )
+
+        def save_defaults():
+            recipe = acquisition_recipe(options(), workflow(require_consent=False))
+            self.ctx.settings.set("acquisition", recipe["parameters"])
+            self.ctx.settings.set("acquisition_workflow", recipe["workflow"])
+            ui.notify(
+                "已保存获取默认设置与整理偏好；下次仍需重新授权标题外发。",
+                type="positive",
+            )
 
         ui.button(
             "保存当前获取预设",
-            on_click=guard(
-                lambda: self.ctx.settings.save_preset(
-                    "acquisition", preset_name.value, options()
-                )
-            ),
+            on_click=guard(save_preset),
         ).props("flat")
         ui.button(
             "保存为获取默认设置",
-            on_click=guard(lambda: self.ctx.settings.set("acquisition", options())),
+            on_click=guard(save_defaults),
         ).props("flat")
 
         async def resolve_title():
@@ -527,12 +745,7 @@ class AcquisitionPage:
             if not requests:
                 raise ValueError("没有启用的论文")
             config = options()
-            postprocess = {
-                "template": naming.value,
-                "auto_parse": auto_parse.value,
-                "collection": collection.value,
-                "title_translation": read_translation(),
-            }
+            postprocess = workflow()
             self.submit(
                 "acquisition",
                 f"获取 {len(requests)} 篇论文",
