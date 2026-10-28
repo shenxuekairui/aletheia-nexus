@@ -162,6 +162,7 @@ class CdpDownloadCapture:
         timeout: float,
         *,
         expected_url: str | None = None,
+        expected_guid: str | None = None,
         wait_for_start: bool = False,
     ) -> tuple[Path, str] | None:
         # A viewer click can acknowledge before downloadWillBegin is delivered.
@@ -174,7 +175,8 @@ class CdpDownloadCapture:
             selected = [
                 (guid, transfer)
                 for guid, transfer in self._transfers.items()
-                if expected_url is None or transfer.url == expected_url
+                if (expected_url is None or transfer.url == expected_url)
+                and (expected_guid is None or guid == expected_guid)
             ]
             for guid, transfer in selected:
                 if transfer.state != "completed" or self._staging_dir is None:

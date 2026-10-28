@@ -13,8 +13,11 @@ import re
 import shutil
 import zipfile
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
+
+import httpx
 
 from aletheia_nexus.acquire.fulltext.resolution.identity import (
     classify_page_type,
@@ -27,6 +30,7 @@ from aletheia_nexus.acquire.fulltext.validation import inspect_pdf
 from aletheia_nexus.content.gate import sha256_file, validate_parser_input
 from aletheia_nexus.content.local import register_local_pdf
 from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
+from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.urls import redact_url_for_record
 
 _SCHEMA = "aletheia-nexus/attachment-source/v1"
@@ -70,6 +74,7 @@ _OFFICIAL_GROUPS = (
     ("mdpi.com", "mdpi-res.com"),
     ("pnas.org",),
     ("frontiersin.org",),
+    ("pmc.ncbi.nlm.nih.gov", "pmc-oa-opendata.s3.amazonaws.com"),
 )
 
 
@@ -105,6 +110,112 @@ def attachment_role(label: str, url: str = "") -> str | None:
     return None
 
 
+class _AttachmentSections(HTMLParser):
+    """Associate links with explicit scholarly section headings, not keywords in references."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.headings, self.links = {}, {}
+        self.level, self.text = None, []
+
+    def handle_starttag(self, tag, attrs):
+        if re.fullmatch(r"h[1-6]", tag):
+            self.level, self.text = int(tag[1]), []
+        if tag == "a":
+            href = dict(attrs).get("href")
+            if href:
+                roles = [role for _, role in sorted(self.headings.items()) if role]
+                self.links[href] = roles[-1] if roles else None
+
+    def handle_data(self, data):
+        if self.level is not None:
+            self.text.append(data)
+
+    def handle_endtag(self, tag):
+        if self.level is not None and tag == f"h{self.level}":
+            self.headings = {
+                level: role
+                for level, role in self.headings.items()
+                if level < self.level
+            }
+            self.headings[self.level] = attachment_role(" ".join(self.text))
+            self.level, self.text = None, []
+
+
+def _attachment_details(link, url, *, page_url, doi, section_role):
+    """Recognize documented publisher routes only after the parent DOI gate."""
+    label = " ".join(filter(None, (link.text, link.title_attr)))
+    role = attachment_role(label, url)
+    parts, page = urlsplit(url), urlsplit(page_url)
+    suffix = Path(unquote(parts.path)).suffix.lower()
+    host = (parts.hostname or "").casefold()
+    page_host = (page.hostname or "").casefold()
+    if _under(host, "wiley.com") and parts.path == "/action/downloadSupplement":
+        query = parse_qs(parts.query, keep_blank_values=True)
+        try:
+            matched_doi = (
+                len(query.get("doi", [])) == 1 and normalize_doi(query["doi"][0]) == doi
+            )
+        except (TypeError, ValueError):
+            matched_doi = False
+        names = query.get("file", [])
+        if not matched_doi or len(names) != 1 or re.search(r"[/\\]", names[0]):
+            return None, "publisher_attachment_identity_mismatch"
+        suffix, role = Path(names[0]).suffix.lower(), role or "SUPPLEMENT"
+    elif (
+        any(_under(host, domain) for domain in ("acs.org", "rsc.org"))
+        and "/article-supplement/" in parts.path
+    ):
+        target = re.fullmatch(
+            r"/([^/]+)/article-supplement/(\d+)/pdf/([^/]+)/?", parts.path
+        )
+        parent = re.match(r"/([^/]+)/article/(?:\d+/){3}(\d+)(?:/|$)", page.path)
+        token_pattern = r"_si_\d+" if _under(host, "acs.org") else r"\d+_suppl"
+        token = (
+            re.fullmatch(
+                re.escape(doi.split("/", 1)[1]) + token_pattern, target[3], re.I
+            )
+            if target
+            else None
+        )
+        if (
+            not target
+            or not parent
+            or (target[1], target[2]) != (parent[1], parent[2])
+            or not token
+        ):
+            return None, "publisher_attachment_identity_mismatch"
+        suffix, role = ".pdf", role or "SUPPLEMENT"
+    elif (
+        any(_under(host, domain) for domain in ("science.org", "acs.org", "wiley.com"))
+        and "/doi/suppl/" in parts.path
+    ):
+        decoded = unquote(parts.path)
+        prefixes = (f"/doi/suppl/{doi}/suppl_file/", f"/doi/suppl/{doi}/supinfo/")
+        prefix = next(
+            (p for p in prefixes if decoded.casefold().startswith(p.casefold())), None
+        )
+        if not prefix or "/" in decoded[len(prefix) :]:
+            return None, "publisher_attachment_identity_mismatch"
+        suffix, role = Path(decoded).suffix.lower(), role or "SUPPLEMENT"
+    elif _under(page_host, "sciencedirect.com") and _under(host, "els-cdn.com"):
+        component = re.fullmatch(
+            r"/content/image/1-s2\.0-(S\d+)-mmc\d+(\.[A-Za-z0-9]+)", parts.path
+        )
+        if component:
+            parent = re.search(r"/pii/(S\d+)(?:/|$)", page.path)
+            if not parent or parent[1] != component[1]:
+                return None, "publisher_attachment_identity_mismatch"
+            role = role or section_role
+    elif role is None:
+        role = section_role
+    if role is None:
+        return None, None
+    if suffix not in _SUFFIXES:
+        return None, "attachment_extension_not_supported"
+    return {"url": url, "role": role, "label": label, "extension": suffix}, None
+
+
 def discover_attachments(
     html: str, page_url: str, *, doi: str, title: str | None = None
 ) -> dict:
@@ -122,12 +233,19 @@ def discover_attachments(
     # A title-only match is insufficient for automatic parent association.
     if identity.metadata_dois != (doi,) or not identity.doi_match:
         return {"status": "IDENTITY_NOT_CONFIRMED", "items": []}
+    contexts = _AttachmentSections()
+    contexts.feed(html)
     found, seen, excluded = [], set(), []
     for link in parsed.links:
-        label = " ".join(filter(None, (link.text, link.title_attr)))
         url = urljoin(page_url, link.url)
-        role = attachment_role(label, url)
-        if role is None or url in seen:
+        attachment, problem = _attachment_details(
+            link,
+            url,
+            page_url=page_url,
+            doi=doi,
+            section_role=contexts.links.get(link.url),
+        )
+        if (attachment is None and problem is None) or url in seen:
             continue
         seen.add(url)
         if not _official_link(page_url, url):
@@ -135,21 +253,20 @@ def discover_attachments(
                 {
                     "url": redact_url_for_record(url),
                     "reason": "attachment_host_not_covered",
-                    "role": role,
+                    "role": attachment["role"] if attachment else None,
                 }
             )
             continue
-        suffix = Path(unquote(urlsplit(url).path)).suffix.lower()
-        if suffix not in _SUFFIXES:
+        if problem:
             excluded.append(
                 {
                     "url": redact_url_for_record(url),
-                    "reason": "attachment_extension_not_supported",
-                    "role": role,
+                    "reason": problem,
+                    "role": None,
                 }
             )
             continue
-        found.append({"url": url, "role": role, "label": label, "extension": suffix})
+        found.append(attachment)
     return {
         "status": "DISCOVERED" if found else "NOT_FOUND",
         "items": found,
@@ -240,7 +357,17 @@ def _known_attachment(main, directory: Path, attachment: dict, library=None):
                         continue
     for receipt_path, candidate in receipts:
         try:
+            if any(
+                path.is_symlink()
+                or (hasattr(path, "is_junction") and path.is_junction())
+                for path in (receipt_path, candidate)
+            ):
+                continue
             receipt = json.loads(receipt_path.read_text("utf-8"))
+            if not isinstance(receipt, dict) or not isinstance(
+                receipt.get("parent"), dict
+            ):
+                continue
             if (
                 receipt.get("schema") == _SCHEMA
                 and receipt.get("parent", {}).get("pdf_sha256") == main.pdf_sha256
@@ -264,6 +391,43 @@ def _known_attachment(main, directory: Path, attachment: dict, library=None):
     return None
 
 
+def _retrieve_official_file(url, *, source_page, **kwargs):
+    """Reuse the streaming transport, rejecting off-publisher redirects before HTTP."""
+
+    class OfficialClient(httpx.Client):
+        def stream(self, method, target, *args, **request_options):
+            if not _official_link(source_page, str(target)):
+                raise ValueError("attachment_redirect_host_not_covered")
+            return super().stream(method, target, *args, **request_options)
+
+    with OfficialClient(follow_redirects=False) as client:
+        return retrieve_to_temp(url, client=client, **kwargs)
+
+
+def _source_page_candidates(sidecar, doi):
+    pages = []
+    for url in (
+        sidecar.get("access", {}).get("source_page_url"),
+        sidecar.get("candidate", {}).get("url"),
+    ):
+        if not url:
+            continue
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").casefold()
+        if any(_under(host, d) for d in ("wiley.com", "acs.org", "science.org")):
+            pages.append(f"{parsed.scheme}://{parsed.netloc}/doi/{doi}")
+        elif _under(host, "nature.com") and parsed.path.endswith(".pdf"):
+            pages.append(f"{parsed.scheme}://{parsed.netloc}{parsed.path[:-4]}")
+        elif (
+            sidecar.get("candidate", {}).get("host_type") == "publisher"
+            and sidecar.get("candidate", {}).get("url_type") == "landing_page"
+        ) or url == sidecar.get("access", {}).get("source_page_url"):
+            if Path(parsed.path).suffix.casefold() != ".pdf":
+                pages.append(url)
+    pages.append("https://doi.org/" + doi)
+    return list(dict.fromkeys(pages))
+
+
 def acquire_supplements(
     main_pdf,
     *,
@@ -274,6 +438,7 @@ def acquire_supplements(
     timeout=30.0,
     page_fetch=None,
     file_fetch=None,
+    browser_session=None,
 ) -> dict:
     """Save attachments in one classification-level SI directory.
 
@@ -293,18 +458,11 @@ def acquire_supplements(
     if type(max_files) is not int or not 1 <= max_files <= 100:
         raise ValueError("SI file limit must be 1..100")
     sidecar = json.loads(main.sidecar_path.read_text("utf-8"))
-    candidates = list(page_urls or [])
-    if page_urls is None:
-        source_page = sidecar.get("access", {}).get("source_page_url")
-        if source_page:
-            candidates.append(source_page)
-        candidate = sidecar.get("candidate", {})
-        if (
-            candidate.get("host_type") == "publisher"
-            and candidate.get("url_type") == "landing_page"
-        ):
-            candidates.append(candidate["url"])
-        candidates.append("https://doi.org/" + main.doi)
+    candidates = (
+        list(page_urls)
+        if page_urls is not None
+        else _source_page_candidates(sidecar, main.doi)
+    )
     directory = main.pdf_path.parent / "SI"
     if (
         directory.is_symlink()
@@ -319,9 +477,43 @@ def acquire_supplements(
         or not records.resolve().is_relative_to(directory.resolve())
     ):
         raise ValueError("unsafe_SI_record_directory")
-    discoveries, errors, seen = [], [], set()
-    page_fetch, file_fetch = page_fetch or retrieve_page, file_fetch or retrieve_to_temp
+    discoveries, errors, seen, diagnostics = [], [], set(), []
+    browser = None
+    if browser_session is not None:
+        from .supplements_browser import SupplementBrowserTransport
+
+        browser = SupplementBrowserTransport(
+            browser_session, doi=main.doi, title=main.title
+        )
+    page_fetch = page_fetch or retrieve_page
+    repository_provenance = None
+    if page_urls is None:
+        from .supplement_repositories import discover_pmc_attachments
+
+        repository = discover_pmc_attachments(
+            sidecar, doi=main.doi, title=main.title, timeout=timeout
+        )
+        if repository["status"] != "NOT_SUPPORTED":
+            repository_provenance = repository.get("provenance")
+            for item in repository.get("items", []):
+                discoveries.append(
+                    {**item, "page": item.get("page") or repository["page_url"]}
+                )
+                seen.add(item["url"])
+            for item in repository.get("diagnostics", []):
+                diagnostics.append(item)
+            errors.extend(repository.get("errors", []))
+            if repository["status"] not in {
+                "DISCOVERED",
+                "COMPLETED",
+                "NOT_FOUND",
+            } and not repository.get("errors"):
+                errors.append(
+                    {"status": repository["status"], "source": "official_PMC_metadata"}
+                )
     for url in dict.fromkeys(candidates):
+        if discoveries:
+            break
         try:
             page = page_fetch(url, timeout=timeout, max_bytes=5 * 1024 * 1024)
             if not page.text or page.body_truncated:
@@ -353,6 +545,13 @@ def acquire_supplements(
                 if attachment["url"] not in seen:
                     seen.add(attachment["url"])
                     discoveries.append({**attachment, "page": discovery["page_url"]})
+            diagnostics.append(
+                {
+                    "status": discovery["status"],
+                    "page": redact_url_for_record(page.final_url),
+                    "transport": "http",
+                }
+            )
             if discovery["status"] not in {"DISCOVERED", "NOT_FOUND"}:
                 errors.append(
                     {
@@ -361,6 +560,8 @@ def acquire_supplements(
                     }
                 )
             if discoveries:
+                diagnostics.extend(errors)
+                errors = []
                 break
         except Exception as exc:
             errors.append(
@@ -368,6 +569,51 @@ def acquire_supplements(
                     "status": "PAGE_FAILED",
                     "error": type(exc).__name__,
                     "page": redact_url_for_record(url),
+                }
+            )
+    # Use only a session the caller explicitly authorized for this task. Startup
+    # follows the existing normal launcher/lease and reuses that named profile.
+    # Existing article tabs are observed, never navigated or refreshed here.
+    if browser is not None and not discoveries:
+        try:
+            page = browser.page_fetch(
+                candidates[0] if candidates else "https://doi.org/" + main.doi,
+                timeout=timeout,
+                max_bytes=5 * 1024 * 1024,
+            )
+            discovery = discover_attachments(
+                page.text, page.final_url, doi=main.doi, title=main.title
+            )
+            diagnostics.extend(errors)
+            errors = []
+            diagnostics.append(
+                {
+                    "status": discovery["status"],
+                    "page": discovery.get("page_url"),
+                    "transport": "browser_existing_DOM",
+                }
+            )
+            for attachment in discovery["items"]:
+                if attachment["url"] not in seen:
+                    seen.add(attachment["url"])
+                    discoveries.append(
+                        {
+                            **attachment,
+                            "page": discovery["page_url"],
+                            "transport": "browser_session",
+                        }
+                    )
+            if discovery["status"] not in {"DISCOVERED", "NOT_FOUND"}:
+                errors.append(
+                    {"status": discovery["status"], "transport": "browser_existing_DOM"}
+                )
+        except Exception as exc:
+            errors.append(
+                {
+                    "status": "BROWSER_PAGE_UNAVAILABLE",
+                    "error": str(exc)
+                    if re.fullmatch(r"[a-z_]+", str(exc))
+                    else type(exc).__name__,
                 }
             )
     items = []
@@ -386,16 +632,74 @@ def acquire_supplements(
         temporary = None
         target = None
         created = False
+        transport = "http"
+        file_diagnostics = []
         try:
             directory.mkdir(parents=True, exist_ok=True)
-            resource = file_fetch(
-                attachment["url"],
-                output_dir=directory,
-                max_bytes=max_bytes,
-                timeout=timeout,
-            )
-            temporary = resource.local_path
-            validation = _validate_attachment(temporary, attachment["extension"])
+
+            def retrieve_file(use_browser=False):
+                nonlocal temporary, transport
+                if use_browser:
+                    transport = "browser_session"
+                    resource = browser.file_fetch(
+                        attachment["url"],
+                        source_page=attachment["page"],
+                        extension=attachment["extension"],
+                        output_dir=directory,
+                        max_bytes=max_bytes,
+                        timeout=timeout,
+                    )
+                elif file_fetch is not None:
+                    resource = file_fetch(
+                        attachment["url"],
+                        output_dir=directory,
+                        max_bytes=max_bytes,
+                        timeout=timeout,
+                    )
+                else:
+                    resource = _retrieve_official_file(
+                        attachment["url"],
+                        source_page=attachment["page"],
+                        output_dir=directory,
+                        max_bytes=max_bytes,
+                        timeout=timeout,
+                    )
+                temporary = resource.local_path
+                if not _official_link(attachment["page"], resource.final_url) or any(
+                    not _official_link(attachment["page"], hop.to_url)
+                    for hop in getattr(resource, "redirects", ())
+                ):
+                    raise ValueError("attachment_redirect_host_not_covered")
+                if temporary.stat().st_size > max_bytes:
+                    raise ValueError("attachment_exceeds_byte_limit")
+                if attachment.get("expected_md5"):
+                    with temporary.open("rb") as check:
+                        if (
+                            hashlib.file_digest(check, "md5").hexdigest()
+                            != attachment["expected_md5"]
+                        ):
+                            raise ValueError("official_attachment_checksum_mismatch")
+                validation = _validate_attachment(temporary, attachment["extension"])
+                return resource, validation
+
+            try:
+                resource, validation = retrieve_file(
+                    attachment.get("transport") == "browser_session"
+                )
+            except Exception as exc:
+                if (
+                    browser is None
+                    or transport == "browser_session"
+                    or file_fetch is not None
+                ):
+                    raise
+                file_diagnostics.append(
+                    {"status": "HTTP_DELIVERY_FAILED", "error": type(exc).__name__}
+                )
+                if temporary:
+                    temporary.unlink(missing_ok=True)
+                    temporary = None
+                resource, validation = retrieve_file(True)
             if resource.sha256 == main.pdf_sha256:
                 raise ValueError("attachment_duplicates_main_article")
             role = attachment["role"]
@@ -449,7 +753,28 @@ def acquire_supplements(
                 ).hexdigest(),
                 "final_url": redact_url_for_record(resource.final_url),
                 "link_label": attachment["label"],
-                "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+                "association_basis": attachment.get(
+                    "association_basis",
+                    "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+                ),
+                "association_evidence": attachment.get("evidence"),
+                "repository_provenance": repository_provenance,
+                "transport": transport,
+                "transport_diagnostics": file_diagnostics,
+                "retrieval": {
+                    "http_status": getattr(resource, "http_status", None),
+                    "content_type": getattr(resource, "content_type", None),
+                    "size_bytes": target.stat().st_size,
+                    "elapsed_seconds": getattr(resource, "elapsed_seconds", None),
+                    "redirects": [
+                        {
+                            "from_url": redact_url_for_record(hop.from_url),
+                            "to_url": redact_url_for_record(hop.to_url),
+                            "status": hop.status_code,
+                        }
+                        for hop in getattr(resource, "redirects", ())
+                    ],
+                },
                 "validation": validation,
             }
             if attachment["extension"] == ".pdf" and role == "SUPPLEMENT":
@@ -474,6 +799,7 @@ def acquire_supplements(
                     "role": role,
                     "sha256": resource.sha256,
                     "source_record": str(record),
+                    "transport": transport,
                     "parseable": validation["parseable"],
                     "identity_status": "DECLARED"
                     if role == "SUPPLEMENT" and attachment["extension"] == ".pdf"
@@ -519,6 +845,11 @@ def acquire_supplements(
         "discovered": len(discoveries),
         "truncated": len(discoveries) > max_files,
         "errors": errors,
+        "diagnostics": diagnostics
+        + (browser.diagnostics if browser is not None else []),
+        "browser_handoff_scope": "existing_DOI_confirmed_official_article_tabs_only"
+        if browser is not None
+        else None,
         "si_directory": str(directory) if directory.exists() else None,
         "main_status_unchanged": True,
     }
