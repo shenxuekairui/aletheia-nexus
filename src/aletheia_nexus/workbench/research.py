@@ -6,6 +6,8 @@ so reorganizing a library cannot silently change a historical research input.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from copy import deepcopy
 from dataclasses import fields
@@ -96,6 +98,10 @@ class WorkbenchResearch:
         self.index_path = self.workspace / "document-index.json"
         self.active_path = self.workspace / "active-parsed-versions.json"
         self._lock = RLock()
+        self._search_lock = RLock()
+        self._search_session = None
+        self._search_cache_max_bytes = 128 * 1024 * 1024
+        self._search_cache_closed = False
 
     def _index(self) -> dict:
         if not self.index_path.exists():
@@ -270,13 +276,19 @@ class WorkbenchResearch:
             "interpretation": "是否配置及是否产生OCR文本块，不代表OCR识别或科学抽取准确率。",
         }
 
-    def _materials(self, ids, include_si=False, *, errors=None) -> list[dict]:
+    def _materials(
+        self, ids, include_si=False, *, errors=None, _papers=None
+    ) -> list[dict]:
         materials = []
         seen = set()
         selected_ids = list(dict.fromkeys(ids))
         # A get() per selected row would repeatedly scan/hash the entire library.
         # Resolve this selection once, then validate only its chosen materials.
-        by_id = {r["id"]: r for r in self.library.scan()["items"]}
+        by_id = (
+            _papers
+            if _papers is not None
+            else {r["id"]: r for r in self.library.scan()["items"]}
+        )
         for paper_id in selected_ids:
             paper = by_id.get(paper_id)
             if paper is None:
@@ -319,8 +331,13 @@ class WorkbenchResearch:
                                 "sidecar": attachment.get("sidecar_path")
                                 or str(acquisition_sidecar_path(path)),
                                 "paper_id": paper_id,
+                                "attachment_parent_id": attachment.get("parent_id"),
+                                "attachment_parent_sha256": attachment.get(
+                                    "parent_sha256"
+                                ),
                             }
                         )
+            parent_identity = None
             for entry in entries:
                 # Source paths are checked before hashes or source records are read.
                 try:
@@ -330,6 +347,46 @@ class WorkbenchResearch:
                         {"id": entry["id"], "pdf": str(pdf), "sidecar": str(sidecar)},
                         "direct",
                     )
+                    if entry["id"] == paper_id:
+                        if source.identity["document_role"] != "ARTICLE":
+                            raise ProcessingError("source_identity_mismatch")
+                        if re.fullmatch(r"paper_[a-f0-9]{24}", paper_id):
+                            recorded_hash = (
+                                paper.get("pdf_sha256") or source.identity["pdf_sha256"]
+                            )
+                            if (
+                                recorded_hash.casefold()
+                                != source.identity["pdf_sha256"]
+                            ):
+                                raise ProcessingError("source_identity_mismatch")
+                            pair = (
+                                recorded_hash
+                                + ":"
+                                + source.identity["acquisition_sidecar_sha256"]
+                            )
+                            if (
+                                "paper_"
+                                + hashlib.sha256(pair.encode()).hexdigest()[:24]
+                                != paper_id
+                            ):
+                                raise ProcessingError("source_identity_mismatch")
+                        parent_identity = source.identity
+                    else:
+                        parent = source.identity.get("parent") or {}
+                        if (
+                            parent_identity is None
+                            or source.identity["document_role"] != "SUPPLEMENT"
+                            or str(parent.get("pdf_sha256", "")).casefold()
+                            != parent_identity["pdf_sha256"]
+                            or parent.get("article_id") != parent_identity["article_id"]
+                            or entry.get("attachment_parent_id") not in {None, paper_id}
+                            or (
+                                entry.get("attachment_parent_sha256") is not None
+                                and str(entry["attachment_parent_sha256"]).casefold()
+                                != parent_identity["pdf_sha256"]
+                            )
+                        ):
+                            raise ProcessingError("source_identity_mismatch")
                 except (OSError, ValueError, RuntimeError) as exc:
                     if errors is None:
                         raise
@@ -595,19 +652,54 @@ class WorkbenchResearch:
         parse_options=None,
         context=None,
         _out_checked_sources=None,
+        _search_snapshot=None,
+        _out_selected_sources=None,
     ) -> dict:
         documents, unparsed = [], []
         # Defaults are captured by the submitting UI. They apply only when no
         # source-checked parsed version exists; preparing never replaces an old
         # artifact merely because a user's current defaults have changed.
         options, config, backend = self._parse_configuration(parse_options)
-        materials = self._materials(ids, include_si, errors=unparsed)
+        materials = self._materials(
+            ids,
+            include_si,
+            errors=unparsed,
+            _papers=_search_snapshot["papers"]
+            if _search_snapshot is not None
+            else None,
+        )
+        if _out_selected_sources is not None:
+            _out_selected_sources.update(
+                {
+                    material["id"]: (
+                        material["source"],
+                        {k: material[k] for k in ("pdf", "sidecar")},
+                    )
+                    for material in materials
+                }
+            )
         # Freeze selection metadata once per preparation, rather than parsing
         # the whole JSON registry/index for every paper. Nothing is retained
         # across requests, and each selected PDF/sidecar/artifact still passes
         # the original gates and before/after source verification below.
-        index = self._index() if materials else {}
-        active_versions = self._active_versions() if materials else {}
+        index = (
+            (
+                _search_snapshot["index"]
+                if _search_snapshot is not None
+                else self._index()
+            )
+            if materials
+            else {}
+        )
+        active_versions = (
+            (
+                _search_snapshot["active"]
+                if _search_snapshot is not None
+                else self._active_versions()
+            )
+            if materials
+            else {}
+        )
         legacy_candidates = None
 
         def checked(document, expected_key):
@@ -760,7 +852,12 @@ class WorkbenchResearch:
                 documents.append({**deepcopy(found), "_paper_id": material["paper_id"]})
                 if _out_checked_sources is not None and checked_source is not None:
                     key = digest(self._clean_documents([found])[0])
-                    _out_checked_sources[key] = (checked_source, artifact_hash)
+                    _out_checked_sources[key] = (
+                        checked_source,
+                        artifact_hash,
+                        material["source"],
+                        {k: material[k] for k in ("pdf", "sidecar")},
+                    )
             if context:
                 context.record(
                     material["id"],
@@ -778,12 +875,12 @@ class WorkbenchResearch:
         ]
 
     def _query_verify(self, source, artifact_hash):
-        """Recheck exact bytes validated earlier in this one search request.
+        """Recheck bytes fully validated by the native initial source gate.
 
-        Initial check_document/Source.verify are mandatory before binding the raw
-        artifact hash. Identical bytes retain the validated artifact identity
-        without reparsing its JSON/schema. Changed locators or bytes fail closed.
-        This is neither retained across queries nor used for model execution.
+        The raw artifact hash is bound before check_document. Identical bytes
+        retain its schema and identity proof without reparsing the same JSON.
+        Changed locators or bytes fail closed. Model execution never uses this
+        private read-only search session.
         """
         for path, expected, code in (
             (source.pdf, source.identity["pdf_sha256"], "source_changed"),
@@ -797,51 +894,138 @@ class WorkbenchResearch:
             if self.app.path(path) != path or sha256_file(path) != expected:
                 raise ProcessingError(code)
 
-    def search(
-        self,
-        query,
-        ids=None,
-        *,
-        include_si=True,
-        mode="and",
-        exact=False,
-        role=None,
-        section_type=None,
-        limit=50,
-        offset=0,
-    ) -> dict:
-        if not 1 <= limit <= 500 or not 0 <= offset <= 100000:
-            raise ValueError("Search page size/offset out of range")
-        if ids is None:
-            ids = [r["id"] for r in self.library.scan()["items"]]
+    def _legacy_search_inventory(self):
+        inventory = []
+        for path in sorted(self.library.root.rglob("*.parsed.json")):
+            try:
+                fingerprint = sha256_file(self.app.path(path))
+            except (OSError, ValueError, RuntimeError):
+                fingerprint = "unavailable"
+            inventory.append((str(path), fingerprint))
+        return digest(inventory)
+
+    def _search_snapshot(self, *, include_legacy=False):
+        """Bind metadata selection to the exact bytes parsed for this request."""
+        catalogue = self.library.scan()
+        snapshots = {}
+        hashes = {}
+        for name, path in (("index", self.index_path), ("active", self.active_path)):
+            if not path.exists():
+                snapshots[name], hashes[name] = {}, None
+                continue
+            data = self.app.path(path).read_bytes()
+            value = json.loads(data.decode("utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("解析版本索引必须为 JSON 对象，请核对工作区记录")
+            snapshots[name], hashes[name] = value, hashlib.sha256(data).hexdigest()
+        return {
+            **snapshots,
+            "papers": {row["id"]: row for row in catalogue["items"]},
+            "signature": digest({"catalogue": catalogue, **hashes}),
+            "legacy_stamp": self._legacy_search_inventory() if include_legacy else None,
+        }
+
+    @staticmethod
+    def _search_session_size(value):
+        """Count the reachable Python graph once, before retaining one corpus."""
+        import sys
+
+        stack, seen, total = [value], set(), 0
+        while stack:
+            item = stack.pop()
+            if id(item) in seen:
+                continue
+            seen.add(id(item))
+            total += sys.getsizeof(item)
+            if isinstance(item, dict):
+                stack.extend(item.keys())
+                stack.extend(item.values())
+            elif isinstance(item, (list, tuple, set, frozenset)):
+                stack.extend(item)
+            elif isinstance(item, Path):
+                stack.extend(item.parts)
+            elif hasattr(item, "__dict__"):
+                stack.append(vars(item))
+        return total
+
+    def _validate_search_session(self, session):
+        for requested, expected in session["paths"]:
+            if self.app.path(requested) != expected:
+                raise ProcessingError("source_changed")
+        for path, expected, code in session["files"]:
+            if sha256_file(path) != expected:
+                raise ProcessingError(code)
+        for document, expected in session["documents"]:
+            if digest(document) != expected:
+                raise ProcessingError("parsed_artifact_changed")
+
+    def _build_search_session(self, ids, include_si, snapshot):
         checked_sources = {}
+        originals = {}
         prepared = self.prepare(
             ids,
             include_si=include_si,
             parse_missing=False,
             _out_checked_sources=checked_sources,
+            _search_snapshot=snapshot,
+            _out_selected_sources=originals,
         )
         sources, entries = [], []
-        artifact_bindings = {}
         document_bindings = []
+        paths, files = {}, {}
         paper_ids = {}
         configs = {}
         failures = list(prepared["unparsed"])
+
+        def bind_path(requested, expected=None):
+            resolved = self.app.path(requested)
+            if expected is not None and resolved != expected:
+                raise ProcessingError("source_changed")
+            previous = paths.setdefault(str(requested), resolved)
+            if previous != resolved:
+                raise ProcessingError("source_changed")
+
+        def bind_source(source, config, artifact_hash=None, document=None):
+            for field, path, expected, code in (
+                ("pdf", source.pdf, source.identity["pdf_sha256"], "source_changed"),
+                (
+                    "sidecar",
+                    source.sidecar,
+                    source.identity["acquisition_sidecar_sha256"],
+                    "source_changed",
+                ),
+                (
+                    "artifact",
+                    source.artifact.path if source.artifact else None,
+                    artifact_hash,
+                    "parsed_artifact_changed",
+                ),
+            ):
+                if path is None:
+                    continue
+                bind_path(path, path)
+                if config.get(field):
+                    bind_path(config[field], path)
+                previous = files.setdefault(path, (expected, code))
+                if previous[0] != expected:
+                    raise ProcessingError("source_identity_mismatch")
+            if document is not None:
+                for locator in document["source"].get("locators", {}).values():
+                    bind_path(source.artifact.path.parent / locator)
+
         for doc in prepared["documents"]:
             try:
                 cached = checked_sources.get(digest(self._clean_documents([doc])[0]))
                 if cached is None:
+                    artifact_hash = sha256_file(self.app.path(doc["artifact"]))
                     source = self.app.check_document(doc, "parsed")
-                else:
-                    source, artifact_hash = cached
-                    # Paths and actual source bytes stay live. Reusing the same
-                    # checked object only avoids rebuilding its PdfReader and
-                    # deep-copying the identical parsed document in this request.
                     self._query_verify(source, artifact_hash)
+                    original, origin_config = None, {}
+                else:
+                    source, artifact_hash, original, origin_config = cached
                 sources.append(source)
-                if cached is not None:
-                    artifact_bindings[id(source)] = artifact_hash
                 artifact_document = source.artifact.document
+                bind_source(source, doc, artifact_hash, artifact_document)
                 document_bindings.append((artifact_document, digest(artifact_document)))
                 entries.append(
                     CorpusDocument(
@@ -857,6 +1041,10 @@ class WorkbenchResearch:
                 )[0]
             except (OSError, ValueError, RuntimeError) as exc:
                 failures.append({"id": doc["id"], "reason": str(exc)[:500]})
+        # Missing parsed versions still bind their actual, validated library
+        # sources. A cached negative result cannot hide a later corrupted PDF.
+        for original, origin_config in originals.values():
+            bind_source(original, origin_config)
         # Legacy parsed artifacts can remain in the library while source PDFs
         # are snapshotted. A common ancestor supplies display-relative paths only.
         # Each explicit file has already passed the application path gate.
@@ -875,7 +1063,97 @@ class WorkbenchResearch:
             if entries
             else self.workspace
         )
-        corpus = Corpus(corpus_root, entries, failures, [])
+        return {
+            "corpus": Corpus(corpus_root, entries, failures, []),
+            "sources": sources,
+            "paper_ids": paper_ids,
+            "configs": configs,
+            "paths": list(paths.items()),
+            "files": [
+                (path, expected, code) for path, (expected, code) in files.items()
+            ],
+            "documents": document_bindings,
+            # Negative discovery is reusable only while the raw legacy artifact
+            # inventory is unchanged, including additions from an external CLI.
+            "retainable": bool(originals)
+            and all(row.get("reason") == "No usable parsed version" for row in failures)
+            and len(checked_sources) == len(entries),
+            "legacy_scan": bool(failures),
+        }
+
+    def search(
+        self,
+        query,
+        ids=None,
+        *,
+        include_si=True,
+        mode="and",
+        exact=False,
+        role=None,
+        section_type=None,
+        limit=50,
+        offset=0,
+    ) -> dict:
+        with self._search_lock:
+            try:
+                return self._search_page(
+                    query,
+                    ids,
+                    include_si=include_si,
+                    mode=mode,
+                    exact=exact,
+                    role=role,
+                    section_type=section_type,
+                    limit=limit,
+                    offset=offset,
+                )
+            except BaseException:
+                self._search_session = None
+                raise
+
+    def _search_page(
+        self,
+        query,
+        ids,
+        *,
+        include_si,
+        mode,
+        exact,
+        role,
+        section_type,
+        limit,
+        offset,
+    ):
+        if not 1 <= limit <= 500 or not 0 <= offset <= 100000:
+            raise ValueError("Search page size/offset out of range")
+        current = self._search_session
+        snapshot = self._search_snapshot(
+            include_legacy=current is None or current["legacy_scan"]
+        )
+        ids = list(snapshot["papers"]) if ids is None else list(dict.fromkeys(ids))
+        key = (tuple(ids), bool(include_si))
+        session = self._search_session
+        if session is not None and (
+            session["key"] != key
+            or session["stamp"] != snapshot["signature"]
+            or (
+                session["legacy_scan"]
+                and session["legacy_stamp"] != snapshot["legacy_stamp"]
+            )
+        ):
+            self._search_session = session = None
+        if session is None:
+            if snapshot["legacy_stamp"] is None:
+                snapshot["legacy_stamp"] = self._legacy_search_inventory()
+            session = self._build_search_session(ids, include_si, snapshot)
+            session.update(
+                key=key,
+                stamp=snapshot["signature"],
+                legacy_stamp=snapshot["legacy_stamp"],
+            )
+            session["bytes"] = self._search_session_size(session)
+        self._validate_search_session(session)
+        corpus = session["corpus"]
         report = search_corpus(
             corpus,
             query,
@@ -885,22 +1163,32 @@ class WorkbenchResearch:
             section_type=section_type,
             limit=offset + limit,
         )
-        for source in sources:
-            artifact_hash = artifact_bindings.get(id(source))
-            if artifact_hash is None:
-                source.verify()
-            else:
-                self._query_verify(source, artifact_hash)
-        for document, expected in document_bindings:
-            if digest(document) != expected:
-                raise ProcessingError("parsed_artifact_changed")
+        self._validate_search_session(session)
+        # Read again, but never adopt a new signature as the old corpus baseline.
+        # A/B/A version races cannot publish B under A: prepare consumed the same
+        # parsed bytes carried by snapshot, and only A can authorize retention.
+        after = self._search_snapshot(include_legacy=session["legacy_scan"])
+        stable = after["signature"] == snapshot["signature"] and (
+            not session["legacy_scan"]
+            or after["legacy_stamp"] == session["legacy_stamp"]
+        )
+        if (
+            stable
+            and session["retainable"]
+            and session["bytes"] <= self._search_cache_max_bytes
+            and not self._search_cache_closed
+        ):
+            self._search_session = session
+        else:
+            self._search_session = None
+        corpus_root = corpus.root
         report["hits"] = [
             {
                 **h,
-                "paper_id": paper_ids[h["parsed_artifact_id"]],
+                "paper_id": session["paper_ids"][h["parsed_artifact_id"]],
                 "pdf": str(corpus_root / h["pdf"]),
                 "artifact": str(corpus_root / h["artifact"]),
-                "document": configs[h["parsed_artifact_id"]],
+                "document": session["configs"][h["parsed_artifact_id"]],
             }
             for h in report["hits"][offset : offset + limit]
         ]
@@ -911,7 +1199,9 @@ class WorkbenchResearch:
         report["interpretation"] = (
             "关键词命中只表示字面匹配；未命中不表示未报告，解析状态不表示科学准确率。"
         )
-        return report
+        # Native evidence/source objects alias Corpus internals. Never expose a
+        # retained session through a caller-mutable result dictionary.
+        return deepcopy(report)
 
     def local_plan(
         self,
@@ -1551,4 +1841,6 @@ class WorkbenchResearch:
         }
 
     def close(self):
+        self._search_cache_closed = True
+        self._search_session = None
         self.app.close()
