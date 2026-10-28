@@ -466,7 +466,7 @@ class LibraryPage:
             if self.library_filters != requested_filters:
                 return
             self.library_rows = report["items"]
-            grid.options["rowData"] = [
+            rows = [
                 {
                     **r,
                     "title": title_for(r),
@@ -492,11 +492,10 @@ class LibraryPage:
                 }
                 for r in self.library_rows
             ]
-            # NiceGUI's grid.update destroys/recreates the grid. Updating only
-            # rowData preserves stable-ID checks, column widths and sorting.
-            await grid.run_grid_method(
-                "setGridOption", "rowData", grid.options["rowData"]
-            )
+            # NiceGUI options are observable: even assigning options['rowData']
+            # schedules destroy/createGrid. Keep server data in library_rows
+            # and use only the client API to retain checks and column layout.
+            await grid.run_grid_method("setGridOption", "rowData", rows)
             count.set_text(
                 f"{len(self.library_rows)} 篇筛选结果 · 跨页面选择清单 {len(self.ctx.library.selection())} 篇"
             )

@@ -184,6 +184,12 @@ def test_refresh_updates_only_rows_and_keeps_checks_and_column_layout():
         layout = {"title": {"width": 480, "sort": "desc"}}
         updates = []
 
+        class ObservableOptions(dict):
+            def __setitem__(self, key, value):
+                pytest.fail("Mutating observable options also rebuilds the grid")
+
+        options = ObservableOptions({"rowData": [{"id": "old-server-snapshot"}]})
+
         async def run_grid_method(method, name, rows):
             assert method == "setGridOption" and name == "rowData"
             updates.append(rows)
@@ -225,7 +231,7 @@ def test_refresh_updates_only_rows_and_keeps_checks_and_column_layout():
                 "filters": lambda: {"query": None},
                 "run": SimpleNamespace(io_bound=io_bound),
                 "grid": SimpleNamespace(
-                    options={},
+                    options=options,
                     run_grid_method=run_grid_method,
                     update=lambda: pytest.fail(
                         "Rebuilding the grid loses checks/layout"
@@ -242,6 +248,7 @@ def test_refresh_updates_only_rows_and_keeps_checks_and_column_layout():
         )
         await callback()
         assert controller.library_rows == source_rows and len(updates) == 1
+        assert options["rowData"] == [{"id": "old-server-snapshot"}]
         assert selected == ["a"] and layout == {"title": {"width": 480, "sort": "desc"}}
 
     asyncio.run(scenario())
