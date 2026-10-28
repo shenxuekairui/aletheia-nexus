@@ -136,8 +136,9 @@ def test_rich_subscripts_and_unsupported_features_are_explicit(workbook):
 
 
 def test_selected_sheet_budget_never_chooses_small_sheets_silently(workbook):
-    with pytest.raises(NativeTableLimitError, match="select fewer sheets"):
+    with pytest.raises(NativeTableLimitError, match="select fewer sheets") as failure:
         read_native_xlsx(workbook, max_cells=50)
+    assert failure.value.available_sheets == ["Small", "Large"]
     selected = read_native_xlsx(workbook, sheets=["Small"], max_cells=50)
     assert selected["populated_cells"] == 12
     assert read_native_xlsx(workbook)["populated_cells"] == 212

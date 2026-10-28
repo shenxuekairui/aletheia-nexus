@@ -1045,7 +1045,7 @@ class ResearchApplication:
             )
             notes = native_table_notes(view, max_chars=NATIVE_TABLE_LIMITS["max_chars"])
         except ValueError as exc:
-            return {
+            failure = {
                 "ok": False,
                 "error": "native_table_resource_limit"
                 if isinstance(exc, NativeTableLimitError)
@@ -1055,6 +1055,9 @@ class ResearchApplication:
                 "network_access": False,
                 "new_files": False,
             }
+            if isinstance(exc, NativeTableLimitError) and exc.available_sheets:
+                failure["available_sheets"] = exc.available_sheets
+            return failure
         if sha256_file(source) != view["source_workbook_sha256"]:
             raise ProcessingError("native_table_source_changed")
         return {

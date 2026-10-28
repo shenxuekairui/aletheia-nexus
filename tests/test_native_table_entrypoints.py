@@ -113,6 +113,7 @@ def test_native_table_fixed_limit_error_is_explicit_and_has_no_partial_notes(
         assert result["ok"] is False
         assert result["error"] == "native_table_resource_limit"
         assert "max_cells=10000" in result["detail"]
+        assert result["available_sheets"] == ["Small", "Large"]
         assert "table_notes" not in result
         assert result["network_access"] is False
         invalid = app.read_native_table(str(source), ["Missing"])
@@ -181,6 +182,7 @@ def test_native_table_real_sdk_stdio_lists_and_reads_without_keys(
             assert excess.structured_content["error"] == "native_table_resource_limit"
             assert "table_notes" not in excess.structured_content
             assert "max_cells=10000" in excess.structured_content["detail"]
+            assert excess.structured_content["available_sheets"] == ["Small", "Large"]
             # A denied/limited request does not break the protocol or next call.
             again = await client.call_tool(
                 "read_native_table", {"path": str(source), "sheets": ["Small"]}

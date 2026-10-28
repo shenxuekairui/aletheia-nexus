@@ -33,6 +33,10 @@ CELL_COLUMNS = [
 class NativeTableLimitError(ValueError):
     """A complete source view exceeds an explicit resource budget."""
 
+    def __init__(self, message: str, *, available_sheets=()):
+        super().__init__(message)
+        self.available_sheets = list(available_sheets)
+
 
 # IDs with locale-dependent displays retain the original ID rather than guessing
 # a display string. Custom format codes are read verbatim from styles.xml.
@@ -305,7 +309,8 @@ def read_native_xlsx(
                         total += 1
                         if total > max_cells:
                             raise NativeTableLimitError(
-                                f"Selected XLSX sheets exceed max_cells={max_cells}; select fewer sheets or explicitly raise the limit; no partial view returned"
+                                f"Selected XLSX sheets exceed max_cells={max_cells}; select fewer sheets; no partial view returned",
+                                available_sheets=[s.attrib["name"] for s in sheet_list],
                             )
                         kind, literal, rich = (
                             cell.get("t", "n"),
@@ -448,6 +453,9 @@ def native_table_notes(view: dict, *, max_chars: int = 200_000) -> str:
     )
     if len(text) > max_chars:
         raise NativeTableLimitError(
-            f"Complete XLSX notes exceed max_chars={max_chars}; select fewer sheets or explicitly raise the limit; no truncated notes returned"
+            f"Complete XLSX notes exceed max_chars={max_chars}; select fewer sheets; no truncated notes returned",
+            available_sheets=[
+                s["sheet"] for s in [*view["sheets"], *view["unselected_sheets"]]
+            ],
         )
     return text
