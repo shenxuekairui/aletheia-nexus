@@ -1,6 +1,7 @@
 """Group placement uses current edited rows and preserves download controls."""
 
 import asyncio
+import gc
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -192,3 +193,60 @@ def test_visible_panel_has_manual_preview_group_destinations_and_single_paper_en
         assert "刚编辑的目录 · 1 篇" in labels
 
     asyncio.run(exercise())
+
+
+def test_saving_group_does_not_delete_dialog_when_saved_draft_refreshes_sidebar(
+    tmp_path, monkeypatch
+):
+    pytest.importorskip("nicegui")
+    from nicegui import ui
+
+    from aletheia_nexus.workbench import ui_acquisition_groups
+    from aletheia_nexus.workbench.library import LibraryService
+
+    monkeypatch.setattr(ui_acquisition_groups, "guard", lambda callback: callback)
+    callbacks, dialogs = {}, []
+    button, dialog_class = ui.button, ui.dialog
+
+    def capture_button(label, **kwargs):
+        callbacks[label] = kwargs.get("on_click")
+        return button(label, **kwargs)
+
+    def capture_dialog(*args, **kwargs):
+        dialog = dialog_class(*args, **kwargs)
+        dialogs.append(dialog)
+        return dialog
+
+    monkeypatch.setattr(ui, "button", capture_button)
+    monkeypatch.setattr(ui, "dialog", capture_dialog)
+    grid = Grid()
+    panel = None
+
+    async def replace(rows):
+        batch.rows = deepcopy(rows)
+        # This is the actual root save_draft(rows) callback ordering.
+        panel.refresh(rows)
+        gc.collect()
+        assert not dialogs[-1].is_deleted
+
+    batch = SimpleNamespace(
+        rows=papers(),
+        grid=grid,
+        default_folder=lambda: "默认",
+        default_tags=lambda: [],
+        replace=replace,
+        open_row=lambda *_: None,
+    )
+    controller = SimpleNamespace(
+        ctx=SimpleNamespace(library=LibraryService(tmp_path / "library")),
+        tag_input=lambda label, values: ui.input(label, value=", ".join(values)),
+    )
+    with ui.column():
+        panel = AcquisitionGroupPanel(controller, lambda: batch, lambda: None)
+    # A real click enters the sidebar button context, rather than a stable root.
+    with panel.container:
+        panel.edit_group(batch, summarize_input_groups(batch.rows)[0])
+    assert dialogs[-1].value
+    asyncio.run(callbacks["保存本组设置"]())
+    assert not dialogs[-1].is_deleted
+    assert dialogs[-1].value is False

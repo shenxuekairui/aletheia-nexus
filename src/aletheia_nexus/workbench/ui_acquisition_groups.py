@@ -94,7 +94,13 @@ class AcquisitionGroupPanel:
 
         from .ui_folders import choose_library_folder, resolve_library_folder
 
-        with ui.dialog() as dialog, ui.card().classes("an-card w-[720px] max-w-[95vw]"):
+        # Dialog's hidden lifecycle canary belongs to the context that creates
+        # it. A sidebar refresh must not delete an in-flight group editor.
+        with (
+            self.container.client.layout,
+            ui.dialog() as dialog,
+            ui.card().classes("an-card w-[720px] max-w-[95vw]"),
+        ):
             ui.label(f"设置「{group['name']}」目录与标签").classes(
                 "text-xl font-semibold"
             )
