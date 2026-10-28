@@ -288,6 +288,68 @@ class AcquisitionService:
             handle.write("\n")
         return target, effective, relocations
 
+    def _store_bibliography(self, item, source) -> dict | None:
+        """Fill absent mutable bibliography using only this engine response.
+
+        This neither changes the original title/DOI nor makes extra metadata
+        requests. Existing researcher edits and acquisition evidence are retained.
+        Per-field source receipts identify exactly which values were filled.
+        """
+        metadata = getattr(getattr(item.result, "base_result", None), "metadata", None)
+        if metadata is None or self.library is None:
+            return None
+        if metadata.doi != source.doi:
+            return {"status": "NOT_APPLIED", "reason": "metadata_doi_mismatch"}
+        try:
+            rows = [
+                row
+                for row in self.library.scan()["items"]
+                if row["pdf_sha256"] == source.pdf_sha256
+                and row["article_id"] == source.article_id
+            ]
+            if len(rows) != 1:
+                return {
+                    "status": "NOT_APPLIED",
+                    "reason": "library_identity_not_unique",
+                }
+            row = rows[0]
+            values = {}
+            for name in (
+                "authors",
+                "year",
+                "journal",
+                "volume",
+                "issue",
+                "pages",
+                "publisher",
+                "published_date",
+            ):
+                value = getattr(metadata, name, None)
+                if value and not (row.get(name) or row.get("metadata", {}).get(name)):
+                    values[name] = list(value) if name == "authors" else value
+            if not values:
+                return {"status": "UNCHANGED", "doi": metadata.doi}
+            sources = row.get("metadata", {}).get("metadata_source") or {}
+            sources = dict(sources) if isinstance(sources, dict) else {}
+            for name in values:
+                sources[name] = {
+                    "kind": "acquisition_engine_metadata",
+                    "doi": metadata.doi,
+                    "acquisition_sidecar_sha256": source.sidecar_sha256,
+                }
+            self.library.update_metadata(row["id"], **values, metadata_source=sources)
+            return {
+                "status": "UPDATED",
+                "paper_id": row["id"],
+                "fields": list(values),
+                "doi": metadata.doi,
+                "network_requests": 0,
+            }
+        except (OSError, ValueError, KeyError) as exc:
+            # Bibliographic enrichment cannot demote an independently verified
+            # PDF or prevent its SI attempt; the application exposes this error.
+            return {"status": "FAILED", "error": type(exc).__name__}
+
     def preview_inputs(self, value, format: str | None = None) -> dict:
         """Normalize TXT/CSV/JSON or pasted citations; retain invalid-row diagnostics."""
         if isinstance(value, Path):
@@ -476,6 +538,14 @@ class AcquisitionService:
             raise ValueError("checkpoint must be inside acquisition state directory")
         checkpoint.parent.mkdir(parents=True, exist_ok=True)
         checkpoint, prepared, relocations = self._resume_locations(checkpoint, prepared)
+        if context:
+            context.progress(
+                0,
+                len(prepared),
+                stage="acquisition_prepared",
+                checkpoint=str(checkpoint),
+                relocations=relocations,
+            )
         items = []
         current = None
         interaction_skipped = False
@@ -593,6 +663,9 @@ class AcquisitionService:
                         pdf_sha256=source.pdf_sha256,
                         identity_verified=True,
                     )
+                    bibliography = self._store_bibliography(item, source)
+                    if bibliography is not None:
+                        row["bibliography"] = bibliography
                     if options["include_si"]:
                         from aletheia_nexus.workbench.supplements import (
                             acquire_supplements,

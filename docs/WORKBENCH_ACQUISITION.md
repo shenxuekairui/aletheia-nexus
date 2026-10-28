@@ -7,6 +7,7 @@
 | 能力 | 实现及边界 |
 | --- | --- |
 | DOI、中文书目身份、机构浏览器、CNKI、已授权官方 API | 复用 `acquire.access` 引擎与 `PaperRequest`；不模拟 CLI，不受 MCP 公共 DOI 子集限制 |
+| 已取得的书目元数据 | 仅从本次引擎真实返回且 DOI 一致的 metadata 补齐缺失作者/年份/期刊等可变字段，逐字段记录来源 DOI 与 sidecar 哈希；不覆盖已有人工编辑，不新增隐式网络请求，不改原题或来源 sidecar |
 | 输入预览 | TXT、CSV、JSON 和粘贴列表；保留合法书目字段与逐行错误；按身份去重，不把分类或标签当科学身份 |
 | 英文标题找 DOI | 使用既有 Crossref 传输和解析器。只有标题规范化后精确、唯一、且作者/年份/期刊约束均一致才自动解析；相似候选、多 DOI 同题或冲突交给人工选择 |
 | 中文无 DOI | 保留原 CNKI 标题/书目核验路线。需要明确启用机构浏览器策略；不会捏造 DOI，也不会自动拿英文 Crossref 的第一条结果顶替 |
@@ -42,7 +43,7 @@ PDF 校验真实 PDF 结构与页数；Office Open XML 检查 ZIP 格式和对�
 
 三种人工策略分别是等待、跳过继续、暂停批次等待决定。任务中心通过合作式边界控制：正在传输或验证的文件不会被强杀，普通暂停/取消/跳过在论文边界生效；浏览器发出人工验证通知时可继续/跳过/取消。跳过动作保留实际引擎状态及原因。没有验证码破解、MFA/订阅绕过，也不盲重试限流/权限拒绝。
 
-任务页面关闭不会取消后台线程；进程终止后的状态由统一任务中心诚实标为中断。按原生检查点恢复会复核文件和来源。UI 检查点重定位只适用于已登记适配目录；任意旧 CLI 检查点/科研契约若显式绑定旧路径，仍由文库风险预检拒绝不安全改名。未知目录外的引用无法自动审计，不能据此宣称所有外部引用都已迁移。
+任务页面关闭不会取消后台线程；进程终止后的状态由统一任务中心诚实标为中断。开始工作前即把检查点指针持久登记到任务中心，取消或中断后也可恢复；按原生检查点恢复会复核文件和来源。UI 检查点重定位只适用于已登记适配目录；任意旧 CLI 检查点/科研契约若显式绑定旧路径，仍由文库风险预检拒绝不安全改名。未知目录外的引用无法自动审计，不能据此宣称所有外部引用都已迁移。
 
 ## 可复现的验证记录
 
@@ -50,10 +51,10 @@ PDF 校验真实 PDF 结构与页数；Office Open XML 检查 ZIP 格式和对�
 
 ```powershell
 $env:PYTHONPATH='src'
-.venv/Scripts/python.exe -m pytest tests/workbench/test_acquisition.py tests/workbench/test_acquisition_supplements.py tests/workbench/test_acquisition_relocation.py -q
+.venv/Scripts/python.exe -m pytest tests/workbench/test_acquisition.py tests/workbench/test_acquisition_metadata.py tests/workbench/test_acquisition_supplements.py tests/workbench/test_acquisition_relocation.py -q
 ```
 
-覆盖：输入去重、CSV 字段、唯一/歧义/冲突标题、真实参数传递、共享浏览器、边界控制、路径越界、来源不可被本地声明冒充、SI 角色/页面 DOI/假 HTML、多个附件部分失败、重复复用、三篇共享 SI、跨分类实际改名、旧检查点按来源哈希重定位。Windows 符号链接测试在无创建权限时明确跳过，不报为通过。
+覆盖：输入去重、CSV 字段、唯一/歧义/冲突标题、真实参数传递、共享浏览器、边界控制、路径越界、来源不可被本地声明冒充、SI 角色/页面 DOI/假 HTML、多个附件部分失败、重复复用、三篇共享 SI、跨分类实际改名、旧检查点按来源哈希重定位、DOI-only 获取后作者/年份/期刊显示及人工改值保护、工作开始前登记恢复指针。Windows 符号链接测试在无创建权限时明确跳过，不报为通过。
 
 公开小范围实测保存在独立目录 `F:/AI4S/outputs/AN08_workbench_20261028/acquisition-public-smoke/`，不依赖用户现有资料：
 
