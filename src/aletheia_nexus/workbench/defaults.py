@@ -3,6 +3,9 @@
 from importlib.util import find_spec
 from pathlib import Path
 
+from aletheia_nexus.acquire.access.browser import browser_profile_dir
+from aletheia_nexus.acquire.access.models import BrowserAccessConfig
+
 from .acquisition import get_acquisition_defaults
 
 
@@ -26,6 +29,7 @@ def ui_acquisition_defaults():
         bulk_interval=1.0,
     )
     values["browser"].update(
+        profile_name="human-handoff",
         headless=False,
         interactive=True,
         launch_mode="auto",
@@ -34,6 +38,76 @@ def ui_acquisition_defaults():
         direct_connection=False,
     )
     return values
+
+
+def browser_profile_choices(browserconfig=None):
+    """List safe first-level profile names without opening authentication data.
+
+    An absent current directory remains a choice: only an explicit acquisition
+    may create it. Invalid or linked saved values remain in ``current`` with a
+    warning instead of silently selecting a different identity.
+    """
+    if browserconfig is None:
+        browserconfig = ui_acquisition_defaults()["browser"]
+    if isinstance(browserconfig, BrowserAccessConfig):
+        current, profile_root = browserconfig.profile_name, browserconfig.profile_root
+    else:
+        current = browserconfig.get("profile_name", BrowserAccessConfig().profile_name)
+        profile_root = browserconfig.get("profile_root")
+    config = BrowserAccessConfig(profile_root=profile_root)
+    root = browser_profile_dir(config).parent.absolute()
+    result = {
+        "options": [],
+        "current": current,
+        "root": str(root),
+        "message": (
+            "选择已有会话可复用该目录中的登录状态；新会话首次可能需要登录。"
+            "不会复制认证内容，也不代表已有机构访问权限。"
+            "同一会话正在被其他获取任务使用时，请等待完成或选择其他会话。"
+        ),
+        "warnings": [],
+    }
+
+    def linked(path):
+        return path.is_symlink() or (
+            hasattr(path, "is_junction") and path.is_junction()
+        )
+
+    def valid_name(name):
+        try:
+            browser_profile_dir(BrowserAccessConfig(profile_name=name))
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    if not valid_name(current):
+        result["warnings"].append("已保存的会话名称无效，请检查后再获取；未替换原值。")
+    else:
+        result["options"].append(current)
+    try:
+        if any(linked(path) for path in (root, *root.parents)):
+            result["warnings"].append(
+                "会话根目录包含符号链接或目录联接，未读取其中的会话列表。"
+            )
+            return result
+        if valid_name(current) and linked(root / current):
+            result["options"].remove(current)
+            result["warnings"].append(
+                "当前会话目录是符号链接或目录联接，请检查路径；未替换已保存值。"
+            )
+        for entry in root.iterdir():
+            if valid_name(entry.name) and not linked(entry) and entry.is_dir():
+                result["options"].append(entry.name)
+    except FileNotFoundError:
+        pass  # First use: do not create a root merely to populate a selector.
+    except OSError as exc:
+        result["warnings"].append(
+            f"无法读取现有会话目录（{type(exc).__name__}）；已保留当前会话设置。"
+        )
+    result["options"] = sorted(
+        set(result["options"]), key=lambda name: (name.casefold(), name)
+    )
+    return result
 
 
 def ui_workflow_defaults():
