@@ -361,7 +361,7 @@ class ResearchPages:
                 "尚未检索。已有CLI解析工件会按身份发现；未解析论文不会自动产生全文命中。"
             ).classes("an-info w-full")
         results_area = ui.column().classes("w-full")
-        state = {"table": None, "report": None}
+        state = {"table": None, "report": None, "searching": False}
 
         def selected_ids():
             if handoff_label and scope.value == handoff_label:
@@ -541,34 +541,78 @@ class ResearchPages:
         async def search():
             from nicegui import run
 
-            self.search_draft = {
-                "query": query.value,
-                "mode": mode.value,
-                "exact": exact.value,
-                "scope": scope.value,
-                "handoff": handoff,
-            }
-            status.set_text("正在检查所选来源与关键词索引…")
-            report = await run.io_bound(
-                self.ctx.research.search,
-                query.value,
-                selected_ids(),
-                include_si=True,
-                mode=mode.value,
-                exact=exact.value,
-                role=None if role.value == "all" else role.value,
-                section_type=section.value or None,
-                limit=int(size.value),
-                offset=int(offset.value),
-            )
-            display(report)
+            if state["searching"]:
+                return
+
+            def form():
+                return (
+                    query.value,
+                    mode.value,
+                    exact.value,
+                    scope.value,
+                    folder.value,
+                    tuple(tags.value or []),
+                    role.value,
+                    section.value,
+                    size.value,
+                    offset.value,
+                )
+
+            captured = form()
+            ids = selected_ids()
+            state["searching"] = True
+            search_button.disable()
+            searching.set_visibility(True)
+            try:
+                self.search_draft = {
+                    "query": query.value,
+                    "mode": mode.value,
+                    "exact": exact.value,
+                    "scope": scope.value,
+                    "handoff": handoff,
+                }
+                status.set_text(
+                    f"正在核对 {len(ids)} 篇论文及选定 PDF SI，并检索关键词；首次全库检索需要更多时间…"
+                )
+                report = await run.io_bound(
+                    self.ctx.research.search,
+                    query.value,
+                    ids,
+                    include_si=True,
+                    mode=mode.value,
+                    exact=exact.value,
+                    role=None if role.value == "all" else role.value,
+                    section_type=section.value or None,
+                    limit=int(size.value),
+                    offset=int(offset.value),
+                )
+                if results_area.is_deleted:
+                    return
+                self.ctx.library  # Reject results from a library switched during the query.
+                if form() != captured or selected_ids() != ids:
+                    status.set_text(
+                        "检索期间条件或材料选择已修改。请按当前条件重新检索，本次结果未替换当前预览。"
+                    )
+                    return
+                display(report)
+            finally:
+                state["searching"] = False
+                if not search_button.is_deleted:
+                    search_button.enable()
+                    searching.set_visibility(False)
 
         async def turn_page(direction):
+            if state["searching"]:
+                return
             offset.set_value(max(0, offset.value + direction * size.value))
             await search()
 
         with ui.row().classes("an-toolbar"):
-            ui.button("检索本地原文", icon="search", on_click=guard(search))
+            search_button = ui.button(
+                "检索本地原文", icon="search", on_click=guard(search)
+            )
+            searching = ui.spinner(size="sm")
+            searching.set_visibility(False)
             ui.button(
                 "解析当前范围",
                 icon="document_scanner",
