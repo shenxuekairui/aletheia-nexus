@@ -391,6 +391,7 @@ class LibraryService:
                             or source.get("created_at")
                             or "",
                             "parse_status": meta.get("parse_status", "UNPARSED"),
+                            "ocr_status": meta.get("ocr_status", "UNKNOWN"),
                             "reading_status": meta.get("reading_status", "未读"),
                             "research_tasks": meta.get("research_tasks", []),
                             "collections": [
@@ -535,11 +536,17 @@ class LibraryService:
                     checks = [tag in row["tags"] for tag in tags]
                     if not (all(checks) if tag_mode.upper() == "AND" else any(checks)):
                         continue
-                if (
-                    parsed is not None
-                    and (row["parse_status"] in {"PARSED", "PARTIAL"}) != parsed
-                ):
-                    continue
+                if parsed is not None:
+                    if type(parsed) is bool:
+                        if (row["parse_status"] in {"PARSED", "PARTIAL"}) != parsed:
+                            continue
+                    elif parsed in {"PARSED", "PARTIAL", "FAILED", "UNPARSED"}:
+                        if row["parse_status"] != parsed:
+                            continue
+                    else:
+                        raise ValueError(
+                            "解析状态筛选无效，请选择完成、部分、失败或尚未解析"
+                        )
                 if untranslated and row["title_zh"]:
                     continue
                 if (
@@ -628,6 +635,7 @@ class LibraryService:
                     or org.get("journal")
                     or "",
                     parse_status=meta.get("parse_status", "UNPARSED"),
+                    ocr_status=meta.get("ocr_status", "UNKNOWN"),
                     reading_status=meta.get("reading_status", "未读"),
                     research_tasks=deepcopy(meta.get("research_tasks", [])),
                     collections=[
@@ -1417,8 +1425,13 @@ class LibraryService:
         folder=None,
         overrides=None,
         missing_translation="fallback",
+        move_to_root=False,
     ):
         used = self._check_template(template)
+        if type(move_to_root) is not bool or (move_to_root and folder):
+            raise ValueError(
+                "移动目标冲突：请选择文库根目录，或指定一个分类，不要同时设置"
+            )
         if missing_translation not in {"fallback", "skip"}:
             raise ValueError("missing translation policy must be fallback or skip")
         overrides = overrides or {}
@@ -1436,8 +1449,12 @@ class LibraryService:
                     }
                 )
                 continue
-            target_dir = destination(
-                self.root, folder if folder else (row["folder"] or None)
+            target_dir = (
+                self.root
+                if move_to_root
+                else destination(
+                    self.root, folder if folder else (row["folder"] or None)
+                )
             )
             self.path(target_dir)
             values = {key: str(row.get(key) or "") for key in FIELDS}
@@ -1636,6 +1653,7 @@ class LibraryService:
             "created_at": _now(),
             "root": str(self.root),
             "template": template,
+            "move_to_root": move_to_root,
             "items": rows,
             "executable": sum(r["status"] == "READY" for r in rows),
             "skipped": sum(r["status"] != "READY" for r in rows),
@@ -1673,7 +1691,9 @@ class LibraryService:
                     )
                     _write(path, journal)
                 results.append(journal)
-            return results
+            return sorted(
+                results, key=lambda item: item.get("created_at") or "", reverse=True
+            )
 
     def execute_rename(self, preview):
         """Execute an unchanged preflight; stage files and roll back on any failure.

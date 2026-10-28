@@ -31,16 +31,114 @@ COLUMNS = {
     "path": "磁盘路径",
     "size": "大小（字节）",
     "si_count": "SI 数量",
-    "integrity": "来源状态",
+    "integrity": "文件完整性",
+    "identity_basis": "来源身份",
     "download_source": "获取来源",
     "download_time": "获取时间",
     "parse_status": "解析状态",
+    "ocr_status": "OCR 状态",
     "reading_status": "阅读状态",
     "research_tasks": "科研任务",
 }
 
+SELECTION_COLUMN = "__selection__"
+INTEGRITY_LABELS = {
+    "verified": "文件指纹一致",
+    "hash_mismatch": "文件指纹不符",
+    "missing": "文件缺失",
+}
+
+
+def library_columns(visible, *, wrap=True):
+    """A selection control is independent of every hideable metadata column."""
+    columns = [
+        {
+            "colId": SELECTION_COLUMN,
+            "headerName": "选择",
+            "pinned": "left",
+            "checkboxSelection": True,
+            "headerCheckboxSelection": True,
+            "headerCheckboxSelectionCurrentPageOnly": True,
+            "lockVisible": True,
+            "lockPosition": "left",
+            "suppressMovable": True,
+            "width": 72,
+            "minWidth": 72,
+            "maxWidth": 72,
+            "resizable": False,
+            "sortable": False,
+        }
+    ]
+    order = {key: n for n, key in enumerate(visible)}
+    data = [
+        {
+            "field": key,
+            "headerName": label,
+            "hide": key not in visible,
+            "sortable": True,
+            "resizable": True,
+            "minWidth": 100,
+            "width": 380 if key == "title" else 200 if key.startswith("title") else 140,
+            **({"pinned": "left"} if key == "title" else {}),
+            **(
+                {"wrapText": wrap, "autoHeight": wrap}
+                if key in {"title", "title_original", "title_zh"}
+                else {}
+            ),
+        }
+        for key, label in COLUMNS.items()
+    ]
+    data.sort(key=lambda col: order.get(col["field"], len(order)))
+    return [*columns, *data]
+
+
+def metadata_column_state(state):
+    """Saved layouts cannot hide/reorder the always-visible selection control."""
+    return [dict(col) for col in state if col.get("colId") in COLUMNS]
+
+
+def view_title(row, view, *, default_mode="bilingual"):
+    mode = view.get("title_mode", default_mode)
+    original = row.get("title_original") or row.get("title", "")
+    zh, custom = row.get("title_zh"), row.get("custom_name")
+    if mode == "bilingual" and zh and zh != original:
+        return zh + "\n" + original
+    if mode == "zh":
+        return zh or original
+    if mode == "custom":
+        return custom or zh or original
+    return original
+
 
 class LibraryPage:
+    def tag_input(self, label, value=(), *, allow_new=True):
+        from nicegui import ui
+
+        selected = split_tags(value)
+        known = sorted(
+            {
+                *selected,
+                *(
+                    tag
+                    for row in self.ctx.library.scan()["items"]
+                    for tag in row["tags"]
+                ),
+            }
+        )
+        return (
+            ui.select(
+                known,
+                value=selected,
+                multiple=True,
+                with_input=True,
+                new_value_mode="add-unique" if allow_new else None,
+                label=label,
+                clearable=True,
+            )
+            .props("outlined dense use-chips")
+            .classes("w-full")
+        )
+
     def library_page(self):
         from nicegui import ui
 
@@ -84,6 +182,22 @@ class LibraryPage:
             untranslated = ui.checkbox(
                 "未翻译", value=self.library_filters.get("untranslated", False)
             )
+            parsed_value = self.library_filters.get("parsed")
+            if type(parsed_value) is bool:
+                parsed_value = "ANY_PARSED" if parsed_value else "NOT_PARSED"
+            parsed = ui.select(
+                {
+                    "": "全部解析状态",
+                    "PARSED": "解析完成",
+                    "PARTIAL": "部分解析",
+                    "FAILED": "解析失败",
+                    "UNPARSED": "尚未解析",
+                    "ANY_PARSED": "已解析（完成或部分）",
+                    "NOT_PARSED": "未成功解析",
+                },
+                value=parsed_value or "",
+                label="解析状态",
+            ).props("outlined dense")
 
         with ui.row().classes("an-toolbar w-full"):
             collection = ui.select(
@@ -118,37 +232,16 @@ class LibraryPage:
                 "tag_mode": tag_mode.value,
                 "untranslated": untranslated.value,
                 "collection": collection.value or None,
+                "parsed": True
+                if parsed.value == "ANY_PARSED"
+                else False
+                if parsed.value == "NOT_PARSED"
+                else parsed.value or None,
             }
 
         state = views[view_name]
         visible = state.get("columns", list(COLUMNS))
-        columns = [
-            {
-                "field": key,
-                "headerName": label,
-                "hide": key not in visible,
-                "sortable": True,
-                "resizable": True,
-                "minWidth": 100,
-                "width": 200 if key.startswith("title") else 140,
-                **(
-                    {
-                        "pinned": "left",
-                        "checkboxSelection": True,
-                        "headerCheckboxSelection": True,
-                        "headerCheckboxSelectionCurrentPageOnly": True,
-                        "wrapText": state.get("wrap", True),
-                        "autoHeight": True,
-                        "width": 380,
-                    }
-                    if key == "title"
-                    else {}
-                ),
-            }
-            for key, label in COLUMNS.items()
-        ]
-        order = {key: n for n, key in enumerate(visible)}
-        columns.sort(key=lambda c: order.get(c["field"], len(order)))
+        columns = library_columns(visible, wrap=state.get("wrap", True))
 
         with ui.row().classes("an-toolbar w-full"):
             count = ui.label("").classes("an-muted grow")
@@ -183,18 +276,17 @@ class LibraryPage:
             },
             theme="quartz",
         ).classes("an-library")
+        with ui.expansion("来源、缺失文件与重复副本诊断", icon="fact_check").classes(
+            "w-full"
+        ):
+            diagnostic_area = ui.column().classes("w-full")
 
         def title_for(row):
-            mode = self.ctx.settings.get("title_mode", "bilingual")
-            original = row.get("title_original") or row["title"]
-            zh, custom = row.get("title_zh"), row.get("custom_name")
-            if mode == "bilingual" and zh and zh != original:
-                return zh + "\n" + original
-            if mode == "zh":
-                return zh or original
-            if mode == "custom":
-                return custom or zh or original
-            return original
+            return view_title(
+                row,
+                state,
+                default_mode=self.ctx.settings.get("title_mode", "bilingual"),
+            )
 
         def refresh():
             self.library_filters = filters()
@@ -209,7 +301,20 @@ class LibraryPage:
                     "authors": "; ".join(str(a) for a in r.get("authors", [])),
                     "collections": ", ".join(r.get("collections", [])),
                     "parse_status": value_label(r.get("parse_status")),
-                    "integrity": value_label(r.get("integrity")),
+                    "integrity": INTEGRITY_LABELS.get(r.get("integrity"), "尚未核验"),
+                    "identity_basis": value_label(r.get("identity_basis")),
+                    "ocr_status": {
+                        "NOT_REQUESTED": "未启用",
+                        "CONFIGURED": "已配置，需核对实际使用",
+                        "USED": "实际使用",
+                        "UNKNOWN": "未记录",
+                    }.get(r.get("ocr_status", "UNKNOWN"), "未记录"),
+                    "research_tasks": "；".join(
+                        f"{item.get('task_id') or item.get('job_id', '')}（{value_label(item.get('status'))}）"
+                        if isinstance(item, dict)
+                        else str(item)
+                        for item in r.get("research_tasks", [])
+                    ),
                 }
                 for r in self.library_rows
             ]
@@ -217,6 +322,38 @@ class LibraryPage:
             count.set_text(
                 f"{len(self.library_rows)} 篇筛选结果 · 当前选择清单 {len(self.ctx.library.selection())} 篇"
             )
+            diagnostic_area.clear()
+            with diagnostic_area:
+                if report["warnings"]:
+                    ui.label(
+                        f"发现 {len(report['warnings'])} 项诊断。请检查路径、恢复原文件或正确来源记录后刷新；不会自动将异常来源当作成功。"
+                    )
+                    for warning in report["warnings"][:100]:
+                        with ui.card().classes("an-card w-full"):
+                            ui.label(
+                                str(
+                                    warning.get("sidecar")
+                                    or warning.get("paper_id")
+                                    or "文库记录"
+                                )
+                            ).classes("text-xs break-all")
+                            reason = (
+                                warning.get("error")
+                                or warning.get("reason")
+                                or "记录未提供具体原因"
+                            )
+                            ui.label(user_message(reason)).classes("text-sm")
+                            if warning.get("paths"):
+                                ui.label(
+                                    "重复副本：" + "；".join(warning["paths"])
+                                ).classes("text-xs break-all")
+                    if len(report["warnings"]) > 100:
+                        ui.label("此处先显示前 100 项；全部诊断保留在下方专家记录。")
+                    json_view(report["warnings"], label="全部原始诊断（专家）")
+                else:
+                    ui.label(
+                        "未发现来源记录或重复副本警告。文件操作和科研读取时仍会重新核验实际来源。"
+                    ).classes("an-muted")
             if report["warnings"]:
                 ui.notify(
                     f"文库有 {len(report['warnings'])} 项来源/文件诊断，请检查详情。",
@@ -254,7 +391,9 @@ class LibraryPage:
 
         async def persist_view():
             current = self.ctx.library.views()[view.value]
-            current["column_state"] = await grid.run_grid_method("getColumnState")
+            current["column_state"] = metadata_column_state(
+                await grid.run_grid_method("getColumnState")
+            )
             current["columns"] = [
                 c["colId"] for c in current["column_state"] if not c.get("hide")
             ]
@@ -276,12 +415,28 @@ class LibraryPage:
                 )
                 name = ui.input("保存视图名称", value=view.value).classes("w-full")
                 wrap = ui.checkbox("长标题换行", value=state.get("wrap", True))
+                title_mode = ui.select(
+                    {
+                        "bilingual": "中英文双行",
+                        "zh": "中文优先",
+                        "original": "原题优先",
+                        "custom": "自定义短名称优先",
+                    },
+                    value=state.get(
+                        "title_mode", self.ctx.settings.get("title_mode", "bilingual")
+                    ),
+                    label="此视图的标题显示方式",
+                ).classes("w-full")
                 ui.label(
                     "在表头拖动调整列顺序和宽度；点击表头排序，修改自动保存至当前视图。"
                 )
 
                 async def save():
-                    columns_state = await grid.run_grid_method("getColumnState")
+                    if not selected.value:
+                        raise ValueError("请至少保留一个文献数据列；选择列会一直显示")
+                    columns_state = metadata_column_state(
+                        await grid.run_grid_method("getColumnState")
+                    )
                     for col in columns_state:
                         col["hide"] = col["colId"] not in selected.value
                     self.ctx.library.save_view(
@@ -290,6 +445,7 @@ class LibraryPage:
                             "columns": selected.value,
                             "column_state": columns_state,
                             "wrap": wrap.value,
+                            "title_mode": title_mode.value,
                         },
                     )
                     self.ctx.settings.set("active_view", name.value)
@@ -319,7 +475,18 @@ class LibraryPage:
             if state.get("column_state"):
                 await grid.run_grid_method(
                     "applyColumnState",
-                    {"state": state["column_state"], "applyOrder": True},
+                    {
+                        "state": [
+                            {
+                                "colId": SELECTION_COLUMN,
+                                "hide": False,
+                                "pinned": "left",
+                                "width": 72,
+                            },
+                            *metadata_column_state(state["column_state"]),
+                        ],
+                        "applyOrder": True,
+                    },
                 )
 
         ui.timer(0.2, guard(restore_columns), once=True)
@@ -375,7 +542,7 @@ class LibraryPage:
         ):
             ui.label(paper["title_original"]).classes("text-xl font-semibold")
             ui.label(
-                f"{paper.get('doi') or '无 DOI'} · {value_label(paper.get('integrity', ''))} · {paper['pdf_path']}"
+                f"{paper.get('doi') or '无 DOI'} · {value_label(paper.get('identity_basis'))} · {INTEGRITY_LABELS.get(paper.get('integrity'), '尚未核验')} · {paper['pdf_path']}"
             ).classes("an-muted text-xs break-all")
             custom = ui.input(
                 "自定义显示名称", value=paper.get("custom_name") or ""
@@ -387,9 +554,7 @@ class LibraryPage:
                 "人工确认此译名",
                 value=(paper.get("translation") or {}).get("confirmed", False),
             )
-            tags = ui.input("标签（逗号分隔）", value=", ".join(paper["tags"])).classes(
-                "w-full"
-            )
+            tags = self.tag_input("标签（输入可查找，回车新建）", paper["tags"])
             reading = ui.select(
                 ["未读", "正在阅读", "已读", "重点"],
                 value=paper.get("reading_status") or "未读",
@@ -549,7 +714,7 @@ class LibraryPage:
             )
             folder = ui.input("目标分类（相对文库根目录）", value="").classes("w-full")
             title = ui.input("原始标题（单篇可填；留空采用文件名）").classes("w-full")
-            tags = ui.input("标签（逗号分隔）").classes("w-full")
+            tags = self.tag_input("标签（输入可查找，回车新建）")
             path = ui.input("本地 PDF 或文件夹绝对路径").classes("w-full")
             recursive = ui.checkbox("递归导入文件夹", value=False)
             read_translation = self.title_translation_controls()
@@ -678,8 +843,8 @@ class LibraryPage:
             ui.label(f"标签与可选分组 · 当前选择 {len(ids)} 篇").classes(
                 "text-xl font-semibold"
             )
-            add = ui.input("添加标签（逗号分隔）").classes("w-full")
-            remove = ui.input("移除标签（逗号分隔）").classes("w-full")
+            add = self.tag_input("添加标签（输入可查找，回车新建）")
+            remove = self.tag_input("移除现有标签", allow_new=False)
             ui.button(
                 "应用到选择清单",
                 on_click=guard(
@@ -694,7 +859,7 @@ class LibraryPage:
                 ),
             )
             group = ui.input("标签分组名称").classes("w-full")
-            labels = ui.input("组内标签（逗号分隔）").classes("w-full")
+            labels = self.tag_input("组内标签（输入可查找，回车新建）")
             ui.button(
                 "保存分组",
                 on_click=guard(
@@ -787,7 +952,30 @@ class LibraryPage:
                 template = ui.input(
                     "实际命名模板", value=next(iter(template_names.values()))
                 ).classes("grow")
-                folder = ui.input("目标分类（留空保持原分类）")
+                target_mode = ui.select(
+                    {
+                        "keep": "保持当前分类",
+                        "category": "移动到指定分类",
+                        "root": "移到文库根目录",
+                    },
+                    value="keep",
+                    label="分类移动目标",
+                ).props("outlined dense")
+                folder = ui.input("目标分类（相对文库根目录）")
+                folder.set_visibility(False)
+                target_mode.on_value_change(
+                    lambda e: folder.set_visibility(e.value == "category")
+                )
+
+            def target_options():
+                if target_mode.value == "root":
+                    return {"folder": None, "move_to_root": True}
+                if target_mode.value == "category":
+                    if not folder.value or not folder.value.strip():
+                        raise ValueError("请填写目标分类，或明确选择移到文库根目录")
+                    return {"folder": folder.value, "move_to_root": False}
+                return {"folder": None, "move_to_root": False}
+
             template_choice.on_value_change(
                 lambda e: template.set_value(template_names[e.value])
             )
@@ -811,8 +999,24 @@ class LibraryPage:
                     ),
                 ).props("flat")
             with ui.expansion("翻译、费用与重译", icon="translate").classes("w-full"):
+                from .ui_presets import preset_controls
+
                 read_translation = parameter_editor(
                     {**DEFAULT_OPTIONS, **self.ctx.settings.get("translation", {})}
+                )
+
+                def apply_translation_preset(config):
+                    read_translation.apply(config)
+                    consent.set_value(False)
+                    force.set_value(False)
+                    estimate()
+
+                preset_controls(
+                    self.ctx.settings,
+                    "translation",
+                    read_translation,
+                    apply_translation_preset,
+                    title="标题翻译预设",
                 )
                 consent = ui.checkbox(
                     "我授权将本批待翻译的原题发送到 DeepSeek，并接受所示费用上限",
@@ -872,8 +1076,8 @@ class LibraryPage:
 
             with ui.expansion("批量显示名称与标签", icon="edit").classes("w-full"):
                 custom = ui.input("统一显示名称（仅变更显示字段）").classes("w-full")
-                add = ui.input("添加标签（逗号分隔）").classes("w-full")
-                remove = ui.input("移除标签（逗号分隔）").classes("w-full")
+                add = self.tag_input("添加标签（输入可查找，回车新建）")
+                remove = self.tag_input("移除现有标签", allow_new=False)
 
                 def metadata():
                     for paper_id in ids:
@@ -971,8 +1175,13 @@ class LibraryPage:
                 )
 
             def preview():
-                template_value, folder_value = template.value, folder.value or None
-                state["preview_form"] = (template.value, folder.value, missing.value)
+                template_value, target = template.value, target_options()
+                state["preview_form"] = (
+                    template.value,
+                    target_mode.value,
+                    folder.value,
+                    missing.value,
+                )
                 if missing.value == "translate":
                     options = read_translation()
                     grant = consent.value
@@ -990,7 +1199,7 @@ class LibraryPage:
                             "preview": self.ctx.library.preview_rename(
                                 ids,
                                 template_value,
-                                folder=folder_value,
+                                **target,
                                 missing_translation="skip",
                             ),
                         }
@@ -1013,7 +1222,7 @@ class LibraryPage:
                         self.ctx.library.preview_rename(
                             ids,
                             template_value,
-                            folder=folder_value,
+                            **target,
                             missing_translation=missing.value,
                         )
                     )
@@ -1026,12 +1235,17 @@ class LibraryPage:
                 overrides = {
                     r["id"]: r["final_stem"] for r in changed if r.get("enabled")
                 }
-                state["preview_form"] = (template.value, folder.value, missing.value)
+                state["preview_form"] = (
+                    template.value,
+                    target_mode.value,
+                    folder.value,
+                    missing.value,
+                )
                 display_preview(
                     self.ctx.library.preview_rename(
                         enabled,
                         template.value,
-                        folder=folder.value or None,
+                        **target_options(),
                         overrides=overrides,
                         missing_translation="skip"
                         if missing.value != "fallback"
@@ -1055,6 +1269,7 @@ class LibraryPage:
                 )
                 if changed or state["preview_form"] != (
                     template.value,
+                    target_mode.value,
                     folder.value,
                     missing.value,
                 ):

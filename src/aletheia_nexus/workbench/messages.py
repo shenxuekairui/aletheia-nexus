@@ -22,6 +22,20 @@ def _add(keys, message):
 
 
 _add(
+    ("Unreadable library record",),
+    "该来源记录或对应文件无法读取或未通过核验。请检查所列路径、缺失文件和原始来源记录；恢复正确材料后重新扫描。",
+)
+_add(
+    ("Unreadable library labels; acquisition labels retained",),
+    "独立标签记录无法读取或与文件不匹配，暂时保留原来源中的标签。请检查可变标签记录，原 PDF 和来源证据未被改写。",
+)
+_add(
+    ("identical source copies share one paper identity",),
+    "发现内容与来源完全相同的多个副本，已按同一论文身份计数。请检查所列重复路径及历史引用，再决定是否整理副本。",
+)
+
+
+_add(
     ("pdf_not_found", "FileNotFoundError"),
     "找不到所选文件。请检查文件是否被移动、删除或位于未连接的磁盘，再刷新文献库。",
 )
@@ -656,6 +670,11 @@ _add(
 _add(
     ("renderer and tesseract commands are required",),
     "缺少 PDF 渲染器或 OCR 程序配置。请在环境诊断中检查 Poppler 和 Tesseract，再重新解析。",
+)
+
+_add(
+    ("explicit_supplement_page_consent_required",),
+    "补充材料页面需要本次明确授权。请核对所属文献、实际补充页码、外发范围及预算，再确认是否发送给模型。",
 )
 
 _PREFIXES = (

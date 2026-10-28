@@ -56,6 +56,12 @@ def json_text(value):
 
 
 def split_tags(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(dict.fromkeys(tag for item in value for tag in split_tags(item)))
+    if not isinstance(value, str):
+        raise ValueError("标签须为文字或文字列表")
     return list(
         dict.fromkeys(
             t.strip() for t in value.replace("，", ",").split(",") if t.strip()
