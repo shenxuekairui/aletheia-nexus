@@ -36,7 +36,7 @@ from aletheia_nexus.acquire.metadata.titles import contains_cjk
 from aletheia_nexus.acquire.metadata.transport import get_json
 from aletheia_nexus.content.gate import sha256_file, validate_parser_input
 from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
-from aletheia_nexus.core.identifiers.doi import extract_dois, normalize_doi
+from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.organization import destination
 from aletheia_nexus.core.paper_request import PaperRequest, compact_bibliography
 from aletheia_nexus.core.urls import redact_url_for_record
@@ -539,6 +539,14 @@ class AcquisitionService:
 
     def preview_inputs(self, value, format: str | None = None) -> dict:
         """Normalize TXT/CSV/JSON or pasted citations; retain invalid-row diagnostics."""
+        from .acquisition_input import (
+            build_input_preview,
+            is_bracket_group,
+            parse_text_input,
+            structured_entries,
+        )
+
+        parsed_text = None
         if isinstance(value, Path):
             format = format or value.suffix.lower().lstrip(".")
             value = value.read_text("utf-8-sig")
@@ -546,50 +554,31 @@ class AcquisitionService:
             if format == "json" or (
                 format is None and value.lstrip().startswith(("[", "{"))
             ):
-                value = json.loads(value)
-                if isinstance(value, dict):
-                    value = value.get("papers", [value])
+                try:
+                    structured = json.loads(value)
+                except json.JSONDecodeError:
+                    first_line = next((s for s in value.splitlines() if s.strip()), "")
+                    if format is not None or not is_bracket_group(first_line):
+                        raise
+                    parsed_text = parse_text_input(value)
+                else:
+                    value = structured
+                    if isinstance(value, dict):
+                        value = value.get("papers", [value])
             elif format == "csv":
                 value = list(csv.DictReader(io.StringIO(value.lstrip("\ufeff"))))
             else:
-                rows = []
-                for line in value.splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    dois = extract_dois(line)
-                    # A bare list of DOIs can be comma-, tab- or space-separated.
-                    if dois and all(
-                        not p.strip(" ,;\t")
-                        for p in re.split(
-                            r"(?:https?://(?:dx\.)?doi\.org/)?10\.\d{4,9}/[^\s,;]+",
-                            line,
-                            flags=re.I,
-                        )
-                    ):
-                        rows.extend(dois)
-                    else:
-                        rows.append(line)
-                value = rows
-        if not isinstance(value, (list, tuple)):
+                parsed_text = parse_text_input(value)
+        if parsed_text is None and not isinstance(value, (list, tuple)):
             raise ValueError("provide pasted lines or a TXT, CSV, JSON paper list")
-        seen, items, errors = set(), [], []
-        for index, row in enumerate(value, 1):
-            try:
-                request = normalize_request(row)
-                duplicate = request.key in seen
-                seen.add(request.key)
-                items.append(
-                    {
-                        "id": request.key,
-                        "request": asdict(request),
-                        "duplicate": duplicate,
-                        "line": index,
-                    }
-                )
-            except (ValueError, TypeError) as exc:
-                errors.append({"line": index, "error": str(exc)})
-        return {"items": items, "errors": errors, "count": len(seen)}
+        parsed = parsed_text or {"entries": structured_entries(value)}
+        return build_input_preview(
+            parsed["entries"],
+            normalizer=normalize_request,
+            folder_check=lambda folder: destination(self.root, folder),
+            errors=parsed.get("errors", ()),
+            warnings=parsed.get("warnings", ()),
+        )
 
     def resolve_title(self, request, *, limit=8, timeout=20.0, fetch=None) -> dict:
         """Search Crossref; only exact, unique, constraint-consistent titles auto-resolve.
