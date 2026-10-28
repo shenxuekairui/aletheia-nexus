@@ -132,11 +132,15 @@ class AcquisitionPage:
             "本批标题翻译费用上限（按模型计费币种）",
             value=current["max_cost"],
             min=0.01,
-        )
+        ).bind_visibility_from(enabled, "value")
         consent = ui.checkbox(
             "我授权仅将待翻译的英文标题发送给DeepSeek，并接受所示费用上限", value=False
-        )
-        with ui.expansion("标题翻译高级参数", icon="translate").classes("w-full"):
+        ).bind_visibility_from(enabled, "value")
+        with (
+            ui.expansion("标题翻译高级参数", icon="translate")
+            .classes("w-full")
+            .bind_visibility_from(enabled, "value")
+        ):
             read = parameter_editor(
                 {k: v for k, v in current.items() if k != "max_cost"}
             )
@@ -357,26 +361,89 @@ class AcquisitionPage:
             "获取论文",
             "先确认论文身份，再交给现有可信获取引擎；正文与 SI 分别报告结果。",
         )
-        state = {"preview": None, "grid": None}
+        from .ui_acquisition_batch import AcquisitionBatchEditor
+        from .ui_folders import choose_library_folder
+
+        draft = self.ctx.settings.get("acquisition_input_draft", {}) or {}
+        if draft.get("library") != str(self.ctx.library.root):
+            draft = {}
+        example = getattr(self, "acquisition_example_text", "")
+        self.acquisition_example_text = ""
+        if example:
+            draft = {}
+        state = {
+            "preview": None,
+            "grid": None,
+            "batch": None,
+            "dirty": draft.get("dirty", False),
+        }
         defaults = _options(self.ctx.settings.get("acquisition", {}))
         workflow_defaults = acquisition_workflow_preferences(
             self.ctx.settings.get("acquisition_workflow", {}),
             translation_defaults=self.ctx.settings.get("translation", {}),
         )
+        if draft:
+            workflow_defaults["folder"] = draft.get(
+                "default_folder", workflow_defaults["folder"]
+            )
+            workflow_defaults["tags"] = draft.get(
+                "default_tags", workflow_defaults["tags"]
+            )
         with ui.row().classes("w-full gap-5 items-start"):
             with ui.card().classes("an-card grow min-w-[450px]"):
                 ui.label("1 · 添加论文").classes("font-semibold text-lg")
                 value = (
-                    ui.textarea("DOI、中英文标题或文献清单（每行一篇）")
+                    ui.textarea(
+                        "粘贴 DOI、标题或分组文献清单",
+                        value=example or draft.get("text", ""),
+                    )
                     .classes("w-full")
-                    .props('outlined rows=7 placeholder="10.xxxx/... 或完整标题"')
+                    .props(
+                        'outlined rows=7 placeholder="A. 羧酸电还原\\n1. 10.xxxx/...\\n2. 10.xxxx/... | 标签=草酸,待读\\nB. 催化机理\\n1. 10.xxxx/..."'
+                    )
                 )
+                ui.label(
+                    "可直接粘贴编号清单；分组标题作为分类。每行可补充：| 分类=已有或新目录 | 标签=标签1,标签2"
+                ).classes("an-muted text-sm")
 
-                def preview_input(text=None, format=None):
-                    report = self.ctx.acquisition.preview_inputs(
-                        value.value if text is None else text, format=format
+                def save_draft(rows=None):
+                    self.ctx.settings.set(
+                        "acquisition_input_draft",
+                        {
+                            "library": str(self.ctx.library.root),
+                            "text": value.value or "",
+                            "report": state["preview"],
+                            "rows": rows
+                            if rows is not None
+                            else (
+                                state["grid"].options["rowData"]
+                                if state["grid"]
+                                else []
+                            ),
+                            "default_folder": folder.value or "",
+                            "default_tags": split_tags(tags.value),
+                            "dirty": state["dirty"],
+                            "preview_text": state.get("preview_text"),
+                        },
+                    )
+
+                def preview_input(text=None, format=None, restored=None):
+                    if text is not None:
+                        value.set_value(text)
+                    report = (
+                        restored["report"]
+                        if restored
+                        else self.ctx.acquisition.preview_inputs(
+                            value.value if text is None else text, format=format
+                        )
                     )
                     state["preview"] = report
+                    state["preview_text"] = (
+                        restored.get("preview_text", value.value)
+                        if restored
+                        else value.value
+                    )
+                    state["dirty"] = value.value != state["preview_text"]
                     data = []
                     for entry in report["items"]:
                         if entry["duplicate"]:
@@ -391,61 +458,174 @@ class AcquisitionPage:
                                 "folder": request.get("folder") or "",
                                 "tags": ", ".join(request.get("tags") or []),
                                 "filename": request.get("filename") or "",
+                                "input_group": entry.get("group")
+                                or request.get("folder")
+                                or "未分组",
+                                "folder_mode": (entry.get("assignment") or {}).get(
+                                    "folder_mode",
+                                    "custom" if request.get("folder") else "inherit",
+                                ),
+                                "tags_mode": (entry.get("assignment") or {}).get(
+                                    "tags_mode",
+                                    "custom" if request.get("tags") else "inherit",
+                                ),
                                 "resolution": "DOI"
                                 if request.get("doi")
                                 else "待解析标题",
                             }
                         )
+                    if restored:
+                        data = restored["rows"]
                     preview_area.clear()
                     with preview_area:
                         ui.label(
                             f"{report['count']} 篇去重候选；{len(report['errors'])} 项输入错误。"
                         )
+                        for warning in report.get("warnings", []):
+                            ui.label(
+                                warning
+                                if isinstance(warning, str)
+                                else warning.get("message", str(warning))
+                            ).classes("an-info w-full")
+                        if report.get("conflicts"):
+                            ui.label(
+                                "同一篇论文有多份不同保存安排：请统一设置并只启用一行，或停用重复行；不会按首条静默决定。"
+                            ).classes("an-info w-full")
                         state["grid"] = ui.aggrid(
                             {
                                 "localeText": GRID_LOCALE,
                                 "stopEditingWhenCellsLoseFocus": True,
                                 "columnDefs": [
                                     {
+                                        "colId": "_select",
+                                        "headerName": "选择",
+                                        "checkboxSelection": True,
+                                        "headerCheckboxSelection": True,
+                                        "headerCheckboxSelectionFilteredOnly": True,
+                                        "pinned": "left",
+                                        "width": 72,
+                                    },
+                                    {
                                         "field": "enabled",
-                                        "headerName": "获取",
-                                        "editable": True,
-                                        "width": 80,
+                                        "headerName": "获取状态",
+                                        "cellDataType": False,
+                                        ":valueFormatter": "p => p.value ? '将获取' : '已停用'",
+                                        "width": 100,
                                     },
                                     *(
                                         {
                                             "field": k,
                                             "headerName": label,
-                                            "editable": k != "resolution",
+                                            "editable": k
+                                            not in {
+                                                "resolution",
+                                                "placement_state",
+                                                "input_group",
+                                                "placement_error",
+                                            },
                                             "width": width,
+                                            **(
+                                                {
+                                                    ":valueFormatter": "p => p.data.folder_mode === 'root' ? '文库根目录' : p.data.folder_mode === 'inherit' ? (p.data.effective_folder || '文库根目录') + '（默认）' : p.value",
+                                                    ":valueSetter": "p => { p.data.folder = String(p.newValue || '').trim(); p.data.folder_mode = p.data.folder ? 'custom' : 'root'; return true; }",
+                                                }
+                                                if k == "folder"
+                                                else {}
+                                            ),
+                                            **(
+                                                {
+                                                    ":valueFormatter": "p => p.data.tags_mode === 'inherit' ? (p.data.effective_tags || '无标签') + '（默认）' : (p.value || '无标签')",
+                                                    ":valueSetter": "p => { p.data.tags = String(p.newValue || '').trim(); p.data.tags_mode = 'custom'; return true; }",
+                                                }
+                                                if k == "tags"
+                                                else {}
+                                            ),
+                                            **(
+                                                {"hide": True}
+                                                if k
+                                                in {
+                                                    "input_group",
+                                                    "filename",
+                                                    "placement_error",
+                                                }
+                                                else {}
+                                            ),
+                                            **(
+                                                {
+                                                    "hide": not any(
+                                                        r["title"] for r in data
+                                                    )
+                                                }
+                                                if k == "title"
+                                                else {}
+                                            ),
+                                            **(
+                                                {"hide": all(r["doi"] for r in data)}
+                                                if k == "resolution"
+                                                else {}
+                                            ),
+                                            **(
+                                                {"filter": "agTextColumnFilter"}
+                                                if k == "input_group"
+                                                else {}
+                                            ),
                                         }
                                         for k, label, width in (
                                             ("doi", "DOI", 210),
-                                            ("title", "标题", 380),
-                                            ("folder", "单篇分类覆盖", 160),
-                                            ("tags", "单篇标签覆盖", 160),
+                                            ("title", "标题", 260),
+                                            ("folder", "分类目录（可编辑）", 260),
+                                            ("tags", "本篇标签（可编辑）", 230),
+                                            ("placement_state", "目录状态", 130),
                                             ("filename", "单篇文件基础名覆盖", 200),
                                             ("resolution", "身份阶段", 150),
+                                            ("input_group", "输入分组", 180),
+                                            ("placement_error", "需修正的设置", 250),
                                         )
                                     ),
                                 ],
                                 "rowData": data,
                                 "defaultColDef": {"resizable": True},
-                                "rowSelection": "single",
+                                "rowSelection": "multiple",
+                                "suppressRowClickSelection": True,
+                                "pagination": True,
+                                "paginationPageSize": 25,
                                 ":getRowId": "params => params.data.id",
                             },
                             theme="quartz",
-                        ).classes("h-72 w-full")
+                        ).classes("h-96 w-full")
+                        state["batch"] = AcquisitionBatchEditor(
+                            self,
+                            state["grid"],
+                            report,
+                            lambda: folder.value or None,
+                            lambda: split_tags(tags.value),
+                            save_draft,
+                        )
+                        state["grid"].options["rowData"] = state["batch"].decorate(data)
+                        state["grid"].update()
+                        state["batch"].render_tools()
+                        save_draft(state["grid"].options["rowData"])
+
+                        async def edit_row(event):
+                            await guard(
+                                lambda: state["batch"].open_row(
+                                    event.args["data"]["id"]
+                                )
+                            )()
+
+                        state["grid"].on("cellDoubleClicked", edit_row, args=["data"])
+                        ui.timer(0.2, guard(state["batch"].refresh_count), once=True)
                         if report["errors"]:
                             rows_table(report["errors"], row_key="line")
-                        ui.label(
-                            "无DOI的英文标题须先解析并确认候选；中文标题沿用CNKI书目身份流程。"
-                        ).classes("an-muted text-xs")
-                        ui.button(
-                            "解析 / 确认当前选中标题",
-                            icon="manage_search",
-                            on_click=guard(resolve_title),
-                        ).props("outline")
+                        if any(not row["doi"] for row in data):
+                            ui.label(
+                                "没有 DOI 的标题需先确认书目候选；PDF 获取后再解析原文。"
+                            ).classes("an-muted text-xs")
+                            ui.button(
+                                "解析 / 确认当前选中标题",
+                                icon="manage_search",
+                                on_click=guard(resolve_title),
+                            ).props("outline")
 
                 async def uploaded(event):
                     text = await event.file.text(encoding="utf-8-sig")
@@ -462,6 +642,19 @@ class AcquisitionPage:
                         icon="upload_file",
                         on_click=guard(self.import_dialog),
                     ).props("flat")
+
+                    def clear_input():
+                        state.update(preview=None, grid=None, batch=None, dirty=False)
+                        value.set_value("")
+                        preview_area.clear()
+                        save_draft([])
+
+                    ui.button(
+                        "清空本批", icon="clear", on_click=guard(clear_input)
+                    ).props("flat")
+                ui.label(
+                    "输入和逐篇设置自动保存在本地，切换页面或刷新后可继续；不会自动启动下载。"
+                ).classes("an-muted text-xs")
                 ui.upload(
                     label="或导入 TXT / CSV / JSON",
                     on_upload=uploaded,
@@ -481,6 +674,17 @@ class AcquisitionPage:
                     .props("outlined")
                     .classes("w-full")
                 )
+                ui.button(
+                    "选已有目录 / 新建子目录",
+                    icon="create_new_folder",
+                    on_click=guard(
+                        lambda: choose_library_folder(
+                            self.ctx.library,
+                            folder.set_value,
+                            initial=folder.value or "",
+                        )
+                    ),
+                ).props("outline")
                 tags = (
                     ui.input(
                         "标签（逗号分隔）", value=", ".join(workflow_defaults["tags"])
@@ -488,6 +692,9 @@ class AcquisitionPage:
                     .props("outlined")
                     .classes("w-full")
                 )
+                ui.label(
+                    "这是批次默认值。分组、行内设置或逐篇编辑优先；预览中会显示各篇最终安排。"
+                ).classes("an-muted text-sm")
                 collection = (
                     ui.input(
                         "成功论文加入固定研究集合（可选）",
@@ -522,30 +729,47 @@ class AcquisitionPage:
                     value="public" if defaults["public_only"] else "institution",
                     label="获取策略",
                 ).classes("w-full")
-                source = ui.select(
-                    {
-                        "auto": "自动来源（可用时含CNKI）",
-                        "cnki": "指定CNKI",
-                        "exclude_cnki": "排除CNKI",
-                    },
-                    value=defaults["source_preference"],
-                    label="来源策略",
-                ).classes("w-full")
-                interaction = ui.select(
-                    {
-                        "wait": "等待人工登录 / 验证",
-                        "skip": "跳过并继续后续论文",
-                        "pause": "暂停批次，等待人工决定",
-                    },
-                    value=defaults["interaction_policy"],
-                    label="需要人工操作时",
-                ).classes("w-full")
-                timeout = ui.number(
-                    "交互等待（秒；0表示不限时）",
-                    value=defaults["interaction_timeout"],
-                    min=0,
-                )
+                with ui.expansion("来源与登录处理（可选）", icon="tune").classes(
+                    "w-full"
+                ):
+                    source = ui.select(
+                        {
+                            "auto": "自动来源（可用时含CNKI）",
+                            "cnki": "指定CNKI",
+                            "exclude_cnki": "排除CNKI",
+                        },
+                        value=defaults["source_preference"],
+                        label="来源策略",
+                    ).classes("w-full")
+                    interaction = ui.select(
+                        {
+                            "wait": "等待人工登录 / 验证",
+                            "skip": "跳过并继续后续论文",
+                            "pause": "暂停批次，等待人工决定",
+                        },
+                        value=defaults["interaction_policy"],
+                        label="需要人工操作时",
+                    ).classes("w-full")
+                    timeout = ui.number(
+                        "交互等待（秒；0表示不限时）",
+                        value=defaults["interaction_timeout"],
+                        min=0,
+                    )
         preview_area = ui.column().classes("w-full")
+
+        def text_changed():
+            if state["preview"]:
+                state["dirty"] = value.value != state.get("preview_text")
+            save_draft()
+
+        value.on_value_change(guard(text_changed))
+        value.on("keydown.ctrl.enter", guard(preview_input))
+        folder.on_value_change(
+            guard(lambda: state["batch"].refresh() if state["batch"] else None)
+        )
+        tags.on_value_change(
+            guard(lambda: state["batch"].refresh() if state["batch"] else None)
+        )
         excluded = {
             "include_si",
             "public_only",
@@ -676,9 +900,12 @@ class AcquisitionPage:
 
             if state["grid"] is None:
                 raise ValueError("请先预览论文")
-            selected = await state["grid"].get_selected_row()
-            if not selected:
-                raise ValueError("请在候选表中单击一篇待解析标题")
+            await read_edited_grid(state["grid"])
+            selected_rows = await state["grid"].get_selected_rows()
+            if len(selected_rows) != 1:
+                raise ValueError("请在候选表左侧选择一篇待解析标题")
+            selected = selected_rows[0]
+            queried_identity = (selected["doi"], selected["title"])
             request = next(
                 e["request"]
                 for e in state["preview"]["items"]
@@ -692,7 +919,13 @@ class AcquisitionPage:
             ui.notify("正在查询公共书目元数据…")
             report = await run.io_bound(self.ctx.acquisition.resolve_title, request)
 
-            def apply(candidate):
+            async def apply(candidate):
+                rows = await read_edited_grid(state["grid"])
+                current = next(row for row in rows if row["id"] == selected["id"])
+                if (current["doi"], current["title"]) != queried_identity:
+                    raise ValueError(
+                        "查询期间已修改本篇 DOI 或标题，请按新内容重新查询"
+                    )
                 for key in ("doi", "title", "authors", "journal", "year"):
                     if candidate.get(key) is not None:
                         request[key] = candidate[key]
@@ -700,7 +933,7 @@ class AcquisitionPage:
                     e for e in state["preview"]["items"] if e["id"] == selected["id"]
                 )
                 original["request"] = deepcopy(request)
-                rows = state["grid"].options["rowData"]
+                state["batch"].originals[selected["id"]] = deepcopy(request)
                 for row in rows:
                     if row["id"] == selected["id"]:
                         row.update(
@@ -710,10 +943,10 @@ class AcquisitionPage:
                             if not candidate.get("doi")
                             else "候选已确认",
                         )
-                state["grid"].update()
+                await state["batch"].replace(rows)
 
             if report["status"] in {"RESOLVED", "CNKI_TITLE"}:
-                apply(report["request"])
+                await apply(report["request"])
                 ui.notify(
                     f"标题解析：{value_label(report['status'])}；PDF尚未获取。",
                     type="positive",
@@ -736,11 +969,14 @@ class AcquisitionPage:
                                 f"{candidate.get('authors')} · {candidate.get('year')} · {candidate.get('journal')} · {candidate.get('doi')}"
                             )
                             json_view(candidate, label="匹配和冲突依据")
+
+                            async def accept(c=candidate):
+                                await apply(c)
+                                dialog.close()
+
                             ui.button(
                                 "确认是此论文",
-                                on_click=guard(
-                                    lambda c=candidate: (apply(c), dialog.close())
-                                ),
+                                on_click=guard(accept),
                             )
                     if not report.get("candidates"):
                         ui.label(
@@ -749,42 +985,49 @@ class AcquisitionPage:
                     ui.button("关闭", on_click=dialog.close).props("flat")
                 dialog.open()
 
-        async def start():
-            if state["grid"] is None:
+        async def start(show_preview=False):
+            if state["batch"] is None:
                 raise ValueError("请先生成输入预览")
-            rows = [
-                r for r in await read_edited_grid(state["grid"]) if r.get("enabled")
-            ]
-            request_map = {e["id"]: e["request"] for e in state["preview"]["items"]}
-            requests = []
-            for row in rows:
-                request = {
-                    **request_map[row["id"]],
-                    "doi": row["doi"] or None,
-                    "title": row["title"] or None,
-                    "folder": row["folder"] or folder.value or None,
-                    "tags": split_tags(row["tags"] or tags.value),
-                }
-                if not request["doi"] and row["resolution"] == "待解析标题":
-                    raise ValueError("请先解析并确认无DOI标题，避免错误关联")
-                request["filename"] = row["filename"] or None
-                requests.append(request)
-            if not requests:
-                raise ValueError("没有启用的论文")
+            if state["dirty"]:
+                raise ValueError(
+                    "输入文字已修改，请先重新预览；逐篇目录和标签编辑可直接生效"
+                )
+            requests = await state["batch"].requests()
             config = options()
             postprocess = acquisition_postprocess_snapshot(
                 workflow(),
                 self.ctx.research.parser_options(),
                 self.ctx.settings.get("parsing", {}),
             )
-            self.submit(
-                "acquisition",
-                f"获取 {len(requests)} 篇论文",
-                [r.get("doi") or r["title"] for r in requests],
-                self.acquisition_worker(requests, config, postprocess),
-                {"requests": requests, "options": config, "postprocess": postprocess},
-            )
 
-        ui.button("开始获取已启用论文", icon="download", on_click=guard(start)).props(
-            "size=lg"
-        )
+            def submit():
+                self.submit(
+                    "acquisition",
+                    f"获取 {len(requests)} 篇论文",
+                    [r.get("doi") or r["title"] for r in requests],
+                    self.acquisition_worker(requests, config, postprocess),
+                    {
+                        "requests": requests,
+                        "options": config,
+                        "postprocess": postprocess,
+                    },
+                )
+
+            if show_preview:
+                state["batch"].confirm(
+                    requests, submit, include_si=config["include_si"]
+                )
+            else:
+                submit()
+
+        with ui.row().classes("an-toolbar"):
+            ui.button(
+                "开始获取已启用论文", icon="download", on_click=guard(start)
+            ).props("size=lg")
+            ui.button(
+                "查看完整保存安排",
+                icon="folder_open",
+                on_click=guard(lambda: start(True)),
+            ).props("outline")
+        if draft.get("report") and draft.get("rows"):
+            preview_input(restored=draft)
