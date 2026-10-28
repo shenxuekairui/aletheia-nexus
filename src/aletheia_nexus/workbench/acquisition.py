@@ -717,9 +717,19 @@ class AcquisitionService:
                             "relocations": relocations,
                         }
         successes = sum(i["status"] == "VERIFIED" for i in items)
+        incomplete_si = [
+            row["id"]
+            for row in items
+            if options["include_si"]
+            and row["status"] == "VERIFIED"
+            and (
+                row.get("si_status") != "COMPLETED"
+                or (row.get("supplements") or {}).get("truncated", False)
+            )
+        ]
         return {
             "status": "COMPLETED"
-            if successes == len(prepared)
+            if successes == len(prepared) and not incomplete_si
             else "PARTIAL"
             if successes
             else "FAILED",
@@ -727,6 +737,12 @@ class AcquisitionService:
             "checkpoint": str(checkpoint),
             "total": len(prepared),
             "success": successes,
+            "si_incomplete_count": len(incomplete_si),
+            "warnings": [
+                f"正文验证结果保留；{len(incomplete_si)} 篇论文的 SI 未完整取得或无法确认覆盖，请查看逐篇附件状态与诊断。"
+            ]
+            if incomplete_si
+            else [],
             "network_access": True,
             "model_calls": 0,
             "relocations": relocations,

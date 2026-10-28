@@ -28,6 +28,8 @@ PDF 校验真实 PDF 结构与页数；Office Open XML 检查 ZIP 格式和对�
 
 只有角色为 SUPPLEMENT 的 PDF 进入既有 PDF SI 解析与检索。其他 PDF 角色和非 PDF 文件仍作为附件展示。失败、发现数量、截断、主文状态是否保持均有独立结果字段。最大附件数与单文件字节上限实际生效。URL 先通过现有安全传输，每次重定向继续复核，不复制浏览器 Cookie 给附件 HTTP 请求；受机构会话保护的 SI 可能明确失败。
 
+已选择获取 SI 时，只要任一成功正文的附件失败、部分成功、达到数量上限而截断、未找到或尚不支持，整体任务会标为“部分完成”，附逐篇状态和覆盖提示；正文仍保留原来的 `VERIFIED`，成功篇数仍按正文计数。未找到不代表论文没有 SI，不支持也不等于已获取齐全。
+
 父文 article ID、PDF/来源哈希和附件哈希是归属依据；文件名只用于阅读。重命名后保留原始官方 receipt 字节，通过文库登记的 source locator 继续定位旧来源记录并复用同一附件。没有静默重写历史来源证据。
 
 ## 配置与任务控制
@@ -51,7 +53,7 @@ PDF 校验真实 PDF 结构与页数；Office Open XML 检查 ZIP 格式和对�
 
 ```powershell
 $env:PYTHONPATH='src'
-.venv/Scripts/python.exe -m pytest tests/workbench/test_acquisition.py tests/workbench/test_acquisition_metadata.py tests/workbench/test_acquisition_supplements.py tests/workbench/test_acquisition_relocation.py -q
+.venv/Scripts/python.exe -m pytest tests/workbench/test_acquisition.py tests/workbench/test_acquisition_metadata.py tests/workbench/test_acquisition_supplements.py tests/workbench/test_acquisition_relocation.py tests/workbench/test_acquisition_status.py -q
 ```
 
 覆盖：输入去重、CSV 字段、唯一/歧义/冲突标题、真实参数传递、共享浏览器、边界控制、路径越界、来源不可被本地声明冒充、SI 角色/页面 DOI/假 HTML、多个附件部分失败、重复复用、三篇共享 SI、跨分类实际改名、旧检查点按来源哈希重定位、DOI-only 获取后作者/年份/期刊显示及人工改值保护、工作开始前登记恢复指针。Windows 符号链接测试在无创建权限时明确跳过，不报为通过。

@@ -506,7 +506,7 @@ def acquire_supplements(
     saved = sum(i["status"] in {"SAVED", "REUSED"} for i in items)
     return {
         "status": "COMPLETED"
-        if saved and saved == len(items)
+        if saved and saved == len(items) and len(discoveries) <= max_files
         else "PARTIAL"
         if saved
         else "FAILED"
