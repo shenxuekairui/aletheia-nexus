@@ -150,6 +150,30 @@ def render_task_dialog(controller):
                         new_tab=True,
                     )
                 if isinstance(result, dict):
+                    for warning in result.get("warnings", []):
+                        ui.label(user_message(warning)).classes(
+                            "an-info w-full text-sm"
+                        )
+                    organization = result.get("organization") or {}
+                    organization_preview = organization.get("preview") or {}
+                    if organization_preview:
+                        ui.label(
+                            f"自动命名：{organization_preview.get('executable', 0)} 篇可执行，"
+                            f"{organization_preview.get('skipped', 0)} 篇保留原名；"
+                            f"文件事务状态：{status_label(organization.get('status'))}。"
+                        ).classes("font-medium text-sm")
+                        skipped = [
+                            row
+                            for row in organization_preview.get("items", [])
+                            if row.get("status") != "READY"
+                        ]
+                        for row in skipped:
+                            reasons = "；".join(
+                                user_message(value) for value in row.get("errors", [])
+                            )
+                            ui.label(
+                                f"{row.get('title') or row['id']}：{reasons or '请查看整理预览'}"
+                            ).classes("text-orange-9 text-sm")
                     controller.output_links(result)
                     if job["kind"] == "input_normalization":
 
