@@ -286,20 +286,34 @@ class ResearchPages:
             "搜索已解析正文与SI的关键词、精确短语和原文证据；不会将字面匹配推断为科学关系。",
         )
         library = self.ctx.library.scan()["items"]
+        draft = getattr(self, "search_draft", {})
+        handoff = getattr(self, "search_handoff", None) or draft.get("handoff")
+        self.search_handoff = None
+        handoff_label = f"本次文库勾选（{len(handoff['ids'])} 篇）" if handoff else None
+        scopes = ["全部文库", "当前选择清单", *self.ctx.library.collections()]
+        if handoff_label:
+            scopes.insert(0, handoff_label)
+        chosen_scope = handoff_label if handoff else draft.get("scope", "全部文库")
+        if chosen_scope not in scopes:
+            chosen_scope = "全部文库"
         with ui.card().classes("an-card w-full"):
             with ui.row().classes("an-toolbar w-full"):
                 query = (
-                    ui.input("关键词 / 带引号短语").props("outlined").classes("grow")
+                    ui.input("关键词 / 带引号短语", value=draft.get("query", ""))
+                    .props("outlined")
+                    .classes("grow")
                 )
                 mode = ui.select(
                     {"and": "全部关键词", "or": "任一关键词"},
-                    value="and",
+                    value=draft.get("mode", "and"),
                     label="组合方式",
                 ).classes("w-32")
-                exact = ui.checkbox("整个查询作精确短语")
+                exact = ui.checkbox(
+                    "整个查询作精确短语", value=draft.get("exact", False)
+                )
                 scope = ui.select(
-                    ["全部文库", "当前选择清单", *self.ctx.library.collections()],
-                    value="全部文库",
+                    scopes,
+                    value=chosen_scope,
                     label="检索范围",
                 ).classes("min-w-44")
             with ui.row().classes("an-toolbar w-full"):
@@ -338,7 +352,8 @@ class ResearchPages:
                     label="章节类型",
                 )
                 size = ui.number("每页证据条数", value=50, min=1, max=500, step=1)
-                offset = ui.number("证据偏移量", value=0, min=0, step=50)
+                with ui.expansion("高级 · 指定检索起点", icon="tune"):
+                    offset = ui.number("证据偏移量", value=0, min=0, step=50)
                 view = ui.select(
                     ["证据视图", "论文视图"], value="证据视图", label="展示方式"
                 )
@@ -349,7 +364,9 @@ class ResearchPages:
         state = {"table": None, "report": None}
 
         def selected_ids():
-            if scope.value == "当前选择清单":
+            if handoff_label and scope.value == handoff_label:
+                ids = handoff["ids"]
+            elif scope.value == "当前选择清单":
                 ids = self.ctx.library.selection()
             elif scope.value != "全部文库":
                 ids = self.ctx.library.collections()[scope.value]
@@ -454,7 +471,7 @@ class ResearchPages:
                         on_click=guard(add_selected),
                     )
                     ui.button(
-                        "选择并开始AI研究",
+                        "仅用选中论文开始研究",
                         icon="science",
                         on_click=guard(start_research),
                     ).props("outline")
@@ -497,7 +514,9 @@ class ResearchPages:
             ui.notify(f"已添加 {len(ids)} 篇论文，SI范围在AI执行前另行确认。")
 
         def start_research():
-            add_selected()
+            ids = list(dict.fromkeys(h["paper_id"] for h in selected_hits()))
+            self.ctx.library.set_selection(ids, mode="replace")
+            self.current_task = None
             self.navigate("AI 研究")
 
         def show_hit():
@@ -522,6 +541,13 @@ class ResearchPages:
         async def search():
             from nicegui import run
 
+            self.search_draft = {
+                "query": query.value,
+                "mode": mode.value,
+                "exact": exact.value,
+                "scope": scope.value,
+                "handoff": handoff,
+            }
             status.set_text("正在检查所选来源与关键词索引…")
             report = await run.io_bound(
                 self.ctx.research.search,
@@ -548,6 +574,7 @@ class ResearchPages:
                 icon="document_scanner",
                 on_click=guard(lambda: self.parse_dialog(selected_ids())),
             ).props("outline")
+        query.on("keydown.enter", guard(search))
 
     def research_page(self):
         from nicegui import ui
@@ -559,6 +586,24 @@ class ResearchPages:
             "从当前选择清单创建有范围、字段和预算的科研任务；先审计划，再授权执行。",
         )
         ids = self.ctx.library.selection()
+        if not ids and not self.current_task:
+            with ui.card().classes("an-card w-full gap-3"):
+                ui.label("先选择研究材料").classes("text-xl font-semibold")
+                ui.label(
+                    "在文献库勾选论文并加入选择清单，或检索后直接使用选中论文。选好后再填写研究目标；默认不会调用模型。"
+                )
+                with ui.row().classes("an-toolbar"):
+                    ui.button(
+                        "到文献库选论文",
+                        icon="local_library",
+                        on_click=lambda: self.navigate("文献库"),
+                    )
+                    ui.button(
+                        "先检索原文",
+                        icon="search",
+                        on_click=lambda: self.navigate("科研检索"),
+                    ).props("outline")
+            return
         ui.label(f"当前选择 {len(ids)} 篇论文").classes("an-info w-full")
         with ui.row().classes("an-toolbar"):
             ui.button(
