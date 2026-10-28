@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 from .labels import GRID_LOCALE, field_label, value_label
@@ -110,7 +111,151 @@ def view_title(row, view, *, default_mode="bilingual"):
     return original
 
 
+class _ImportPostprocessContext:
+    """A 'skip next file' request must never become a paid title-batch skip."""
+
+    def __init__(self, context):
+        self.context = context
+
+    def __getattr__(self, name):
+        return getattr(self.context, name)
+
+    def should_skip(self, *_):
+        if self.context.should_skip():
+            self.context.progress(
+                import_skip_notice="导入文件阶段已结束，跳过文件请求未影响后续标题处理或已登记文件。"
+            )
+        return False
+
+
 class LibraryPage:
+    def import_worker(self, paths, *, title=None, folder="", tags=(), translation=None):
+        paths, tags, translation = (
+            tuple(paths),
+            tuple(tags),
+            deepcopy(translation or {}),
+        )
+
+        def worker(context):
+            rows = []
+            for index, incoming in enumerate(paths):
+                context.checkpoint()
+                context.progress(
+                    index,
+                    len(paths),
+                    item=str(incoming),
+                    stage="导入文件",
+                    import_phase="files",
+                )
+                if context.should_skip(str(incoming)):
+                    rows.append(
+                        {
+                            "path": str(incoming),
+                            "status": "SKIPPED",
+                            "reason": "按用户请求在文件边界跳过，原始文件未改变。",
+                        }
+                    )
+                    context.record(
+                        str(incoming), "SKIPPED", reason="按用户请求跳过下一份文件"
+                    )
+                    continue
+                try:
+                    row = self.ctx.library.import_pdf(
+                        incoming, title=title or None, folder=folder, tags=tags
+                    )
+                    rows.append(
+                        {"path": str(incoming), "status": "REGISTERED", "paper": row}
+                    )
+                    context.record(str(incoming), "REGISTERED", path=row["pdf_path"])
+                except Exception as exc:
+                    rows.append(
+                        {
+                            "path": str(incoming),
+                            "status": "FAILED",
+                            "error": str(exc)[:500],
+                        }
+                    )
+                    context.record(str(incoming), "FAILED", error=str(exc)[:500])
+            unused_skip = context.should_skip()
+            context.progress(
+                len(paths),
+                len(paths),
+                stage="导入后处理",
+                import_phase="postprocess",
+                import_skip_notice="已无待导入文件，跳过请求未撤销已登记文件。"
+                if unused_skip
+                else None,
+            )
+            imported = [
+                row["paper"]["id"] for row in rows if row["status"] == "REGISTERED"
+            ]
+            translated = self.translate_missing_english(
+                imported, translation, _ImportPostprocessContext(context)
+            )
+            return {
+                "items": rows,
+                "translation": translated,
+                "status": "COMPLETED"
+                if all(row["status"] == "REGISTERED" for row in rows)
+                and translated["status"] in {"COMPLETED", "NOT_REQUESTED"}
+                else "PARTIAL",
+            }
+
+        return worker
+
+    def attachment_import_worker(
+        self, parent_id, path, *, role="SUPPLEMENT", title=None
+    ):
+        def worker(context):
+            context.checkpoint()
+            context.progress(
+                0, 1, item=str(path), stage="导入文件", import_phase="files"
+            )
+            if context.should_skip(str(path)):
+                context.record(str(path), "SKIPPED", reason="按用户请求跳过下一份文件")
+                return {
+                    "status": "PARTIAL",
+                    "items": [
+                        {
+                            "path": str(path),
+                            "status": "SKIPPED",
+                            "document_role": role,
+                            "paper_id": parent_id,
+                        }
+                    ],
+                }
+            attachment = self.ctx.library.import_attachment(
+                parent_id, path, role=role, title=title
+            )
+            context.record(
+                str(path), "REGISTERED", path=attachment["path"], paper_id=parent_id
+            )
+            unused_skip = context.should_skip()
+            context.progress(
+                1,
+                1,
+                stage="附件登记完成",
+                import_phase="postprocess",
+                import_skip_notice="已无待导入文件，跳过请求未撤销已登记附件。"
+                if unused_skip
+                else None,
+            )
+            return {
+                "status": "COMPLETED",
+                "items": [
+                    {
+                        "path": attachment["path"],
+                        "original_path": str(path),
+                        "status": "REGISTERED",
+                        "document_role": role,
+                        "paper_id": parent_id,
+                        "attachment": attachment,
+                    }
+                ],
+            }
+
+        return worker
+
     def tag_input(self, label, value=(), *, allow_new=True):
         from nicegui import ui
 
@@ -177,7 +322,7 @@ class LibraryPage:
                     label="标签组合",
                 )
                 .props("outlined dense")
-                .classes("w-24")
+                .classes("min-w-[140px] w-[160px]")
             )
             untranslated = ui.checkbox(
                 "未翻译", value=self.library_filters.get("untranslated", False)
@@ -200,20 +345,28 @@ class LibraryPage:
             ).props("outlined dense")
 
         with ui.row().classes("an-toolbar w-full"):
-            collection = ui.select(
-                ["", *self.ctx.library.collections()],
-                value=self.library_filters.get("collection", ""),
-                label="固定研究集合",
-            ).props("outlined dense clearable")
-            saved = ui.select(
-                ["", *self.ctx.library.filters()], value="", label="保存筛选"
-            ).props("outlined dense clearable")
+            collection = (
+                ui.select(
+                    ["", *self.ctx.library.collections()],
+                    value=self.library_filters.get("collection", ""),
+                    label="固定研究集合",
+                )
+                .props("outlined dense clearable")
+                .classes("min-w-[180px] w-[220px]")
+            )
+            saved = (
+                ui.select(["", *self.ctx.library.filters()], value="", label="保存筛选")
+                .props("outlined dense clearable")
+                .classes("min-w-[180px] w-[220px]")
+            )
             view_name = self.ctx.settings.get("active_view", "标准文献视图")
             views = self.ctx.library.views()
             if view_name not in views:
                 view_name = next(iter(views))
-            view = ui.select(list(views), value=view_name, label="表格视图").props(
-                "outlined dense"
+            view = (
+                ui.select(list(views), value=view_name, label="表格视图")
+                .props("outlined dense")
+                .classes("min-w-[180px] w-[220px]")
             )
             ui.button(
                 "导入 PDF / 文件夹",
@@ -658,12 +811,9 @@ class LibraryPage:
                         "import",
                         "添加关联附件 · " + paper["title"][:50],
                         [paper_id],
-                        lambda c: (
-                            c.checkpoint(),
-                            self.ctx.library.import_attachment(
-                                paper_id, incoming, role=role, title=supplied_title
-                            ),
-                        )[1],
+                        self.attachment_import_worker(
+                            paper_id, incoming, role=role, title=supplied_title
+                        ),
                         {"parent_id": paper_id, "path": str(incoming), "role": role},
                     )
 
@@ -730,53 +880,13 @@ class LibraryPage:
                 )
                 translation = read_translation()
 
-                def worker(context):
-                    rows = []
-                    for i, incoming in enumerate(paths):
-                        context.checkpoint()
-                        context.progress(
-                            i, len(paths), item=str(incoming), stage="import"
-                        )
-                        try:
-                            row = self.ctx.library.import_pdf(
-                                incoming,
-                                title=title_value or None,
-                                folder=folder_value,
-                                tags=tag_values,
-                            )
-                            rows.append(
-                                {
-                                    "path": str(incoming),
-                                    "status": "REGISTERED",
-                                    "paper": row,
-                                }
-                            )
-                            context.record(str(incoming), "REGISTERED")
-                        except Exception as exc:
-                            rows.append(
-                                {
-                                    "path": str(incoming),
-                                    "status": "FAILED",
-                                    "error": str(exc)[:500],
-                                }
-                            )
-                            context.record(
-                                str(incoming), "FAILED", error=str(exc)[:500]
-                            )
-                    imported = [
-                        r["paper"]["id"] for r in rows if r["status"] == "REGISTERED"
-                    ]
-                    translated = self.translate_missing_english(
-                        imported, translation, context
-                    )
-                    return {
-                        "items": rows,
-                        "translation": translated,
-                        "status": "COMPLETED"
-                        if all(r["status"] == "REGISTERED" for r in rows)
-                        and translated["status"] in {"COMPLETED", "NOT_REQUESTED"}
-                        else "PARTIAL",
-                    }
+                worker = self.import_worker(
+                    paths,
+                    title=title_value,
+                    folder=folder_value,
+                    tags=tag_values,
+                    translation=translation,
+                )
 
                 self.submit(
                     "import",
