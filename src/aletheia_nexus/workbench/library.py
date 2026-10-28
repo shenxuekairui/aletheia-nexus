@@ -27,6 +27,7 @@ from aletheia_nexus.core.artifact_paths import (
     find_json_path,
     json_output_path,
 )
+from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.organization import destination, filename_stem
 from aletheia_nexus.library import scan_library, update_tags
 
@@ -447,6 +448,27 @@ class LibraryService:
                     .as_posix(),
                 )
                 rows.append(chosen)
+            # A DOI can have distinct PDFs or source declarations. Report the
+            # relationship without merging their IDs, evidence or selection.
+            doi_groups = {}
+            for row in rows:
+                if not row.get("doi"):
+                    continue
+                try:
+                    doi = normalize_doi(row["doi"])
+                except (TypeError, ValueError):
+                    continue
+                doi_groups.setdefault(doi, []).append(row["id"])
+            for doi, paper_ids in doi_groups.items():
+                if len(paper_ids) > 1:
+                    result["warnings"].append(
+                        {
+                            "error": "相同 DOI 存在多个来源或版本，请核对。",
+                            "doi": doi,
+                            "paper_ids": paper_ids,
+                            "count": len(paper_ids),
+                        }
+                    )
             # Explicit registry ownership has priority across the entire library,
             # not merely within the row being rendered. A legacy parent record
             # lacks the main sidecar hash and cannot distinguish two declarations

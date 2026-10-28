@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from html import unescape
 from pathlib import Path
 
 from .labels import GRID_LOCALE, field_label, value_label
@@ -472,6 +473,7 @@ class LibraryPage:
                 {
                     **r,
                     "title": title_for(r),
+                    "journal": unescape(r.get("journal") or ""),
                     "path": r["pdf_path"],
                     "tags": ", ".join(r["tags"]),
                     "authors": "; ".join(str(a) for a in r.get("authors", [])),
@@ -513,6 +515,7 @@ class LibraryPage:
                                 str(
                                     warning.get("sidecar")
                                     or warning.get("paper_id")
+                                    or warning.get("doi")
                                     or "文库记录"
                                 )
                             ).classes("text-xs break-all")
@@ -522,6 +525,11 @@ class LibraryPage:
                                 or "记录未提供具体原因"
                             )
                             ui.label(user_message(reason)).classes("text-sm")
+                            if warning.get("paper_ids"):
+                                ui.label(
+                                    f"涉及 {warning['count']} 个独立文献身份："
+                                    + "；".join(warning["paper_ids"])
+                                ).classes("text-xs break-all")
                             if warning.get("paths"):
                                 ui.label(
                                     "重复副本：" + "；".join(warning["paths"])

@@ -182,6 +182,9 @@ def test_refresh_updates_only_rows_and_keeps_checks_and_column_layout():
                 "tags": [],
                 "authors": [],
                 "collections": [],
+                "journal": "Catalysis Science &amp; Technology"
+                if paper_id == "a"
+                else "Journal &lt;Example&gt;",
             }
             for paper_id in ["a", "b"]
         ]
@@ -246,6 +249,7 @@ def test_refresh_updates_only_rows_and_keeps_checks_and_column_layout():
                 "title_for": lambda r: r["title"],
                 "value_label": ui_library.value_label,
                 "INTEGRITY_LABELS": ui_library.INTEGRITY_LABELS,
+                "unescape": ui_library.unescape,
                 "count": SimpleNamespace(set_text=lambda _: None),
                 "diagnostic_area": Area(),
                 "ui": SimpleNamespace(label=lambda _: Label()),
@@ -254,6 +258,14 @@ def test_refresh_updates_only_rows_and_keeps_checks_and_column_layout():
         )
         await callback()
         assert controller.library_rows == source_rows and len(updates) == 1
+        assert [row["journal"] for row in updates[0]] == [
+            "Catalysis Science & Technology",
+            "Journal <Example>",
+        ]
+        assert [row["journal"] for row in source_rows] == [
+            "Catalysis Science &amp; Technology",
+            "Journal &lt;Example&gt;",
+        ]
         assert options["rowData"] == [{"id": "old-server-snapshot"}]
         assert selected == ["a"] and layout == {"title": {"width": 480, "sort": "desc"}}
 
