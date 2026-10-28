@@ -75,6 +75,9 @@ def test_doi_only_acquisition_fills_engine_bibliography_and_keeps_source(
     report = service.run(["10.1000/metadata"], {"include_si": False})
     assert report["items"][0]["bibliography"]["status"] == "UPDATED"
     assert report["items"][0]["bibliography"]["network_requests"] == 0
+    assert report["items"][0]["title"] == "Original source title"
+    assert report["items"][0]["title_original"] == "Original source title"
+    assert report["items"][0]["request"]["title"] is None
     row = library.scan()["items"][0]
     assert row["authors"] == ["Jane Smith", "Ray Doe"]
     assert row["first_author"] == "Jane Smith"

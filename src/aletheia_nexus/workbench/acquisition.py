@@ -920,6 +920,10 @@ class AcquisitionService:
                         identity_verified=True,
                         folder=str(source.pdf_path.parent),
                     )
+                    if source.title:
+                        # Display the recorded original title without changing
+                        # the immutable DOI-only request or making a new query.
+                        row.update(title=source.title, title_original=source.title)
                     recorded = json.loads(source.sidecar_path.read_text("utf-8"))
                     route = _diagnostic_url(
                         (recorded.get("access") or {}).get("source_page_url")
