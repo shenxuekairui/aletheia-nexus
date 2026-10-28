@@ -376,3 +376,21 @@ def test_table_metadata_changes_reuse_validated_pdf_catalog(
     assert calls == []
     library.scan(refresh=True)
     assert len(calls) == 1
+
+
+def test_identical_source_copies_share_one_stable_grid_identity(library, tmp_path):
+    import shutil
+
+    row = add(library, tmp_path, folder="Z")
+    target = library.root / "A" / Path(row["pdf_path"]).name
+    target.parent.mkdir()
+    shutil.copyfile(row["pdf_path"], target)
+    sidecar = acquisition_sidecar_path(target)
+    sidecar.parent.mkdir()
+    shutil.copyfile(row["sidecar_path"], sidecar)
+    report = library.scan()
+    assert report["total"] == 1
+    assert report["items"][0]["id"] == row["id"]
+    assert report["items"][0]["pdf_path"] == row["pdf_path"]
+    assert report["items"][0]["duplicate_paths"] == [str(target)]
+    assert LibraryService(library.root).get(row["id"])["pdf_path"] == row["pdf_path"]

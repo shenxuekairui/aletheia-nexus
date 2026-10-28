@@ -277,6 +277,9 @@ class LibraryService:
             result = deepcopy(self._catalog)
             rows, supplements = [], []
             changed = False
+            preferred_locations = {
+                paper_id: info.get("pdf") for paper_id, info in state["papers"].items()
+            }
             for row in result["items"]:
                 try:
                     self.path(row["pdf_path"])
@@ -290,12 +293,6 @@ class LibraryService:
                     stored = state["papers"].setdefault(
                         paper_id, {"metadata": {}, "aliases": []}
                     )
-                    location = self._relative(row["pdf_path"])
-                    if stored.get("pdf") != location:
-                        stored.update(
-                            pdf=location, sidecar=self._relative(row["sidecar_path"])
-                        )
-                        changed = True
                     source = _read(Path(row["sidecar_path"]))
                     meta = stored.get("metadata", {})
                     target = source.get("target", {})
@@ -372,6 +369,43 @@ class LibraryService:
                     result["warnings"].append(
                         {"sidecar": row["sidecar_path"], "error": str(exc)}
                     )
+            # Byte-identical, identically declared copies have one stable paper
+            # identity. Keep a deterministic locator and expose every extra copy
+            # instead of giving AG Grid repeated row IDs or double-counting papers.
+            grouped = {}
+            for row in rows:
+                grouped.setdefault(row["id"], []).append(row)
+            rows = []
+            for paper_id, copies in grouped.items():
+                preferred = preferred_locations.get(paper_id)
+                chosen = next(
+                    (
+                        row
+                        for row in copies
+                        if self._relative(row["pdf_path"]) == preferred
+                    ),
+                    copies[0],
+                )
+                chosen["duplicate_paths"] = [
+                    row["pdf_path"] for row in copies if row is not chosen
+                ]
+                if chosen["duplicate_paths"]:
+                    result["warnings"].append(
+                        {
+                            "paper_id": paper_id,
+                            "error": "identical source copies share one paper identity",
+                            "paths": chosen["duplicate_paths"],
+                        }
+                    )
+                if state["papers"][paper_id].get("pdf") != self._relative(
+                    chosen["pdf_path"]
+                ):
+                    changed = True
+                state["papers"][paper_id].update(
+                    pdf=self._relative(chosen["pdf_path"]),
+                    sidecar=self._relative(chosen["sidecar_path"]),
+                )
+                rows.append(chosen)
             for row in rows:
                 attached = {}
                 for attachment_id, info in state["attachments"].items():
@@ -738,7 +772,10 @@ class LibraryService:
         This is used by the UI acquisition adapter, not a blanket exemption for
         arbitrary CLI task/checkpoint files. Old evidence is never rewritten.
         """
-        if schema != "aletheia-nexus/access-batch-checkpoint/v1":
+        if schema not in {
+            "aletheia-nexus/access-batch-checkpoint/v1",
+            "aletheia-nexus/acquisition-relocation/v1",
+        }:
             raise ValueError("unsupported reference adapter")
         directory = Path(directory).resolve()
         if not any(
