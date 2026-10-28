@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import Counter
 
 
@@ -48,7 +49,32 @@ def normalization_warning_summaries(warnings):
     ]
 
 
-def normalization_dialog(controller, snapshot, apply_preview):
+def batch_normalization_options(text, options):
+    """A visible opt-in recommendation; never send or reserve a model request."""
+    from aletheia_nexus.core.identifiers.doi import EXTRACT_PATTERN
+
+    from .input_normalization import input_normalization_options
+
+    proposal = input_normalization_options(options)
+    count = sum(1 for _ in EXTRACT_PATTERN.finditer(text))
+    size = len(text.encode("utf-8"))
+    needed = max(8192, count * 256 + 1024, size * 2)
+    tokens = min(65536, 2 ** math.ceil(math.log2(needed)))
+    proposal["max_output_tokens"] = max(proposal["max_output_tokens"], tokens)
+    model = proposal["model"]
+    # Include schema/prompt overhead and a margin. The provider still checks
+    # the exact reservation before HTTP; this is a user-facing estimate.
+    estimate = (
+        (size + 8000) * model["input_cost_per_million"]
+        + proposal["max_output_tokens"] * model["output_cost_per_million"]
+    ) / 1_000_000
+    proposal["max_cost"] = max(
+        proposal["max_cost"], math.ceil(estimate * 1.25 * 100) / 100
+    )
+    return input_normalization_options(proposal)
+
+
+def normalization_dialog(controller, snapshot, apply_preview, *, text_hint=""):
     from nicegui import ui
 
     from .input_normalization import input_normalization_options
@@ -81,6 +107,25 @@ def normalization_dialog(controller, snapshot, apply_preview):
         consent = ui.checkbox(
             "我授权将当前输入文字发送给 DeepSeek，并接受本次费用上限", value=False
         )
+        if len(text_hint.encode("utf-8")) > 6000 or len(text_hint.splitlines()) > 35:
+            ui.label(
+                "这份清单较长。可一键调整本批输出容量和费用上限，避免输出被截断；参数仍可在上方修改。"
+            ).classes("an-info w-full text-sm")
+
+            def recommend_batch():
+                proposal = batch_normalization_options(
+                    text_hint, {**read(), "max_cost": budget.value}
+                )
+                read.apply({k: v for k, v in proposal.items() if k != "max_cost"})
+                budget.set_value(proposal["max_cost"])
+                consent.set_value(False)
+                ui.notify("已显示本批建议参数；请核对费用上限后授权。", type="positive")
+
+            ui.button(
+                "使用大批量整理建议",
+                icon="auto_fix_high",
+                on_click=guard(recommend_batch),
+            ).props("outline")
         ui.label(
             "不会发送本地 PDF；不会自动下载、创建分类目录或重发失败请求。"
         ).classes("an-muted text-xs")

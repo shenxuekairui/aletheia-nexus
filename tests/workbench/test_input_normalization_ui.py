@@ -2,10 +2,22 @@ from copy import deepcopy
 
 from aletheia_nexus.workbench.task_view import task_costs, task_counts, task_rows
 from aletheia_nexus.workbench.ui_input_normalization import (
+    batch_normalization_options,
     draft_fingerprint,
     normalization_preview_rows,
     normalization_warning_summaries,
 )
+
+
+def test_large_batch_recommendation_is_bounded_and_preserves_existing_budget():
+    text = "\n".join(f"{n}. 10.9999/paper-{n}" for n in range(100))
+    proposal = batch_normalization_options(text, {"max_cost": 3})
+    assert proposal["max_output_tokens"] == 32768
+    assert proposal["max_cost"] == 3
+    assert proposal["max_calls"] == 1 and proposal["model"]["max_retries"] == 0
+    proposal = batch_normalization_options(text * 10, {"max_cost": 0.1})
+    assert proposal["max_output_tokens"] == 65536
+    assert proposal["max_cost"] > 0.1
 
 
 def test_large_model_batch_warning_summary_retains_count_without_repeating_rows():

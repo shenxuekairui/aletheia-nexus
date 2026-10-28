@@ -672,6 +672,7 @@ class AcquisitionPage:
                             self,
                             normalization_snapshot,
                             lambda report: preview_input(report_override=report),
+                            text_hint=value.value or "",
                         )
 
                     ui.button(
