@@ -24,6 +24,8 @@ _HOST = "pmc-oa-opendata.s3.amazonaws.com"
 _BUCKET = "https://" + _HOST
 _XLINK = "{http://www.w3.org/1999/xlink}href"
 _BASIS = "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material"
+_MAX_DISCOVERY_CANDIDATES = 256
+_MAX_DISCOVERED_FILES = 64
 
 
 def _title(value):
@@ -259,27 +261,56 @@ def discover_pmc_attachments(
         media = metadata.get("media_urls", [])
         if not isinstance(media, list) or len(media) > 2000:
             raise ValueError("官方 PMC 媒体清单无效或超过安全数量限制")
+        # Index names once, without authorizing any URL. Keep all candidates,
+        # including duplicates/wrong origins: only the explicit JATS filename
+        # selects entries for the unchanged strict _object gate below.
+        media_by_name = {}
+        for value in media:
+            if not isinstance(value, str):
+                continue
+            try:
+                basename = PurePosixPath(unquote(urlsplit(value).path)).name
+            except ValueError:
+                continue
+            media_by_name.setdefault(basename, []).append(value)
         # Reuse existing role and extension policy without a second downloader.
         from .supplements import _SUFFIXES, attachment_role
 
         items, errors, seen = [], [], set()
+        scanned, scanned_nodes, truncated = 0, 0, False
         for node, context in _supplement_nodes(article):
+            if scanned_nodes >= _MAX_DISCOVERY_CANDIDATES:
+                truncated = True
+                errors.append(
+                    {
+                        "status": "PARTIAL",
+                        "error": "官方 PMC 补充材料节点达到安全扫描上限，仍有节点未核对。",
+                        "page": page,
+                    }
+                )
+                break
+            scanned_nodes += 1
             label = " ".join(
                 filter(
                     None,
                     (context, node.get("content-type"), " ".join(node.itertext())),
                 )
             )[:2000].strip()
-            links = [child.get(_XLINK) for child in node.iter() if child.get(_XLINK)]
-            if not links:
-                errors.append(
-                    {
-                        "status": "FAILED",
-                        "error": "官方 PMC 补充材料节点缺少明确文件链接",
-                        "page": page,
-                    }
-                )
+            links = (child.get(_XLINK) for child in node.iter() if child.get(_XLINK))
+            has_link = False
             for href in links:
+                has_link = True
+                if scanned >= _MAX_DISCOVERY_CANDIDATES:
+                    truncated = True
+                    errors.append(
+                        {
+                            "status": "PARTIAL",
+                            "error": "官方 PMC 补充材料候选达到安全扫描上限，仍有链接未核对。",
+                            "page": page,
+                        }
+                    )
+                    break
+                scanned += 1
                 try:
                     decoded = unquote(href)
                     if (
@@ -292,16 +323,10 @@ def discover_pmc_attachments(
                         raise ValueError(
                             "官方 PMC 补充材料链接不是受支持的本版本相对文件"
                         )
-                    matches = []
-                    for value in media:
-                        # Ordinary images are not candidates; no URL is trusted
-                        # until this explicit JATS filename requests it.
-                        if (
-                            isinstance(value, str)
-                            and PurePosixPath(unquote(urlsplit(value).path)).name
-                            == decoded
-                        ):
-                            matches.append(_object(value, prefix))
+                    matches = [
+                        _object(value, prefix)
+                        for value in media_by_name.get(decoded, ())
+                    ]
                     if len(matches) != 1:
                         raise ValueError("官方 PMC 补充材料与官方媒体清单无法唯一对应")
                     _, url, expected_md5 = matches[0]
@@ -310,8 +335,16 @@ def discover_pmc_attachments(
                         raise ValueError("官方 PMC 补充材料的文件类型尚未支持")
                     if url in seen:
                         continue
-                    if len(items) >= 64:
-                        raise ValueError("官方 PMC 补充材料数量超过本次安全限制")
+                    if len(items) >= _MAX_DISCOVERED_FILES:
+                        truncated = True
+                        errors.append(
+                            {
+                                "status": "PARTIAL",
+                                "error": "官方 PMC 补充材料数量达到安全上限，仍有文件未核对。",
+                                "page": page,
+                            }
+                        )
+                        break
                     seen.add(url)
                     items.append(
                         {
@@ -327,11 +360,30 @@ def discover_pmc_attachments(
                     )
                 except (OSError, ValueError, RuntimeError) as exc:
                     errors.append({"status": "FAILED", "error": str(exc), "page": page})
+            if truncated:
+                break
+            if not has_link:
+                errors.append(
+                    {
+                        "status": "FAILED",
+                        "error": "官方 PMC 补充材料节点缺少明确文件链接",
+                        "page": page,
+                    }
+                )
         return {
-            "status": "DISCOVERED" if items else "FAILED" if errors else "NOT_FOUND",
+            "status": "PARTIAL"
+            if truncated
+            else "DISCOVERED"
+            if items
+            else "FAILED"
+            if errors
+            else "NOT_FOUND",
             "items": items,
             "errors": errors,
             "partial": bool(errors),
+            "truncated": truncated,
+            "scanned_candidates": scanned,
+            "scanned_nodes": scanned_nodes,
             "page_url": page,
             "parent_identity": _BASIS,
             "provenance": provenance,
