@@ -257,10 +257,17 @@ def test_fetch_redirect_to_other_host_cannot_be_accepted(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "oversized,timed_out", [(False, False), (True, False), (False, True)]
+    "oversized,timed_out,cancel_failures",
+    [
+        (False, False, 0),
+        (True, False, 0),
+        (False, True, 0),
+        (True, False, 1),
+        (True, False, 2),
+    ],
 )
 def test_native_capture_does_not_cancel_or_delete_unrelated_user_transfer(
-    tmp_path, monkeypatch, oversized, timed_out
+    tmp_path, monkeypatch, oversized, timed_out, cancel_failures
 ):
     captures = []
     wanted = "https://pubs.acs.org/explicit-supplement.docx"
@@ -269,12 +276,16 @@ def test_native_capture_does_not_cancel_or_delete_unrelated_user_transfer(
     class Cdp:
         def __init__(self):
             self.handlers, self.commands = {}, []
+            self.remaining_failures = cancel_failures
 
         def on(self, event, handler):
             self.handlers[event] = handler
 
         def send(self, method, params):
             self.commands.append((method, params))
+            if method == "Browser.cancelDownload" and self.remaining_failures:
+                self.remaining_failures -= 1
+                raise RuntimeError("simulated browser cancellation failure")
 
     class Capture:
         active = True
@@ -369,13 +380,24 @@ def test_native_capture_does_not_cancel_or_delete_unrelated_user_transfer(
         assert resource.local_path.read_bytes() == b"downloaded fixture"
     capture = captures[0]
     assert capture.other.read_bytes() == b"preserve this unrelated user download"
-    assert not capture.owned.exists()
+    assert capture.owned.exists() is (cancel_failures == 2)
     cancelled = [
         params["guid"]
         for method, params in capture.session.commands
         if method == "Browser.cancelDownload"
     ]
-    assert cancelled == (["owned-transfer"] if oversized or timed_out else [])
+    assert cancelled == (
+        ["owned-transfer"] * (2 if cancel_failures else 1)
+        if oversized or timed_out
+        else []
+    )
+    if cancel_failures == 2:
+        assert (
+            adapter.diagnostics[-1]["status"] == "BROWSER_DOWNLOAD_CANCEL_UNCONFIRMED"
+        )
+        assert adapter.diagnostics[-1]["needs_manual_check"] is True
+    else:
+        assert adapter.diagnostics == []
 
 
 def test_shared_capture_guid_filter_cannot_select_other_tabs_same_url(tmp_path):

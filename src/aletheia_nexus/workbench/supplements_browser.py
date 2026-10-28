@@ -233,12 +233,12 @@ class SupplementBrowserTransport:
                 > max_bytes
             ):
                 too_large.append(True)
-                cancelled.add(guid)
                 try:
                     capture.session.send(
                         "Browser.cancelDownload",
                         {"guid": event["guid"], **capture._context_params},
                     )
+                    cancelled.add(guid)
                 except Exception:
                     pass  # The byte-cap failure below still prevents saving it.
 
@@ -317,8 +317,18 @@ class SupplementBrowserTransport:
                             "Browser.cancelDownload",
                             {"guid": guid, **capture._context_params},
                         )
+                        cancelled.add(guid)
                     except Exception:
-                        pass
+                        if guid not in completed:
+                            self.diagnostics.append(
+                                {
+                                    "status": "BROWSER_DOWNLOAD_CANCEL_UNCONFIRMED",
+                                    "message": "浏览器未确认取消该附件传输，请检查独立浏览器中的下载状态。",
+                                    "download_id": guid,
+                                    "staging_directory": str(capture.staging_dir),
+                                    "needs_manual_check": True,
+                                }
+                            )
             capture.close(remove_files=False)
             if frame_session is not None:
                 try:
@@ -326,7 +336,7 @@ class SupplementBrowserTransport:
                 except Exception:
                     pass
             if capture.staging_dir is not None:
-                for guid in owned_guids:
+                for guid in owned_guids.keys() & (completed | cancelled):
                     if isinstance(guid, str) and re.fullmatch(
                         r"[A-Za-z0-9-]{1,128}", guid
                     ):
