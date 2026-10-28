@@ -1403,6 +1403,19 @@ class LibraryService:
         keys = {_key(Path(p)) for p in paths}
         risks = []
         seen = set()
+        resolved_keys = {}
+
+        def references(candidate):
+            # Research packages repeat the same block and provenance strings in
+            # results, caches and exports. Resolve every distinct full candidate
+            # exactly as before, including symlinks and relative parents, while
+            # avoiding repeated filesystem lookups within this one audit. Do not
+            # keep this cache across previews or the final execution recheck.
+            raw = str(candidate)
+            if raw not in resolved_keys:
+                resolved_keys[raw] = _key(candidate.resolve())
+            return resolved_keys[raw] in keys
+
         adapters = self._load().get("reference_adapters", [])
         for root in (self.root, *self.reference_roots):
             if not root.is_dir():
@@ -1448,7 +1461,7 @@ class LibraryService:
                             if possible.is_absolute()
                             else [path.parent / possible, root / possible]
                         )
-                        if any(_key(p.resolve()) in keys for p in candidates):
+                        if any(references(p) for p in candidates):
                             risks.append(str(path))
                             break
                 except (OSError, ValueError):
