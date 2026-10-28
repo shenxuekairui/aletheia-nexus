@@ -22,6 +22,25 @@ FIELD_TYPES = {
 }
 
 
+def active_research_task(jobs, task):
+    """Find only an identical full contract still awaiting a safe terminal state."""
+    from aletheia_nexus.processing.contracts import digest
+
+    from .jobs import TERMINAL
+
+    fingerprint = digest(task)
+    for job in jobs:
+        if job.get("kind") != "research" or job.get("status") in TERMINAL:
+            continue
+        parameters = job.get("parameters") or {}
+        if parameters.get("task_fingerprint") == fingerprint:
+            return job
+        existing = parameters.get("task")
+        if isinstance(existing, dict) and digest(existing) == fingerprint:
+            return job
+    return None
+
+
 def render_parse_summary(diagnostics):
     from nicegui import ui
 
@@ -840,6 +859,7 @@ class ResearchPages:
             "plan_job": None,
             "loaded": False,
             "content_consent": None,
+            "executing": False,
         }
 
         def render_plan(task):
@@ -949,8 +969,10 @@ class ResearchPages:
                         "移除选中字段", icon="remove", on_click=guard(remove_fields)
                     ).props("flat")
                 document_rows = []
+                article_count = 0
                 for doc in task["documents"]:
                     source = self.ctx.research.app.check_document(doc, "direct")
+                    article_count += source.identity["document_role"] == "ARTICLE"
                     document_rows.append(
                         {
                             "id": doc["id"],
@@ -969,6 +991,11 @@ class ResearchPages:
                             else "整页",
                         }
                     )
+                ui.label(
+                    f"本计划固定材料：{article_count} 篇正文、"
+                    f"{len(document_rows) - article_count} 份附件。"
+                    "此范围独立于当前选择清单；“发送”列决定本次启用材料，执行前预览会再次核对。"
+                ).classes("an-info w-full")
                 state["documents"] = ui.aggrid(
                     {
                         "localeText": GRID_LOCALE,
@@ -1107,24 +1134,50 @@ class ResearchPages:
                     return checked["task"]
 
                 async def execute():
-                    task_value = await validate()
-                    grant = consent.value
-                    extra_grant = extra_pages_consent.value
-                    if task_value["mode"] != "local" and not grant:
-                        raise ValueError("请明确授权本计划的文献材料外发和费用")
-                    self.current_task = task_value
-                    self.submit(
-                        "research",
-                        task_value["objective"][:80],
-                        [d["id"] for d in task_value["documents"]],
-                        lambda c: self.ctx.research.execute(
-                            task_value,
-                            consent=grant,
-                            allow_extra_pages=extra_grant,
-                            context=c,
-                        ),
-                        {"task": task_value, "extra_pages_authorized": extra_grant},
-                    )
+                    if state["executing"]:
+                        ui.notify("正在核对并提交本计划，请等待；无需重复点击。")
+                        return
+                    state["executing"] = True
+                    execute_button.disable()
+                    try:
+                        task_value = await validate()
+                        grant = consent.value
+                        extra_grant = extra_pages_consent.value
+                        if task_value["mode"] != "local" and not grant:
+                            raise ValueError("请明确授权本计划的文献材料外发和费用")
+                        existing = active_research_task(
+                            self.ctx.jobs.list(), task_value
+                        )
+                        if existing is not None:
+                            ui.notify(
+                                "相同材料、页码及预算的计划已在任务中心排队或执行，未重复提交。"
+                                f"任务：{existing.get('id', existing.get('job_id', ''))}",
+                                type="warning",
+                            )
+                            return
+                        self.current_task = task_value
+                        from aletheia_nexus.processing.contracts import digest
+
+                        self.submit(
+                            "research",
+                            task_value["objective"][:80],
+                            [d["id"] for d in task_value["documents"]],
+                            lambda c: self.ctx.research.execute(
+                                task_value,
+                                consent=grant,
+                                allow_extra_pages=extra_grant,
+                                context=c,
+                            ),
+                            {
+                                "task": task_value,
+                                "task_fingerprint": digest(task_value),
+                                "extra_pages_authorized": extra_grant,
+                            },
+                        )
+                    finally:
+                        state["executing"] = False
+                        if not execute_button.is_deleted:
+                            execute_button.enable()
 
                 with ui.row().classes("an-toolbar"):
                     ui.button(
@@ -1132,7 +1185,7 @@ class ResearchPages:
                         icon="fact_check",
                         on_click=guard(validate),
                     )
-                    ui.button(
+                    execute_button = ui.button(
                         "执行已核对计划", icon="play_arrow", on_click=guard(execute)
                     )
                     ui.button(
