@@ -56,7 +56,8 @@ def recovery_preview(job, service):
             before = sha256(raw).hexdigest()
             payload = json.loads(raw)
             if (
-                payload.get("schema") != CHECKPOINT_SCHEMA
+                not isinstance(payload, dict)
+                or payload.get("schema") != CHECKPOINT_SCHEMA
                 or not isinstance(payload.get("records"), dict)
                 or sha256_file(path) != before
             ):
@@ -215,6 +216,7 @@ def recovery_checkpoint(preview, service):
         if (
             before != preview["checkpoint_sha256"]
             or sha256_file(path) != before
+            or not isinstance(payload, dict)
             or payload.get("schema") != CHECKPOINT_SCHEMA
             or not isinstance(payload.get("records"), dict)
         ):

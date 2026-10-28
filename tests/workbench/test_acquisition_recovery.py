@@ -332,6 +332,15 @@ def test_wrong_library_active_job_and_changed_checkpoint_are_rejected(service):
         recovery_preview(job, service)
 
 
+@pytest.mark.parametrize("payload", [[], None, {"schema": "other", "records": {}}])
+def test_malformed_history_checkpoint_is_actionable_and_never_used(service, payload):
+    request = PaperRequest(doi="10.1000/malformed")
+    job = original_job(service, [request], {})
+    Path(job["result"]["checkpoint"]).write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="检查点格式无效"):
+        recovery_preview(job, service)
+
+
 def test_frontend_retry_submits_only_selected_scope_and_resets_translation_consent(
     service, monkeypatch
 ):
