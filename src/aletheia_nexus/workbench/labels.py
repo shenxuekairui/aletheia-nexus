@@ -307,6 +307,7 @@ VALUE_LABELS = {
     "PEER_REVIEW": "同行评议文件",
     "OTHER": "其他附件",
     "paragraph": "段落",
+    "context": "上下文",
     "review_required": "待核对",
     "human_confirmed": "人工已确认",
     "equation": "公式",
