@@ -40,6 +40,8 @@ from aletheia_nexus.research_planner import (
     planning_request,
 )
 
+from .research_live import LiveResearchRuns, material_groups
+
 
 class _WorkbenchApplication(ResearchApplication):
     """Forward native, per-document progress without changing engine semantics."""
@@ -47,6 +49,12 @@ class _WorkbenchApplication(ResearchApplication):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.current = local()
+
+    def _start_job(self, receipt, execute, *, background):
+        callback = getattr(self.current, "on_start", None)
+        if callback is not None:
+            callback(receipt)
+        return super()._start_job(receipt, execute, background=background)
 
     def _progress(self, receipt, row):
         super()._progress(receipt, row)
@@ -84,6 +92,7 @@ class WorkbenchResearch:
         self.app = _WorkbenchApplication(
             [library.root], self.workspace, remote=True, network=False
         )
+        self.live = LiveResearchRuns(self.app)
         self.index_path = self.workspace / "document-index.json"
         self.active_path = self.workspace / "active-parsed-versions.json"
         self._lock = RLock()
@@ -887,6 +896,9 @@ class WorkbenchResearch:
     ) -> dict:
         checked = self.validate_plan(task)
         task = checked["task"]
+        owners = material_groups(checked["documents"])
+        groups_total = len(set(owners.values()))
+        material_count = len(checked["documents"])
         if task["mode"] != "local" and not consent:
             raise ProcessingError("explicit_research_consent_required")
         if type(allow_extra_pages) is not bool:
@@ -901,16 +913,38 @@ class WorkbenchResearch:
             context.checkpoint()
             context.progress(
                 0,
-                len(task["documents"]),
+                material_count if task["mode"] == "local" else groups_total,
                 stage="research",
                 task_fingerprint=checked["task_fingerprint"],
+                material_count=material_count,
+                group_count=groups_total,
             )
         token = self.app.authorize("execute", task) if task["mode"] != "local" else None
         self.app.current.context = context
         self.app.current.cancelled_at_boundary = False
         self.app.current.progress_count = 0
-        self.app.current.progress_total = len(task["documents"])
+        self.app.current.progress_total = groups_total
         before = set((self.workspace / "research" / "runs").glob("*/manifest.json"))
+
+        def started(receipt):
+            self.live.register(
+                receipt,
+                checked,
+                before,
+                workbench_job_id=getattr(context, "job_id", None) if context else None,
+            )
+            if context:
+                context.progress(
+                    0,
+                    material_count if task["mode"] == "local" else groups_total,
+                    stage="research",
+                    native_job_id=receipt["job_id"],
+                    material_count=material_count,
+                    group_count=groups_total,
+                )
+                context.checkpoint()
+
+        self.app.current.on_start = started
         try:
             receipt = self.app.execute_research_task(
                 task, authorization=token, background=False, provider=provider
@@ -954,6 +988,10 @@ class WorkbenchResearch:
             )
         finally:
             self.app.current.context = None
+            self.app.current.on_start = None
+
+    def live_run(self, job_id):
+        return self.live.get(job_id)
 
     def history(self):
         return self.app.list_research_runs(limit=100)["runs"]
