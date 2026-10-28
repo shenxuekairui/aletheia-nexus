@@ -1,7 +1,5 @@
 """Selection-based placement editing before the existing acquisition workflow."""
 
-from copy import deepcopy
-
 from .acquisition_batch import apply_assignment, build_requests
 from .ui_common import guard, rows_table, split_tags
 from .ui_grids import read_edited_grid
@@ -20,6 +18,7 @@ class AcquisitionBatchEditor:
         self.default_folder = default_folder
         self.default_tags = default_tags
         self.save_draft = save_draft
+        self.rows = [dict(row) for row in grid.options["rowData"]]
         self.originals = {
             entry["id"]: entry["request"]
             for entry in report["items"]
@@ -29,7 +28,7 @@ class AcquisitionBatchEditor:
     def decorate(self, rows):
         from .ui_folders import resolve_library_folder
 
-        result = deepcopy(rows)
+        result = [dict(row) for row in rows]
         for row in result:
             try:
                 probe = {**row, "enabled": True}
@@ -62,7 +61,7 @@ class AcquisitionBatchEditor:
 
     async def replace(self, rows):
         rows = self.decorate(rows)
-        self.grid.options["rowData"] = rows
+        self.rows = rows
         await self.grid.run_grid_method("setGridOption", "rowData", rows)
         if self.save_draft:
             self.save_draft(rows)
@@ -112,7 +111,7 @@ class AcquisitionBatchEditor:
 
         ui.label("3 · 逐篇安排目录与标签").classes("font-semibold text-lg")
         ui.label(
-            "左侧复选框选择要编辑的行；启用 / 停用决定是否下载。双击一行可单独选择已有目录、新建子目录和设置标签。"
+            "左侧复选框选择要编辑的行；启用 / 停用决定是否下载。双击目录或标签，可选择已有目录、新建子目录和设置标签。"
         ).classes("an-muted text-sm")
         self.count = ui.label().classes("an-info w-full")
         with ui.row().classes("an-toolbar w-full"):
@@ -158,12 +157,12 @@ class AcquisitionBatchEditor:
                     )
                 )
             )
-            ui.button(
-                "选择当前筛选",
-                on_click=guard(
-                    lambda: self.grid.run_grid_method("selectAll", "filtered")
-                ),
-            ).props("outline")
+
+            async def select_filtered():
+                await self.grid.run_grid_method("deselectAll")
+                await self.grid.run_grid_method("selectAll", "filtered")
+
+            ui.button("选择当前筛选", on_click=guard(select_filtered)).props("outline")
             ui.button(
                 "取消选择",
                 on_click=guard(lambda: self.grid.run_grid_method("deselectAll")),
@@ -190,6 +189,9 @@ class AcquisitionBatchEditor:
                     ui.input("批量目标分类（相对文库）")
                     .props("outlined dense")
                     .classes("grow")
+                )
+                folder.on_value_change(
+                    lambda: folder_action.set_value("set") if folder.value else None
                 )
 
                 def chosen(relative):
@@ -229,6 +231,13 @@ class AcquisitionBatchEditor:
                     .props("outlined dense")
                     .classes("grow")
                 )
+                tags.on_value_change(
+                    lambda: (
+                        tag_action.set_value("add")
+                        if tags.value and tag_action.value == "keep"
+                        else None
+                    )
+                )
 
                 async def apply():
                     rows = await read_edited_grid(self.grid)
@@ -246,6 +255,10 @@ class AcquisitionBatchEditor:
                         default_tags=self.default_tags(),
                     )
                     await self.replace(updated)
+                    folder.set_value("")
+                    tags.set_value("")
+                    folder_action.set_value("keep")
+                    tag_action.set_value("keep")
                     ui.notify(f"已更新选中的 {len(selected)} 篇；尚未开始下载")
 
                 ui.button("应用到选中行", icon="done_all", on_click=guard(apply)).props(
@@ -366,10 +379,14 @@ class AcquisitionBatchEditor:
                     "id": str(i),
                     "doi": request.get("doi") or "",
                     "title": request.get("title") or "",
-                    "folder": str(target["path"]),
+                    "folder": request.get("folder") or "文库根目录",
+                    "full_path": str(target["path"]),
                     "status": "已有目录" if target["exists"] else "下载时新建",
                     "tags": ", ".join(request.get("tags") or []) or "无标签",
-                    "si_folder": str(target["path"] / "SI")
+                    "si_folder": "/".join(filter(None, (request.get("folder"), "SI")))
+                    if include_si
+                    else "本次不获取 SI",
+                    "full_si_path": str(target["path"] / "SI")
                     if include_si
                     else "本次不获取 SI",
                 }
@@ -384,6 +401,9 @@ class AcquisitionBatchEditor:
             ui.label(
                 "正文放各自目标目录根部；SI 共用对应分类的 SI/。请核对逐篇目录和标签，再开始获取。"
             ).classes("an-info")
+            ui.label(f"文库：{self.controller.ctx.library.root}").classes(
+                "an-muted text-sm break-all"
+            )
             if self.report.get("errors"):
                 ui.label(
                     f"原输入有 {len(self.report['errors'])} 项错误未纳入本批，请返回修正或明确只获取下列有效条目。"
@@ -407,8 +427,26 @@ class AcquisitionBatchEditor:
                         ("tags", "实际标签"),
                         ("si_folder", "统一 SI 目录"),
                     )
+                    if k != "title" or any(r["title"] for r in rows)
                 ],
             )
+            with ui.expansion("查看完整保存路径", icon="folder_open").classes("w-full"):
+                rows_table(
+                    rows,
+                    columns=[
+                        {
+                            "name": k,
+                            "field": k,
+                            "label": label,
+                            "style": "white-space:pre-wrap;max-width:600px;overflow-wrap:anywhere",
+                        }
+                        for k, label in (
+                            ("doi", "DOI"),
+                            ("full_path", "正文完整目录"),
+                            ("full_si_path", "SI 完整目录"),
+                        )
+                    ],
+                )
             submitted = False
 
             def submit():

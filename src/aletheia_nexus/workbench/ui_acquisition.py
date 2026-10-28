@@ -405,6 +405,7 @@ class AcquisitionPage:
                 ui.label(
                     "可直接粘贴编号清单；分组标题作为分类。每行可补充：| 分类=已有或新目录 | 标签=标签1,标签2"
                 ).classes("an-muted text-sm")
+                input_status = ui.label("").classes("text-orange-9 text-sm")
 
                 def save_draft(rows=None):
                     self.ctx.settings.set(
@@ -415,11 +416,7 @@ class AcquisitionPage:
                             "report": state["preview"],
                             "rows": rows
                             if rows is not None
-                            else (
-                                state["grid"].options["rowData"]
-                                if state["grid"]
-                                else []
-                            ),
+                            else (state["batch"].rows if state["batch"] else []),
                             "default_folder": folder.value or "",
                             "default_tags": split_tags(tags.value),
                             "dirty": state["dirty"],
@@ -444,6 +441,9 @@ class AcquisitionPage:
                         else value.value
                     )
                     state["dirty"] = value.value != state["preview_text"]
+                    input_status.set_text(
+                        "输入已修改，请重新预览文献。" if state["dirty"] else ""
+                    )
                     data = []
                     for entry in report["items"]:
                         if entry["duplicate"]:
@@ -601,19 +601,27 @@ class AcquisitionPage:
                             lambda: split_tags(tags.value),
                             save_draft,
                         )
-                        state["grid"].options["rowData"] = state["batch"].decorate(data)
+                        state["batch"].rows = state["batch"].decorate(data)
+                        state["grid"].options["rowData"] = state["batch"].rows
                         state["grid"].update()
                         state["batch"].render_tools()
-                        save_draft(state["grid"].options["rowData"])
+                        save_draft(state["batch"].rows)
 
                         async def edit_row(event):
+                            if event.args["colDef"].get("field") not in {
+                                "folder",
+                                "tags",
+                            }:
+                                return
                             await guard(
                                 lambda: state["batch"].open_row(
                                     event.args["data"]["id"]
                                 )
                             )()
 
-                        state["grid"].on("cellDoubleClicked", edit_row, args=["data"])
+                        state["grid"].on(
+                            "cellDoubleClicked", edit_row, args=["data", "colDef"]
+                        )
                         ui.timer(0.2, guard(state["batch"].refresh_count), once=True)
                         if report["errors"]:
                             rows_table(report["errors"], row_key="line")
@@ -760,15 +768,18 @@ class AcquisitionPage:
         def text_changed():
             if state["preview"]:
                 state["dirty"] = value.value != state.get("preview_text")
+            input_status.set_text(
+                "输入已修改，请重新预览文献。" if state["dirty"] else ""
+            )
             save_draft()
 
         value.on_value_change(guard(text_changed))
         value.on("keydown.ctrl.enter", guard(preview_input))
         folder.on_value_change(
-            guard(lambda: state["batch"].refresh() if state["batch"] else None)
+            guard(lambda: state["batch"].refresh() if state["batch"] else save_draft())
         )
         tags.on_value_change(
-            guard(lambda: state["batch"].refresh() if state["batch"] else None)
+            guard(lambda: state["batch"].refresh() if state["batch"] else save_draft())
         )
         excluded = {
             "include_si",
