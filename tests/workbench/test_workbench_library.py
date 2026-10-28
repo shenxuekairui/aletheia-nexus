@@ -473,3 +473,115 @@ def test_cached_single_paper_lookup_observes_metadata_labels_and_source_changes(
     assert library.get(row["id"]) is None
     replacement = library.scan()["items"][0]
     assert replacement["id"] != row["id"] and replacement["title_zh"] == ""
+
+
+def test_import_registered_main_preserves_original_source_evidence(library, tmp_path):
+    from aletheia_nexus.library import update_tags
+
+    source = pdf(tmp_path / "outside.pdf", width=177)
+    register_local_pdf(
+        source, output_dir=source.parent, title="Immutable original title"
+    )
+    original = acquisition_sidecar_path(source).read_bytes()
+    update_tags(source, add=["existing tag"])
+    row = library.import_pdf(
+        source, title="Incorrect replacement title", folder="资料", tags=["new tag"]
+    )
+    assert Path(row["sidecar_path"]).read_bytes() == original
+    assert acquisition_sidecar_path(source).read_bytes() == original
+    assert row["title_original"] == "Immutable original title"
+    assert row["import_warnings"]
+    assert set(row["tags"]) == {"existing tag", "new tag"}
+    assert library.import_pdf(source)["id"] == row["id"]
+    assert library.scan()["total"] == 1
+
+
+def test_import_verified_main_does_not_downgrade_to_local_declaration(library):
+    fixture = Path(__file__).parents[2] / "benchmarks/v07_fixtures/native_article.pdf"
+    original = acquisition_sidecar_path(fixture).read_bytes()
+    row = library.import_pdf(fixture)
+    assert Path(row["sidecar_path"]).read_bytes() == original
+    assert json.loads(original)["status"] == "VERIFIED"
+    assert row["identity_basis"] == "acquisition_verified"
+
+
+def test_manual_si_import_uses_shared_category_and_explicit_parent(library, tmp_path):
+    row = add(library, tmp_path, name="main")
+    other = add(library, tmp_path, name="other", width=222)
+    source = pdf(tmp_path / "external-si.pdf", width=112)
+    imported = library.import_attachment(row["id"], source, title="Supplement details")
+    copied = Path(imported["path"])
+    assert copied.parent == Path(row["pdf_path"]).parent / "SI"
+    assert copied.name == "main__SI-01.pdf"
+    gated = validate_parser_input(copied)
+    assert (
+        gated.document_role == "SUPPLEMENT" and gated.identity_basis == "local_declared"
+    )
+    assert gated.parent["pdf_sha256"] == row["pdf_sha256"]
+    assert library.scan()["total"] == 2 and library.get(row["id"])["si_count"] == 1
+    assert library.import_attachment(row["id"], source)["id"] == imported["id"]
+    with pytest.raises(ValueError, match="SUPPLEMENT"):
+        library.import_pdf(copied)
+    with pytest.raises(ValueError, match="another parent"):
+        library.import_attachment(other["id"], copied)
+    with pytest.raises(ValueError, match="own attachment"):
+        library.import_attachment(row["id"], row["pdf_path"])
+    csv = tmp_path / "values.csv"
+    csv.write_text("condition,value\na,1\n", encoding="utf-8")
+    data = library.import_attachment(row["id"], csv)
+    assert Path(data["path"]).name == "main__SI-02.csv"
+    receipt = json.loads(Path(data["source"]).read_text(encoding="utf-8"))
+    assert receipt["association_basis"] == "explicit_user_selected_parent"
+    assert receipt["validation"]["parseable"] is False
+    assert receipt["parent"]["paper_id"] == row["id"]
+    report = library.execute_rename(
+        library.preview_rename([row["id"]], "中文主文", folder="new")
+    )
+    assert report["status"] == "COMPLETED"
+    moved = library.get(row["id"])
+    assert moved["si_count"] == 2
+    assert all(
+        Path(a["path"]).parent == library.root / "new/SI" for a in moved["attachments"]
+    )
+    assert Path(data["source"]).is_file()
+
+
+def test_local_non_si_attachment_is_saved_but_never_parsed(library, tmp_path):
+    row = add(library, tmp_path)
+    source = pdf(tmp_path / "reporting.pdf", width=110)
+    attachment = library.import_attachment(row["id"], source, role="REPORTING_SUMMARY")
+    assert Path(attachment["path"]).name == "original__REPORTING_SUMMARY-01.pdf"
+    assert not acquisition_sidecar_path(attachment["path"]).exists()
+    assert library.get(row["id"])["si_count"] == 0
+    assert not json.loads(Path(attachment["source"]).read_text(encoding="utf-8"))[
+        "validation"
+    ]["parseable"]
+    bad = tmp_path / "unsafe.exe"
+    bad.write_bytes(b"MZ executable")
+    with pytest.raises(ValueError, match="extension"):
+        library.import_attachment(row["id"], bad)
+
+
+def test_tag_rename_delete_changes_only_mutable_labels_groups_and_filters(
+    library, tmp_path
+):
+    row = add(library, tmp_path)
+    immutable = Path(row["sidecar_path"]).read_bytes()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    task = workspace / "task.json"
+    task.write_text(json.dumps({"frozen_tags": ["待阅读"]}), encoding="utf-8")
+    task_before = task.read_bytes()
+    library.save_tag_group("阅读", ["待阅读", "已读"])
+    library.save_filter("待阅读论文", {"tags": ["待阅读"], "tag_mode": "AND"})
+    renamed = library.rename_tag("待阅读", "待读")
+    assert renamed["paper_count"] == 1 and renamed["filters_changed"] == ["待阅读论文"]
+    assert library.get(row["id"])["tags"] == ["待读"]
+    assert library.tag_groups()["阅读"] == ["待读", "已读"]
+    assert library.filters()["待阅读论文"]["tags"] == ["待读"]
+    deleted = library.delete_tag("待读")
+    assert deleted["warning"] and library.get(row["id"])["tags"] == []
+    assert library.filters()["待阅读论文"]["tags"] == []
+    assert library.tag_groups()["阅读"] == ["已读"]
+    assert Path(row["sidecar_path"]).read_bytes() == immutable
+    assert task.read_bytes() == task_before

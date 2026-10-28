@@ -19,6 +19,7 @@ from string import Formatter
 from threading import RLock
 from uuid import uuid4
 
+from aletheia_nexus.acquire.fulltext.storage import is_verified_record
 from aletheia_nexus.content.gate import sha256_file, validate_parser_input
 from aletheia_nexus.content.local import register_local_pdf
 from aletheia_nexus.core.artifact_paths import (
@@ -107,6 +108,19 @@ def _write(path: Path, value):
 
 def _read(path: Path):
     return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def _write_bytes(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + "." + uuid4().hex + ".part")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _key(path: Path) -> str:
@@ -673,13 +687,147 @@ class LibraryService:
             )
         return result
 
+    @staticmethod
+    def _tag(value):
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or len(value.strip()) > 80
+            or any(ord(c) < 32 for c in value)
+        ):
+            raise ValueError("tags must be non-empty labels of at most 80 characters")
+        return value.strip()
+
+    def rename_tag(self, old, new):
+        """Rename a free tag everywhere in mutable library organization only."""
+        return self._change_tag(self._tag(old), self._tag(new))
+
+    def delete_tag(self, tag):
+        """Remove a tag from papers, optional groups and saved tag filters."""
+        return self._change_tag(self._tag(tag), None)
+
+    def _change_tag(self, old, new):
+        rows = [row for row in self.scan()["items"] if old in row["tags"]]
+        with self._locked():
+            state = self._load()
+            replacements = []
+            groups, filters = [], []
+            for row in rows:
+                pdf = self.path(row["pdf_path"], existing=True)
+                validate_parser_input(pdf, sidecar_path=row["sidecar_path"])
+                label = self.path(json_output_path(pdf.with_suffix(".library.json")))
+                replacements.append(
+                    (pdf, label, label.read_bytes() if label.exists() else None)
+                )
+            updated = deepcopy(state)
+            for name, tags in updated["tag_groups"].items():
+                if old in tags:
+                    updated["tag_groups"][name] = list(
+                        dict.fromkeys(
+                            (new if t == old else t)
+                            for t in tags
+                            if t != old or new is not None
+                        )
+                    )
+                    groups.append(name)
+            for name, rules in updated["filters"].items():
+                if old in rules.get("tags", []):
+                    rules["tags"] = list(
+                        dict.fromkeys(
+                            (new if t == old else t)
+                            for t in rules["tags"]
+                            if t != old or new is not None
+                        )
+                    )
+                    filters.append(name)
+            try:
+                for pdf, _, _ in replacements:
+                    update_tags(
+                        pdf,
+                        add=[new] if new and new != old else [],
+                        remove=[old] if new != old else [],
+                    )
+                _write(self.state_path, updated)
+            except Exception:
+                for _, label, content in replacements:
+                    if content is None:
+                        label.unlink(missing_ok=True)
+                    else:
+                        _write_bytes(label, content)
+                raise
+        return {
+            "status": "COMPLETED",
+            "operation": "rename_tag" if new else "delete_tag",
+            "old": old,
+            "new": new,
+            "papers": [row["id"] for row in rows],
+            "paper_count": len(rows),
+            "groups_changed": groups,
+            "filters_changed": filters,
+            "warning": "Deleting a tag condition may broaden a saved filter; historical research tasks retain their original snapshots."
+            if new is None and filters
+            else None,
+        }
+
     def import_pdf(self, path, *, title=None, folder="", doi=None, tags=()):
-        source = Path(path).resolve(strict=True)
+        supplied = Path(path).expanduser()
+        if any(
+            p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction())
+            for p in (supplied, *supplied.parents)
+        ):
+            raise ValueError("source PDF must not be a symbolic link")
+        source = supplied.resolve(strict=True)
         if source.suffix.lower() != ".pdf":
             raise ValueError("select a PDF")
+        tags = [self._tag(tag) for tag in tags]
+        source_sidecar = acquisition_sidecar_path(source)
+        gated = None
+        import_warnings = []
+        if source_sidecar.exists() or source_sidecar.is_symlink():
+            if source_sidecar.is_symlink():
+                raise ValueError("source records must not be symbolic links")
+            gated = validate_parser_input(
+                source, requested_doi=doi, sidecar_path=source_sidecar
+            )
+            if (
+                gated.identity_basis == "acquisition_verified"
+                and not is_verified_record(_read(source_sidecar))
+            ):
+                raise ValueError(
+                    "existing acquisition evidence is incomplete; import cannot promote or replace it"
+                )
+            if gated.document_role != "ARTICLE":
+                raise ValueError(
+                    "known SUPPLEMENT cannot be imported as an ARTICLE; use import_attachment(parent_id, path) to associate it explicitly"
+                )
+            if title and title.strip() != gated.title:
+                import_warnings.append(
+                    "Existing source title retained; the supplied title was not used to overwrite bibliographic evidence. Edit the custom display name after import."
+                )
         target_dir = destination(self.root, folder or None)
         self.path(target_dir)
         digest = sha256_file(source)
+        for row in self.scan()["items"]:
+            same_identity = (
+                gated
+                and row["id"]
+                == "paper_"
+                + hashlib.sha256(
+                    (digest + ":" + gated.sidecar_sha256).encode()
+                ).hexdigest()[:24]
+            ) or (
+                not gated
+                and row["pdf_sha256"] == digest
+                and row["title_original"] == (title or source.stem)
+            )
+            if same_identity:
+                if tags:
+                    self.update_tags([row["id"]], add=tags)
+                return {
+                    **self.get(row["id"]),
+                    "import_status": "ALREADY_PRESENT",
+                    "import_warnings": import_warnings,
+                }
         target_dir.mkdir(parents=True, exist_ok=True)
         stem = filename_stem(source.stem)
         target = target_dir / (stem + ".pdf")
@@ -687,7 +835,12 @@ class LibraryService:
         if target.exists() and (
             sha256_file(target) != digest or acquisition_sidecar_path(target).exists()
         ):
-            target = target_dir / (stem + "--" + digest[:10] + ".pdf")
+            identity_suffix = (
+                gated.sidecar_sha256
+                if gated
+                else hashlib.sha256((title or source.stem).encode()).hexdigest()
+            )[:8]
+            target = target_dir / (stem + "--" + digest[:10] + identity_suffix + ".pdf")
         if target.exists() or acquisition_sidecar_path(target).exists():
             for row in self.scan()["items"]:
                 if row["pdf_sha256"] == digest and row["pdf_path"] == str(target):
@@ -701,17 +854,292 @@ class LibraryService:
             shutil.copyfile(source, prepared)
             if sha256_file(prepared) != digest:
                 raise ValueError("PDF changed while copying")
-            registered = register_local_pdf(
-                prepared, output_dir=target_dir, title=title or source.stem, doi=doi
-            )
+            if gated:
+                staged_record = json_output_path(
+                    prepared.with_suffix(".acquisition.json")
+                )
+                staged_record.parent.mkdir(parents=True)
+                shutil.copyfile(source_sidecar, staged_record)
+                if sha256_file(staged_record) != gated.sidecar_sha256:
+                    raise ValueError("source record changed while copying")
+                pairs = [
+                    (prepared, target),
+                    (
+                        staged_record,
+                        json_output_path(target.with_suffix(".acquisition.json")),
+                    ),
+                ]
+                old_labels = find_json_path(source.with_suffix(".library.json"))
+                if old_labels.exists():
+                    if old_labels.is_symlink():
+                        raise ValueError("source labels must not be symbolic links")
+                    staged_labels = staging / "labels.json"
+                    shutil.copyfile(old_labels, staged_labels)
+                    pairs.append(
+                        (
+                            staged_labels,
+                            json_output_path(target.with_suffix(".library.json")),
+                        )
+                    )
+                with self._locked():
+                    self._publish_import(pairs)
+                registered = target
+            else:
+                register_local_pdf(
+                    prepared, output_dir=staging, title=title or source.stem, doi=doi
+                )
+                with self._locked():
+                    self._publish_import(
+                        [
+                            (prepared, target),
+                            (
+                                acquisition_sidecar_path(prepared),
+                                json_output_path(
+                                    target.with_suffix(".acquisition.json")
+                                ),
+                            ),
+                        ]
+                    )
+                registered = target
             if tags:
                 update_tags(registered, add=tags)
         finally:
-            prepared.unlink(missing_ok=True)
+            for child in sorted(
+                staging.rglob("*"), key=lambda p: len(p.parts), reverse=True
+            ):
+                if child.is_dir():
+                    child.rmdir()
+                else:
+                    child.unlink(missing_ok=True)
             staging.rmdir()
-        return next(
+        result = next(
             row for row in self.scan()["items"] if row["pdf_path"] == str(registered)
         )
+        return {**result, "import_warnings": import_warnings}
+
+    def _publish_import(self, pairs):
+        """Publish complete staging files exclusively, removing only owned copies on failure."""
+        created = []
+        try:
+            for source, target in pairs:
+                source, target = Path(source), self.path(target)
+                digest = sha256_file(source)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists() or any(
+                    _key(p) == _key(target) for p in target.parent.iterdir()
+                ):
+                    raise FileExistsError(target)
+                os.link(source, target)
+                created.append((target, digest))
+                if sha256_file(target) != digest:
+                    raise ValueError("import changed during publication")
+            return created
+        except Exception:
+            for path, digest in reversed(created):
+                if path.is_file() and sha256_file(path) == digest:
+                    path.unlink()
+            raise
+
+    def import_attachment(self, parent_id, path, *, role="SUPPLEMENT", title=None):
+        """Explicitly associate a user-selected local file; never infer a parent.
+
+        PDF SI is locally DECLARED, never acquisition VERIFIED. Other attachment
+        types are validated and stored without opening, extraction or parsing.
+        """
+        from .supplements import _SUFFIXES, _validate_attachment
+
+        if role not in {
+            "SUPPLEMENT",
+            "SOURCE_DATA",
+            "REPORTING_SUMMARY",
+            "PEER_REVIEW",
+            "OTHER",
+        }:
+            raise ValueError("unsupported attachment role")
+        supplied = Path(path).expanduser()
+        if any(
+            p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction())
+            for p in (supplied, *supplied.parents)
+        ):
+            raise ValueError("attachment source must not be a symbolic link")
+        source = supplied.resolve(strict=True)
+        suffix = source.suffix.lower()
+        if suffix not in _SUFFIXES:
+            raise ValueError(
+                "unsupported local attachment extension; executable and active HTML files are not accepted"
+            )
+        if source.stat().st_size > 200 * 1024 * 1024:
+            raise ValueError("local attachment exceeds the 200 MiB limit")
+        parent = self.get(parent_id)
+        if not parent:
+            raise ValueError("select an existing parent paper")
+        main = validate_parser_input(
+            parent["pdf_path"], sidecar_path=parent["sidecar_path"]
+        )
+        validation = _validate_attachment(source, suffix)
+        digest = sha256_file(source)
+        if digest == main.pdf_sha256:
+            raise ValueError(
+                "the main article cannot be imported as its own attachment"
+            )
+        existing_record = acquisition_sidecar_path(source) if suffix == ".pdf" else None
+        declared = None
+        if existing_record and (
+            existing_record.exists() or existing_record.is_symlink()
+        ):
+            if existing_record.is_symlink():
+                raise ValueError("source record must not be a symbolic link")
+            declared = validate_parser_input(source, sidecar_path=existing_record)
+            if (
+                declared.document_role != "SUPPLEMENT"
+                or not declared.parent
+                or declared.parent.get("pdf_sha256") != main.pdf_sha256
+                or declared.parent.get("article_id") != main.article_id
+            ):
+                raise ValueError(
+                    "existing source evidence declares another parent or an ARTICLE; it cannot be relabelled"
+                )
+        for attachment in parent["attachments"]:
+            if attachment["sha256"] == digest and attachment["role"] == role:
+                target = self.path(attachment["path"], existing=True)
+                if sha256_file(target) != digest:
+                    raise ValueError(
+                        "existing attachment changed; restore it before reimport"
+                    )
+                return {**attachment, "import_status": "ALREADY_PRESENT"}
+        staging = self.state_dir / "imports" / uuid4().hex
+        staging.mkdir(parents=True)
+        prepared = staging / ("attachment" + suffix)
+        created = []
+        try:
+            shutil.copyfile(source, prepared)
+            if sha256_file(prepared) != digest:
+                raise ValueError("attachment source changed while copying")
+            if suffix == ".pdf" and (role == "SUPPLEMENT" or declared):
+                if declared:
+                    sidecar = json_output_path(
+                        prepared.with_suffix(".acquisition.json")
+                    )
+                    sidecar.parent.mkdir()
+                    shutil.copyfile(existing_record, sidecar)
+                    if sha256_file(sidecar) != declared.sidecar_sha256:
+                        raise ValueError(
+                            "attachment source evidence changed while copying"
+                        )
+                else:
+                    register_local_pdf(
+                        prepared,
+                        output_dir=staging,
+                        title=title
+                        or f"{main.title or main.article_id} — Supplementary Information",
+                        role="SUPPLEMENT",
+                        parent_pdf=main.pdf_path,
+                        parent_sidecar=main.sidecar_path,
+                    )
+            receipt = {
+                "schema": "aletheia-nexus/local-attachment/v1",
+                "status": "REGISTERED",
+                "created_at": _now(),
+                "role": role,
+                "sha256": digest,
+                "association_basis": "explicit_user_selected_parent",
+                "identity_status": "DECLARED",
+                "original_filename": source.name,
+                "title": title or source.stem,
+                "parent": {
+                    "paper_id": parent_id,
+                    "article_id": main.article_id,
+                    "pdf_sha256": main.pdf_sha256,
+                    "sidecar_sha256": main.sidecar_sha256,
+                },
+                "validation": {
+                    **validation,
+                    "parseable": suffix == ".pdf" and role == "SUPPLEMENT",
+                },
+                "network_access": False,
+            }
+            staged_receipt = staging / "receipt.json"
+            _write(staged_receipt, receipt)
+            with self._locked():
+                state = self._load()
+                if state["papers"].get(parent_id, {}).get("pdf") != self._relative(
+                    main.pdf_path
+                ):
+                    raise ValueError(
+                        "parent moved during attachment preparation; retry with its new location"
+                    )
+                validate_parser_input(main.pdf_path, sidecar_path=main.sidecar_path)
+                directory = self.path(main.pdf_path.parent / "SI")
+                directory.mkdir(exist_ok=True)
+                label = "SI" if role == "SUPPLEMENT" else role
+                number = 1
+                while True:
+                    prefix = f"{main.pdf_path.stem}__{label}-{number:02d}"
+                    target = (
+                        directory
+                        / f"{main.pdf_path.stem}__{label}-{number:02d}{suffix}"
+                    )
+                    record = directory / "json" / (target.name + ".attachment.json")
+                    sidecar = json_output_path(target.with_suffix(".acquisition.json"))
+                    if (
+                        not target.exists()
+                        and not record.exists()
+                        and not sidecar.exists()
+                        and not any(
+                            p.name.casefold().startswith((prefix + ".").casefold())
+                            for p in directory.iterdir()
+                        )
+                    ):
+                        break
+                    number += 1
+                if len(str(target)) > 240:
+                    raise ValueError(
+                        "attachment target exceeds the portable 240-character path limit"
+                    )
+                pairs = [(prepared, target), (staged_receipt, record)]
+                staged_sidecar = acquisition_sidecar_path(prepared)
+                if staged_sidecar.exists():
+                    pairs.append((staged_sidecar, sidecar))
+                created = self._publish_import(pairs)
+                attachment_id = (
+                    "attachment_"
+                    + hashlib.sha256(
+                        (parent_id + ":" + digest + ":" + role).encode()
+                    ).hexdigest()[:24]
+                )
+                info = {
+                    "parent_id": parent_id,
+                    "parent_sha256": main.pdf_sha256,
+                    "path": self._relative(target),
+                    "sha256": digest,
+                    "role": role,
+                    "sidecar": self._relative(sidecar)
+                    if staged_sidecar.exists()
+                    else None,
+                    "source": str(record),
+                    "registered_at": _now(),
+                }
+                state["attachments"][attachment_id] = info
+                _write(self.state_path, state)
+            return next(
+                a
+                for a in self.get(parent_id)["attachments"]
+                if a["id"] == attachment_id
+            )
+        except Exception:
+            for owned, expected in reversed(created):
+                if owned.is_file() and sha256_file(owned) == expected:
+                    owned.unlink()
+            raise
+        finally:
+            for child in sorted(
+                staging.rglob("*"), key=lambda p: len(p.parts), reverse=True
+            ):
+                if child.is_dir():
+                    child.rmdir()
+                else:
+                    child.unlink(missing_ok=True)
+            staging.rmdir()
 
     def register_attachment(
         self, main_pdf, path, *, role="SUPPLEMENT", source_record=None
