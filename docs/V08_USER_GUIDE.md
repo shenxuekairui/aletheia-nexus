@@ -63,6 +63,8 @@ $env:DEEPSEEK_API_KEY = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY'
 返回用量缺失时明确记录 unknown，不能解释为零费用。没有自动充值或模型路由。
 
 默认 `reasoning_effort=high`，温度固定为 0，输出预算 65,536 tokens，超时 300 秒。
+材料较长时，可在任务的 `model.timeout_seconds` 中显式设置最长 600 秒；
+这只延长单次请求的等待时间，调用次数与费用仍受任务预算约束。
 提取、复核、修订与跨文献比较共用任务的模型配置；当前示例也统一使用 high。
 显式指定旧任务配置仍按该文件执行，不静默修改历史实验。`max_output_tokens` 包含
 推理 Token，不能只按最终可见 JSON 长度估计预算。开发测试中 high/24,000 也出现

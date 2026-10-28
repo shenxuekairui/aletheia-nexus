@@ -341,7 +341,7 @@ def validate_task(payload: dict) -> dict:
         }
         if (
             not model["name"].strip()
-            or not 1 <= model["timeout_seconds"] <= 300
+            or not 1 <= model["timeout_seconds"] <= 600
             or not 0 <= model["max_retries"] <= 3
             or not 0 <= model["min_interval_seconds"] <= 60
         ):

@@ -4,7 +4,7 @@ from copy import deepcopy
 import httpx
 import pytest
 
-from aletheia_nexus.processing.contracts import TEXT, obj
+from aletheia_nexus.processing.contracts import TEXT, obj, validate_task
 from aletheia_nexus.processing.provider import (
     CallBudget,
     DeepSeekProvider,
@@ -14,6 +14,50 @@ from aletheia_nexus.processing.provider import (
     accounted_cost,
     project_response,
 )
+
+
+def test_extended_task_timeout_reaches_http_transport(monkeypatch):
+    task = validate_task(
+        {
+            "schema": "aletheia-nexus/research-task/v1",
+            "id": "large-material",
+            "type": "extract",
+            "objective": "Read the selected material",
+            "documents": [{"id": "p", "artifact": "p.json"}],
+            "fields": [{"id": "method", "type": "string", "description": "method"}],
+            "model": {"name": "deepseek-flash", "timeout_seconds": 600},
+        }
+    )
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-test-key")
+
+    def handler(request):
+        assert request.extensions["timeout"]["read"] == 600
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": '{"value":"read"}'}
+                        ],
+                    }
+                ],
+            },
+        )
+
+    adapter = DeepSeekProvider(
+        task["model"], enabled=True, transport=httpx.MockTransport(handler)
+    )
+    assert adapter.generate({}, obj({"value": TEXT}), [], CallBudget(1), 100) == {
+        "value": "read"
+    }
+    for seconds in (0, 601):
+        invalid = deepcopy(task)
+        invalid["model"]["timeout_seconds"] = seconds
+        with pytest.raises(ValueError, match="invalid model limits"):
+            validate_task(invalid)
 
 
 def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenance(

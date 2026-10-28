@@ -8,6 +8,61 @@ from aletheia_nexus.content.captions import _is_table_caption
 
 
 def table_bounds(caption, objects, width, height):
+    below = _below_caption_bounds(caption, objects, width, height)
+    above = _above_caption_bounds(caption, objects, width, height)
+    # Rules on both sides do not establish which table this caption labels.
+    return None if below and above else below or above
+
+
+def _above_caption_bounds(caption, objects, width, height):
+    """Accept a lower caption only with a nearby, physically closed grid."""
+    rules = [o.bbox for o in objects if o.object_type == "horizontal-rule" and o.bbox]
+    top = getattr(caption, "y1", caption.y0 + caption.font_size) / height
+    left = caption.x0 / width
+    nearby = [
+        b
+        for b in rules
+        if 0 <= b[1] - top <= caption.font_size * 4 / height
+        and b[0] - 0.02 <= left <= b[2]
+        and b[2] - b[0] > 0.2
+    ]
+    if not nearby:
+        return None
+    bottom = min(nearby, key=lambda b: b[1])
+    aligned = sorted(
+        (
+            b
+            for b in rules
+            if abs(b[0] - bottom[0]) < 0.003
+            and abs(b[2] - bottom[2]) < 0.003
+            and b[1] >= bottom[1]
+        ),
+        key=lambda b: b[1],
+    )
+    selected = [bottom]
+    for rule in aligned[1:]:
+        if rule[1] - selected[-1][3] > caption.font_size * 8 / height:
+            break
+        selected.append(rule)
+    if len(selected) < 3:
+        return None
+    low, high = bottom[1], selected[-1][3]
+    if not all(
+        any(
+            o.object_type == "vertical-rule"
+            and o.bbox
+            and abs((o.bbox[0] + o.bbox[2]) / 2 - x) < 0.003
+            and o.bbox[1] <= low + 0.003
+            and o.bbox[3] >= high - 0.003
+            for o in objects
+        )
+        for x in (bottom[0], bottom[2])
+    ):
+        return None
+    return bottom[0], low, bottom[2], high
+
+
+def _below_caption_bounds(caption, objects, width, height):
     rules = [o.bbox for o in objects if o.object_type == "horizontal-rule" and o.bbox]
     if not rules:
         return None
@@ -146,6 +201,7 @@ def explicit_grid_cells(caption, blocks, anchors, layout):
     class Positioned:
         x0 = anchor[0] * layout.width
         y0 = anchor[1] * layout.height
+        y1 = anchor[3] * layout.height
         font_size = max(1, (anchor[3] - anchor[1]) * layout.height)
 
     box = table_bounds(Positioned(), layout.objects, layout.width, layout.height)
