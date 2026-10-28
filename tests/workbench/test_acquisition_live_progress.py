@@ -77,6 +77,28 @@ def test_current_interaction_and_unstarted_papers_are_distinct():
     assert progress["current"] == first["doi"]
 
 
+def test_si_needing_human_action_does_not_replace_verified_main_status():
+    paper = request("a")
+    progress = acquisition_progress(
+        {
+            "status": "PARTIAL",
+            "parameters": {"requests": [paper]},
+            "result": {
+                "items": [
+                    {
+                        "request": paper,
+                        "status": "VERIFIED",
+                        "si_status": "INTERACTION_REQUIRED",
+                    }
+                ]
+            },
+        }
+    )
+    assert progress["counts"]["success"] == 1
+    assert progress["counts"]["failed"] == progress["counts"]["interaction"] == 0
+    assert progress["attachments"]["interaction"] == 1
+
+
 def test_same_title_with_different_identity_constraints_is_not_collapsed():
     papers = [
         {"title": "Same scientific title", "year": 2025},

@@ -182,6 +182,11 @@ class AcquisitionProgressPanel:
                     f"附件（含 SI）：完成 {attachments['completed']} · 处理中 {attachments['running']} · 需人工 {attachments['interaction']} · "
                     f"失败 {attachments['failed']} · 部分 {attachments['partial']} · 未发现 {attachments['not_found']}"
                 ).classes("text-sm")
+                if attachments["interaction"]:
+                    ui.label(
+                        "附件下载需要单独完成人工登录或验证，已验证正文保留。完成后点击“重试获取失败项”，"
+                        "选择“仅补取 SI”即可；不会重新下载有效正文或改掉现有正文名称。"
+                    ).classes("an-info w-full text-sm")
             if progress["current"] and job["status"] not in TERMINAL:
                 ui.label("当前论文 / 文件：" + str(progress["current"])).classes(
                     "text-sm break-all"
