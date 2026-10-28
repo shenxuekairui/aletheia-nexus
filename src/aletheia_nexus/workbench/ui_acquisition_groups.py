@@ -35,6 +35,179 @@ def summarize_input_groups(rows, default_folder=""):
     ]
 
 
+def placement_dialog(
+    controller,
+    batch,
+    ids,
+    *,
+    rows=None,
+    title="保存位置与标签",
+    description="",
+    is_current=None,
+    on_saved=None,
+    client=None,
+):
+    """One placement form for a paper, the selected rows, or an input group."""
+    from nicegui import ui
+
+    from .ui_folders import choose_library_folder, resolve_library_folder
+
+    client = (
+        client
+        or getattr(batch, "client", None)
+        or getattr(batch.grid, "client", None)
+        or ui.context.client
+    )
+    ids = list(dict.fromkeys(ids))
+    rows = batch.rows if rows is None else rows
+    selected = [row for row in rows if row["id"] in ids]
+    if not ids or len(selected) != len(ids):
+        raise ValueError("选择已变化，请重新勾选需要设置的论文。")
+    single = selected[0] if len(selected) == 1 else None
+    initial_folder_action = (
+        {"inherit": "inherit", "custom": "set", "root": "root"}.get(
+            single.get("folder_mode"), "keep"
+        )
+        if single
+        else "keep"
+    )
+    initial_tag_action = (
+        (
+            "inherit"
+            if single.get("tags_mode") == "inherit"
+            else "replace"
+            if split_tags(single.get("tags"))
+            else "clear"
+        )
+        if single
+        else "keep"
+    )
+    # The sidebar can refresh while saving. Keep the dialog's lifecycle canary
+    # in the stable client layout rather than the disappearing entry button.
+    with (
+        client.layout,
+        ui.dialog() as dialog,
+        ui.card().classes("an-card w-[720px] max-w-[95vw]"),
+    ):
+        ui.label(title).classes("text-xl font-semibold")
+        ui.label(description or f"仅修改这 {len(ids)} 篇，不改变是否获取。").classes(
+            "an-muted text-sm"
+        )
+        if single:
+            ui.label(single.get("title") or single.get("doi") or "未命名论文").classes(
+                "text-sm break-all"
+            )
+        folder_action = (
+            ui.select(
+                {
+                    "keep": "保持各篇目录",
+                    "set": "指定已有 / 新目录",
+                    "inherit": "跟随批次默认目录",
+                    "root": "文库根目录",
+                },
+                value=initial_folder_action,
+                label="保存目录",
+            )
+            .props("outlined")
+            .classes("w-full")
+        )
+        folder = (
+            ui.input(
+                "分类位置（相对文库）",
+                value=single.get("folder") or "" if single else "",
+            )
+            .props("outlined")
+            .classes("w-full")
+        )
+        folder.on_value_change(
+            lambda: folder_action.set_value("set") if folder.value else None
+        )
+
+        def chosen(relative):
+            folder.set_value(relative)
+            folder_action.set_value("set" if relative else "root")
+
+        ui.button(
+            "选择已有目录 / 新建子目录",
+            icon="create_new_folder",
+            on_click=guard(
+                lambda: choose_library_folder(
+                    controller.ctx.library,
+                    chosen,
+                    initial=folder.value or batch.default_folder() or "",
+                )
+            ),
+        ).props("outline")
+        tag_action = (
+            ui.select(
+                {
+                    "keep": "保持各篇标签",
+                    "inherit": "跟随批次默认标签",
+                    "add": "添加标签",
+                    "remove": "移除标签",
+                    "replace": "替换为下列标签",
+                    "clear": "明确无标签",
+                },
+                value=initial_tag_action,
+                label="标签处理",
+            )
+            .props("outlined")
+            .classes("w-full")
+        )
+        tags = controller.tag_input(
+            "标签（回车添加）", split_tags(single.get("tags")) if single else []
+        )
+        tags.on_value_change(
+            lambda: (
+                tag_action.set_value("add")
+                if tags.value and tag_action.value == "keep"
+                else None
+            )
+        )
+        ui.label(
+            "保持各篇设置不会合并目录或标签。根目录和明确无标签是独立设置；跟随默认值会随上方默认改变。"
+        ).classes("an-muted text-sm")
+
+        async def save():
+            if (is_current and not is_current()) or getattr(
+                batch.grid, "is_deleted", False
+            ):
+                raise ValueError("预览已更新，请重新打开设置后再保存。")
+            current = await read_edited_grid(batch.grid)
+            if is_current and not is_current():
+                raise ValueError("预览已更新，请重新打开设置后再保存。")
+            if folder_action.value in {"set", "root"}:
+                resolve_library_folder(
+                    controller.ctx.library,
+                    folder.value if folder_action.value == "set" else "",
+                    must_exist=False,
+                )
+            updated = apply_assignment(
+                current,
+                ids,
+                folder_action=folder_action.value,
+                folder=folder.value,
+                tag_action=tag_action.value,
+                tags=split_tags(tags.value),
+                default_folder=batch.default_folder(),
+                default_tags=batch.default_tags(),
+            )
+            await batch.replace(updated)
+            if on_saved:
+                result = on_saved()
+                if inspect.isawaitable(result):
+                    await result
+            dialog.close()
+            with client.layout:
+                ui.notify(f"已更新 {len(ids)} 篇的保存设置")
+
+        with ui.row().classes("an-toolbar"):
+            ui.button("保存设置", icon="check", on_click=guard(save))
+            ui.button("取消", on_click=dialog.close).props("flat")
+    dialog.open()
+    return dialog
+
+
 class AcquisitionGroupPanel:
     def __init__(self, controller, get_batch, ensure_preview):
         from nicegui import ui
@@ -90,108 +263,17 @@ class AcquisitionGroupPanel:
         self.refresh()
 
     def edit_group(self, batch, group):
-        from nicegui import ui
-
-        from .ui_folders import choose_library_folder, resolve_library_folder
-
-        # Dialog's hidden lifecycle canary belongs to the context that creates
-        # it. A sidebar refresh must not delete an in-flight group editor.
-        with (
-            self.container.client.layout,
-            ui.dialog() as dialog,
-            ui.card().classes("an-card w-[720px] max-w-[95vw]"),
-        ):
-            ui.label(f"设置「{group['name']}」目录与标签").classes(
-                "text-xl font-semibold"
-            )
-            ui.label(
-                f"应用到本组 {group['count']} 篇，包含当前停用的论文；不改变是否下载。"
-            ).classes("an-muted text-sm")
-            folder_action = (
-                ui.select(
-                    {
-                        "keep": "保持各篇已有目录",
-                        "set": "指定已有 / 新目录",
-                        "inherit": "跟随批次默认目录",
-                        "root": "文库根目录",
-                    },
-                    value="keep",
-                    label="本组目录",
-                )
-                .props("outlined")
-                .classes("w-full")
-            )
-            folder = (
-                ui.input("本组分类位置（相对文库）").props("outlined").classes("w-full")
-            )
-            folder.on_value_change(
-                lambda: folder_action.set_value("set") if folder.value else None
-            )
-
-            def chosen(relative):
-                folder.set_value(relative)
-                folder_action.set_value("set" if relative else "root")
-
-            ui.button(
-                "选择已有目录 / 新建子目录",
-                icon="create_new_folder",
-                on_click=guard(
-                    lambda: choose_library_folder(
-                        self.controller.ctx.library,
-                        chosen,
-                        initial=folder.value or batch.default_folder() or "",
-                    )
-                ),
-            ).props("outline")
-            tag_action = (
-                ui.select(
-                    {
-                        "keep": "保持各篇已有标签",
-                        "inherit": "跟随批次默认标签",
-                        "add": "添加标签",
-                        "remove": "移除标签",
-                        "replace": "替换为下列标签",
-                        "clear": "明确无标签",
-                    },
-                    value="keep",
-                    label="本组标签",
-                )
-                .props("outlined")
-                .classes("w-full")
-            )
-            tags = self.controller.tag_input("本组标签（回车添加）", [])
-            tags.on_value_change(
-                lambda: (
-                    tag_action.set_value("add")
-                    if tags.value and tag_action.value == "keep"
-                    else None
-                )
-            )
-            ui.label(
-                "选择“跟随批次默认”后，修改默认值会同步生效；“文库根目录”和“明确无标签”不会套回默认值。"
-            ).classes("an-muted text-sm")
-
-            async def save():
-                if folder_action.value in {"set", "root"}:
-                    resolve_library_folder(
-                        self.controller.ctx.library,
-                        folder.value if folder_action.value == "set" else "",
-                        must_exist=False,
-                    )
-                await self.apply_group(
-                    batch,
-                    group["ids"],
-                    folder_action=folder_action.value,
-                    folder=folder.value,
-                    tag_action=tag_action.value,
-                    tags=split_tags(tags.value),
-                )
-                dialog.close()
-
-            with ui.row().classes("an-toolbar"):
-                ui.button("保存本组设置", on_click=guard(save))
-                ui.button("取消", on_click=dialog.close).props("flat")
-        dialog.open()
+        return placement_dialog(
+            self.controller,
+            batch,
+            group["ids"],
+            rows=self.rows(batch),
+            title=f"分组「{group['name']}」· 保存位置与标签",
+            description=f"修改本组 {group['count']} 篇，包含停用论文；不改变是否获取。",
+            is_current=lambda: self.get_batch() is batch,
+            on_saved=self.refresh,
+            client=self.container.client,
+        )
 
     def render(self):
         from nicegui import ui

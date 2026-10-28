@@ -1,7 +1,7 @@
 """Selection-based placement editing before the existing acquisition workflow."""
 
-from .acquisition_batch import apply_assignment, build_requests
-from .ui_common import guard, rows_table, split_tags
+from .acquisition_batch import build_requests
+from .ui_common import guard, rows_table
 from .ui_grids import read_edited_grid
 
 FOLDER_MODES = {"inherit": "跟随批次默认", "custom": "指定分类", "root": "文库根目录"}
@@ -18,6 +18,7 @@ class AcquisitionBatchEditor:
         self.default_folder = default_folder
         self.default_tags = default_tags
         self.save_draft = save_draft
+        self.client = getattr(grid, "client", None)
         self.rows = [dict(row) for row in grid.options["rowData"]]
         self.originals = {
             entry["id"]: entry["request"]
@@ -74,8 +75,12 @@ class AcquisitionBatchEditor:
         selected = await self.grid.get_selected_rows()
         rows = await read_edited_grid(self.grid)
         self.count.set_text(
-            f"已选中 {len(selected)} 行用于编辑 · 将获取 {sum(bool(r['enabled']) for r in rows)} 篇 / 共 {len(rows)} 篇"
+            f"本批将获取 {sum(bool(r['enabled']) for r in rows)} 篇 · 已选 {len(selected)} 篇用于修改"
         )
+        button = getattr(self, "placement_button", None)
+        if button is not None:
+            button.set_text(f"设置所选 {len(selected)} 篇")
+            button.set_enabled(bool(selected))
 
     async def requests(self):
         from .ui_folders import resolve_library_folder
@@ -107,44 +112,45 @@ class AcquisitionBatchEditor:
     def render_tools(self):
         from nicegui import ui
 
-        from .ui_folders import choose_library_folder
-
-        ui.label("3 · 逐篇安排目录与标签").classes("font-semibold text-lg")
-        ui.label(
-            "左侧复选框选择要编辑的行；启用 / 停用决定是否下载。双击目录或标签，可选择已有目录、新建子目录和设置标签。"
-        ).classes("an-muted text-sm")
+        self.client = self.client or ui.context.client
+        ui.label("3 · 核对保存安排").classes("font-semibold text-lg")
+        ui.label("表格显示最终目录。勾选后设置所选论文，或双击一篇单独修改。").classes(
+            "an-muted text-sm"
+        )
         self.count = ui.label().classes("an-info w-full")
         with ui.row().classes("an-toolbar w-full"):
             groups = list(
                 dict.fromkeys(
-                    r.get("input_group", "未分组") for r in self.grid.options["rowData"]
+                    row.get("input_group")
+                    for row in self.rows
+                    if row.get("input_group") not in (None, "", "未分组")
                 )
             )
-            group = (
-                ui.select(
-                    {"": "全部分组", **{g: g for g in groups}},
-                    value="",
-                    label="按输入分组查看",
+            if len(groups) > 1:
+                group = (
+                    ui.select(
+                        {"": "全部输入分组", **{name: name for name in groups}},
+                        value="",
+                        label="筛选清单分组",
+                    )
+                    .props("outlined dense")
+                    .classes("min-w-[220px]")
                 )
-                .props("outlined dense")
-                .classes("min-w-[220px]")
-            )
 
-            async def filter_group():
-                await self.grid.run_grid_method(
-                    "setFilterModel",
-                    {
-                        "input_group": {
+                async def filter_group():
+                    current = await self.grid.run_grid_method("getFilterModel") or {}
+                    if group.value:
+                        current["input_group"] = {
                             "filterType": "text",
                             "type": "equals",
                             "filter": group.value,
                         }
-                    }
-                    if group.value
-                    else None,
-                )
+                    else:
+                        current.pop("input_group", None)
+                    await self.grid.run_grid_method("setFilterModel", current or None)
 
-            group.on_value_change(guard(filter_group))
+                group.on_value_change(guard(filter_group))
+                ui.label("只筛选显示，不改变保存位置。").classes("an-muted text-xs")
             search = (
                 ui.input("在本批查找 DOI、标题或标签")
                 .props("outlined dense clearable")
@@ -161,133 +167,40 @@ class AcquisitionBatchEditor:
             async def select_filtered():
                 await self.grid.run_grid_method("deselectAll")
                 await self.grid.run_grid_method("selectAll", "filtered")
+                await self.refresh_count()
 
             ui.button("选择当前筛选", on_click=guard(select_filtered)).props("outline")
             ui.button(
                 "取消选择",
                 on_click=guard(lambda: self.grid.run_grid_method("deselectAll")),
             ).props("flat")
+        with ui.row().classes("an-toolbar w-full"):
+            self.placement_button = ui.button(
+                "设置所选 0 篇",
+                icon="edit_location_alt",
+                on_click=guard(self.open_selected),
+            ).props("outline")
+            self.placement_button.disable()
 
-        with ui.card().classes("an-card w-full"):
-            ui.label("批量应用到选中行").classes("font-semibold")
-            with ui.row().classes("an-toolbar w-full"):
-                folder_action = (
-                    ui.select(
-                        {
-                            "keep": "保持各篇目录",
-                            "set": "指定已有 / 新目录",
-                            "inherit": "跟随批次默认目录",
-                            "root": "文库根目录",
-                        },
-                        value="keep",
-                        label="目录操作",
-                    )
-                    .props("outlined dense")
-                    .classes("min-w-[210px]")
-                )
-                folder = (
-                    ui.input("批量目标分类（相对文库）")
-                    .props("outlined dense")
-                    .classes("grow")
-                )
-                folder.on_value_change(
-                    lambda: folder_action.set_value("set") if folder.value else None
-                )
+            async def set_enabled(enabled):
+                rows = await read_edited_grid(self.grid)
+                selected = {row["id"] for row in await self.grid.get_selected_rows()}
+                if not selected:
+                    raise ValueError("请先勾选需要修改获取开关的论文")
+                for row in rows:
+                    if row["id"] in selected:
+                        row["enabled"] = enabled
+                await self.replace(rows)
 
-                def chosen(relative):
-                    folder.set_value(relative)
-                    folder_action.set_value("set" if relative else "root")
-
-                ui.button(
-                    "选已有 / 新建目录",
-                    icon="create_new_folder",
-                    on_click=guard(
-                        lambda: choose_library_folder(
-                            self.controller.ctx.library,
-                            chosen,
-                            initial=folder.value or "",
-                        )
-                    ),
-                ).props("outline")
-            with ui.row().classes("an-toolbar w-full"):
-                tag_action = (
-                    ui.select(
-                        {
-                            "keep": "保持各篇标签",
-                            "replace": "替换为这些标签",
-                            "add": "追加标签",
-                            "remove": "移除这些标签",
-                            "clear": "明确无标签",
-                            "inherit": "跟随批次默认标签",
-                        },
-                        value="keep",
-                        label="标签操作",
-                    )
-                    .props("outlined dense")
-                    .classes("min-w-[210px]")
-                )
-                tags = (
-                    ui.input("批量标签（逗号分隔）")
-                    .props("outlined dense")
-                    .classes("grow")
-                )
-                tags.on_value_change(
-                    lambda: (
-                        tag_action.set_value("add")
-                        if tags.value and tag_action.value == "keep"
-                        else None
-                    )
-                )
-
-                async def apply():
-                    rows = await read_edited_grid(self.grid)
-                    selected = [r["id"] for r in await self.grid.get_selected_rows()]
-                    if not selected:
-                        raise ValueError("请先勾选需要编辑的论文；不会默认修改整批")
-                    updated = apply_assignment(
-                        rows,
-                        selected,
-                        folder_action=folder_action.value,
-                        folder=folder.value,
-                        tag_action=tag_action.value,
-                        tags=split_tags(tags.value),
-                        default_folder=self.default_folder(),
-                        default_tags=self.default_tags(),
-                    )
-                    await self.replace(updated)
-                    folder.set_value("")
-                    tags.set_value("")
-                    folder_action.set_value("keep")
-                    tag_action.set_value("keep")
-                    ui.notify(f"已更新选中的 {len(selected)} 篇；尚未开始下载")
-
-                ui.button("应用到选中行", icon="done_all", on_click=guard(apply)).props(
-                    "outline"
-                )
-            with ui.row().classes("an-toolbar w-full"):
-
-                async def set_enabled(enabled):
-                    rows = await read_edited_grid(self.grid)
-                    selected = {r["id"] for r in await self.grid.get_selected_rows()}
-                    if not selected:
-                        raise ValueError("请先勾选需要修改获取开关的论文")
-                    for row in rows:
-                        if row["id"] in selected:
-                            row["enabled"] = enabled
-                    await self.replace(rows)
-
-                ui.button(
-                    "启用选中论文", on_click=guard(lambda: set_enabled(True))
-                ).props("flat")
-                ui.button(
-                    "停用选中论文", on_click=guard(lambda: set_enabled(False))
-                ).props("flat")
-                ui.button(
-                    "单篇目录 / 标签", icon="edit", on_click=guard(self.open_row)
-                ).props("flat")
-                ui.button(
-                    "刷新最终目录与标签", icon="refresh", on_click=guard(self.refresh)
-                ).props("flat")
+            ui.button("启用选中论文", on_click=guard(lambda: set_enabled(True))).props(
+                "flat"
+            )
+            ui.button("停用选中论文", on_click=guard(lambda: set_enabled(False))).props(
+                "flat"
+            )
+            ui.button(
+                "刷新最终目录与标签", icon="refresh", on_click=guard(self.refresh)
+            ).props("flat")
         self.grid.on("selectionChanged", guard(self.refresh_count))
         self.grid.on("cellValueChanged", guard(self.refresh))
         with ui.expansion("逐篇命名与诊断（高级）", icon="tune").classes("w-full"):
@@ -305,76 +218,28 @@ class AcquisitionBatchEditor:
                 )
             )
 
+    async def open_selected(self):
+        rows = await read_edited_grid(self.grid)
+        ids = [row["id"] for row in await self.grid.get_selected_rows()]
+        if not ids:
+            raise ValueError("请先勾选需要设置的论文。")
+        return self.open_placement(
+            ids, rows=rows, title=f"所选 {len(ids)} 篇 · 保存位置与标签"
+        )
+
+    def open_placement(self, ids, *, rows=None, title="保存位置与标签"):
+        from .ui_acquisition_groups import placement_dialog
+
+        return placement_dialog(self.controller, self, ids, rows=rows, title=title)
+
     async def open_row(self, row_id=None):
-        from nicegui import ui
-
-        from .ui_folders import choose_library_folder
-
         rows = await read_edited_grid(self.grid)
         if row_id is None:
             selected = await self.grid.get_selected_rows()
             if len(selected) != 1:
                 raise ValueError("请选择一篇论文，或双击需要设置的行")
             row_id = selected[0]["id"]
-        row = next(r for r in rows if r["id"] == row_id)
-        with ui.dialog() as dialog, ui.card().classes("an-card w-[760px] max-w-[95vw]"):
-            ui.label("本篇保存目录与标签").classes("text-xl font-semibold")
-            ui.label(row.get("title") or row.get("doi") or "未命名论文").classes(
-                "break-all"
-            )
-            mode = ui.select(
-                FOLDER_MODES, value=row["folder_mode"], label="目录方式"
-            ).classes("w-full")
-            folder = ui.input(
-                "本篇分类（相对文库根目录）", value=row.get("folder") or ""
-            ).classes("w-full")
-
-            def chosen(relative):
-                folder.set_value(relative)
-                mode.set_value("custom" if relative else "root")
-
-            ui.button(
-                "选已有目录 / 新建子目录",
-                icon="create_new_folder",
-                on_click=guard(
-                    lambda: choose_library_folder(
-                        self.controller.ctx.library, chosen, initial=folder.value or ""
-                    )
-                ),
-            ).props("outline")
-            tag_mode = ui.select(
-                TAG_MODES, value=row["tags_mode"], label="标签方式"
-            ).classes("w-full")
-            tags = self.controller.tag_input(
-                "本篇标签（回车添加；自定义可留空）", split_tags(row.get("tags"))
-            )
-            ui.label(
-                "目录和标签均可明确独立设置；无标签不会重新套用批次默认标签。"
-            ).classes("an-muted text-sm")
-
-            async def save():
-                current = await read_edited_grid(self.grid)
-                updated = apply_assignment(
-                    current,
-                    [row_id],
-                    folder_action={
-                        "inherit": "inherit",
-                        "root": "root",
-                        "custom": "set",
-                    }[mode.value],
-                    folder=folder.value,
-                    tag_action="inherit" if tag_mode.value == "inherit" else "replace",
-                    tags=split_tags(tags.value),
-                    default_folder=self.default_folder(),
-                    default_tags=self.default_tags(),
-                )
-                await self.replace(updated)
-                dialog.close()
-
-            with ui.row().classes("an-toolbar"):
-                ui.button("保存本篇设置", on_click=guard(save))
-                ui.button("取消", on_click=dialog.close).props("flat")
-        dialog.open()
+        return self.open_placement([row_id], rows=rows, title="本篇 · 保存位置与标签")
 
     def confirm(self, requests, on_confirm, *, include_si):
         from nicegui import ui

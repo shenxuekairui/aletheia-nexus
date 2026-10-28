@@ -247,6 +247,6 @@ def test_saving_group_does_not_delete_dialog_when_saved_draft_refreshes_sidebar(
     with panel.container:
         panel.edit_group(batch, summarize_input_groups(batch.rows)[0])
     assert dialogs[-1].value
-    asyncio.run(callbacks["保存本组设置"]())
+    asyncio.run(callbacks["保存设置"]())
     assert not dialogs[-1].is_deleted
     assert dialogs[-1].value is False
