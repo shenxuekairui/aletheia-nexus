@@ -353,7 +353,7 @@ def acquire_supplements(
                 if attachment["url"] not in seen:
                     seen.add(attachment["url"])
                     discoveries.append({**attachment, "page": discovery["page_url"]})
-            if discovery["status"] != "DISCOVERED":
+            if discovery["status"] not in {"DISCOVERED", "NOT_FOUND"}:
                 errors.append(
                     {
                         "status": discovery["status"],
@@ -506,11 +506,14 @@ def acquire_supplements(
     saved = sum(i["status"] in {"SAVED", "REUSED"} for i in items)
     return {
         "status": "COMPLETED"
-        if saved and saved == len(items) and len(discoveries) <= max_files
+        if saved
+        and saved == len(items)
+        and len(discoveries) <= max_files
+        and not errors
         else "PARTIAL"
         if saved
         else "FAILED"
-        if items
+        if items or errors
         else "NOT_FOUND",
         "items": items,
         "discovered": len(discoveries),

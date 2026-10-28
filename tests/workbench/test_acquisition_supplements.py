@@ -118,6 +118,41 @@ def test_si_shared_folder_independent_provenance_dedup_and_partial_failure(tmp_p
     assert len(calls) == first_calls + 2  # Only the two invalid PDF attachments retry.
 
 
+@pytest.mark.parametrize(
+    "case,expected",
+    [
+        ("blocked", "FAILED"),
+        ("wrong_identity", "FAILED"),
+        ("empty_official_page", "NOT_FOUND"),
+    ],
+)
+def test_si_discovery_failure_is_not_reported_as_absent(tmp_path, case, expected):
+    main = tmp_path / "main.pdf"
+    main.write_bytes(pdf_bytes(tmp_path, "source.pdf"))
+    register_local_pdf(main, output_dir=tmp_path, title="Research main", doi=DOI)
+    before = (main.read_bytes(), validate_parser_input(main).sidecar_path.read_bytes())
+
+    def page_fetch(url, **kwargs):
+        if case == "blocked":
+            raise RuntimeError("access blocked")
+        html = f'<meta name="citation_doi" content="{DOI if case == "empty_official_page" else "10.1000/other"}">'
+        return SimpleNamespace(text=html, final_url=URL, body_truncated=False)
+
+    result = acquire_supplements(
+        main,
+        page_urls=[URL],
+        page_fetch=page_fetch,
+        file_fetch=lambda *a, **k: pytest.fail("No verified attachment was discovered"),
+    )
+    assert result["status"] == expected
+    assert bool(result["errors"]) is (expected == "FAILED")
+    assert before == (
+        main.read_bytes(),
+        validate_parser_input(main).sidecar_path.read_bytes(),
+    )
+    assert not (tmp_path / "SI").exists()
+
+
 def test_si_symlink_directory_rejected_before_network(tmp_path):
     main = tmp_path / "main.pdf"
     main.write_bytes(pdf_bytes(tmp_path, "source.pdf"))
