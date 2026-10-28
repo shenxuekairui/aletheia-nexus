@@ -585,3 +585,74 @@ def test_tag_rename_delete_changes_only_mutable_labels_groups_and_filters(
     assert library.tag_groups()["阅读"] == ["已读"]
     assert Path(row["sidecar_path"]).read_bytes() == immutable
     assert task.read_bytes() == task_before
+
+
+def test_import_existing_local_si_copies_immutable_parent_declaration(
+    library, tmp_path
+):
+    external = tmp_path / "external"
+    main = pdf(external / "main.pdf", width=166)
+    register_local_pdf(main, output_dir=external, title="Original parent")
+    local_si = pdf(external / "supplement.pdf", width=133)
+    register_local_pdf(
+        local_si,
+        output_dir=external,
+        title="Original SI",
+        role="SUPPLEMENT",
+        parent_pdf=main,
+    )
+    old_evidence = acquisition_sidecar_path(local_si).read_bytes()
+    row = library.import_pdf(main)
+    attachment = library.import_attachment(row["id"], local_si)
+    assert Path(attachment["sidecar_path"]).read_bytes() == old_evidence
+    assert acquisition_sidecar_path(local_si).read_bytes() == old_evidence
+    assert library.scan()["total"] == 1
+
+
+def test_attachment_publication_failure_leaves_no_half_import(
+    library, tmp_path, monkeypatch
+):
+    import aletheia_nexus.workbench.library as module
+
+    row = add(library, tmp_path)
+    source = pdf(tmp_path / "supplement.pdf", width=111)
+    original_link = module.os.link
+    calls = []
+
+    def fail_source_record(source, target):
+        calls.append(target)
+        if len(calls) == 3:
+            raise OSError("simulated attachment source-record write failure")
+        return original_link(source, target)
+
+    monkeypatch.setattr(module.os, "link", fail_source_record)
+    with pytest.raises(OSError, match="source-record write"):
+        library.import_attachment(row["id"], source)
+    assert source.is_file()
+    assert library.get(row["id"])["attachments"] == []
+    assert not [
+        p for p in (Path(row["pdf_path"]).parent / "SI").rglob("*") if p.is_file()
+    ]
+
+
+def test_global_tag_failure_restores_all_mutable_labels(library, tmp_path, monkeypatch):
+    import aletheia_nexus.workbench.library as module
+
+    one = add(library, tmp_path, name="one", width=111)
+    two = add(library, tmp_path, name="two", width=112)
+    library.save_tag_group("阅读", ["待阅读"])
+    real_update = module.update_tags
+    calls = []
+
+    def fail_second(*args, **kwargs):
+        calls.append(args[0])
+        if len(calls) == 2:
+            raise OSError("simulated tag write failure")
+        return real_update(*args, **kwargs)
+
+    monkeypatch.setattr(module, "update_tags", fail_second)
+    with pytest.raises(OSError, match="tag write"):
+        library.rename_tag("待阅读", "待读")
+    assert library.get(one["id"])["tags"] == ["待阅读"]
+    assert library.get(two["id"])["tags"] == ["待阅读"]
+    assert library.tag_groups()["阅读"] == ["待阅读"]
