@@ -10,6 +10,7 @@ from .messages import user_message
 from .ui_common import guard, json_text, json_view, parameter_editor, rows_table
 from .ui_parameters import parameter_sections
 from .ui_presets import preset_controls
+from .ui_revisions import render_revision_history, revised_field
 
 FIELD_TYPES = {
     "string": "文本",
@@ -1357,6 +1358,7 @@ class ResearchPages:
                         label="补充材料请求 / 缺失SI",
                     )
                     json_view(result["response"], label="模型结构化结果原始值")
+                    render_revision_history(result)
                     json_view(
                         result["history"], label="修订历史（AI / 人工 / 人工确认）"
                     )
@@ -1453,6 +1455,9 @@ class ResearchPages:
     def revision_dialog(self, path, result):
         from nicegui import ui
 
+        from aletheia_nexus.processing.contracts import NATURE
+        from aletheia_nexus.processing.results import FIELD_STATUS, NATURE_LABELS
+
         choices = {
             "record:" + r["id"]: "记录 " + r["id"]
             for r in result["response"].get("records", [])
@@ -1506,10 +1511,56 @@ class ResearchPages:
                 editor.clear()
                 with editor:
                     if kind == "record":
-                        types = {f["id"]: f["type"] for f in result["task"]["fields"]}
+                        definitions = {f["id"]: f for f in result["task"]["fields"]}
                         for field_id, value in original["fields"].items():
-                            ui.label(field_id).classes("font-semibold")
-                            field_type = types[field_id]
+                            definition = definitions[field_id]
+                            ui.label(definition.get("label") or field_id).classes(
+                                "font-semibold"
+                            )
+                            field_type = definition["type"]
+                            status = ui.select(
+                                FIELD_STATUS,
+                                value=value["status"],
+                                label="科学报告状态",
+                            ).classes("w-full")
+                            editors = ui.column().classes("w-full")
+                            with editors:
+                                raw = ui.textarea(
+                                    "原文值（保留原文拼写；无单一原文值时可留空）",
+                                    value=value.get("raw_value") or "",
+                                ).classes("w-full")
+                                unit = None
+                                if (
+                                    field_type in {"number", "integer"}
+                                    or value.get("unit") is not None
+                                    or definition.get("unit") is not None
+                                ):
+                                    unit = ui.input(
+                                        "单位（没有单位时留空）",
+                                        value=value.get("unit") or "",
+                                    ).classes("w-full")
+                                nature = ui.select(
+                                    {
+                                        "__none__": "请选择内容来源性质",
+                                        **{k: NATURE_LABELS[k] for k in NATURE["enum"]},
+                                    },
+                                    value=value.get("nature") or "__none__",
+                                    label="科学内容性质",
+                                ).classes("w-full")
+                            missing_note = ui.label(
+                                "当前材料未报告：此版会保存空值、空原文值和空单位；请在条件中解释核对范围。"
+                            ).classes("an-muted text-sm")
+
+                            def show_field(
+                                editors=editors, status=status, note=missing_note
+                            ):
+                                editors.set_visibility(status.value != "not_reported")
+                                note.set_visibility(status.value == "not_reported")
+
+                            status.on_value_change(
+                                lambda _, update=show_field: update()
+                            )
+                            show_field()
                             if field_type in {"number", "integer"}:
                                 control = ui.number("值", value=value.get("value"))
                             elif field_type == "boolean":
@@ -1530,10 +1581,19 @@ class ResearchPages:
                                     if isinstance(val, list)
                                     else (val or ""),
                                 ).classes("w-full")
+                            control.move(editors, target_index=0)
                             context = ui.textarea(
                                 "适用对象、阶段与条件", value=value.get("context", "")
                             ).classes("w-full")
-                            state["controls"][field_id] = (field_type, control, context)
+                            state["controls"][field_id] = {
+                                "kind": field_type,
+                                "value": control,
+                                "context": context,
+                                "raw_value": raw,
+                                "unit": unit,
+                                "status": status,
+                                "nature": nature,
+                            }
                     else:
                         state["text"] = ui.textarea(
                             "主张" if kind == "claim" else "诊断说明",
@@ -1561,24 +1621,16 @@ class ResearchPages:
                 else:
                     replacement = deepcopy(state["replacement"])
                     if kind == "record":
-                        for key, (field_type, control, context) in state[
-                            "controls"
-                        ].items():
-                            value = control.value
-                            if field_type == "string_list":
-                                value = [
-                                    v.strip() for v in value.splitlines() if v.strip()
-                                ]
-                            elif field_type == "integer" and value is not None:
-                                if int(value) != value:
-                                    raise ValueError("整数类型不能保存小数")
-                                value = int(value)
-                            elif field_type == "boolean":
-                                value = {"true": True, "false": False, "null": None}[
-                                    value
-                                ]
-                            replacement["fields"][key]["value"] = value
-                            replacement["fields"][key]["context"] = context.value
+                        for key, controls in state["controls"].items():
+                            replacement["fields"][key] = revised_field(
+                                replacement["fields"][key],
+                                controls["kind"],
+                                {
+                                    name: element.value
+                                    for name, element in controls.items()
+                                    if name != "kind" and element is not None
+                                },
+                            )
                     else:
                         replacement["text" if kind == "claim" else "detail"] = state[
                             "text"

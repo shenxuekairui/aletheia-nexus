@@ -262,10 +262,15 @@ def test_human_revision_and_unicode_export_name(research):
     import hashlib
     import json
     import zipfile
+    from copy import deepcopy
 
     from aletheia_nexus.processing.engine import write_json
     from aletheia_nexus.processing.materials import build_package
     from aletheia_nexus.processing.results import make_result
+    from aletheia_nexus.workbench.ui_revisions import (
+        revised_field,
+        revision_history_rows,
+    )
 
     task = research.local_plan("整理测量条件", ["p1"])
     package, _ = build_package(
@@ -304,10 +309,23 @@ def test_human_revision_and_unicode_export_name(research):
     parent_bytes = path.read_bytes()
     citation = research.citation_document(str(path), source["id"])
     assert Path(citation["pdf"]).is_file()
+    replacement = deepcopy(record)
+    replacement["fields"]["finding"] = revised_field(
+        field,
+        "string",
+        {
+            "value": "25 °C",
+            "raw_value": "25 C",
+            "unit": "°C",
+            "status": "normalized",
+            "nature": "reported",
+            "context": "measurement; standardized temperature notation",
+        },
+    )
     revised = research.revise(
         str(path),
         {"record_id": "r1"},
-        record,
+        replacement,
         reason="已核对合成夹具原文",
         author="研究者",
         confirm=True,
@@ -317,6 +335,17 @@ def test_human_revision_and_unicode_export_name(research):
         research.read_result(revised["result"])["validation"]["record_states"]["r1"]
         == "human_confirmed"
     )
+    child = research.read_result(revised["result"])
+    saved_field = child["response"]["records"][0]["fields"]["finding"]
+    assert saved_field["raw_value"] == "25 C"
+    assert saved_field["unit"] == "°C" and saved_field["status"] == "normalized"
+    assert saved_field["citations"] == field["citations"]
+    history = revision_history_rows(child)
+    assert history[0]["version"] == "第 2 版"
+    assert history[0]["id"] == child["artifact_id"]
+    assert history[0]["authority"] == "人工修订"
+    assert history[0]["confirmed"] == "人工已确认"
+    assert history[0]["at"] == child["history"][0]["at"]
     exported = research.export([revised["result"]], name="验收结果")
     assert exported["display_name"] == "验收结果"
     assert all(Path(p).is_file() for p in exported["outputs"])
