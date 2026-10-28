@@ -106,6 +106,61 @@ def test_parse_unknown_option_rejected(research):
         research.parse(["p1"], {"ocr_languages": "eng; command"})
 
 
+def test_first_ai_prepare_uses_captured_parser_defaults_without_replacing_versions(
+    research, monkeypatch
+):
+    import json
+
+    from aletheia_nexus.workbench import research as module
+
+    original_parse = module.parse_document
+    calls = []
+
+    def observed_parse(*args, **kwargs):
+        calls.append(kwargs["config"].as_dict())
+        return original_parse(*args, **kwargs)
+
+    monkeypatch.setattr(module, "parse_document", observed_parse)
+    defaults = {"max_pages": 1, "heading_font_ratio": 1.7, "ocr": False}
+    captured = {**research.parser_options(), **defaults}
+    defaults["max_pages"] = 20  # Subsequent settings changes cannot alter this job.
+    task = research.local_plan("整理条件", ["p1"], parse_options=captured)
+    artifact = Path(task["documents"][0]["artifact"])
+    before = artifact.read_bytes()
+    parsed = json.loads(before)
+    assert calls[0]["max_pages"] == 1
+    assert calls[0]["heading_font_ratio"] == 1.7
+    assert parsed["parser"]["configuration"]["max_pages"] == 1
+    assert research.library.get("p1")["metadata"]["parse_options"] == captured
+    assert research.versions("p1")[0]["versions"][0]["options"] == captured
+    reused = research.local_plan(
+        "沿用既有版本", ["p1"], parse_options={"max_pages": 20}
+    )
+    assert reused["documents"][0]["artifact"] == str(artifact)
+    assert artifact.read_bytes() == before
+    assert len(calls) == 1
+
+
+def test_metadata_planning_passes_parser_defaults_before_any_model_call(
+    research, monkeypatch
+):
+    monkeypatch.setattr(
+        "aletheia_nexus.workbench.research.draft_task",
+        lambda app, request, **kwargs: request,
+    )
+    research.plan(
+        "核对条件",
+        ["p2"],
+        consent=True,
+        parse_options={"max_pages": 1, "merge_paragraph_lines": False},
+    )
+    options = research.library.get("p2")["metadata"]["parse_options"]
+    assert options["max_pages"] == 1
+    assert options["merge_paragraph_lines"] is False
+    with pytest.raises(ValueError, match="Unsupported parsing"):
+        research.local_plan("参数检查", ["p1"], parse_options={"unsafe": True})
+
+
 def test_legacy_parsed_artifact_discovered_without_reparse(research, monkeypatch):
     from aletheia_nexus.content.service import parse_document
 

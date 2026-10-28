@@ -124,7 +124,7 @@ class LiveResearchRuns:
         try:
             receipt = read_json(receipt_path)
             if not isinstance(receipt, dict):
-                raise ValueError("Invalid native receipt")
+                raise ValueError("科研运行回执格式无效。")
         except (OSError, ValueError):
             return {
                 **base,
@@ -183,7 +183,7 @@ class LiveResearchRuns:
                     not isinstance(manifest, dict)
                     or manifest.get("schema") != "aletheia-nexus/research-run/v1"
                 ):
-                    raise ValueError("Invalid native manifest")
+                    raise ValueError("科研运行清单格式无效。")
                 if manifest.get("task_fingerprint") == tracker["task_fingerprint"]:
                     candidates.append((path, manifest))
             except (OSError, ValueError, RuntimeError):

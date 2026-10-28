@@ -1054,6 +1054,10 @@ class ResearchPages:
             steps, synthesis = include_steps.value, compare.value
             requested_mode = mode.value
             material_options = read_material_options()
+            parse_options = {
+                **self.ctx.research.parser_options(),
+                **self.ctx.settings.get("parsing", {}),
+            }
             if not goal_value.strip() or not ids:
                 raise ValueError("请先选择论文并输入科研目标")
 
@@ -1066,6 +1070,7 @@ class ResearchPages:
                     budget=budget,
                     mode="local",
                     task_type=kind,
+                    parse_options=parse_options,
                     context=context,
                 )
                 task["include_steps"] = steps
@@ -1086,6 +1091,7 @@ class ResearchPages:
                     "model": model,
                     "budget": budget,
                     "material_options": material_options,
+                    "parse_options": parse_options,
                 },
             )
             state.update(
@@ -1099,6 +1105,10 @@ class ResearchPages:
             goal_value, si, model = goal.value, include_si.value, read_model()
             cost = planning_cost.value
             material_options = read_material_options()
+            parse_options = {
+                **self.ctx.research.parser_options(),
+                **self.ctx.settings.get("parsing", {}),
+            }
 
             def worker(context):
                 planned = self.ctx.research.plan(
@@ -1111,6 +1121,7 @@ class ResearchPages:
                     max_calls=options["max_calls"],
                     planning_max_cost=cost,
                     budget=options,
+                    parse_options=parse_options,
                 )
                 return self.ctx.research.configure_plan(
                     planned["task"], material_options, previous=planned
@@ -1121,7 +1132,12 @@ class ResearchPages:
                 "自然语言科研规划（仅元数据）",
                 ids,
                 worker,
-                {"goal": goal_value, "planning_max_cost": cost, "model": model},
+                {
+                    "goal": goal_value,
+                    "planning_max_cost": cost,
+                    "model": model,
+                    "parse_options": parse_options,
+                },
             )
             state.update(
                 plan_job=receipt.get("job_id", receipt.get("id")), loaded=False

@@ -387,7 +387,7 @@ class WorkbenchResearch:
             "new_version": False,
         }
 
-    def parse(self, ids, options=None, *, context=None, include_si=True) -> dict:
+    def _parse_configuration(self, options=None):
         options = {**self.parser_options(), **(options or {})}
         if set(options) - self.parser_options().keys():
             raise ValueError("Unsupported parsing option")
@@ -413,6 +413,10 @@ class WorkbenchResearch:
                     ),
                 )
             )
+        return options, config, backend
+
+    def parse(self, ids, options=None, *, context=None, include_si=True) -> dict:
+        options, config, backend = self._parse_configuration(options)
         failures = []
         materials = self._materials(ids, include_si, errors=failures)
         rows = list(failures)
@@ -563,9 +567,19 @@ class WorkbenchResearch:
         return {"document": document, "diagnostics": diagnostics}
 
     def prepare(
-        self, ids, *, include_si=False, parse_missing=True, context=None
+        self,
+        ids,
+        *,
+        include_si=False,
+        parse_missing=True,
+        parse_options=None,
+        context=None,
     ) -> dict:
         documents, unparsed = [], []
+        # Defaults are captured by the submitting UI. They apply only when no
+        # source-checked parsed version exists; preparing never replaces an old
+        # artifact merely because a user's current defaults have changed.
+        options, config, backend = self._parse_configuration(parse_options)
         materials = self._materials(ids, include_si, errors=unparsed)
         legacy_candidates = None
         for n, material in enumerate(materials):
@@ -576,6 +590,7 @@ class WorkbenchResearch:
                 )
             versions = self.versions_for_key(material["key"])
             found = None
+            found_options = {}
             active = self._active_versions().get(material["key"])
             ordered = sorted(
                 reversed(versions), key=lambda v: v["document"]["artifact"] != active
@@ -586,6 +601,7 @@ class WorkbenchResearch:
                 except (OSError, ValueError, RuntimeError):
                     continue
                 found = {**version["document"], "id": material["id"]}
+                found_options = version["options"]
                 break
             if found is None:
                 # Discover established CLI artifacts without parsing anything.
@@ -646,11 +662,14 @@ class WorkbenchResearch:
                         found["pdf"],
                         sidecar_path=found["sidecar"],
                         output_path=artifact,
+                        config=config,
+                        backend=backend,
                     )
                     found["artifact"] = str(artifact)
                     self.app.check_document(found, "parsed").verify()
-                    self._remember(material["key"], found)
+                    self._remember(material["key"], found, options=options)
                     self._activate(material["key"], found)
+                    found_options = options
                 except (OSError, ValueError, RuntimeError):
                     found = None
             if found is None:
@@ -668,11 +687,14 @@ class WorkbenchResearch:
                         "artifact"
                     ]:
                         diagnostics = self.app.get_parse_diagnostics(found)
-                        ocr_status, ocr_diagnostics = self.ocr_summary(diagnostics, {})
+                        ocr_status, ocr_diagnostics = self.ocr_summary(
+                            diagnostics, found_options
+                        )
                         self.library.update_metadata(
                             material["paper_id"],
                             parse_status=diagnostics["status"],
                             artifact=found["artifact"],
+                            parse_options=found_options,
                             ocr_status=ocr_status,
                             ocr_diagnostics=ocr_diagnostics,
                         )
@@ -793,11 +815,14 @@ class WorkbenchResearch:
         budget=None,
         mode="local",
         task_type="extract",
+        parse_options=None,
         context=None,
     ) -> dict:
         if not isinstance(goal, str) or not goal.strip():
             raise ValueError("请先输入科研目标")
-        prepared = self.prepare(ids, include_si=include_si, context=context)
+        prepared = self.prepare(
+            ids, include_si=include_si, parse_options=parse_options, context=context
+        )
         if prepared["unparsed"] or not prepared["documents"]:
             raise ValueError("Selected materials contain unparsed/failed sources")
         documents = self._clean_documents(prepared["documents"])
@@ -841,11 +866,12 @@ class WorkbenchResearch:
         max_calls=10,
         planning_max_cost=0.5,
         budget=None,
+        parse_options=None,
         transport=None,
     ) -> dict:
         if not consent:
             raise ProcessingError("explicit_planning_consent_required")
-        prepared = self.prepare(ids, include_si=include_si)
+        prepared = self.prepare(ids, include_si=include_si, parse_options=parse_options)
         if prepared["unparsed"]:
             raise ValueError("Resolve unavailable selected materials before planning")
         request = planning_request(
