@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +24,24 @@ ACQUISITION_SCHEMAS = frozenset(
     }
 )
 _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+_PDF_PAGE_COUNTS: ContextVar[dict[str, int] | None] = ContextVar(
+    "validated_pdf_page_counts", default=None
+)
+
+
+@contextmanager
+def _pdf_validation_session():
+    """Reuse PDF structure facts only within one read-only search request.
+
+    Every gate still hashes the current PDF and validates its current source
+    record. Only parsing identical PDF bytes a second time is redundant. This
+    bounded cache never survives the request or changes the ordinary gate.
+    """
+    token = _PDF_PAGE_COUNTS.set({})
+    try:
+        yield
+    finally:
+        _PDF_PAGE_COUNTS.reset(token)
 
 
 @dataclass(frozen=True)
@@ -193,26 +213,39 @@ def validate_parser_input(
             ParserInputErrorCode.INVALID_SIDECAR,
             "pdf_validation.page_count must be an integer",
         )
-    try:
-        reader = PdfReader(pdf, strict=False)
-        if reader.is_encrypted:
-            try:
-                unlocked = reader.decrypt("")
-            except Exception as exc:
+    page_counts = _PDF_PAGE_COUNTS.get()
+    actual_pages = page_counts.get(actual_hash) if page_counts is not None else None
+    if actual_pages is None:
+        try:
+            reader = PdfReader(pdf, strict=False)
+            if reader.is_encrypted:
+                try:
+                    unlocked = reader.decrypt("")
+                except Exception as exc:
+                    raise _error(
+                        ParserInputErrorCode.PDF_UNREADABLE,
+                        "encrypted PDF could not be opened without a password",
+                    ) from exc
+                if unlocked == 0:
+                    raise _error(
+                        ParserInputErrorCode.PDF_UNREADABLE,
+                        "encrypted PDF could not be opened without a password",
+                    )
+            actual_pages = len(reader.pages)
+        except ParserInputError:
+            raise
+        except Exception as exc:
+            raise _error(ParserInputErrorCode.PDF_UNREADABLE, str(exc)) from exc
+        if page_counts is not None:
+            # Bind the structural reading to the same bytes that were hashed
+            # before opening the PDF; a concurrent change cannot seed reuse.
+            if sha256_file(pdf) != actual_hash:
                 raise _error(
-                    ParserInputErrorCode.PDF_UNREADABLE,
-                    "encrypted PDF could not be opened without a password",
-                ) from exc
-            if unlocked == 0:
-                raise _error(
-                    ParserInputErrorCode.PDF_UNREADABLE,
-                    "encrypted PDF could not be opened without a password",
+                    ParserInputErrorCode.PDF_HASH_MISMATCH,
+                    "PDF changed while validating its page structure",
                 )
-        actual_pages = len(reader.pages)
-    except ParserInputError:
-        raise
-    except Exception as exc:
-        raise _error(ParserInputErrorCode.PDF_UNREADABLE, str(exc)) from exc
+            if len(page_counts) < 1024:
+                page_counts[actual_hash] = actual_pages
     if actual_pages != recorded_pages:
         raise _error(
             ParserInputErrorCode.PAGE_COUNT_MISMATCH,

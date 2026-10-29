@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import fields
 from datetime import datetime, timezone
@@ -23,7 +24,7 @@ from aletheia_nexus.content.backends import (
 )
 from aletheia_nexus.content.corpus import Corpus, CorpusDocument, search_corpus
 from aletheia_nexus.content.evidence import build_evidence_pack, evidence_markdown
-from aletheia_nexus.content.gate import sha256_file
+from aletheia_nexus.content.gate import _pdf_validation_session, sha256_file
 from aletheia_nexus.content.parser import ParserConfig
 from aletheia_nexus.content.service import parse_document
 from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
@@ -950,13 +951,33 @@ class WorkbenchResearch:
                 stack.append(vars(item))
         return total
 
+    @staticmethod
+    def _search_check_each(values, check):
+        if len(values) < 32:
+            for value in values:
+                check(value)
+            return
+        # Fresh path resolution and streaming hashes release the GIL while
+        # waiting for local file I/O. Keep only a small batch of futures live;
+        # both validation phases still reread every bound file independently.
+        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="an-search") as pool:
+            for start in range(0, len(values), 64):
+                for _ in pool.map(check, values[start : start + 64]):
+                    pass
+
     def _validate_search_session(self, session):
-        for requested, expected in session["paths"]:
+        def check_path(binding):
+            requested, expected = binding
             if self.app.path(requested) != expected:
                 raise ProcessingError("source_changed")
-        for path, expected, code in session["files"]:
+
+        def check_file(binding):
+            path, expected, code = binding
             if sha256_file(path) != expected:
                 raise ProcessingError(code)
+
+        self._search_check_each(session["paths"], check_path)
+        self._search_check_each(session["files"], check_file)
         for document, expected in session["documents"]:
             if digest(document) != expected:
                 raise ProcessingError("parsed_artifact_changed")
@@ -980,12 +1001,18 @@ class WorkbenchResearch:
         failures = list(prepared["unparsed"])
 
         def bind_path(requested, expected=None):
+            # Aliases are each retained, but repeated occurrences of the same
+            # requested locator need only one construction-time binding. Every
+            # distinct locator is freshly authorized before and after matching.
+            requested = str(requested)
+            if requested in paths:
+                if expected is not None and paths[requested] != expected:
+                    raise ProcessingError("source_changed")
+                return
             resolved = self.app.path(requested)
             if expected is not None and resolved != expected:
                 raise ProcessingError("source_changed")
-            previous = paths.setdefault(str(requested), resolved)
-            if previous != resolved:
-                raise ProcessingError("source_changed")
+            paths[requested] = resolved
 
         def bind_source(source, config, artifact_hash=None, document=None):
             for field, path, expected, code in (
@@ -1096,7 +1123,7 @@ class WorkbenchResearch:
         limit=50,
         offset=0,
     ) -> dict:
-        with self._search_lock:
+        with self._search_lock, _pdf_validation_session():
             try:
                 return self._search_page(
                     query,
