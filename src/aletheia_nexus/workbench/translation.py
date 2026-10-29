@@ -207,20 +207,104 @@ class TranslationService:
         )
         return "CACHED" if cached else "TRANSLATED"
 
-    def translate(
-        self, ids, options=None, *, consent=False, context=None, force=False
-    ) -> dict:
+    def create_budget(self, options=None, context=None):
+        """One durable native budget for sequential per-paper title requests."""
         options = translation_options(options)
-        with self._lock:
-            return self._translate(
-                list(dict.fromkeys(ids)),
-                options,
-                consent=consent,
-                context=context,
-                force=force,
-            )
+        path = self.directory / ("budget-" + uuid4().hex + ".json")
+        budget = CallBudget(options["max_calls"], max_cost=options["max_cost"])
+        budget._title_translation_configuration = self._budget_configuration(options)
 
-    def _translate(self, ids, options, *, consent, context, force):
+        def save():
+            uncertain = any(
+                call.get("status") == "started" or call.get("estimated_cost") is None
+                for call in budget.calls
+            )
+            total = sum(accounted_cost(call) or 0 for call in budget.calls)
+            atomic_json(
+                path,
+                safe_data(
+                    {
+                        "schema": "aletheia-nexus/title-translation-budget/v1",
+                        "updated_at": now(),
+                        "options": options,
+                        "max_calls": budget.max_calls,
+                        "max_cost": budget.max_cost,
+                        "calls": budget.calls,
+                        "accounted_cost": total,
+                        "billing_uncertain": uncertain,
+                    }
+                ),
+            )
+            if context:
+                context.progress(
+                    translation_call_count=len(budget.calls),
+                    translation_accounted_cost=total,
+                    billing_uncertain=uncertain,
+                    translation_budget_receipt=str(path),
+                )
+
+        budget.checkpoint = save
+        save()
+        return budget, path
+
+    @staticmethod
+    def _budget_configuration(options):
+        return digest(
+            {k: options[k] for k in ("model", "target_language", "max_output_tokens")}
+            | {"strategy": STRATEGY, "prompt": digest(TITLE_PROMPT)}
+        )
+
+    def translate(
+        self,
+        ids,
+        options=None,
+        *,
+        consent=False,
+        context=None,
+        force=False,
+        budget=None,
+    ) -> dict:
+        """Translate normally, or reuse a sequential budget with the same options."""
+        options = translation_options(options)
+        if budget is not None and (
+            not isinstance(budget, CallBudget)
+            or type(budget.max_calls) is not int
+            or not 1 <= budget.max_calls <= options["max_calls"]
+            or type(budget.max_cost) not in (int, float)
+            or not math.isfinite(budget.max_cost)
+            or not 0 < budget.max_cost <= options["max_cost"]
+        ):
+            raise ValueError(
+                "共享标题翻译预算必须有效，且不能超过本次授权的调用和费用上限。"
+            )
+        with self._lock:
+            if budget is not None:
+                configuration = self._budget_configuration(options)
+                prior = getattr(
+                    budget, "_title_translation_configuration", configuration
+                )
+                if prior != configuration:
+                    raise ValueError(
+                        "共享翻译预算已绑定本批模型、币种及翻译配置，请为新配置创建新的预算。"
+                    )
+                budget._title_translation_configuration = configuration
+            previous_checkpoint = budget.checkpoint if budget is not None else None
+            try:
+                return self._translate(
+                    list(dict.fromkeys(ids)),
+                    options,
+                    consent=consent,
+                    context=context,
+                    force=force,
+                    budget=budget,
+                )
+            finally:
+                if budget is not None:
+                    budget.checkpoint = previous_checkpoint
+
+    def _translate(self, ids, options, *, consent, context, force, budget=None):
+        shared_budget = budget
+        call_offset = len(budget.calls) if budget is not None else 0
         receipt = {
             "schema": "aletheia-nexus/title-translation-run/v1",
             "id": uuid4().hex,
@@ -230,22 +314,27 @@ class TranslationService:
             "calls": [],
             "scope": "titles_only",
         }
+        if shared_budget is not None:
+            receipt["shared_call_offset"] = call_offset
         path = self.directory / (receipt["id"] + ".json")
 
         def save():
+            if budget is not None:
+                receipt["calls"] = deepcopy(budget.calls[call_offset:])
             atomic_json(path, safe_data(receipt))
-            if context and receipt["calls"]:
+            ledger = budget.calls if budget is not None else receipt["calls"]
+            if context and ledger:
                 context.progress(
                     len(receipt["items"]),
                     len(ids),
                     stage="标题翻译",
-                    translation_call_count=len(receipt["calls"]),
+                    translation_call_count=len(ledger),
                     translation_accounted_cost=sum(
-                        accounted_cost(c) or 0 for c in receipt["calls"]
+                        accounted_cost(c) or 0 for c in ledger
                     ),
                     billing_uncertain=any(
                         c.get("status") == "started" or c.get("estimated_cost") is None
-                        for c in receipt["calls"]
+                        for c in ledger
                     ),
                     translation_receipt=str(path),
                 )
@@ -283,18 +372,43 @@ class TranslationService:
                 pending.append({"id": paper_id, "title": title})
         if pending and not consent:
             raise ProcessingError("title_translation_remote_consent_required")
+        if shared_budget is not None and any(
+            call.get("status") == "started" or call.get("estimated_cost") is None
+            for call in shared_budget.calls
+        ):
+            for row in pending:
+                record(row["id"], "SKIPPED", error="previous_call_requires_review")
+            pending = []
         if pending:
-            provider = DeepSeekProvider(
-                options["model"],
-                enabled=True,
-                transport=self.transport,
-                instructions=TITLE_PROMPT,
-                prompt_version=STRATEGY,
+            provider = (
+                getattr(shared_budget, "_title_translation_provider", None)
+                if shared_budget is not None
+                else None
             )
-            budget = CallBudget(
-                options["max_calls"], max_cost=options["max_cost"], checkpoint=save
-            )
-            receipt["calls"] = budget.calls
+            if provider is None:
+                provider = DeepSeekProvider(
+                    options["model"],
+                    enabled=True,
+                    transport=self.transport,
+                    instructions=TITLE_PROMPT,
+                    prompt_version=STRATEGY,
+                )
+                if shared_budget is not None:
+                    # Runtime-only reuse preserves the provider's existing
+                    # interval/retry machinery; no credentials enter the ledger.
+                    shared_budget._title_translation_provider = provider
+            if budget is None:
+                budget = CallBudget(
+                    options["max_calls"], max_cost=options["max_cost"], checkpoint=save
+                )
+            else:
+                previous_checkpoint = budget.checkpoint
+
+                def checkpoint():
+                    previous_checkpoint()
+                    save()
+
+                budget.checkpoint = checkpoint
             for offset in range(0, len(pending), options["batch_size"]):
                 if context:
                     context.checkpoint()
@@ -373,7 +487,10 @@ class TranslationService:
             accounted_cost(c) or 0 for c in receipt["calls"]
         )
         receipt["billing_uncertain"] = any(
-            c.get("estimated_cost") is None for c in receipt["calls"]
+            c.get("estimated_cost") is None
+            for c in (
+                shared_budget.calls if shared_budget is not None else receipt["calls"]
+            )
         )
         receipt["receipt"] = str(path)
         save()

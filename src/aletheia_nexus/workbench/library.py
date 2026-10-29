@@ -31,6 +31,8 @@ from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.organization import destination, filename_stem
 from aletheia_nexus.library import scan_library, update_tags
 
+from .scientific_text import scientific_filename_text
+
 SCHEMA = "aletheia-nexus/workbench-library/v1"
 TEMPLATES = {
     "原始标题": "{title_original}",
@@ -1647,7 +1649,9 @@ class LibraryService:
                 )
             )
             self.path(target_dir)
-            values = {key: str(row.get(key) or "") for key in FIELDS}
+            values = {
+                key: scientific_filename_text(str(row.get(key) or "")) for key in FIELDS
+            }
             missing = [key for key in used if not values[key]]
             errors, warnings = [], []
             if "title_zh" in missing:
@@ -1657,7 +1661,11 @@ class LibraryService:
                     )
                 else:
                     values["title_zh"] = values["title_original"]
-            raw_stem = overrides.get(paper_id) or template.format_map(values)
+            raw_stem = (
+                scientific_filename_text(overrides[paper_id])
+                if overrides.get(paper_id)
+                else template.format_map(values)
+            )
             stem = filename_stem(raw_stem)
             if stem != raw_stem.strip(" ."):
                 warnings.append(
