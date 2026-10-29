@@ -19,6 +19,7 @@ from aletheia_nexus.acquire.access.browser_engine.launcher import (
     ProfileLease,
     normal_browser_endpoint,
 )
+from aletheia_nexus.acquire.access.browser_engine.observation import bounded_read
 from aletheia_nexus.acquire.access.browser_engine.runtime import (
     affected_download_version,
     fixed_installed_browser,
@@ -50,6 +51,8 @@ from aletheia_nexus.core.models import PaperMetadata
 
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _LOGGER = logging.getLogger(__name__)
+_ATTACHED_TITLE_BUDGET = 3.0
+_ATTACHED_TITLE_READ_TIMEOUT = 0.5
 _PROFILE_LOCK_MARKERS = (
     "lockfile",
     "SingletonLock",
@@ -393,7 +396,7 @@ def _select_attached_page(
     )
     pages = list(getattr(context, "pages", ()) or ())
     expected = _normalized_page_title(expected_title)
-    ranked: list[tuple[int, int, object]] = []
+    candidates: list[tuple[int, int, object, bool]] = []
     for index, page in enumerate(pages):
         try:
             if page.is_closed():
@@ -422,21 +425,45 @@ def _select_attached_page(
         if any(len(token) >= 6 and token in compact_url for token in preferred_tokens):
             score += 450
 
-        if expected:
+        candidates.append((score, index, page, pdf_page))
+
+    title_scores: dict[int, int] = {}
+    if expected:
+        # Page.title has no public timeout argument. An old native PDF may
+        # leave its execution context unresponsive indefinitely. Reuse the
+        # existing owning-thread observation deadline, and share one budget
+        # across all tabs instead of multiplying a long timeout by tab count.
+        # URL scores only prioritize observations; the ranking below retains
+        # exactly the original weights and original-index tie rule.
+        deadline = time.monotonic() + _ATTACHED_TITLE_BUDGET
+        for _score, index, page, pdf_page in sorted(
+            candidates, key=lambda item: (item[0], item[1]), reverse=True
+        ):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             try:
-                observed = _normalized_page_title(page.title())
+                observed = _normalized_page_title(
+                    bounded_read(
+                        page,
+                        "title",
+                        timeout=min(_ATTACHED_TITLE_READ_TIMEOUT, remaining),
+                    )
+                )
             except Exception:
                 observed = ""
             if observed:
                 similarity = SequenceMatcher(None, expected, observed).ratio()
                 if similarity >= 0.92:
-                    score += 300
-                    if pdf_page:
-                        score += 100
+                    title_scores[index] = 300 + (100 if pdf_page else 0)
 
-        # Later pages win exact ties. This follows the normal handoff workflow,
-        # where the researcher leaves the most recently opened target tab active.
-        ranked.append((score, index, page))
+    # Later pages win exact ties, as before. An unreadable/unobserved title is
+    # unknown, not positive identity evidence and not permission to lower the
+    # caller's minimum_score.
+    ranked = [
+        (score + title_scores.get(index, 0), index, page)
+        for score, index, page, _pdf in candidates
+    ]
 
     if not ranked:
         return None
