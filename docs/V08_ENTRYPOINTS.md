@@ -113,11 +113,13 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 
 | 工具 | 作用 | 远程调用 |
 | --- | --- | --- |
-| `list_documents` | 列举允许目录内PDF、来源/解析状态 | 否 |
+| `list_documents` | 列举PDF；`catalog=true`读取既有文库标签、父文关系与完整性，支持folder/tag/query筛选 | 否 |
+| `update_document_tags` | 增删工作区PDF副本的文库标签，保留来源与解析证据 | 否 |
 | `get_acquisition_status` | 读取既有获取/登记状态，可对明确指定PDF核验当前完整性与身份依据 | 否 |
 | `acquire_documents` | 公共DOI批量获取、身份验证与断点恢复；返回异步job_id | 需独立公共获取许可；不调用AI |
 | `prepare_documents` | 准备明确选择的PDF，隔离失败，在工作区建副本 | 否 |
-| `import_local_document` | 用明确标题/DOI登记本地主文副本；仅为DECLARED，不验证身份 | 否 |
+| `prepare_documents_job` | 在后台准备明确选择的PDF，返回job_id并复用有效解析 | 否 |
+| `import_local_document` | 用明确元数据登记主文或显式指定父文的SI副本；仅为DECLARED | 否 |
 | `parse_document` | 对已登记文献显式生成独立的新解析工件，保留旧版 | 否 |
 | `draft_research_task` | 直接验证客户端任务；或从自然语言规划 | 只有自然语言分支需规划许可 |
 | `validate_research_task` | 校验来源/字段/预算，返回计划及批准请求 | 否 |
@@ -125,6 +127,7 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | `get_run_status` | 查询状态、错误、原生清单和费用 | 否 |
 | `export_research_results` | 重导出兼容结果为Markdown/CSV/JSONL | 否 |
 | `search_documents` | 对选定文献做已有表格/图注感知检索，保留覆盖情况 | 否 |
+| `read_native_table` | 本地读取明确选定XLSX的原生单元格与范围，保留来源及读取限制 | 否 |
 | `read_document_context` | 读取完整原页上下文、表格、图注和位置 | 否 |
 | `read_original_page` | 返回原页图片；可按显示页归一化坐标放大指定区域，保留来源/范围 | 否 |
 | `read_original_page_text` | 读取选定原页的PDF文字层，保留列对齐空白、来源与截断状态，不要求已有解析工件 | 否 |
@@ -208,7 +211,7 @@ aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08" -
 原任务仍运行时不能恢复；断点改变后旧批准失效；已有损坏断点明确报错。
 若进程在首个断点前退出，计划明确说明从头获取选定范围，不自动信任遗留文件。
 
-第18个工具只完成公共主文获取这一增量，不代表全部出版社/题名/机构获取已接入MCP。
+公共获取工具只覆盖公共主文获取，不代表全部出版社/题名/机构获取已接入MCP。
 本次用官方SDK2.3.0真实stdio客户端完成模拟网络的授权/恢复/解析测试；另实际下载并
 核验上述公共 DOI、准备12页解析成功，模型调用0。再以新服务进程、不可用HTTP代理恢复，
 有效文件复用、获取尝试0，原PDF/来源记录/断点哈希不变。真实桌面 AI 客户端中的手工会话仍另行验收。
@@ -226,8 +229,8 @@ aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08" -
 `REGISTERED/DECLARED`、`identity_verified=false`；检查通过不等于科学内容正确。
 
 本工具不会跟随记录里的文件路径或URL、不重试获取、不写入或升级来源记录；PDF和sidecar
-都必须处于本地配置允许范围。它没有 `confirmed` 或远程授权参数。尚未将网络下载/机构会话
-接入MCP；需要获取新文献时继续使用既有获取CLI及其访问设置。
+都必须处于本地配置允许范围。它没有 `confirmed` 或远程授权参数。公共DOI下载可使用
+`acquire_documents` 的独立获取许可；机构会话仍需既有获取CLI及其访问设置。
 
 ### 显式助手修订结果
 
@@ -258,8 +261,16 @@ aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08" -
 `import_local_document(pdf="F:/papers/paper.pdf", title="论文标题", doi="10.xxxx/...")`。
 DOI可省略；调用者提供的元数据仅记为 `REGISTERED/DECLARED`，不冒充下载验证。
 导入在工作区保留PDF副本、原路径及文件名，返回 `document`；它不会覆盖原PDF或原来源记录。
-已有登记/获取记录请用 `prepare_documents`。本工具不接受 `role`、`parent` 或 `confirmed`：
-新SI归属仍通过现有本地 `import --role SUPPLEMENT --parent ...` 声明，之后保留该来源记录。
+已有登记/获取记录请用 `prepare_documents`，保留其来源记录。新SI可显式调用
+`import_local_document(pdf="F:/papers/SI.pdf", title="补充材料", role="SUPPLEMENT", parent={"pdf": "主文PDF路径", "sidecar": "主文来源记录路径"})`。
+父文必须是已登记或已验证的独立主文；SI不另填DOI，其引用随父文保留。父文归属仍为调用者的
+`DECLARED`声明，不代表官方关联已验证；不按文件名猜测关系，也不接受 `confirmed`。
+
+查既有文库时复用 `list_documents(directory="工作区路径", recursive=true, catalog=true, tag="待读", query="关键词")`；
+`folder`按目录相对路径筛选。目录下未登记PDF仍用默认列举方式查看。
+对工作区副本调用 `update_document_tags(pdf="副本PDF路径", add=["待读"], remove=["已读"])` 可增删标签。
+仅标签文件可变，PDF、来源记录和解析证据保留；`--allow-dir`只授予读取权限，外部原库标签不会被修改。
+题名独立公共发现和机构登录/验证码会话尚未接入MCP，现有公共DOI获取权限不因此扩大。
 
 将返回的 `document` 交给 `parse_document(document=..., max_pages=2000)`，可显式用当前解析器
 创建新版本。每次写入唯一的 `*.parsed.json`，可被现有 `load_corpus` 文库扫描；不会改名或覆盖

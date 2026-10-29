@@ -42,9 +42,39 @@ def create_server(app: ResearchApplication):
         return server.tool(structured_output=True)(checked)
 
     @tool
-    def list_documents(directory: str, recursive: bool = False) -> dict[str, Any]:
-        """List PDFs and source/parse availability inside configured allowed roots; no API."""
-        return app.list_documents(directory, recursive=recursive)
+    def list_documents(
+        directory: str,
+        recursive: bool = False,
+        catalog: bool = False,
+        folder: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+    ) -> dict[str, Any]:
+        """List local PDFs; catalog=true reads registered library metadata instead.
+
+        Catalog exposes existing labels, role, parent and current integrity; optional
+        folder/tag/query filters require catalog=true. Set recursive=true to include
+        subfolders. No network, parsing or metadata inference.
+        """
+        return app.list_documents(
+            directory,
+            recursive=recursive,
+            catalog=catalog,
+            folder=folder,
+            tag=tag,
+            query=query,
+        )
+
+    @tool
+    def update_document_tags(
+        pdf: str, add: list[str] | None = None, remove: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Edit existing library labels only for a workspace PDF copy; no API.
+
+        Allowed read directories remain read-only. PDF, source record and parsed
+        evidence stay unchanged; only native library labels are written.
+        """
+        return app.update_document_tags(pdf, add=add, remove=remove)
 
     @tool
     def acquire_documents(
@@ -98,13 +128,20 @@ def create_server(app: ResearchApplication):
 
     @tool
     def import_local_document(
-        pdf: str, title: str, doi: str | None = None
+        pdf: str,
+        title: str,
+        doi: str | None = None,
+        role: str = "ARTICLE",
+        parent: dict | None = None,
     ) -> dict[str, Any]:
-        """Copy an unregistered local main PDF with explicit title/DOI to workspace.
-        Metadata is DECLARED, not verified. No new SI relationship or remote API.
+        """Copy an unregistered local PDF with explicit metadata to workspace.
+
+        ARTICLE is default. SUPPLEMENT requires parent={pdf, sidecar?}, a distinct
+        registered main article, and no own DOI. Identity and SI relationship stay
+        DECLARED, not verified; no filename inference or remote API.
         Already registered sources must use prepare_documents to preserve identity.
         """
-        return app.import_local_document(pdf, title, doi=doi)
+        return app.import_local_document(pdf, title, doi=doi, role=role, parent=parent)
 
     @tool
     def parse_document(

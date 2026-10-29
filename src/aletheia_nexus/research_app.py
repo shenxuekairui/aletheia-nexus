@@ -31,7 +31,12 @@ from aletheia_nexus.content.gate import (
 from aletheia_nexus.content.local import register_local_pdf
 from aletheia_nexus.content.parser import ParserConfig
 from aletheia_nexus.content.service import parse_document
-from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
+from aletheia_nexus.core.artifact_paths import (
+    acquisition_sidecar_path,
+    find_json_path,
+    json_output_path,
+)
+from aletheia_nexus.library import scan_library, update_tags
 from aletheia_nexus.processing.contracts import digest, validate_task
 from aletheia_nexus.processing.engine import run_task, write_json
 from aletheia_nexus.processing.field_independent import (
@@ -160,23 +165,55 @@ class ResearchApplication:
         return target
 
     def import_local_document(
-        self, pdf: str, title: str, *, doi: str | None = None
+        self,
+        pdf: str,
+        title: str,
+        *,
+        doi: str | None = None,
+        role: str = "ARTICLE",
+        parent: dict | None = None,
     ) -> dict:
-        """Declare a main article locally; never mint a verified identity or SI link."""
+        """Declare a local PDF and an explicit SI parent without verifying identity."""
         original = self.path(pdf)
         if original.suffix.lower() != ".pdf" or not title.strip():
             raise ValueError("select a PDF and supply its title")
-        sidecar = self.path(acquisition_sidecar_path(original))
-        if sidecar.exists():
+        sidecar = acquisition_sidecar_path(original)
+        self.path(sidecar)
+        if sidecar.exists() or sidecar.is_symlink():
             # Do not replace an acquired/registered identity with model metadata,
             # particularly an independently established supplement relationship.
             raise ProcessingError("source_already_registered_use_prepare_documents")
+        if role not in {"ARTICLE", "SUPPLEMENT"}:
+            raise ValueError("role must be ARTICLE or SUPPLEMENT")
+        if (role == "SUPPLEMENT") != (parent is not None):
+            raise ValueError("a supplement requires a parent; an article has no parent")
+        parent_source = None
+        if parent is not None:
+            if doi is not None:
+                raise ValueError(
+                    "a supplement inherits its parent's citation; omit doi"
+                )
+            if not isinstance(parent, dict) or not isinstance(parent.get("pdf"), str):
+                raise ValueError("parent requires an explicit main PDF document")
+            parent_source = self.check_document(parent, "direct")
+            if parent_source.identity[
+                "document_role"
+            ] != "ARTICLE" or parent_source.identity["pdf_sha256"] == sha256_file(
+                original
+            ):
+                raise ValueError("the parent must be a distinct main article")
         destination = self.path(
             self.workspace / "materials" / ("import-" + uuid4().hex), write=True
         )
         copied = self._copy_source_file(original, destination / "paper.pdf")
         registered = register_local_pdf(
-            copied, output_dir=destination, title=title, doi=doi
+            copied,
+            output_dir=destination,
+            title=title,
+            doi=doi,
+            role=role,
+            parent_pdf=parent_source.pdf if parent_source else None,
+            parent_sidecar=parent_source.sidecar if parent_source else None,
         )
         document = {
             "id": "paper_" + sha256_file(registered)[:16],
@@ -191,10 +228,17 @@ class ResearchApplication:
             "original_filename": original.name,
             "status": "REGISTERED",
             "warnings": [
-                "标题和DOI由调用者声明，未经来源验证；仅登记为独立主文，不绑定SI。"
+                "标题、DOI及显式SI父文关系由调用者声明，未经独立来源验证。"
+                if parent_source
+                else "标题和DOI由调用者声明，未经来源验证；仅登记为独立主文，不绑定SI。"
             ],
             "network_access": False,
         }
+        if parent_source:
+            receipt["parent_document"] = {
+                "pdf": str(parent_source.pdf),
+                "sidecar": str(parent_source.sidecar),
+            }
         path = self.path(destination / "import.json", write=True)
         write_json(path, receipt)
         return {**receipt, "import_file": str(path)}
@@ -269,10 +313,43 @@ class ResearchApplication:
             "network_access": False,
         }
 
-    def list_documents(self, directory: str, *, recursive=False) -> dict:
+    def list_documents(
+        self,
+        directory: str,
+        *,
+        recursive=False,
+        catalog=False,
+        folder: str | None = None,
+        tag: str | None = None,
+        query: str | None = None,
+    ) -> dict:
         root = self.path(directory)
         if not root.is_dir():
             raise ValueError("document directory does not exist")
+        if type(recursive) is not bool or type(catalog) is not bool:
+            raise ValueError("recursive and catalog must be booleans")
+        for value in (folder, tag, query):
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError("library filters must be nonempty strings")
+        if catalog:
+            library = scan_library(
+                root, folder=folder, tag=tag, query=query, path_guard=self.path
+            )
+            rows = [
+                row
+                for row in library["items"]
+                if recursive or Path(row["pdf_path"]).parent == root
+            ]
+            return {
+                "directory": str(root),
+                "documents": rows,
+                "warnings": library["warnings"],
+                "catalog": True,
+                "network_access": False,
+                "new_files": False,
+            }
+        if any(value is not None for value in (folder, tag, query)):
+            raise ValueError("folder/tag/query filters require catalog=true")
         files = root.rglob("*") if recursive else root.iterdir()
         rows = []
         for candidate in sorted(files):
@@ -335,6 +412,27 @@ class ResearchApplication:
             "documents": rows,
             "network_access": False,
             "new_files": False,
+        }
+
+    def update_document_tags(self, pdf: str, *, add=None, remove=None) -> dict:
+        """Edit native mutable labels only for an existing workspace PDF copy."""
+        selected = self.path(pdf, write=True)
+        self.path(acquisition_sidecar_path(selected))
+        self.path(find_json_path(selected.with_suffix(".library.json")))
+        labels = self.path(
+            json_output_path(selected.with_suffix(".library.json")), write=True
+        )
+        add = [] if add is None else add
+        remove = [] if remove is None else remove
+        if not isinstance(add, list) or not isinstance(remove, list):
+            raise ValueError("add and remove must be lists of labels")
+        tags = update_tags(selected, add=add, remove=remove)
+        return {
+            "pdf": str(selected),
+            "tags": tags,
+            "labels_file": str(labels),
+            "network_access": False,
+            "source_files_modified": False,
         }
 
     @staticmethod
