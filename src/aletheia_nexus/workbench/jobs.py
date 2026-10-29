@@ -42,6 +42,35 @@ def safe_data(value):
     return value
 
 
+def _archive_interaction(receipt, resolution, control=None):
+    details = receipt.get("interaction")
+    if details is None:
+        return {}
+    previous = {
+        **(deepcopy(details) if isinstance(details, dict) else {"detail": details}),
+        "resolution": resolution,
+        "started_at": receipt.get("interaction_started_at"),
+        "finished_at": now(),
+    }
+    if receipt.get("interaction_error_type"):
+        previous["error_type"] = receipt["interaction_error_type"]
+    if receipt.get("interaction_recheck_requested_at"):
+        previous["recheck_requested_at"] = receipt["interaction_recheck_requested_at"]
+        previous["requested_action"] = "continue"
+    if control is not None:
+        if control["skip"] or control["continue"]:
+            previous["requested_action"] = "skip" if control["skip"] else "continue"
+        control["skip"] = control["continue"] = False
+    return {
+        "last_interaction": previous,
+        "interaction": None,
+        "interaction_started_at": None,
+        "interaction_resolution": resolution,
+        "interaction_error_type": None,
+        "interaction_recheck_requested_at": None,
+    }
+
+
 class TaskCancelled(RuntimeError):
     pass
 
@@ -75,6 +104,9 @@ class TaskContext:
                 raise TaskCancelled("cancelled_at_safe_boundary")
             if not control["pause"]:
                 return
+            previous_stage = control.get(
+                "stage_before_pause", manager._receipts[self.job_id].get("stage")
+            )
             manager._update(
                 self.job_id,
                 status="PAUSED",
@@ -85,7 +117,14 @@ class TaskContext:
                 if control["cancel"]:
                     raise TaskCancelled("cancelled_at_safe_boundary")
                 if not control["pause"]:
-                    manager._update(self.job_id, status="RUNNING")
+                    waiting = (
+                        manager._receipts[self.job_id].get("interaction") is not None
+                    )
+                    manager._update(
+                        self.job_id,
+                        status="INTERACTION_REQUIRED" if waiting else "RUNNING",
+                        stage=control.pop("stage_before_pause", previous_stage),
+                    )
                     return
                 if pump is None:
                     manager._condition.wait(timeout=1)
@@ -120,6 +159,97 @@ class TaskContext:
             )
             self.manager._save(receipt)
 
+    def begin_interaction(self, details) -> None:
+        """Publish an owned wait without blocking the core browser poll loop."""
+        if not isinstance(details, dict):
+            raise ValueError("人工交互详情必须是命名字段。")
+        manager = self.manager
+        with manager._condition:
+            control = manager._controls[self.job_id]
+            if control["cancel"]:
+                raise TaskCancelled("cancelled_during_interaction")
+            receipt = manager._receipts[self.job_id]
+            # A repeated notification for the same live wait is not a new wait
+            # and must not discard a pending explicit recheck/skip decision.
+            if receipt.get("interaction") is not None and receipt[
+                "interaction"
+            ] == safe_data(details):
+                return
+            control["continue"] = False
+            status = (
+                ("PAUSED" if receipt["status"] == "PAUSED" else "PAUSE_REQUESTED")
+                if control["pause"]
+                else "INTERACTION_REQUIRED"
+            )
+            manager._update(
+                self.job_id,
+                status=status,
+                interaction=deepcopy(details),
+                interaction_started_at=now(),
+                interaction_resolution=None,
+                interaction_error_type=None,
+                interaction_recheck_requested_at=None,
+            )
+
+    def finish_interaction(self, resolution) -> None:
+        """Archive only the active wait; never release an explicit pause/cancel."""
+        if not isinstance(resolution, str) or not resolution.strip():
+            raise ValueError("请提供明确的人工交互结束原因。")
+        manager = self.manager
+        with manager._condition:
+            receipt, control = (
+                manager._receipts[self.job_id],
+                manager._controls[self.job_id],
+            )
+            values = _archive_interaction(receipt, resolution, control)
+            if not values:
+                return
+            if receipt["status"] in TERMINAL:
+                status = receipt["status"]
+            elif control["cancel"]:
+                status = "CANCEL_REQUESTED"
+            elif control["pause"]:
+                status = (
+                    "PAUSED" if receipt["status"] == "PAUSED" else "PAUSE_REQUESTED"
+                )
+            else:
+                status = "RUNNING"
+            manager._update(self.job_id, status=status, **values)
+
+    def poll_interaction(self, *, pump=None) -> str | None:
+        """Cooperate with controls; a recheck request never proves verification.
+
+        ``pump`` is used only by a paused checkpoint on the owning worker. The
+        mature core remains responsible for polling and deciding when the wait
+        has actually ended; a plain None return carries no completion meaning.
+        """
+        manager = self.manager
+        try:
+            while True:
+                self.checkpoint(pump=pump)
+                with manager._condition:
+                    control = manager._controls[self.job_id]
+                    if control["cancel"]:
+                        raise TaskCancelled("cancelled_during_interaction")
+                    if control["pause"]:
+                        continue
+                    if control["skip"]:
+                        self.finish_interaction("skip")
+                        control["skip"] = control["continue"] = False
+                        return "skip"
+                    if control["continue"]:
+                        control["continue"] = False
+                        manager._update(
+                            self.job_id,
+                            interaction_resolution="recheck_requested",
+                            interaction_recheck_requested_at=now(),
+                        )
+                        return "continue"
+                    return None
+        except TaskCancelled:
+            self.finish_interaction("cancelled")
+            raise
+
     def wait_interaction(self, details, timeout=None, *, pump=None) -> str:
         """Wait for a human decision, optionally servicing an owned event loop.
 
@@ -130,45 +260,41 @@ class TaskContext:
             raise ValueError("interaction timeout cannot be negative")
         manager = self.manager
         deadline = None if timeout is None else time.monotonic() + timeout
-        with manager._condition:
-            control = manager._controls[self.job_id]
-            control["continue"] = False
-            manager._update(
-                self.job_id, status="INTERACTION_REQUIRED", interaction=details
-            )
+        self.begin_interaction(details)
         while True:
             with manager._condition:
+                control = manager._controls[self.job_id]
                 if control["cancel"]:
+                    self.finish_interaction("cancelled")
                     raise TaskCancelled("cancelled_during_interaction")
                 if control["continue"] or control["skip"]:
                     action = "skip" if control["skip"] else "continue"
+                    self.finish_interaction(action)
                     control["skip"] = control["continue"] = False
-                    manager._update(
-                        self.job_id, status="RUNNING", interaction_resolution=action
-                    )
                     return action
-                if deadline is not None and time.monotonic() >= deadline:
-                    manager._update(
-                        self.job_id,
-                        status="RUNNING",
-                        interaction_resolution="timeout_skip",
-                    )
+                paused = control["pause"]
+                if not paused and deadline is not None and time.monotonic() >= deadline:
+                    self.finish_interaction("timeout_skip")
                     return "skip"
                 delay = 0.25
                 if deadline is not None:
                     delay = min(delay, max(0.0, deadline - time.monotonic()))
-                if pump is None:
+                if not paused and pump is None:
                     manager._condition.wait(timeout=delay)
                     continue
             try:
-                pump(delay)
+                if paused:
+                    self.checkpoint(pump=pump)
+                else:
+                    pump(delay)
             except Exception as exc:
                 with manager._condition:
                     if control["cancel"]:
+                        self.finish_interaction("cancelled")
                         raise TaskCancelled("cancelled_during_interaction") from None
+                    self.finish_interaction("event_processing_failed")
                     manager._update(
                         self.job_id,
-                        interaction_resolution="event_processing_failed",
                         interaction_error_type=type(exc).__name__,
                     )
                 raise
@@ -237,6 +363,7 @@ class TaskManager:
                             )
                         ),
                     )
+                    receipt.update(_archive_interaction(receipt, "interrupted"))
                     receipt["events"].append({"at": now(), "status": "INTERRUPTED"})
                     self._save(receipt)
                 self._receipts[receipt["id"]] = receipt
@@ -253,6 +380,12 @@ class TaskManager:
             receipt = self._receipts[job_id]
             if "status" in values and values["status"] != receipt["status"]:
                 receipt["events"].append({"at": now(), "status": values["status"]})
+            if values.get("status") in TERMINAL:
+                values.update(
+                    _archive_interaction(
+                        receipt, values["status"].lower(), self._controls.get(job_id)
+                    )
+                )
             receipt.update(safe_data(values))
             self._save(receipt)
 
@@ -379,6 +512,8 @@ class TaskManager:
                 )
             controls = self._controls[job_id]
             if action == "pause":
+                if not controls["pause"]:
+                    controls["stage_before_pause"] = receipt.get("stage")
                 controls["pause"] = True
                 self._update(
                     job_id,
@@ -387,6 +522,16 @@ class TaskManager:
                 )
             elif action == "resume":
                 controls["pause"] = False
+                if (
+                    not controls["cancel"]
+                    and receipt.get("interaction") is not None
+                    and receipt["status"] in {"PAUSED", "PAUSE_REQUESTED"}
+                ):
+                    self._update(
+                        job_id,
+                        status="INTERACTION_REQUIRED",
+                        stage=controls.get("stage_before_pause"),
+                    )
             elif action == "cancel":
                 controls["cancel"] = True
                 self._update(

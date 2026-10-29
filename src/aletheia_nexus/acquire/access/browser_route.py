@@ -382,6 +382,50 @@ def _wait_until_challenge_changes(
     interaction_callback=None,
     return_host: str | None = None,
     allow_authentication: bool = True,
+    interaction_poll_callback=None,
+) -> ChallengeReport:
+    """Observe the mature clearance rules with optional cooperative control.
+
+    Emit completion outside the observation exception handlers. A control
+    signal must propagate unchanged, not become a page/readiness result.
+    """
+    report = _observe_challenge_changes(
+        page,
+        initial=initial,
+        seconds=seconds,
+        poll_interval=poll_interval,
+        history=history,
+        completion_check=completion_check,
+        interaction_callback=interaction_callback,
+        return_host=return_host,
+        allow_authentication=allow_authentication,
+        interaction_poll_callback=interaction_poll_callback,
+    )
+    _notify_interaction_poll(interaction_poll_callback, "resolved", report, page)
+    return report
+
+
+def _notify_interaction_poll(callback, event, report, page):
+    if callback is not None:
+        try:
+            url = redact_url_for_record(getattr(page, "url", "")) or ""
+        except Exception:
+            url = ""
+        callback(event, report, url)
+
+
+def _observe_challenge_changes(
+    page,
+    *,
+    initial: ChallengeReport,
+    seconds: float | None,
+    poll_interval: float,
+    history: list[ChallengeReport],
+    completion_check=None,
+    interaction_callback=None,
+    return_host: str | None = None,
+    allow_authentication: bool = True,
+    interaction_poll_callback=None,
 ) -> ChallengeReport:
     report = initial
     last_challenge = initial
@@ -396,6 +440,7 @@ def _wait_until_challenge_changes(
         return report
     deadline = None if seconds is None else time.monotonic() + seconds
     while deadline is None or time.monotonic() < deadline:
+        _notify_interaction_poll(interaction_poll_callback, "poll", report, page)
         try:
             if page.is_closed():
                 return report
@@ -600,6 +645,8 @@ def _resolve_page_challenge(
         callback_url = redact_url_for_record(page.url) or ""
         config.interaction_callback(report, callback_url)
         wait_options["interaction_callback"] = config.interaction_callback
+    if config.interaction_poll_callback is not None:
+        wait_options["interaction_poll_callback"] = config.interaction_poll_callback
     report = _wait_until_challenge_changes(
         page,
         initial=report,
@@ -1566,6 +1613,35 @@ def _resolve_external_auth_page(
     completion_check=None,
     returned_pages: list | None = None,
 ) -> tuple[ChallengeReport, tuple[ChallengeReport, ...], bool]:
+    result = _observe_external_auth_page(
+        page,
+        source_host=source_host,
+        config=config,
+        context=context,
+        existing_page_ids=existing_page_ids,
+        origin_url=origin_url,
+        origin_pdf_control=origin_pdf_control,
+        completion_check=completion_check,
+        returned_pages=returned_pages,
+    )
+    _notify_interaction_poll(
+        config.interaction_poll_callback, "resolved", result[0], page
+    )
+    return result
+
+
+def _observe_external_auth_page(
+    page,
+    *,
+    source_host: str,
+    config: BrowserAccessConfig,
+    context=None,
+    existing_page_ids: set[int] | None = None,
+    origin_url: str | None = None,
+    origin_pdf_control: bool = False,
+    completion_check=None,
+    returned_pages: list | None = None,
+) -> tuple[ChallengeReport, tuple[ChallengeReport, ...], bool]:
     """Track an institutional handoff through a stable return to the publisher.
 
     IdP transitions often show intermediate pages with no recognizable login
@@ -1754,6 +1830,7 @@ def _resolve_external_auth_page(
         else time.monotonic() + config.interaction_timeout
     )
     while deadline is None or time.monotonic() < deadline:
+        _notify_interaction_poll(config.interaction_poll_callback, "poll", report, page)
         wait_seconds = config.poll_interval
         if deadline is not None:
             wait_seconds = min(

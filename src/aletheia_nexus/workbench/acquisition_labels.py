@@ -29,6 +29,7 @@ PARAMETER_LABELS = {
     "max_item_attempts": "每篇最多获取轮次（含首次）",
     "retry_backoff": "整篇获取失败退避基数（秒）",
     "interaction_policy": "需要人工登录或验证时",
+    "auto_resume_interaction": "人工验证完成后自动检测并继续",
     "interaction_timeout": "任务中心人工等待时限（秒；0 不限时）",
     "resume": "复用有效获取检查点",
     "max_si_files": "每篇关联附件数量上限",
@@ -64,6 +65,7 @@ PARAMETER_LABELS = {
 }
 
 PARAMETER_HELP = {
+    "auto_resume_interaction": "仅在等待人工操作模式生效。开启后复用获取引擎对目标页面与下载的检查；关闭后需先点击验证后继续。暂停和跳过策略保持显式控制。",
     "auto_official_api": "使用现有引擎从系统环境读取的官方认证信息，不把密钥保存在任务或预设中。仅在完整获取策略下生效；与仅公开获取同时启用时会在联网前拒绝。",
     "public_only": "关闭已授权官方 API 和机构浏览器升级，只尝试公开来源。中国知网无 DOI 标题获取需要改用明确启用的机构浏览器策略。",
     "auto_metadata": "复用现有元数据模块读取已知 DOI 的书目及来源信息。它不等同于英文标题匹配，也不保证获得正文。",
@@ -215,9 +217,9 @@ PARAMETER_LEVELS = {
     "source_preference": "常用",
     "browser_enabled": "常用",
     "include_si": "常用",
-    "bulk_interval": "高级",
-    "max_item_attempts": "高级",
-    "retry_backoff": "高级",
+    "bulk_interval": "常用",
+    "max_item_attempts": "常用",
+    "retry_backoff": "常用",
     "interaction_policy": "常用",
     "interaction_timeout": "高级",
     "resume": "常用",

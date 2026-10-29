@@ -153,6 +153,10 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         config.interaction_callback
     ):
         raise TypeError("interaction_callback must be callable or None")
+    if config.interaction_poll_callback is not None and not callable(
+        config.interaction_poll_callback
+    ):
+        raise TypeError("interaction_poll_callback must be callable or None")
     if config.headless and config.interactive:
         raise ValueError("headless browser mode cannot use interactive human handoff")
     for name in (

@@ -65,7 +65,12 @@ _BROWSER_DEFAULTS = {
     f.name: getattr(BrowserAccessConfig(), f.name)
     for f in fields(BrowserAccessConfig)
     if f.name
-    not in {"interaction_callback", "interaction_timeout", "wait_for_interaction"}
+    not in {
+        "interaction_callback",
+        "interaction_poll_callback",
+        "interaction_timeout",
+        "wait_for_interaction",
+    }
 }
 _EXTRA_DEFAULTS = {
     "browser_enabled": False,
@@ -74,6 +79,7 @@ _EXTRA_DEFAULTS = {
     "max_item_attempts": 1,
     "retry_backoff": 1.0,
     "interaction_policy": "pause",
+    "auto_resume_interaction": True,
     "interaction_timeout": 180.0,
     "resume": True,
     "max_si_files": 20,
@@ -83,7 +89,7 @@ _EXTRA_DEFAULTS = {
 _MAIN_REASONS = {
     "VERIFIED": "正文已通过来源、文件内容与论文身份核验。",
     "AUTH_REQUIRED": "来源要求登录或 API 授权。请检查所选会话与合法访问权限后再恢复。",
-    "INTERACTION_REQUIRED": "需要在所选浏览器中完成登录或验证，再选择继续、跳过或取消。",
+    "INTERACTION_REQUIRED": "来源仍要求登录或验证；请查看任务中的实际等待方式与后续操作。",
     "ENTITLEMENT_REQUIRED": "来源要求额外的全文访问权限；系统不会自动绕过订阅或机构授权。",
     "ACCESS_DENIED": "来源拒绝当前访问。请核对账号、网络与合法权限，不要连续盲目重试。",
     "BROWSER_UNAVAILABLE": "所选浏览器未能启动或连接，请检查浏览器安装、会话与连接设置。",
@@ -340,8 +346,10 @@ def _options(value: dict | None) -> dict:
     browser_options.update(
         interactive=result["interaction_policy"] != "skip"
         and browser_options["interactive"],
-        wait_for_interaction=False,
-        interaction_timeout=max(1.0, result["interaction_timeout"] or 180.0),
+        wait_for_interaction=result["interaction_policy"] == "wait"
+        and result["auto_resume_interaction"]
+        and result["interaction_timeout"] == 0,
+        interaction_timeout=result["interaction_timeout"] or 180.0,
     )
     _validate_browser_config(BrowserAccessConfig(**browser_options))
     # browser_profile_dir also accepts path-like values, but opens no files.
@@ -680,14 +688,24 @@ class AcquisitionService:
             "pdf_acquired": False,
         }
 
-    def run(self, requests, options=None, context=None, checkpoint_path=None) -> dict:
-        """Run sequentially; UI control is effective at explicit paper boundaries.
+    def run(
+        self,
+        requests,
+        options=None,
+        context=None,
+        checkpoint_path=None,
+        *,
+        on_item=None,
+    ) -> dict:
+        """Run sequentially with safe paper and browser-interaction boundaries.
 
-        Browser interaction notifications use the task center's human decision.
+        Browser waits may monitor completion or require an explicit human decision.
         No thread is killed during a file transfer; cancellation is checked after
         the engine returns, so persisted files and provenance remain consistent.
         """
         options = _options(options)
+        if on_item is not None and not callable(on_item):
+            raise ValueError("逐篇入库处理必须是可调用操作。")
         prepared = list(dict.fromkeys(normalize_request(r) for r in requests))
         if not prepared:
             raise ValueError("select at least one paper")
@@ -726,15 +744,34 @@ class AcquisitionService:
         current = None
         interaction_skipped = False
         interaction_route = None
+        interaction_active = False
+        automatic_wait = (
+            context is not None
+            and options["interaction_policy"] == "wait"
+            and options["auto_resume_interaction"]
+        )
 
         def interaction(challenge, url):
             from .jobs import TaskCancelled
 
-            nonlocal interaction_skipped, interaction_route
+            nonlocal interaction_skipped, interaction_route, interaction_active
             if context is None or options["interaction_policy"] == "skip":
                 return
             interaction_route = _diagnostic_url(url)
             try:
+                if automatic_wait:
+                    context.checkpoint(pump=session.pump_events)
+                    context.begin_interaction(
+                        {
+                            "paper": asdict(current),
+                            "source": interaction_route,
+                            "challenge": challenge.kind.value,
+                            "stage": "browser_interaction",
+                            "auto_monitoring": True,
+                        }
+                    )
+                    interaction_active = True
+                    return
                 decision = context.wait_interaction(
                     {
                         "paper": asdict(current),
@@ -759,13 +796,40 @@ class AcquisitionService:
                 # This private signal is caught at THIS adapter boundary instead.
                 raise _SkipInteraction("user_skipped_interaction")
 
+        def interaction_poll(event, report, url):
+            from .jobs import TaskCancelled
+
+            nonlocal interaction_skipped, interaction_active
+            if not automatic_wait or not interaction_active:
+                return
+            try:
+                if event == "resolved":
+                    # A completion check may already have committed a verified
+                    # file. Record the actual outcome before the next cancel
+                    # checkpoint; a late UI action cannot undo that delivery.
+                    context.finish_interaction(
+                        "auto_detected" if report.kind.value == "NONE" else "not_ready"
+                    )
+                    interaction_active = False
+                    return
+                if event == "poll":
+                    decision = context.poll_interaction(pump=session.pump_events)
+                    if decision == "skip":
+                        interaction_skipped = True
+                        raise _SkipInteraction("user_skipped_interaction")
+            except TaskCancelled as exc:
+                raise _CancelAcquisition(exc) from exc
+            except Exception as exc:
+                raise _BrowserWaitFailed(exc) from exc
+
         browser_values = dict(options["browser"])
         browser_values.update(
             interaction_callback=interaction,
+            interaction_poll_callback=interaction_poll if automatic_wait else None,
             interactive=options["interaction_policy"] != "skip"
             and browser_values["interactive"],
-            wait_for_interaction=False,
-            interaction_timeout=max(1.0, options["interaction_timeout"] or 180.0),
+            wait_for_interaction=automatic_wait and options["interaction_timeout"] == 0,
+            interaction_timeout=options["interaction_timeout"] or 180.0,
         )
         browser = BrowserAccessConfig(**browser_values)
         engine_options = {name: options[name] for name in _ACCESS_DEFAULTS}
@@ -773,6 +837,7 @@ class AcquisitionService:
             for index, current in enumerate(prepared, 1):
                 interaction_skipped = False
                 interaction_route = None
+                interaction_active = False
                 if context:
                     context.checkpoint()
                     if context.should_skip(current.key):
@@ -807,6 +872,7 @@ class AcquisitionService:
                         index - 1,
                         len(prepared),
                         stage="acquisition",
+                        task_phase="acquisition",
                         current=asdict(current),
                     )
                 if index > 1 and options["bulk_interval"]:
@@ -873,6 +939,9 @@ class AcquisitionService:
                             checkpoint=str(checkpoint),
                         )
                     raise ValueError(reason) from None
+                if interaction_active:
+                    context.finish_interaction("acquisition_returned")
+                    interaction_active = False
                 row = {
                     "id": current.key,
                     "request": asdict(current),
@@ -1012,6 +1081,10 @@ class AcquisitionService:
                             message=connection["message"],
                             reason_code=connection["code"],
                         )
+                if on_item is not None:
+                    updated = on_item(row)
+                    if updated is not None:
+                        row = updated
                 items.append(row)
                 if context:
                     context.record(
@@ -1023,10 +1096,15 @@ class AcquisitionService:
                         index, len(prepared), item=row, stage="acquisition"
                     )
                     context.checkpoint()
-                if row["status"] in {
-                    "INTERACTION_REQUIRED",
-                    "AUTH_REQUIRED",
-                } and options["interaction_policy"] in {"pause", "wait"}:
+                if (
+                    row["status"]
+                    in {
+                        "INTERACTION_REQUIRED",
+                        "AUTH_REQUIRED",
+                    }
+                    and options["interaction_policy"] in {"pause", "wait"}
+                    and not automatic_wait
+                ):
                     if context:
                         context.wait_interaction(
                             {

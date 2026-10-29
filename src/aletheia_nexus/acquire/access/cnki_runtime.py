@@ -244,7 +244,43 @@ class CNKIGate:
         self.check(page)
         return True
 
+    def _notify_interaction(self, event, report, page):
+        if self.config.interaction_poll_callback is not None:
+            try:
+                url = redact_url_for_record(getattr(page, "url", "")) or ""
+            except Exception:
+                url = ""
+            self.config.interaction_poll_callback(event, report, url)
+
     def check(self, page) -> bool:
+        try:
+            resumed = self._check(page)
+        except CNKIInteractionRequired as exc:
+            self._notify_interaction("resolved", exc.report, exc.page)
+            raise
+        except CNKITargetClosed:
+            if self.interaction_used:
+                self._notify_interaction(
+                    "resolved",
+                    ChallengeReport(
+                        ChallengeKind.UNKNOWN,
+                        ("CNKI target closed during interaction",),
+                    ),
+                    page,
+                )
+            raise
+        if resumed:
+            self._notify_interaction(
+                "resolved",
+                ChallengeReport(
+                    ChallengeKind.NONE,
+                    ("CNKI rendered state is ready after human interaction",),
+                ),
+                page,
+            )
+        return resumed
+
+    def _check(self, page) -> bool:
         if page.is_closed():
             raise CNKITargetClosed()
         report = challenge_for_page(page)
@@ -283,6 +319,7 @@ class CNKIGate:
         )
         clear_polls = 0
         while True:
+            self._notify_interaction("poll", report, page)
             target = page
             if page.is_closed():
                 # SSO/CAPTCHA popups may close themselves after completion.
