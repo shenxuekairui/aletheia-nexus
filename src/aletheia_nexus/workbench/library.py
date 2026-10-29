@@ -140,6 +140,56 @@ def _strings(value):
             yield from _strings(item)
 
 
+def collect_import_paths(value, recursive=False):
+    """Collect explicitly supplied local PDFs without treating blank input as cwd."""
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(
+            "请先填写本地 PDF 或文件夹的完整路径；也可在上方选择或拖入 PDF。"
+        )
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        text = text[1:-1].strip()
+    if not text:
+        raise ValueError("请先填写本地 PDF 或文件夹的完整路径。")
+    incoming = Path(text).expanduser()
+    if not incoming.is_absolute():
+        raise ValueError("请填写绝对路径，例如 D:\\文献\\论文.pdf 或 D:\\文献。")
+    try:
+        if any(
+            p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction())
+            for p in (incoming, *incoming.parents)
+        ):
+            raise ValueError(
+                "请选择实际文件或文件夹路径，不能通过符号链接或目录联接导入。"
+            )
+        incoming = incoming.resolve(strict=True)
+        if incoming.is_file():
+            if incoming.suffix.lower() != ".pdf":
+                raise ValueError(
+                    "所选文件不是 PDF，请选择 .pdf 文件或包含 PDF 的文件夹。"
+                )
+            return [incoming]
+        if not incoming.is_dir():
+            raise ValueError("该路径不是可导入的 PDF 文件或文件夹。")
+        entries = incoming.rglob("*") if recursive else incoming.glob("*")
+        paths = sorted(p for p in entries if p.is_file() and p.suffix.lower() == ".pdf")
+    except FileNotFoundError as exc:
+        raise ValueError(
+            "路径不存在，请检查或重新复制本地 PDF/文件夹的完整路径。"
+        ) from exc
+    except OSError as exc:
+        raise ValueError(
+            "无法读取该路径，请检查访问权限以及文件夹是否仍然可用。"
+        ) from exc
+    if not paths:
+        if recursive:
+            raise ValueError("该文件夹及其子目录中没有 PDF 文件，请检查选择的文件夹。")
+        raise ValueError(
+            "该文件夹顶层没有 PDF；如果文件在子目录中，请勾选“包含子目录中的 PDF”后重试。"
+        )
+    return paths
+
+
 class LibraryService:
     """One explicitly selected library root; persistent state is local JSON.
 

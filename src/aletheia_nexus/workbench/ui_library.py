@@ -997,7 +997,9 @@ class LibraryPage:
         dialog.open()
 
     def import_dialog(self):
-        from nicegui import ui
+        from nicegui import run, ui
+
+        from .library import collect_import_paths
 
         with ui.dialog() as dialog, ui.card().classes("w-[800px] max-w-[95vw] an-card"):
             ui.label("导入已有 PDF").classes("text-xl font-semibold")
@@ -1057,22 +1059,25 @@ class LibraryPage:
                 )
                 status.set_text(f"已加入任务中心：{len(paths)} 份 PDF")
 
-            def from_path():
-                incoming = Path(path.value).expanduser().resolve(strict=True)
-                paths = (
-                    sorted(
-                        p
-                        for p in (
-                            incoming.rglob("*")
-                            if recursive.value
-                            else incoming.glob("*")
-                        )
-                        if p.is_file() and p.suffix.lower() == ".pdf"
+            path_state = {"running": False}
+
+            async def from_path():
+                if path_state["running"]:
+                    return
+                path_state["running"] = True
+                import_button.disable()
+                status.set_text("正在检查路径中的 PDF…")
+                try:
+                    paths = await run.io_bound(
+                        collect_import_paths, path.value, recursive.value
                     )
-                    if incoming.is_dir()
-                    else [incoming]
-                )
-                import_paths(paths)
+                    import_paths(paths)
+                except Exception:
+                    status.set_text("尚未导入，请检查路径或按提示调整。")
+                    raise
+                finally:
+                    path_state["running"] = False
+                    import_button.set_enabled(bool((path.value or "").strip()))
 
             async def upload(event):
                 from uuid import uuid4
@@ -1097,16 +1102,55 @@ class LibraryPage:
                 auto_upload=True,
                 max_file_size=200_000_000,
             ).props('accept=".pdf"').classes("w-full")
-            with ui.expansion(
-                "从本地文件夹或已有AN来源导入", icon="folder_open"
-            ).classes("w-full"):
+
+            def choose_source_folder():
+                from .ui_import_folders import choose_import_folder
+
+                def selected(value):
+                    path.set_value(value)
+                    path_expansion.open()
+                    status.set_text(
+                        "已选择导入文件夹；检查是否包含子目录，再点击“开始导入”。"
+                    )
+
+                choose_import_folder(selected, initial=path.value or "")
+
+            ui.button(
+                "从电脑选择文件夹",
+                icon="folder_open",
+                on_click=guard(choose_source_folder),
+            ).props("outline")
+            path_expansion = ui.expansion(
+                "已选文件夹与路径（也可手动粘贴）", icon="folder_open"
+            ).classes("w-full")
+            with path_expansion:
                 ui.label(
-                    "普通 PDF 可直接在上方选择上传。整批文件夹或已有 AN 文献请按路径导入；"
+                    "普通 PDF 可直接在上方选择上传；整批文件夹可点击“从电脑选择文件夹”。"
                     "已有来源 JSON 应保留在原来的旁置位置，系统会核验并保留其来源身份。"
                 ).classes("an-muted text-sm")
-                path = ui.input("本地 PDF 或文件夹绝对路径").classes("w-full")
-                recursive = ui.checkbox("递归导入文件夹", value=False)
-                ui.button("按路径导入", on_click=guard(from_path), icon="folder_open")
+                path = (
+                    ui.input(
+                        "本地 PDF 或文件夹完整路径（必填）",
+                        placeholder="例如 D:\\文献\\论文.pdf 或 D:\\文献",
+                        value="",
+                    )
+                    .props("clearable")
+                    .classes("w-full")
+                )
+                ui.label(
+                    "选好文件夹或粘贴完整路径后，点击“开始导入”。也可粘贴 Windows 资源管理器"
+                    "“复制文件地址”得到的路径；直接选择 PDF 请使用上方上传区域。"
+                ).classes("an-muted text-sm")
+                recursive = ui.checkbox("包含子目录中的 PDF", value=False)
+                import_button = ui.button(
+                    "开始导入", on_click=guard(from_path), icon="file_download"
+                ).bind_enabled_from(
+                    path,
+                    "value",
+                    backward=lambda value: (
+                        bool((value or "").strip()) and not path_state["running"]
+                    ),
+                )
             ui.button("关闭", on_click=dialog.close).props("flat")
         dialog.open()
 

@@ -180,7 +180,7 @@ def choose_import_folder(on_select, *, initial=""):
     with ui.dialog() as dialog, ui.card().classes("w-[820px] max-w-[96vw] an-card"):
         ui.label("从电脑选择导入来源文件夹").classes("text-xl font-semibold")
         ui.label(
-            "只查看文件夹，不读取 PDF 内容。选择后回填来源位置，再由您点击导入。"
+            "点击磁盘或常用位置，进入目标文件夹后，点击“选择当前文件夹”。"
         ).classes("an-muted text-sm")
         with ui.row().classes("an-toolbar w-full flex-wrap"):
             for location in import_folder_locations():
