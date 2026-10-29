@@ -180,7 +180,7 @@ def library_table_row(row, title):
     if count > 1:
         result["path"] = "\n".join(v["pdf_path"] for v in variants)
         result["filename"] = "\n".join(Path(v["pdf_path"]).name for v in variants)
-        result["si_count"] = f"{sum(v.get('si_count', 0) for v in variants)} 条关联"
+        result["si_count"] = sum(v.get("si_count", 0) for v in variants)
         result["parse_status"] = " · ".join(
             f"{value_label(status)} {number}"
             for status, number in Counter(

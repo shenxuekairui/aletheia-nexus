@@ -105,7 +105,9 @@ def test_full_group_table_lists_both_real_paths_and_separate_parse_statuses():
     table = library_table_row(catalog_groups(raw)[0], "Original parent title")
     assert table["path"].splitlines() == [row["pdf_path"] for row in raw]
     assert table["filename"].splitlines() == ["main.pdf", "copy.pdf"]
-    assert table["si_count"] == "2 条关联"
+    # AG Grid infers this column from ordinary numeric rows. Group totals must
+    # stay numeric too, for rendering and numeric sorting of a mixed library.
+    assert table["si_count"] == 2 and type(table["si_count"]) is int
     assert "1" in table["parse_status"] and " · " in table["parse_status"]
     assert table["folder"] == "各来源分类目录不同，双击查看"
     assert (
