@@ -560,7 +560,9 @@ class ResearchPages:
                     )
                 ids = collections[scope.value]
             else:
-                ids = [r["id"] for r in library]
+                # Whole-library search is evaluated at submission time. This
+                # page can remain open while an acquisition/import adds papers.
+                ids = None
             return [
                 r["id"]
                 for r in self.ctx.library.scan(

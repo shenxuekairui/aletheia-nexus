@@ -78,3 +78,71 @@ def test_search_does_not_duplicate_or_overwrite_newer_ui_state(
             assert button.enabled
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("changes_during_query", [False, True])
+def test_all_library_scope_is_fresh_at_submission_and_rechecked_before_display(
+    tmp_path, monkeypatch, changes_during_query
+):
+    buttons = {}
+    original = ui.button
+
+    def capture(label, **kwargs):
+        element = original(label, **kwargs)
+        buttons[label] = kwargs.get("on_click")
+        return element
+
+    monkeypatch.setattr(ui, "button", capture)
+    monkeypatch.setattr(ui_research, "guard", lambda callback: callback)
+    visible = [{"id": "initial", "folder": "", "tags": []}]
+
+    def scan(**filters):
+        ids = filters.get("ids")
+        return {"items": [row for row in visible if ids is None or row["id"] in ids]}
+
+    class Page(ui_research.ResearchPages):
+        def title(self, *_):
+            pass
+
+    page = Page()
+    page.ctx = SimpleNamespace(
+        library=SimpleNamespace(scan=scan, collections=lambda: {}),
+        research=SimpleNamespace(search=lambda *_, **__: None),
+    )
+    before = set(ui.context.client.elements)
+    page.search_page()
+    visible.append({"id": "added-before-submit", "folder": "", "tags": []})
+    status = next(
+        element
+        for key, element in ui.context.client.elements.items()
+        if key not in before and getattr(element, "text", "").startswith("尚未检索")
+    )
+    received = []
+
+    async def io_bound(_callback, query, ids, **kwargs):
+        received.append(list(ids))
+        if changes_during_query:
+            visible.append({"id": "added-during-query", "folder": "", "tags": []})
+        return {
+            "hits": [],
+            "coverage": {
+                "searched_documents": len(ids),
+                "completed": len(ids),
+                "partial": 0,
+                "unsearched": [],
+            },
+            "offset": 0,
+            "returned_hits": 0,
+            "total_hits": 0,
+            "search_scope": {"ids": list(ids)},
+            "interpretation": "Keyword evidence only",
+        }
+
+    monkeypatch.setattr(run, "io_bound", io_bound)
+    asyncio.run(buttons["检索本地原文"]())
+    assert received == [["initial", "added-before-submit"]]
+    if changes_during_query:
+        assert "条件或材料选择已修改" in status.text
+        assert not hasattr(page, "search_report")
+    else:
+        assert page.search_report["search_scope"]["ids"] == received[0]
