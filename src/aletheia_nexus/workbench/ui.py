@@ -96,18 +96,26 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
     def submit(self, kind, label, ids, worker, parameters=None, *, resume_of=None):
         from nicegui import ui
 
+        client = ui.context.client
         receipt = self.ctx.jobs.submit(
             kind, label, list(ids), worker, parameters=parameters, resume_of=resume_of
         )
-        if kind == "acquisition":
-            root = str(self.ctx.library.root)
-            self.ctx.settings.set(
-                "acquisition_live_task", {"id": receipt["id"], "library": root}
-            )
-            panel = getattr(self, "acquisition_progress_panel", None)
-            if panel is not None and not panel.body.is_deleted and panel.root == root:
-                panel.track(receipt)
-        ui.notify(f"已加入任务中心：{label}", type="positive")
+        # Tracking can rebuild the input's progress body. Notifications belong
+        # to the client, not to the clicked element's now-replaced parent slot.
+        with client.layout:
+            ui.notify(f"已加入任务中心：{label}", type="positive")
+            if kind == "acquisition":
+                root = str(self.ctx.library.root)
+                self.ctx.settings.set(
+                    "acquisition_live_task", {"id": receipt["id"], "library": root}
+                )
+                panel = getattr(self, "acquisition_progress_panel", None)
+                if (
+                    panel is not None
+                    and not panel.body.is_deleted
+                    and panel.root == root
+                ):
+                    panel.track(receipt)
         return receipt
 
     def output_links(self, report):
@@ -481,7 +489,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
             recovery_requests,
         )
         from .defaults import browser_profile_choices
+        from .task_view import acquisition_retry_label
 
+        client = ui.context.client
         preview = await run.io_bound(recovery_preview, job, self.ctx.acquisition)
         parameters = job.get("parameters") or {}
         postprocess = deepcopy(parameters.get("postprocess", {}))
@@ -496,7 +506,11 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     **self.ctx.settings.get("parsing", {}),
                 }
             )
-        with ui.dialog() as dialog, ui.card().classes("w-[1150px] max-w-[96vw]"):
+        with (
+            client.layout,
+            ui.dialog() as dialog,
+            ui.card().classes("w-[1150px] max-w-[96vw]"),
+        ):
             ui.label("选择失败论文重试 / 仅补 SI").classes("text-xl font-semibold")
             ui.label(
                 "默认只选未成功项。正文已验证但 SI 待补时，复用正文，只继续附件获取；"
@@ -573,6 +587,8 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
             count = ui.label()
 
             def selection_count():
+                if dialog.is_deleted or count.is_deleted or table.is_deleted:
+                    return
                 if retry_state["busy"]:
                     table.selected = retry_state["selected_rows"]
                     count.set_text(
@@ -582,7 +598,7 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     count.set_text(
                         f"本次将重试 {len(table.selected)} 篇；不包括未勾选项。"
                     )
-                if start_button is not None:
+                if start_button is not None and not start_button.is_deleted:
                     start_button.set_enabled(
                         bool(table.selected) and not retry_state["busy"]
                     )
@@ -739,9 +755,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                         "source_checkpoint_sha256": fresh["checkpoint_sha256"],
                     },
                 }
-                self.submit(
+                receipt = self.submit(
                     "acquisition",
-                    f"重试 {len(requests)} 篇 · " + job["label"],
+                    acquisition_retry_label(job["label"], len(requests)),
                     [r.get("doi") or r["title"] for r in requests],
                     self.acquisition_worker(
                         requests,
@@ -752,7 +768,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     reviewed_parameters,
                     resume_of=job["id"],
                 )
-                dialog.close()
+                retry_state["submitted"] = receipt
+                if not dialog.is_deleted:
+                    dialog.close()
 
             async def start():
                 if retry_state["busy"]:
@@ -763,8 +781,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 try:
                     await submit_retry()
                 except Exception:
-                    retry_state["busy"] = False
-                    selection_count()
+                    if not retry_state.get("submitted"):
+                        retry_state["busy"] = False
+                        selection_count()
                     raise
 
             start_button = ui.button(

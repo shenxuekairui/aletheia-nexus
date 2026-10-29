@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -500,3 +501,53 @@ def state_color(state):
 
 def task_state_text(job):
     return status_label(job.get("status", "UNKNOWN"))
+
+
+def task_stage_text(job):
+    """Describe cancellation from actual task scope, including old receipts."""
+    if job.get("status") != "CANCEL_REQUESTED":
+        return value_label(job.get("stage") or job.get("kind") or "")
+    kind = job.get("kind")
+    unit = {
+        "acquisition": "论文",
+        "acquire": "论文",
+        "parse": "文件",
+        "import": "文件",
+        "translation": "标题批次",
+        "research": "研究处理",
+        "input_normalization": "模型请求",
+    }.get(kind, "处理")
+    message = f"正在等待当前操作到达安全边界；不会继续调度后续{unit}。"
+    parameters = job.get("parameters") or {}
+    parameters = parameters if isinstance(parameters, dict) else {}
+    task = parameters.get("task") or {}
+    task = task if isinstance(task, dict) else {}
+    postprocess = parameters.get("postprocess") or {}
+    postprocess = postprocess if isinstance(postprocess, dict) else {}
+    translated = (
+        parameters.get("title_translation")
+        or postprocess.get("title_translation")
+        or {}
+    )
+    translated = translated if isinstance(translated, dict) else {}
+    remote = (
+        kind in {"translation", "input_normalization"}
+        or kind == "research"
+        and (
+            "planning_max_cost" in parameters
+            or task.get("mode", "local") != "local"
+            and task.get("allow_remote")
+        )
+        or translated.get("enabled")
+        and translated.get("consent")
+        or job.get("billing_uncertain")
+    )
+    if remote:
+        message += "若模型请求已经发送，仍可能已计费，请在任务中心核对调用账本。"
+    return message
+
+
+def acquisition_retry_label(label, count):
+    """Collapse only the generated retry prefix, retaining the base display name."""
+    base = re.sub(r"^(?:重试\s*[0-9]+\s*篇\s*·\s*)+", "", label)
+    return f"重试 {count} 篇 · {base or label}"

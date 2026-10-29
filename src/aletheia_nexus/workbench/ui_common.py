@@ -72,9 +72,11 @@ def split_tags(value):
 def guard(callback):
     """Convert errors at a UI action boundary into visible, actionable messages."""
 
-    async def run(*_):
-        from nicegui import ui
+    from nicegui import ui
 
+    client = ui.context.client
+
+    async def run(*_):
         try:
             result = callback()
             if inspect.isawaitable(result):
@@ -83,35 +85,41 @@ def guard(callback):
         except Exception as exc:
             from .messages import error_record
 
+            if client.is_deleted:
+                raise
             record = error_record(exc)
-            ui.notify(
-                record["message"],
-                type="negative",
-                timeout=12000,
-                multi_line=True,
-                close_button="关闭",
-            )
-            if not record["known"]:
-                # Unknown details stay available; an untranslated exception must
-                # never disappear behind a generic notification or imply success.
-                with (
-                    ui.dialog() as diagnostic,
-                    ui.card().classes("w-[760px] max-w-[95vw]"),
-                ):
-                    ui.label("操作未完成").classes("text-lg font-semibold")
-                    ui.label(record["message"]).classes("whitespace-pre-wrap")
-                    with ui.expansion("原始诊断（专家）", icon="data_object").classes(
-                        "w-full"
+            with client.layout:
+                ui.notify(
+                    record["message"],
+                    type="negative",
+                    timeout=12000,
+                    multi_line=True,
+                    close_button="关闭",
+                )
+                if not record["known"]:
+                    # Unknown details stay available; an untranslated exception must
+                    # never disappear behind a generic notification or imply success.
+                    with (
+                        ui.dialog() as diagnostic,
+                        ui.card().classes("w-[760px] max-w-[95vw]"),
                     ):
-                        ui.code(
-                            json.dumps(
-                                {"诊断代码": record["code"], "原始原因": record["raw"]},
-                                ensure_ascii=False,
-                                indent=2,
-                            )
-                        ).classes("w-full max-h-96 overflow-auto")
-                    ui.button("关闭", on_click=diagnostic.close)
-                diagnostic.open()
+                        ui.label("操作未完成").classes("text-lg font-semibold")
+                        ui.label(record["message"]).classes("whitespace-pre-wrap")
+                        with ui.expansion(
+                            "原始诊断（专家）", icon="data_object"
+                        ).classes("w-full"):
+                            ui.code(
+                                json.dumps(
+                                    {
+                                        "诊断代码": record["code"],
+                                        "原始原因": record["raw"],
+                                    },
+                                    ensure_ascii=False,
+                                    indent=2,
+                                )
+                            ).classes("w-full max-h-96 overflow-auto")
+                        ui.button("关闭", on_click=diagnostic.close)
+                    diagnostic.open()
 
     return run
 

@@ -7,7 +7,7 @@ from copy import deepcopy
 from .jobs import TERMINAL
 from .labels import status_label, value_label
 from .messages import user_message
-from .task_view import state_color, task_counts, task_rows
+from .task_view import state_color, task_counts, task_rows, task_stage_text
 from .ui_common import guard, rows_table
 from .ui_tasks import continue_label, skip_control
 
@@ -103,7 +103,9 @@ def acquisition_progress(job):
 def acquisition_stage_summary(job, progress=None):
     """Keep original paper scheduling separate from title/file work counters."""
     progress = progress if progress is not None else acquisition_progress(job)
-    if job.get("task_phase") != "postprocess" or job["status"] in TERMINAL:
+    if job.get("task_phase") != "postprocess" or job["status"] in TERMINAL | {
+        "CANCEL_REQUESTED"
+    }:
         return ""
     stage = value_label(job.get("stage") or "整理已入库论文")
     unit = (
@@ -229,9 +231,7 @@ class AcquisitionProgressPanel:
         with self.body:
             with ui.row().classes("an-toolbar w-full"):
                 ui.badge(status_label(job["status"]), color=state_color(job["status"]))
-                ui.label(value_label(job.get("stage") or job["status"])).classes(
-                    "font-medium"
-                )
+                ui.label(task_stage_text(job)).classes("font-medium")
             ui.label(acquisition_count_summary(progress)).classes("an-info w-full")
             stage_summary = acquisition_stage_summary(job, progress)
             if stage_summary:

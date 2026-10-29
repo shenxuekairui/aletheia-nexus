@@ -12,6 +12,7 @@ from .task_view import (
     task_costs,
     task_counts,
     task_rows,
+    task_stage_text,
 )
 from .ui_common import guard, json_view, rows_table
 
@@ -407,7 +408,7 @@ def render_task_dialog(controller):
                             color=state_color(latest["status"]),
                         )
                         ui.label(
-                            f"{value_label(latest.get('stage') or latest['kind'])} · "
+                            f"{task_stage_text(latest)} · "
                             + (
                                 f"获取已处理 {acquisition['download_completed']}/{acquisition['counts']['total']} 篇"
                                 if acquisition and acquisition["counts"]["total"]

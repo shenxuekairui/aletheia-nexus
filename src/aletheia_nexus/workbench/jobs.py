@@ -533,11 +533,13 @@ class TaskManager:
                         stage=controls.get("stage_before_pause"),
                     )
             elif action == "cancel":
+                from .task_view import task_stage_text
+
                 controls["cancel"] = True
                 self._update(
                     job_id,
                     status="CANCEL_REQUESTED",
-                    stage="正在等待当前操作结束；远程请求可能已计费",
+                    stage=task_stage_text({**receipt, "status": "CANCEL_REQUESTED"}),
                 )
             elif action in {"skip", "continue"}:
                 controls[action] = True
