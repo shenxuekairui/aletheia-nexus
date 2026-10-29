@@ -1066,6 +1066,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
         dialog.open()
 
     def navigate(self, page):
+        from nicegui import ui
+
+        changed = self.active != page
         self.active = page
         for name, button in self.nav_buttons.items():
             if name == page:
@@ -1073,6 +1076,12 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
             else:
                 button.classes(remove="an-nav-active")
         self.page_content.refresh()
+        if changed:
+            # A long evidence page must not leave a new section halfway down.
+            ui.run_javascript(
+                "await new Promise(requestAnimationFrame);"
+                "window.scrollTo({top:0,left:0,behavior:'instant'});"
+            )
 
     def build(self):
         from nicegui import ui
