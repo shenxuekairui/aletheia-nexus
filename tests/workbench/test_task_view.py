@@ -9,6 +9,38 @@ from aletheia_nexus.workbench.task_view import (
 )
 
 
+def test_title_presentation_flattens_scientific_markup_without_changing_source():
+    item = {"status": "EXHAUSTED", "title": "Growth of TiO<sub>2</sub> &amp; x < y"}
+    job = {"kind": "acquisition", "result": {"items": [item]}}
+    original = deepcopy(job)
+    assert task_rows(job)[0]["title"] == "Growth of TiO2 & x < y"
+    assert job == original
+
+
+def test_legacy_verified_row_does_not_repeat_old_main_failure_advice(tmp_path):
+    import json
+
+    item = {
+        "status": "VERIFIED",
+        "main_status": "VERIFIED",
+        "si_status": "FAILED",
+        "reason": "仍未取得正文；请只重试这篇论文。",
+        "diagnostics": [{"reason_code": "NativePdfViewerPlaceholder: old candidate"}],
+        "postprocess": {"status": "PARTIAL", "parsing": {"status": "PARTIAL"}},
+    }
+    job = {"kind": "acquisition", "result": {"items": [item]}}
+    path = tmp_path / "legacy-task.json"
+    path.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+    before = path.read_bytes()
+    snapshot = deepcopy(job)
+    row = task_rows(job)[0]
+    assert row["status"] == "VERIFIED" and row["si_status"] == "FAILED"
+    assert "正文已取得并通过来源身份核验" in row["reason"]
+    assert "后续处理：部分完成" in row["reason"]
+    assert "仍未取得正文" not in row["reason"] and "重试这篇" not in row["reason"]
+    assert job == snapshot and path.read_bytes() == before
+
+
 def test_real_si_page_failures_explain_access_and_identity_separately():
     rows = attachment_rows(
         {

@@ -205,8 +205,16 @@ def _outcome(item) -> dict:
             details[-1]["method"] = _diagnostic_text(file.method)
     latest = details[-1] if details else {}
     error = _diagnostic_text(item.error)
-    code = error or next(
-        (row["reason_code"] for row in reversed(details) if row["reason_code"]), None
+    # Earlier routes may have failed before a later verified delivery. Retain
+    # every attempt below, but do not promote its retry advice into success.
+    code = (
+        error
+        or next(
+            (row["reason_code"] for row in reversed(details) if row["reason_code"]),
+            None,
+        )
+        if status != "VERIFIED"
+        else None
     )
     base_status = _value(getattr(base, "status", None))
     reason = _MAIN_REASONS.get(status, "当前获取结果需要核对，请查看逐条来源诊断。")
@@ -240,7 +248,8 @@ def _outcome(item) -> dict:
         "reason": reason,
         "reason_code": code or status,
         "message": _diagnostic_text(
-            getattr(result, "message", None) or getattr(base, "message", None)
+            getattr(result, "message", None)
+            or (getattr(base, "message", None) if status != "VERIFIED" else None)
         )
         or reason,
         "base_status": base_status,

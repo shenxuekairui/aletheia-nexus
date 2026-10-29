@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from .labels import status_label, value_label
 from .messages import user_message
+from .scientific_text import scientific_filename_text
 
 _CONNECTION_SCHEMA = "aletheia-nexus/browser-connection-diagnostic/v1"
 _CONNECTION_CODES = {
@@ -306,10 +307,26 @@ def task_rows(job: dict) -> list[dict]:
                 connection_reason = (
                     "正文已验证；SI 浏览器连接未完成，请查看本批恢复提示。"
                 )
+        reason = (
+            connection_reason
+            or item.get("reason")
+            or _reason(item.get("error") or item.get("errors"))
+        )
+        if state == "VERIFIED":
+            # Old receipts may retain failed candidate hints even after a later
+            # route delivered a verified main. Keep the audit bytes unchanged,
+            # while the ordinary row describes its final main/SI states.
+            reason = connection_reason or "正文已取得并通过来源身份核验。"
+            postprocess = item.get("postprocess")
+            if isinstance(postprocess, dict) and postprocess.get("status") in {
+                "PARTIAL",
+                "FAILED",
+            }:
+                reason += f" 后续处理：{status_label(postprocess['status'])}，请查看该阶段的独立结果。"
         rows.append(
             {
                 "id": str(item.get("id") or item.get("item_id") or index),
-                "title": title,
+                "title": scientific_filename_text(title),
                 "document_role": item.get("document_role")
                 or identity.get("document_role", "ARTICLE"),
                 "status": state,
@@ -321,9 +338,7 @@ def task_rows(job: dict) -> list[dict]:
                 "attempts": item.get("attempts"),
                 "folder": item.get("folder")
                 or (str(Path(path).parent) if path else ""),
-                "reason": connection_reason
-                or item.get("reason")
-                or _reason(item.get("error") or item.get("errors")),
+                "reason": reason,
                 "resumed": bool(item.get("resumed")),
             }
         )

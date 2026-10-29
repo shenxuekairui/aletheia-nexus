@@ -105,6 +105,64 @@ def test_an_earlier_shell_does_not_hide_a_later_delivered_file(status):
     assert result["diagnostics"][1]["reason_code"] == SHELL_ERROR
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "NativePdfViewerOwnedDownloadIncomplete: caller-owned Edge PDF page was activated",
+        "NativePdfViewerLocalSaveControlUnavailable",
+        "NativePdfViewerSaveDeadlineExceeded",
+        "browser_cdp_attach_timeout",
+    ],
+)
+def test_verified_summary_excludes_earlier_failure_advice_but_keeps_attempts(failure):
+    from copy import deepcopy
+
+    candidate = SimpleNamespace(url="https://pubs.acs.org/article.pdf")
+    failed = SimpleNamespace(
+        candidate=candidate, result=None, error=failure, method="browser_viewer_save"
+    )
+    delivered = SimpleNamespace(
+        status="VERIFIED", error=None, message=None, attempts=1, elapsed_seconds=0.2
+    )
+    saved = SimpleNamespace(
+        candidate=candidate, result=delivered, error=None, method="browser_viewer_save"
+    )
+    attempts = [
+        SimpleNamespace(
+            source_candidate=candidate,
+            status="VERIFIED",
+            error=None,
+            challenge_history=[],
+            bibliographic_conflicts=[],
+            file_attempts=[failed, saved],
+        )
+    ]
+    original = deepcopy(attempts)
+    row = _outcome(
+        BatchAcquisitionItem(
+            PaperRequest(doi="10.1000/fixture"),
+            "10.1000/fixture",
+            BatchItemStatus.VERIFIED,
+            result=SimpleNamespace(
+                browser_attempts=attempts,
+                base_result=SimpleNamespace(
+                    status="ACCESS_BLOCKED", message="Earlier public route failed"
+                ),
+            ),
+            error=None,
+            attempts=1,
+        )
+    )
+    assert row["reason"] == "正文已通过来源、文件内容与论文身份核验。"
+    assert row["reason_code"] == "VERIFIED" and row["error"] is None
+    assert row["message"] == row["reason"]
+    assert row["phase"] == "正文核验完成" and row["main_status"] == "VERIFIED"
+    assert row["base_status"] == "ACCESS_BLOCKED"
+    assert row["diagnostics"][1]["reason_code"] == failure
+    assert row["diagnostics"][2]["status"] == "VERIFIED"
+    assert attempts == original
+
+
 def test_legacy_top_level_shell_error_is_explained_without_browser_attempt_details():
     result = _outcome(
         BatchAcquisitionItem(

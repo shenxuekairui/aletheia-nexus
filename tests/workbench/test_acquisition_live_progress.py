@@ -133,6 +133,22 @@ def test_postprocessing_displays_real_file_instead_of_stale_last_paper():
     assert progress["current"] == "category/SI/paper__SI-01.pdf"
 
 
+def test_live_title_flattens_known_markup_without_rewriting_request_or_paths():
+    from copy import deepcopy
+
+    paper = {
+        "doi": "10.1000/scientific",
+        "title": "Growth of TiO<sub>2</sub> &amp; x < y",
+    }
+    job = {"status": "RUNNING", "parameters": {"requests": [paper]}, "current": paper}
+    original = deepcopy(job)
+    assert acquisition_progress(job)["current"] == "Growth of TiO2 & x < y"
+    assert job == original
+    path = "分类/SI/TiO2 &amp; comparison.pdf"
+    job.update(task_phase="postprocess", current_item=path)
+    assert acquisition_progress(job)["current"] == path
+
+
 def test_panel_reopens_saved_receipt_without_submitting_and_scopes_by_library(
     tmp_path,
 ):

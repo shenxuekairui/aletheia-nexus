@@ -7,6 +7,7 @@ from copy import deepcopy
 from .jobs import TERMINAL
 from .labels import status_label, value_label
 from .messages import user_message
+from .scientific_text import scientific_filename_text
 from .task_view import state_color, task_counts, task_rows, task_stage_text
 from .ui_common import guard, rows_table
 from .ui_tasks import continue_label, skip_control
@@ -92,7 +93,9 @@ def acquisition_progress(job):
             job.get("current_item")
             if job.get("task_phase") == "postprocess"
             and isinstance(job.get("current_item"), str)
-            else current.get("title") or current.get("doi") or ""
+            else scientific_filename_text(current["title"])
+            if current.get("title")
+            else current.get("doi") or ""
         ),
         "status": job["status"],
         "download_completed": completed,
