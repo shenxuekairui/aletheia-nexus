@@ -2132,11 +2132,8 @@ def _observe_pdf_popups(
         except ValueError:
             pass
 
-        # Keep the target alive until the route consumes response bodies owned
-        # by Chromium's PDF viewer. HTTP fallback follows browser delivery.
-        _trigger_pdf_viewer_same_origin_fetch(
-            popup, max_bytes=config.max_bytes, timeout=config.request_timeout
-        )
+        # Keep the target alive for native Save first. A denied JS re-fetch can
+        # replace the viewer's cached response and cancel its later local save.
         try:
             parsed = parse_html(popup.content())
             identity = validate_page_identity(
@@ -2233,6 +2230,7 @@ def _attempt_browser_route(
         """Validate delivery from the existing native viewer, without navigation."""
         nonlocal failed_native_candidate
         viewer_page = page if target_page is None else target_page
+        viewer_diagnostics: list[str] = []
         try:
             viewer_save = _trigger_pdf_viewer_save(
                 context,
@@ -2242,6 +2240,7 @@ def _attempt_browser_route(
                 expected_title=expected_title,
                 timeout=config.request_timeout,
                 max_bytes=config.max_bytes,
+                diagnostics=viewer_diagnostics,
             )
         except NativeViewerDownloadError as exc:
             candidate = source
@@ -2261,6 +2260,23 @@ def _attempt_browser_route(
             )
             return None
         if viewer_save is None:
+            # A known PDF shell must not end without an observable explanation
+            # merely because the local viewer had no supported save control.
+            if viewer_diagnostics and (
+                is_pdf_document_url(str(viewer_page.url or ""))
+                or any(
+                    "NativePdfViewerPlaceholder" in (attempt.error or "")
+                    for attempt in file_attempts
+                )
+            ):
+                file_attempts.append(
+                    BrowserFileAttempt(
+                        candidate=source,
+                        source_page_url=viewer_page.url,
+                        method="browser_viewer_save",
+                        error="; ".join(viewer_diagnostics),
+                    )
+                )
             return None
         saved_path, staging_dir = viewer_save
         try:
@@ -3010,12 +3026,6 @@ def _attempt_browser_route(
             pass
         sync_session_events()
 
-    if embedded_pdf is None:
-        _trigger_pdf_viewer_same_origin_fetch(
-            page, max_bytes=config.max_bytes, timeout=config.request_timeout
-        )
-        sync_session_events()
-
     # Chromium's built-in PDF webview keeps its Save control outside the normal
     # page/frame DOM. In an attached real browser, invoke that native control
     # through its isolated DevTools target and validate the resulting file.
@@ -3030,6 +3040,12 @@ def _attempt_browser_route(
         # Visit that observed endpoint once through the usual visible-browser
         # handoff. The native-only child route cannot recurse or replay HTTP.
         return recover_pdf_endpoint(failed_native_candidate)
+
+    if embedded_pdf is None:
+        _trigger_pdf_viewer_same_origin_fetch(
+            page, max_bytes=config.max_bytes, timeout=config.request_timeout
+        )
+        sync_session_events()
 
     for response in pending_browser_responses():
         attempt = _browser_response_to_file_attempt(
@@ -3279,6 +3295,29 @@ def _attempt_browser_route(
                     if saved is not None:
                         response_verified = saved.result
                         break
+                    _trigger_pdf_viewer_same_origin_fetch(
+                        popup,
+                        max_bytes=config.max_bytes,
+                        timeout=config.request_timeout,
+                    )
+                if response_verified is None:
+                    sync_session_events()
+                    for response in pending_browser_responses():
+                        attempt = _browser_response_to_file_attempt(
+                            response,
+                            parent=source,
+                            source_page_url=page.url,
+                            output_dir=output_dir,
+                            expected_title=expected_title,
+                            config=config,
+                        )
+                        file_attempts.append(attempt)
+                        if (
+                            attempt.result is not None
+                            and attempt.result.status == AcquisitionStatus.VERIFIED
+                        ):
+                            response_verified = attempt.result
+                            break
         finally:
             for popup in popup_pages:
                 try:

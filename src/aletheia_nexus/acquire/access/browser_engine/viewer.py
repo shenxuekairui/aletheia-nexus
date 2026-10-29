@@ -51,6 +51,13 @@ def is_native_pdf_placeholder(body: bytes) -> bool:
 
 _PDF_VIEWER_SAVE_CONTROL = r"""
   const seen = new Set();
+  // Edge's built-in Acrobat-style viewer has a local #save outside Chrome's
+  // viewer-download-controls. Only this exact built-in extension entry point
+  // and its explicit Ctrl+S label establish that local action; arbitrary web
+  // pages, cloud controls and generic #save buttons remain ineligible.
+  const edgeViewer = location.protocol === 'chrome-extension:'
+    && location.hostname === 'mhjfbmdgcfjbbpaeojofohoefgiehjai'
+    && location.pathname === '/edge_pdf/index.html';
   function cloudControl(element) {
     let current = element;
     while (current) {
@@ -78,6 +85,8 @@ _PDF_VIEWER_SAVE_CONTROL = r"""
       const title = (button.getAttribute('title') || button.getAttribute('aria-label') || '').trim();
       if (button.id === 'download'
           || (downloadHost && button.id === 'save')
+          || (edgeViewer && button.id === 'save'
+              && /^(?:save|保存|儲存)\s*[（(]Ctrl\s*\+\s*S[）)]$/i.test(title))
           || /^(?:download|下载|下載)(?:\s+file|文件)?$/i.test(title)) return button;
     }
     for (const el of root.querySelectorAll?.('*') || []) {
@@ -511,11 +520,23 @@ def trigger_pdf_viewer_save(
     native_capture=None,
     owned_frame_ids=None,
     download_wait=None,
+    diagnostics: list[str] | None = None,
 ) -> tuple[Path, Path] | None:
     """Save the current Chromium PDF webview through its native save control."""
 
+    def unavailable(reason):
+        if diagnostics is not None and reason not in diagnostics:
+            diagnostics.append(reason)
+        return None
+
     if owned_page_only and (owned_frame_ids is None or not callable(download_wait)):
         return None
+    # Public Playwright contexts support exact page/target ownership. Keep the
+    # older heuristic only for adapters that cannot expose this API; never fall
+    # back to another tab when a real context proves no unique owned viewer.
+    scoped = owned_page_only or callable(getattr(context, "new_cdp_session", None))
+    if owned_frame_ids is None:
+        owned_frame_ids = set()
     owns_capture = native_capture is None
     capture = (
         CdpDownloadCapture(context, output_dir) if owns_capture else native_capture
@@ -523,21 +544,25 @@ def trigger_pdf_viewer_save(
     session = capture.session
     staging_dir = capture.staging_dir
     if session is None or staging_dir is None:
-        return None
+        return unavailable("NativePdfViewerCaptureUnavailable")
 
     target_session: str | None = None
     receive_target = None
     keep_staging = False
-    operation_deadline = time.monotonic() + timeout if owned_page_only else None
+    operation_deadline = time.monotonic() + timeout if scoped else None
     try:
-        if owned_page_only:
+        if scoped:
             owner = context.new_cdp_session(page)
             try:
                 info = owner.send("Target.getTargetInfo").get("targetInfo", {})
                 owned_frame_ids.update(_frame_tree_ids(owner.send("Page.getFrameTree")))
             finally:
                 owner.detach()
-            ready_deadline = min(operation_deadline, time.monotonic() + 2.0)
+            ready_deadline = min(
+                operation_deadline,
+                time.monotonic()
+                + (2.0 if owned_page_only or is_pdf_document_url(str(page.url)) else 0),
+            )
             while True:
                 targets = session.send("Target.getTargets").get("targetInfos", [])
                 candidates = _owned_pdf_viewer_targets(
@@ -549,7 +574,11 @@ def trigger_pdf_viewer_save(
                     break
                 page.wait_for_timeout(100)
             if not info.get("targetId") or len(candidates) != 1:
-                return None
+                return unavailable(
+                    "NativePdfViewerTargetAmbiguous"
+                    if len(candidates) > 1
+                    else "NativePdfViewerOwnedTargetNotFound"
+                )
             target = candidates[0]
         else:
             try:
@@ -566,21 +595,21 @@ def trigger_pdf_viewer_save(
                 page_title=page_title,
                 page_url=str(page.url or ""),
             )
-        if target is None and not owned_page_only:
+        if target is None and not scoped:
             # Untitled PDFs can expose only "main.pdf" in the viewer and no
             # readable top-level title. Never guess from that common filename.
             target = _viewer_for_document_url(
                 session, page, targets, timeout=min(3.0, timeout)
             )
         if target is None:
-            return None
+            return unavailable("NativePdfViewerTargetNotFound")
 
         target_session = session.send(
             "Target.attachToTarget",
             {"targetId": target["targetId"], "flatten": False},
         )["sessionId"]
 
-        if owned_page_only:
+        if scoped:
             tree = _target_command(
                 session,
                 target_session,
@@ -608,7 +637,7 @@ def trigger_pdf_viewer_save(
                     break
                 page.wait_for_timeout(100)
             if not ready:
-                return None
+                return unavailable("NativePdfViewerLocalSaveControlUnavailable")
 
         runtime_done = threading.Event()
         runtime_result: dict[str, object] = {}
@@ -633,31 +662,40 @@ def trigger_pdf_viewer_save(
                         "params": {
                             "expression": _PDF_VIEWER_SAVE_EXPRESSION,
                             "returnByValue": True,
-                            **({"userGesture": True} if owned_page_only else {}),
+                            **({"userGesture": True} if scoped else {}),
                         },
                     }
                 ),
             },
         )
 
-        deadline = operation_deadline if owned_page_only else time.monotonic() + timeout
+        deadline = operation_deadline if scoped else time.monotonic() + timeout
         while not runtime_done.is_set() and time.monotonic() < deadline:
             page.wait_for_timeout(100)
         click_result = (
             runtime_result.get("result", {}).get("result", {}).get("value", {})
         )
         if not isinstance(click_result, dict) or not click_result.get("clicked"):
-            return None
+            return unavailable("NativePdfViewerLocalSaveNotAcknowledged")
         remaining = max(0.0, deadline - time.monotonic())
         captured = (
             download_wait(page, remaining)
             if owned_page_only
-            else capture.wait(page, remaining, wait_for_start=True)
+            else capture.wait(
+                page,
+                remaining,
+                wait_for_start=True,
+                **({"expected_frame_ids": owned_frame_ids} if scoped else {}),
+            )
         )
         if captured is None:
             if owned_page_only:
                 raise NativeViewerDownloadError(
                     "OwnedNativeDownloadIncomplete", str(page.url)
+                )
+            if scoped:
+                raise NativeViewerDownloadError(
+                    "NativePdfViewerOwnedDownloadIncomplete", str(page.url)
                 )
             if capture.cancelled_url:
                 raise NativeViewerDownloadError(
@@ -674,21 +712,21 @@ def trigger_pdf_viewer_save(
                 raise NativeViewerDownloadError(
                     "NativeDownloadSizeLimit", str(page.url)
                 )
-            return None
+            return unavailable("NativePdfViewerDownloadSizeLimit")
         with saved.open("rb") as handle:
             if handle.read(5) != b"%PDF-":
-                return None
+                return unavailable("NativePdfViewerNonPdfDelivery")
         keep_staging = True
         return saved, staging_dir
     except NativeViewerDownloadError:
         raise
-    except Exception:
+    except Exception as exc:
         if owned_page_only:
             raise
-        return None
+        return unavailable(f"NativePdfViewerSaveError:{type(exc).__name__}")
     finally:
         remove = getattr(session, "remove_listener", None)
-        if owned_page_only and receive_target is not None and callable(remove):
+        if receive_target is not None and callable(remove):
             remove("Target.receivedMessageFromTarget", receive_target)
         if target_session is not None:
             try:
@@ -699,4 +737,8 @@ def trigger_pdf_viewer_save(
             except Exception:
                 pass
         if owns_capture:
-            capture.close(remove_files=not keep_staging)
+            unclaimed = getattr(capture, "has_unclaimed_downloads", None)
+            preserve_unclaimed = (
+                scoped and callable(unclaimed) and unclaimed(owned_frame_ids)
+            )
+            capture.close(remove_files=not keep_staging and not preserve_unclaimed)

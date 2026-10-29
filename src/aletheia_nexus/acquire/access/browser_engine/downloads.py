@@ -30,6 +30,7 @@ class _NativeTransfer:
     url: str
     state: str = "inProgress"
     path: Path | None = None
+    frame_id: str | None = None
 
 
 class LocalBrowserDownload:
@@ -137,10 +138,17 @@ class CdpDownloadCapture:
         # No correlated native event yet is uncertain, not evidence of failure.
         return not transfers or any(t.state == "inProgress" for t in transfers)
 
+    def has_unclaimed_downloads(self, frame_ids: set[str]) -> bool:
+        """A page-scoped caller must preserve files belonging to other tabs."""
+        return any(t.frame_id not in frame_ids for t in self._transfers.values())
+
     def _on_begin(self, event) -> None:
         guid = str(event.get("guid") or "")
         if guid and guid not in self._transfers:
-            self._transfers[guid] = _NativeTransfer(str(event.get("url") or ""))
+            self._transfers[guid] = _NativeTransfer(
+                str(event.get("url") or ""),
+                frame_id=str(event["frameId"]) if event.get("frameId") else None,
+            )
 
     def _on_progress(self, event) -> None:
         guid = str(event.get("guid") or "")
@@ -163,6 +171,7 @@ class CdpDownloadCapture:
         *,
         expected_url: str | None = None,
         expected_guid: str | None = None,
+        expected_frame_ids: set[str] | None = None,
         wait_for_start: bool = False,
     ) -> tuple[Path, str] | None:
         # A viewer click can acknowledge before downloadWillBegin is delivered.
@@ -177,6 +186,10 @@ class CdpDownloadCapture:
                 for guid, transfer in self._transfers.items()
                 if (expected_url is None or transfer.url == expected_url)
                 and (expected_guid is None or guid == expected_guid)
+                and (
+                    expected_frame_ids is None
+                    or transfer.frame_id in expected_frame_ids
+                )
             ]
             for guid, transfer in selected:
                 if transfer.state != "completed" or self._staging_dir is None:
