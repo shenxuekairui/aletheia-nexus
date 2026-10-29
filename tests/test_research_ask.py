@@ -33,7 +33,7 @@ def test_cli_local_saved_plan_execution_without_key(app, monkeypatch):
                 "--non-interactive",
                 "--execute",
                 "--confirm-plan",
-            service.binding("execute", task),
+                service.binding("execute", task),
             ]
         )
         == 0
@@ -89,6 +89,7 @@ def test_cli_first_metadata_upload_requires_explicit_consent(app, monkeypatch):
 def test_old_confirmation_rejected_when_parsed_artifact_changes(app):
     from aletheia_nexus.content.parser import ParserConfig
     from aletheia_nexus.content.service import parse_document
+
     service, pdf = app
     documents = service.prepare_documents([str(pdf)])["documents"]
     task = service.validate_research_task(task_for(documents))["task"]
@@ -96,12 +97,32 @@ def test_old_confirmation_rejected_when_parsed_artifact_changes(app):
     path = service.workspace / "task.json"
     write_json(path, task)
     replacement = service.workspace / "new-parsed.json"
-    parse_document(documents[0]["pdf"], sidecar_path=documents[0]["sidecar"],
-                   output_path=replacement, config=ParserConfig(merge_paragraph_lines=False))
+    parse_document(
+        documents[0]["pdf"],
+        sidecar_path=documents[0]["sidecar"],
+        output_path=replacement,
+        config=ParserConfig(merge_paragraph_lines=False),
+    )
     Path(documents[0]["artifact"]).write_bytes(replacement.read_bytes())
     assert service.binding("execute", task) != binding
-    assert main(["ask", "--papers", str(pdf.parent), "--output-dir", str(service.workspace),
-                 "--task", str(path), "--non-interactive", "--execute", "--confirm-plan", binding]) == 2
+    assert (
+        main(
+            [
+                "ask",
+                "--papers",
+                str(pdf.parent),
+                "--output-dir",
+                str(service.workspace),
+                "--task",
+                str(path),
+                "--non-interactive",
+                "--execute",
+                "--confirm-plan",
+                binding,
+            ]
+        )
+        == 2
+    )
     assert not (service.workspace / "research").exists()
 
 

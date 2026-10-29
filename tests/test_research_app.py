@@ -149,7 +149,9 @@ def test_background_preparation_progress_partial_and_reuse(app, monkeypatch):
     assert repeated["job_id"] != job["job_id"]
     assert repeated["status"] == "PARTIAL"
     assert repeated["documents"] == completed["documents"]
-    assert all(row["reused"] for row in repeated["items"] if row["status"] == "PREPARED")
+    assert all(
+        row["reused"] for row in repeated["items"] if row["status"] == "PREPARED"
+    )
     assert len(calls) == 2
     assert read_json(Path(completed["directory"]) / "status.json") == before
     assert {p: sha256_file(p) for p in artifacts} == artifacts

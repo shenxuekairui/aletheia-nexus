@@ -72,7 +72,9 @@ def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenan
         }
     )
     original = deepcopy(schema)
-    raw = {"records": [{"id": "preparation", "fields": None, "step": "reported operation"}]}
+    raw = {
+        "records": [{"id": "preparation", "fields": None, "step": "reported operation"}]
+    }
 
     def handler(request):
         payload = json.loads(request.content)
@@ -84,7 +86,10 @@ def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenan
             json={
                 "status": "completed",
                 "output": [
-                    {"type": "message", "content": [{"type": "output_text", "text": json.dumps(raw)}]}
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": json.dumps(raw)}],
+                    }
                 ],
             },
         )
@@ -93,7 +98,9 @@ def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenan
     result = adapter.generate({}, schema, [], CallBudget(1), 100)
     assert schema == original
     assert adapter.identity["adapter_version"] == "8"
-    assert result == {"records": [{"id": "preparation", "fields": {}, "step": "reported operation"}]}
+    assert result == {
+        "records": [{"id": "preparation", "fields": {}, "step": "reported operation"}]
+    }
     assert isinstance(result, ProjectedResponse)
     assert json.loads(result.metadata["raw_text"]) == raw
     assert result.metadata["changes"] == [
@@ -129,7 +136,8 @@ def test_nullable_readings_and_empty_array_items_keep_their_contract():
     assert result == {"reading": None}
     assert not isinstance(result, ProjectedResponse)
     assert _wire_schema(schema)["properties"]["reading"]["anyOf"] == [
-        {"type": "object"}, {"type": "null"}
+        {"type": "object"},
+        {"type": "null"},
     ]
     items = {"type": "array", "items": obj({})}
     assert _wire_schema(items) == items

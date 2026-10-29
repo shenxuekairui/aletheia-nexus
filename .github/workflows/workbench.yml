@@ -1,6 +1,8 @@
 name: Local workbench
 
 on:
+  push:
+    branches: [feat/v0.8-local-workbench]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths:
@@ -14,6 +16,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: workbench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 jobs:
   workbench:
