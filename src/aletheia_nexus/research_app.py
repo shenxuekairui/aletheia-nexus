@@ -34,6 +34,9 @@ from aletheia_nexus.content.service import parse_document
 from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
 from aletheia_nexus.processing.contracts import digest, validate_task
 from aletheia_nexus.processing.engine import run_task, write_json
+from aletheia_nexus.processing.field_independent import (
+    strategy_identity as field_strategy_identity,
+)
 from aletheia_nexus.processing.materials import load_source
 from aletheia_nexus.processing.native_table import (
     NATIVE_TABLE_VERSION,
@@ -674,6 +677,12 @@ class ResearchApplication:
                 "补材料会再执行两阶段；共用下列调用及费用上限，不自动加预算。"
                 if task.get("extraction_strategy") == "source_first"
                 and task["mode"] != "local"
+                else f"逐字段独立阅读原文，每篇至少{len(task['fields'])}次模型调用；"
+                "每篇一条文献级记录，字段原样归档，不作跨字段模型改写；"
+                "不提供实验步骤或额外主张，补材料会重读相应材料；共用调用及费用上限。"
+                + ("跨篇综合另由原引擎执行并计费。" if task["synthesize"] else "")
+                if task.get("extraction_strategy") == "field_independent"
+                and task["mode"] != "local"
                 else "直接提取（本地模式不调用模型）。"
             ),
             f"上限：{task['budget']['max_calls']} 次HTTP；"
@@ -699,6 +708,7 @@ class ResearchApplication:
                 "task": validated["task"],
                 "sources": validated["documents"],
                 **readings_identity(validated["task"]),
+                **field_strategy_identity(validated["task"]),
             }
         elif scope == "acquire":
             from .research_acquisition import public_acquisition_plan

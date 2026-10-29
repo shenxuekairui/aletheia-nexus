@@ -35,8 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     ask.add_argument("--model-config", type=Path)
     ask.add_argument(
         "--extraction-strategy",
-        choices=("direct", "source_first"),
-        help="选择直接提取或先读后提取；不指定时使用任务原配置",
+        choices=("direct", "source_first", "field_independent"),
+        help="选择直接、先读后提取或逐字段独立读；独立读仅支持关闭步骤/额外claims/复核的文献级单记录任务",
     )
     ask.add_argument(
         "--source-assembly",

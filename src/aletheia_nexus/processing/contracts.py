@@ -256,7 +256,7 @@ TASK = obj(
         "synthesize": BOOLEAN,
         "include_steps": BOOLEAN,
         "include_claims": BOOLEAN,
-        "extraction_strategy": choice("direct", "source_first"),
+        "extraction_strategy": choice("direct", "source_first", "field_independent"),
         "source_assembly": choice("model", "preserve_readings"),
         "material_presentation": choice("compact"),
         "export_formats": array(choice(*EXPORT_FORMATS)),
@@ -338,6 +338,18 @@ def validate_task(payload: dict) -> dict:
     if "max_cost" in budget and budget["max_cost"] <= 0:
         raise ValueError("cost budget must be positive")
     task["budget"] = budget
+    if task.get("extraction_strategy") == "field_independent" and (
+        task.get("include_steps") is not False
+        or task.get("include_claims") is not False
+        or budget["max_review_rounds"] != 0
+        or task["type"] == "procedure"
+        or "source_assembly" in task
+    ):
+        raise ValueError(
+            "field_independent provides one document-level record per main source; "
+            "requires include_steps=false, include_claims=false, max_review_rounds=0; "
+            "procedures and source_assembly are unsupported"
+        )
     if task.get("source_assembly") == "preserve_readings":
         if task.get("extraction_strategy") != "source_first":
             raise ValueError(

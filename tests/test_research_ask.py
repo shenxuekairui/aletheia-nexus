@@ -17,7 +17,7 @@ app = application_fixture
 
 @pytest.mark.parametrize(
     ("strategy", "presentation"),
-    [("direct", None), ("source_first", None), (None, "compact"), ("source_first", "compact")],
+    [("direct", None), ("source_first", None), (None, "compact"), ("source_first", "compact"), ("field_independent", None)],
 )
 def test_cli_strategy_applied_to_new_draft_without_extra_planning(
     app, monkeypatch, capsys, strategy, presentation
@@ -30,6 +30,8 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
         planning_calls.append(deepcopy(request))
         task = task_for(request["documents"], mode="parsed")
         task["budget"] = request["research_budget"]
+        if strategy == "field_independent":
+            task.update(include_steps=False, include_claims=False)
         checked = application.validate_research_task(task)
         original = application.workspace / "planning" / "mock" / "task.json"
         write_json(original, checked["task"])
@@ -79,6 +81,8 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
     assert service.binding("execute", task) in output
     if strategy == "source_first":
         assert "至少2次模型调用" in output
+    elif strategy == "field_independent":
+        assert "逐字段独立阅读" in output and "每篇至少1次模型调用" in output
     assert ("材料呈现：精简（compact）" in output) == (presentation == "compact")
     assert not (service.workspace / "research").exists()
 
