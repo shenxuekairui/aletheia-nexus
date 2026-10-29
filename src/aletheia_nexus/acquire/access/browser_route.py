@@ -2135,7 +2135,9 @@ def _observe_pdf_popups(
         # Keep the target alive for native Save first. A denied JS re-fetch can
         # replace the viewer's cached response and cancel its later local save.
         try:
-            parsed = parse_html(popup.content())
+            parsed = parse_html(
+                bounded_read(popup, "content", timeout=_OBSERVATION_TIMEOUT)
+            )
             identity = validate_page_identity(
                 target_doi=source.doi, parsed=parsed, expected_title=expected_title
             )
@@ -2918,7 +2920,7 @@ def _attempt_browser_route(
     sync_session_events()
 
     try:
-        html = page.content()
+        html = bounded_read(page, "content", timeout=_OBSERVATION_TIMEOUT)
         parsed = parse_html(html)
         identity = validate_page_identity(
             target_doi=source.doi,
@@ -2926,6 +2928,13 @@ def _attempt_browser_route(
             expected_title=expected_title,
         )
     except Exception as exc:
+        if isinstance(exc, TimeoutError):
+            return finish_route(
+                BrowserAttemptStatus.RETRIEVAL_FAILED,
+                final_url=page.url,
+                evidence=(_OBSERVATION_UNAVAILABLE,),
+                error=type(exc).__name__,
+            )
         return finish_route(
             BrowserAttemptStatus.ERROR,
             final_url=page.url,

@@ -234,7 +234,9 @@ def trigger_pdf_viewer_same_origin_fetch(
         if not is_pdf_document_url(page_url):
             return False
         return bool(
-            page.evaluate(
+            bounded_read(
+                page,
+                "evaluate",
                 _PDF_FETCH_SCRIPT,
                 {
                     "url": page_url,
@@ -243,6 +245,7 @@ def trigger_pdf_viewer_same_origin_fetch(
                     "cache": "no-store",
                     "returnBody": False,
                 },
+                timeout=timeout,
             )
         )
     except Exception:
@@ -283,14 +286,20 @@ def trigger_embedded_pdf_frame_fetch(
             break
         try:
             frame_url = validate_url(frame_url)
-            if (
-                needs_embed
-                and not frame.locator(
+            if needs_embed and not bounded_read(
+                frame.locator(
                     "embed[type='application/pdf'], object[type='application/pdf']"
-                ).count()
+                ),
+                "count",
+                timeout=min(2.0, remaining),
             ):
                 continue
-            result = page.evaluate(
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            result = bounded_read(
+                page,
+                "evaluate",
                 _PDF_FETCH_SCRIPT,
                 {
                     "url": frame_url,
@@ -299,6 +308,7 @@ def trigger_embedded_pdf_frame_fetch(
                     "cache": "force-cache",
                     "returnBody": True,
                 },
+                timeout=remaining,
             )
             if not isinstance(result, dict):
                 continue

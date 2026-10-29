@@ -9,6 +9,10 @@ from aletheia_nexus.acquire.access.browser_engine.downloads import (
     CdpDownloadCapture,
     LocalBrowserDownload,
 )
+from aletheia_nexus.acquire.access.browser_engine.observation import (
+    bounded_read,
+    frame_visible,
+)
 from aletheia_nexus.acquire.access.challenge import classify_access_challenge
 from aletheia_nexus.acquire.access.models import (
     BrowserAccessConfig,
@@ -19,6 +23,8 @@ from aletheia_nexus.acquire.access.security import redact_url_for_record
 
 _LOGGER = logging.getLogger(__name__)
 CNKI_RATE_LIMITED = "CNKI_RATE_LIMITED"
+_READ_TIMEOUT = 0.5
+_CONTROL_SCAN_TIMEOUT = 2.0
 
 
 def cnki_rate_limit_report(
@@ -77,12 +83,24 @@ _CAPTCHA_SELECTORS = (
 
 
 def first_visible(surface, selectors):
+    deadline = time.monotonic() + _CONTROL_SCAN_TIMEOUT
     for selector in selectors:
         try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
             locator = surface.locator(selector)
-            for index in range(min(locator.count(), 30)):
+            count = bounded_read(
+                locator, "count", timeout=min(_READ_TIMEOUT, remaining)
+            )
+            for index in range(min(count, 30)):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
                 item = locator.nth(index)
-                if item.is_visible():
+                if bounded_read(
+                    item, "is_visible", timeout=min(_READ_TIMEOUT, remaining)
+                ):
                     return item
         except Exception:
             continue
@@ -107,7 +125,7 @@ def captcha_visible(page) -> bool:
         # Hidden preloaded CAPTCHA frames must not stop a normal article page.
         try:
             if (
-                frame.frame_element().is_visible()
+                frame_visible(frame, timeout=_READ_TIMEOUT)
                 and first_visible(frame, _CAPTCHA_SELECTORS) is not None
             ):
                 return True
@@ -126,7 +144,7 @@ def challenge_for_page(page) -> ChallengeReport:
             raise CNKITargetClosed() from None
         text = ""
     try:
-        title = page.title()
+        title = bounded_read(page, "title", timeout=_READ_TIMEOUT)
     except Exception:
         title = ""
     rate_limit = cnki_rate_limit_report(f"{title}\n{text}")
@@ -149,7 +167,7 @@ def challenge_for_page(page) -> ChallengeReport:
             if frame is getattr(page, "main_frame", None):
                 continue
             try:
-                if frame.frame_element().is_visible():
+                if frame_visible(frame, timeout=_READ_TIMEOUT):
                     login_form = first_visible(frame, ("input[type='password']",))
                     if login_form is not None:
                         break
@@ -199,9 +217,12 @@ def _resume_ready(page) -> bool:
         return True
     try:
         return bool(
-            page.evaluate(
+            bounded_read(
+                page,
+                "evaluate",
                 "() => document.readyState !== 'loading' && "
-                "Boolean(document.body && document.body.innerText.trim())"
+                "Boolean(document.body && document.body.innerText.trim())",
+                timeout=_READ_TIMEOUT,
             )
         )
     except Exception:
