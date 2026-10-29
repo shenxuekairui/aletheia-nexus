@@ -1,4 +1,4 @@
-"""Opt-in CDP/default-preservation test in a fresh, test-owned browser only."""
+"""Opt-in CDP/session-preservation test in a fresh, test-owned browser only."""
 
 import io
 import json
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_public_cdp_no_defaults_keeps_tabs_and_explicit_native_si_delivery(tmp_path):
+def test_public_cdp_keeps_tabs_and_explicit_native_si_delivery(tmp_path):
     pytest.importorskip("playwright.sync_api")
     executable = (
         os.environ.get("AN_TEST_BROWSER_EXECUTABLE") or fixed_portable_browser()
@@ -138,7 +138,7 @@ def test_public_cdp_no_defaults_keeps_tabs_and_explicit_native_si_delivery(tmp_p
         print(
             json.dumps(
                 {
-                    "public_no_defaults": True,
+                    "established_download_defaults": True,
                     "native_docx_delivery": True,
                     "reconnected": True,
                     "original_pages_preserved": len(original_urls),

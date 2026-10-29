@@ -709,10 +709,9 @@ class BrowserSession:
                 browser = playwright.chromium.connect_over_cdp(
                     endpoint.strip(),
                     timeout=self.config.navigation_timeout * 1000,
-                    # This preserves the existing context's download/focus/media
-                    # defaults. It does NOT skip initialization of existing page
-                    # targets and is not a workaround for an unresponsive PDF.
-                    no_defaults=True,
+                    # Keep the established download/focus defaults used by the
+                    # native article-PDF route. no_defaults is not a workaround
+                    # for initialization of an unresponsive existing PDF target.
                 )
                 connection_stage = "context_setup"
                 _require_safe_download_browser(browser)

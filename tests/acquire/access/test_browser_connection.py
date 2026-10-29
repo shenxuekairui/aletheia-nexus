@@ -269,7 +269,7 @@ def test_failed_session_does_not_reconnect_until_explicit_close_and_preserves_co
             session._ensure_started()
         assert caught.value.diagnostic["code"] == "browser_cdp_attach_timeout"
     assert len(attempts) == len(launches) == len(exits) == 1
-    assert attempts == [{"timeout": 45000, "no_defaults": True}]
+    assert attempts == [{"timeout": 45000}]
     snapshot = session.connection_diagnostic
     snapshot["message"] = "must not mutate stored diagnostic"
     assert session.connection_diagnostic["message"] != snapshot["message"]
