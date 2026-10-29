@@ -76,10 +76,13 @@ def test_shared_call_limit_and_local_receipt_slices_are_not_duplicated(
     assert second["items"][0]["error"] == "call_budget_exhausted"
     assert first["accounted_cost"] == pytest.approx(0.00068)
     assert second["accounted_cost"] == 0
-    assert json.loads(ledger.read_text())["accounted_cost"] == first["accounted_cost"]
+    assert (
+        json.loads(ledger.read_text(encoding="utf-8"))["accounted_cost"]
+        == first["accounted_cost"]
+    )
     assert "title_zh" not in service.library.items["b"]
     assert "fake-shared-translation-key" not in "".join(
-        p.read_text() for p in tmp_path.rglob("*.json")
+        p.read_text(encoding="utf-8") for p in tmp_path.rglob("*.json")
     )
 
 
@@ -134,7 +137,7 @@ def test_unknown_charge_stops_new_http_but_keeps_cache_available(tmp_path, monke
     assert cached["items"][0]["status"] == "CACHED" and cached["calls"] == []
     assert blocked["items"][0]["error"] == "previous_call_requires_review"
     assert blocked["calls"] == []
-    assert json.loads(ledger.read_text())["billing_uncertain"]
+    assert json.loads(ledger.read_text(encoding="utf-8"))["billing_uncertain"]
 
 
 def test_shared_provider_preserves_selected_interval_and_rejects_currency_change(
