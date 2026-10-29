@@ -280,7 +280,7 @@ def test_stdio_explicit_si_catalog_and_workspace_labels(local_library, monkeypat
         )
         async with Client(params, read_timeout_seconds=30) as client:
             tools = (await client.list_tools()).tools
-            assert len(tools) == 22
+            assert len(tools) == 23
             assert "update_document_tags" in {t.name for t in tools}
             listing = next(t for t in tools if t.name == "list_documents")
             assert {"catalog", "folder", "tag", "query"} <= set(

@@ -45,6 +45,10 @@ def test_sdk_public_acquisition_authorization_and_resume(tmp_path, capsys, monke
     async def run():
         params = StdioServerParameters(
             command=sys.executable,
+            env={
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
             args=[
                 str(helper),
                 str(original),

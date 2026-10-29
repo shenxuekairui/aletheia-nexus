@@ -5,6 +5,12 @@ DeepSeek Flash, with local, source-linked results. See the [v0.8 development gui
 and [audit/design](docs/V08_DESIGN.md). This is unreleased work; the v0.7.3 release
 capabilities and historical benchmark claims below remain separate.
 
+The development version also provides `research ask` and an optional local stdio
+MCP server using the same task engine. See the [entrypoint guide](docs/V08_ENTRYPOINTS.md)
+for Windows configuration and separate planning/extraction consent. MCP supports
+local preparation, explicit supplements, library labels, search, research and exports;
+public title candidates and DOI acquisition require separate local grants.
+
 [中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.3 Release Notes](docs/RELEASE_NOTES_v0.7.3.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
 
 > **From one verified paper to scientific knowledge infrastructure that can grow with research.**

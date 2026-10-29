@@ -115,6 +115,7 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 | --- | --- | --- |
 | `list_documents` | 列举PDF；`catalog=true`读取既有文库标签、父文关系与完整性，支持folder/tag/query筛选 | 否 |
 | `update_document_tags` | 增删工作区PDF副本的文库标签，保留来源与解析证据 | 否 |
+| `find_paper_candidates` | 按题名/书目查询最多5个Crossref候选；需选择DOI后另行获取 | 需独立discover许可；不调用AI |
 | `get_acquisition_status` | 读取既有获取/登记状态，可对明确指定PDF核验当前完整性与身份依据 | 否 |
 | `acquire_documents` | 公共DOI批量获取、身份验证与断点恢复；返回异步job_id | 需独立公共获取许可；不调用AI |
 | `prepare_documents` | 准备明确选择的PDF，隔离失败，在工作区建副本 | 否 |
@@ -192,7 +193,8 @@ aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08" -
 
 在客户端说：“获取 DOI 10.1371/journal.pone.0310216，核对来源后准备解析，先给获取计划。”
 客户端调用 `acquire_documents(papers=[{"doi":"10.1371/journal.pone.0310216"}])`。
-每篇可附 `title` 作为身份约束，每批最多10篇；当前不支持仅题名检索、SI自动获取或机构登录。
+每篇可附 `title` 作为身份约束，每批最多10篇；仅有题名时先通过`find_paper_candidates`
+查询并选择DOI。本工具不自动获取SI或登录机构。
 这些既有 CLI 能力尚未全部封装进 MCP，公共获取失败不会自动打开浏览器、使用官方凭据或扩大权限。
 
 工具先返回中文范围和 `authorization_request` 文件，不联网。按本节下方的
@@ -211,7 +213,8 @@ aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08" -
 原任务仍运行时不能恢复；断点改变后旧批准失效；已有损坏断点明确报错。
 若进程在首个断点前退出，计划明确说明从头获取选定范围，不自动信任遗留文件。
 
-公共获取工具只覆盖公共主文获取，不代表全部出版社/题名/机构获取已接入MCP。
+公共获取工具覆盖公共主文；题名可先用`find_paper_candidates`查询候选，核对后另行授权获取。
+候选顺序不代表身份确认；机构会话仍复用原CLI的人机协作，不启用公网服务。
 本次用官方SDK2.3.0真实stdio客户端完成模拟网络的授权/恢复/解析测试；另实际下载并
 核验上述公共 DOI、准备12页解析成功，模型调用0。再以新服务进程、不可用HTTP代理恢复，
 有效文件复用、获取尝试0，原PDF/来源记录/断点哈希不变。真实桌面 AI 客户端中的手工会话仍另行验收。
@@ -270,7 +273,8 @@ DOI可省略；调用者提供的元数据仅记为 `REGISTERED/DECLARED`，不�
 `folder`按目录相对路径筛选。目录下未登记PDF仍用默认列举方式查看。
 对工作区副本调用 `update_document_tags(pdf="副本PDF路径", add=["待读"], remove=["已读"])` 可增删标签。
 仅标签文件可变，PDF、来源记录和解析证据保留；`--allow-dir`只授予读取权限，外部原库标签不会被修改。
-题名独立公共发现和机构登录/验证码会话尚未接入MCP，现有公共DOI获取权限不因此扩大。
+题名公共发现需单独`discover`许可，不能复用`acquire`许可；机构登录/验证码会话继续走
+既有获取CLI及其访问设置，公共DOI获取权限不因此扩大。
 
 将返回的 `document` 交给 `parse_document(document=..., max_pages=2000)`，可显式用当前解析器
 创建新版本。每次写入唯一的 `*.parsed.json`，可被现有 `load_corpus` 文库扫描；不会改名或覆盖

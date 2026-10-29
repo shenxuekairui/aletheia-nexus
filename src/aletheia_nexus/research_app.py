@@ -57,6 +57,8 @@ from aletheia_nexus.processing.results import (
     verify_result,
 )
 
+NETWORK_AUTH_SCOPES = frozenset({"acquire", "discover"})
+
 NATIVE_TABLE_LIMITS = {
     "max_cells": 10000,
     "max_uncompressed_bytes": 64 * 1024 * 1024,
@@ -812,6 +814,10 @@ class ResearchApplication:
             from .research_acquisition import public_acquisition_plan
 
             payload = public_acquisition_plan(self, payload)["binding"]
+        elif scope == "discover":
+            from .research_discovery import title_discovery_plan
+
+            payload = title_discovery_plan(payload)["binding"]
         elif scope != "plan":
             raise ValueError("unknown authorization scope")
         return digest(
@@ -854,9 +860,9 @@ class ResearchApplication:
         return token
 
     def consume(self, token: str | None, scope: str, payload: dict) -> None:
-        if scope == "acquire" and not self.network:
+        if scope in NETWORK_AUTH_SCOPES and not self.network:
             raise ProcessingError("network_disabled")
-        if scope != "acquire" and not self.remote:
+        if scope not in NETWORK_AUTH_SCOPES and not self.remote:
             raise ProcessingError("remote_disabled")
         if not isinstance(token, str) or not re.fullmatch("[0-9a-f]{64}", token):
             raise ProcessingError("local_authorization_required")
@@ -918,6 +924,53 @@ class ResearchApplication:
             return deepcopy(receipt)
 
         return self._start_job(receipt, execute, background=background)
+
+    def find_paper_candidates(
+        self, title_query: str, *, limit: int = 5, authorization=None
+    ) -> dict:
+        """Discover public metadata only; a selected DOI still needs acquisition consent."""
+        from .acquire.metadata.crossref import search_crossref_candidates
+        from .research_discovery import title_discovery_plan
+
+        if not self.network:
+            raise ProcessingError("network_disabled")
+        plan = title_discovery_plan({"title_query": title_query, "limit": limit})
+        payload = plan["payload"]
+        if authorization is None:
+            return {
+                "status": "AUTHORIZATION_REQUIRED",
+                "plan": plan["plan"],
+                "network_access": False,
+                "model_calls": 0,
+                **self.authorization_request("discover", payload),
+            }
+        self.consume(authorization, "discover", payload)
+        directory = self.path(self.workspace / "discovery" / uuid4().hex, write=True)
+        write_json(directory / "query.json", payload)
+        try:
+            result = search_crossref_candidates(
+                payload["title_query"], limit=payload["limit"]
+            )
+        except Exception as exc:
+            write_json(
+                directory / "result.json",
+                {
+                    "status": "FAILED",
+                    "error": self.error_code(exc),
+                    "query": payload,
+                    "model_calls": 0,
+                },
+            )
+            raise
+        result.update(
+            schema="aletheia-nexus/title-candidates/v1",
+            at=datetime.now(timezone.utc).isoformat(),
+            model_calls=0,
+            downloads=0,
+            network_access=True,
+        )
+        write_json(directory / "result.json", result)
+        return {**result, "result_file": str(directory / "result.json")}
 
     def acquire_documents(
         self, payload: dict, *, authorization=None, background=True

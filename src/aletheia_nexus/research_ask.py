@@ -10,7 +10,11 @@ from uuid import uuid4
 from aletheia_nexus.processing.contracts import digest
 from aletheia_nexus.processing.engine import write_json
 from aletheia_nexus.processing.provider import ProcessingError
-from aletheia_nexus.research_app import ResearchApplication, read_json
+from aletheia_nexus.research_app import (
+    NETWORK_AUTH_SCOPES,
+    ResearchApplication,
+    read_json,
+)
 from aletheia_nexus.research_planner import draft_task, planning_request
 
 
@@ -81,8 +85,8 @@ def main(argv: list[str] | None = None) -> int:
             app = ResearchApplication(
                 request["roots"],
                 request["workspace"],
-                remote=True,
-                network=request["scope"] == "acquire",
+                remote=request["scope"] not in NETWORK_AUTH_SCOPES,
+                network=request["scope"] in NETWORK_AUTH_SCOPES,
             )
             scope, payload = request["scope"], request["payload"]
             binding = app.binding(scope, payload)
@@ -94,6 +98,10 @@ def main(argv: list[str] | None = None) -> int:
                 from .research_acquisition import public_acquisition_plan
 
                 print(public_acquisition_plan(app, payload)["plan"])
+            elif scope == "discover":
+                from .research_discovery import title_discovery_plan
+
+                print(title_discovery_plan(payload)["plan"])
             else:
                 print("规划仅发送用户目标及文献元数据，不发送论文全文。")
                 print(payload["goal"])

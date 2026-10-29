@@ -74,6 +74,10 @@ def test_stdio_history_optional_directory_read_and_reexport_without_key(
                 "--workspace",
                 str(workspace),
             ],
+            env={
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
         )
         async with Client(params, read_timeout_seconds=30) as client:
             tools = await client.list_tools()
@@ -162,6 +166,10 @@ def test_stdio_background_preparation_partial_reuse_and_scope(tmp_path, monkeypa
                 "--workspace",
                 str(workspace),
             ],
+            env={
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
         )
         async with Client(params, read_timeout_seconds=30) as client:
 
@@ -272,6 +280,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
             assert {t.name for t in tools.tools} == {
                 "list_documents",
                 "update_document_tags",
+                "find_paper_candidates",
                 "get_acquisition_status",
                 "acquire_documents",
                 "prepare_documents",

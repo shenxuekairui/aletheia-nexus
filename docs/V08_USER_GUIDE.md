@@ -561,6 +561,23 @@ DeepSeek 适配器 v8 兼容步骤阶段这类要求固定空对象的输出契�
 PARTIAL可以表示有可用结果但仍缺SI、存在原文歧义或有待核对信息，并不等于该文献
 没有结果。优先阅读输出内容与具体缺口；不能通过清空诊断来证明科学内容正确。
 
+## MCP 按题名发现 DOI 候选
+
+MCP 工具 `find_paper_candidates` 接受 `title_query` 和可选 `limit`（1–5）。
+先在服务端显式启用 `--enable-acquisition`；查询默认关闭，未授权调用不会访问网络。
+工具只向固定 Crossref 公共端点发送题名/引文查询，不发送论文或本地文件，不调用模型。
+返回的本机请求文件可用以下命令核对并授权：
+
+```powershell
+aletheia-nexus research authorize "工具返回的authorization_request路径"
+```
+
+将本机终端给出的一次性令牌用于原工具请求的 `authorization`。候选包含 DOI、题名、
+作者、期刊和年份，均未确认身份；AN 不自动选择首条，也不自动下载。
+选择候选后，客户端把该 DOI 和可选题名传给已有 `acquire_documents`，再取得独立获取
+授权。查询令牌不能授权下载或模型处理。无需模型 API Key；超时/服务失败和空候选分别
+返回明确状态，查询与结果保存在本地工作区 `discovery/`。已有 DOI 获取与来源验证不变。
+
 ## MCP 后台批量准备文献
 
 MCP 的安装和客户端配置见[自然语言与MCP入口](V08_ENTRYPOINTS.md)。文献较多时，

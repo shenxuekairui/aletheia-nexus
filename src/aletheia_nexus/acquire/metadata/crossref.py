@@ -10,6 +10,68 @@ from aletheia_nexus.core.models import MetadataLink, PaperMetadata
 CROSSREF_API = "https://api.crossref.org/v1"
 
 
+def normalize_title_query(query: str, limit: int = 5) -> tuple[str, int]:
+    """Keep user wording; bound the one public metadata request."""
+    if not isinstance(query, str) or not 1 <= len(query.strip()) <= 1000:
+        raise ValueError("title query must contain between1 and1000 characters")
+    if type(limit) is not int or not 1 <= limit <= 5:
+        raise ValueError("candidate limit must be an integer between1 and5")
+    return query.strip(), limit
+
+
+def search_crossref_candidates(
+    query: str, *, limit: int = 5, mailto: str | None = None
+) -> dict:
+    """Return bibliographic candidates, never select or verify a paper identity."""
+    query, limit = normalize_title_query(query, limit)
+    params = {"query.bibliographic": query, "rows": limit}
+    if mailto:
+        params["mailto"] = mailto
+    data = get_json(
+        f"{CROSSREF_API}/works",
+        context="Crossref title candidate search",
+        params=params,
+        mailto=mailto,
+    )
+    message = data.get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("items"), list):
+        raise MetadataParseError("Crossref search response requires message.items")
+    candidates, skipped, seen = [], [], set()
+    for rank, work in enumerate(message["items"][:limit], 1):
+        try:
+            metadata = parse_crossref_work(work)
+        except MetadataParseError:
+            skipped.append({"rank": rank, "reason": "malformed_metadata_record"})
+            continue
+        if metadata.doi in seen:
+            skipped.append({"rank": rank, "reason": "duplicate_doi"})
+            continue
+        seen.add(metadata.doi)
+        candidates.append(
+            {
+                "rank": rank,
+                "doi": metadata.doi,
+                "title": metadata.title,
+                "authors": list(metadata.authors),
+                "journal": metadata.journal,
+                "year": metadata.year,
+                "publisher": metadata.publisher,
+                "work_type": metadata.work_type,
+                "doi_url": "https://doi.org/" + quote(metadata.doi, safe="/"),
+                "source": "crossref",
+                "identity_verified": False,
+            }
+        )
+    return {
+        "status": "PARTIAL" if skipped else "COMPLETED" if candidates else "EMPTY",
+        "query": query,
+        "limit": limit,
+        "candidates": candidates,
+        "skipped_records": skipped,
+        "selection_required": True,
+    }
+
+
 def _first_text(
     value: object,
 ) -> str | None:
