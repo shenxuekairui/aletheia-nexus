@@ -227,7 +227,7 @@ def test_stale_inline_control_does_not_affect_a_new_phase(
     with ui.column():
         AcquisitionProgressPanel(controller)
     job.update(status="RUNNING", task_phase="postprocess")
-    label = "跳过下一篇" if action == "skip" else "验证后继续"
+    label = "跳过下一篇论文" if action == "skip" else "验证后继续"
     with pytest.raises(ValueError, match="阶段已变化|不再等待"):
         controls[label]()
     assert clicked == []

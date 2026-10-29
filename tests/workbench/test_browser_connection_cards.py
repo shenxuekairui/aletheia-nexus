@@ -252,7 +252,7 @@ def test_real_task_center_renders_one_safe_card_and_reuses_one_existing_preview(
     buttons = [
         value
         for value in elements
-        if getattr(value, "text", "") == "重试获取失败 / 补取 SI"
+        if getattr(value, "text", "") == "选择失败论文重试 / 仅补 SI"
     ]
     assert len(buttons) == 1 and buttons[0].enabled
     assert recoveries == []  # Neither rendering nor a live refresh starts work.
@@ -271,6 +271,6 @@ def test_real_completed_task_dialog_does_not_offer_retry_button(monkeypatch):
         job(paper("a"), status="COMPLETED"), monkeypatch
     )
     assert not any(
-        getattr(value, "text", "") == "重试获取失败 / 补取 SI" for value in elements
+        getattr(value, "text", "") == "选择失败论文重试 / 仅补 SI" for value in elements
     )
     assert recoveries == []

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from collections import Counter
 from copy import deepcopy
 from html import unescape
 from pathlib import Path
@@ -27,6 +29,7 @@ COLUMNS = {
     "year": "年份",
     "journal": "期刊",
     "doi": "DOI",
+    "source_count": "本范围来源数",
     "tags": "标签",
     "folder": "分类目录",
     "collections": "研究集合",
@@ -115,13 +118,82 @@ def view_title(row, view, *, default_mode="bilingual"):
 
 def marked_library_ids(selected_rows, visible_rows):
     """Use current stable IDs for a one-step action, without changing the tray."""
-    known = {row["id"] for row in visible_rows}
+    known = {row["id"]: row for row in visible_rows}
     ids = list(dict.fromkeys(row.get("id") for row in selected_rows))
     if not ids:
         raise ValueError("请先在文献列表左侧勾选要处理的论文。")
     if any(paper_id not in known for paper_id in ids):
         raise ValueError("表格选择已过期，请刷新文献列表后重新勾选。")
-    return ids
+    # Expand only server-held, explicitly matching sources. Never accept member
+    # IDs or paths supplied by a client row or broaden a filtered group.
+    return list(
+        dict.fromkeys(
+            member
+            for paper_id in ids
+            for member in known[paper_id].get("member_ids", [paper_id])
+        )
+    )
+
+
+def library_table_row(row, title):
+    """Format grouped metadata without pretending its source states are one."""
+    variants = row.get("matched_variants", [row])
+    count = len(variants)
+    result = {
+        **row,
+        "_view_row_key": json.dumps(
+            [row.get("catalog_key", row["id"]), row.get("member_ids", [row["id"]])],
+            separators=(",", ":"),
+        ),
+        "title": title,
+        "journal": unescape(row.get("journal") or ""),
+        "path": row["pdf_path"],
+        "tags": ", ".join(row["tags"]),
+        "authors": "; ".join(str(a) for a in row.get("authors", [])),
+        "collections": ", ".join(row.get("collections", [])),
+        "parse_status": value_label(row.get("parse_status")),
+        "integrity": INTEGRITY_LABELS.get(row.get("integrity"), "尚未核验"),
+        "identity_basis": value_label(row.get("identity_basis")),
+        "ocr_status": {
+            "NOT_REQUESTED": "未启用",
+            "CONFIGURED": "已配置，需核对实际使用",
+            "USED": "实际使用",
+            "UNKNOWN": "未记录",
+        }.get(row.get("ocr_status", "UNKNOWN"), "未记录"),
+        "research_tasks": "；".join(
+            f"{item.get('task_id') or item.get('job_id', '')}（{value_label(item.get('status'))}）"
+            if isinstance(item, dict)
+            else str(item)
+            for item in row.get("research_tasks", [])
+        ),
+    }
+    if row.get("is_catalog_group"):
+        total = row["all_source_count"]
+        result["title"] += f"\n〔{total} 条来源；本筛选 {count} 条〕"
+    if count > 1:
+        result["path"] = "\n".join(v["pdf_path"] for v in variants)
+        result["filename"] = "\n".join(Path(v["pdf_path"]).name for v in variants)
+        result["si_count"] = f"{sum(v.get('si_count', 0) for v in variants)} 条关联"
+        result["parse_status"] = " · ".join(
+            f"{value_label(status)} {number}"
+            for status, number in Counter(
+                v.get("parse_status") for v in variants
+            ).items()
+        )
+        for field, label in (
+            ("folder", "分类目录"),
+            ("tags", "标签"),
+            ("collections", "集合"),
+            ("ocr_status", "OCR 状态"),
+            ("reading_status", "阅读状态"),
+        ):
+            if field in row.get("mixed_fields", []):
+                result[field] = f"各来源{label}不同，双击查看"
+    # Details/actions always use the server snapshot; do not ship nested copies
+    # of the full catalogue as hidden AG Grid fields.
+    for key in ("variants", "matched_variants", "metadata_conflicts"):
+        result.pop(key, None)
+    return result
 
 
 class _ImportPostprocessContext:
@@ -304,6 +376,7 @@ class LibraryPage:
             "文献库", "按目录存放正文，分类内共享 SI；标签、集合与表格视图分别保存。"
         )
         all_rows = self.ctx.library.scan()["items"]
+        self.library_source_view = self.ctx.settings.get("library_source_view", False)
         tags = sorted({t for row in all_rows for t in row.get("tags", [])})
         folders = sorted({row["folder"] for row in all_rows if row["folder"]})
         with ui.row().classes("an-toolbar w-full"):
@@ -389,6 +462,7 @@ class LibraryPage:
             ui.button(
                 "标签与分组", icon="label", on_click=guard(self.tags_dialog)
             ).props("flat")
+            source_view = ui.checkbox("按来源逐条查看", value=self.library_source_view)
 
         def filters():
             return {
@@ -448,7 +522,9 @@ class LibraryPage:
                 "paginationPageSize": 50,
                 "paginationPageSizeSelector": [20, 50, 100],
                 "defaultColDef": {"resizable": True, "sortable": True},
-                ":getRowId": "params => params.data.id",
+                # A changed source scope must not silently retain a checkbox
+                # that used to mean a different set of material identities.
+                ":getRowId": "params => params.data._view_row_key",
                 "animateRows": False,
             },
             theme="quartz",
@@ -466,6 +542,9 @@ class LibraryPage:
             )
 
         async def refresh():
+            from aletheia_nexus.workbench.catalog_groups import catalog_groups
+            from aletheia_nexus.workbench.ui_library import library_table_row
+
             requested_filters = filters()
             self.library_filters = requested_filters
             report = await run.io_bound(self.ctx.library.scan, **requested_filters)
@@ -474,39 +553,37 @@ class LibraryPage:
             ):
                 return
             self.library_rows = report["items"]
+            all_current = await run.io_bound(self.ctx.library.scan)
+            if self.library_filters != requested_filters or getattr(
+                grid, "is_deleted", False
+            ):
+                return
+            self.library_all_rows = all_current["items"]
+            self.library_catalog_rows = (
+                [catalog_groups([row])[0] for row in self.library_rows]
+                if getattr(self, "library_source_view", False)
+                else catalog_groups(
+                    self.library_all_rows,
+                    matching_ids=[row["id"] for row in self.library_rows],
+                    selected_ids=self.ctx.library.selection(),
+                )
+            )
             rows = [
-                {
-                    **r,
-                    "title": title_for(r),
-                    "journal": unescape(r.get("journal") or ""),
-                    "path": r["pdf_path"],
-                    "tags": ", ".join(r["tags"]),
-                    "authors": "; ".join(str(a) for a in r.get("authors", [])),
-                    "collections": ", ".join(r.get("collections", [])),
-                    "parse_status": value_label(r.get("parse_status")),
-                    "integrity": INTEGRITY_LABELS.get(r.get("integrity"), "尚未核验"),
-                    "identity_basis": value_label(r.get("identity_basis")),
-                    "ocr_status": {
-                        "NOT_REQUESTED": "未启用",
-                        "CONFIGURED": "已配置，需核对实际使用",
-                        "USED": "实际使用",
-                        "UNKNOWN": "未记录",
-                    }.get(r.get("ocr_status", "UNKNOWN"), "未记录"),
-                    "research_tasks": "；".join(
-                        f"{item.get('task_id') or item.get('job_id', '')}（{value_label(item.get('status'))}）"
-                        if isinstance(item, dict)
-                        else str(item)
-                        for item in r.get("research_tasks", [])
-                    ),
-                }
-                for r in self.library_rows
+                library_table_row(r, title_for(r)) for r in self.library_catalog_rows
             ]
             # NiceGUI options are observable: even assigning options['rowData']
             # schedules destroy/createGrid. Keep server data in library_rows
             # and use only the client API to retain checks and column layout.
             await grid.run_grid_method("setGridOption", "rowData", rows)
+            groups = catalog_groups(
+                self.library_all_rows, matching_ids=[r["id"] for r in self.library_rows]
+            )
+            selected_groups = catalog_groups(
+                self.library_all_rows, matching_ids=self.ctx.library.selection()
+            )
             count.set_text(
-                f"{len(self.library_rows)} 篇筛选结果 · 跨页面选择清单 {len(self.ctx.library.selection())} 篇"
+                f"筛选 {len(groups)} 篇论文 / {len(self.library_rows)} 条来源 · "
+                f"选择清单 {len(selected_groups)} 篇 / {len(self.ctx.library.selection())} 条来源"
             )
             diagnostic_area.clear()
             with diagnostic_area:
@@ -559,6 +636,13 @@ class LibraryPage:
 
         self._refresh_library_metadata = refresh_metadata
 
+        async def change_source_view():
+            self.library_source_view = bool(source_view.value)
+            self.ctx.settings.set("library_source_view", self.library_source_view)
+            await refresh()
+
+        source_view.on_value_change(guard(change_source_view))
+
         async def clear_filters():
             for control, value in (
                 (query, ""),
@@ -576,19 +660,29 @@ class LibraryPage:
         query.on("keydown.enter", guard(refresh))
 
         async def show_marked_count():
+            selected = await grid.get_selected_rows()
+            sources = (
+                marked_library_ids(
+                    selected, getattr(self, "library_catalog_rows", self.library_rows)
+                )
+                if selected
+                else []
+            )
             marked_count.set_text(
-                f"表格已勾选 {len(await grid.get_selected_rows())} 篇"
+                f"表格已勾选 {len(selected)} 行 / {len(sources)} 条来源"
             )
 
         grid.on("selectionChanged", guard(show_marked_count))
 
         async def add_marked():
             selected = await grid.get_selected_rows()
-            ids = marked_library_ids(selected, self.library_rows)
+            ids = marked_library_ids(
+                selected, getattr(self, "library_catalog_rows", self.library_rows)
+            )
             self.ctx.library.set_selection(ids, mode="add")
-            ui.notify(f"已添加 {len(ids)} 篇；跨页面保留并自动去重。")
+            ui.notify(f"已添加 {len(selected)} 行中的 {len(ids)} 条来源，跨页面保留。")
             count.set_text(
-                f"{len(self.library_rows)} 篇筛选结果 · 跨页面选择清单 {len(self.ctx.library.selection())} 篇"
+                f"本筛选 {len(self.library_rows)} 条来源 · 选择清单 {len(self.ctx.library.selection())} 条来源"
             )
 
         def add_all():
@@ -596,33 +690,51 @@ class LibraryPage:
             if not ids:
                 raise ValueError("当前筛选没有论文，请调整或清除筛选条件。")
             self.ctx.library.set_selection(ids, mode="add")
-            ui.notify(f"已将全部 {len(ids)} 篇筛选结果加入清单。")
+            ui.notify(f"已将全部筛选结果的 {len(ids)} 条来源加入清单。")
             count.set_text(
-                f"{len(ids)} 篇筛选结果 · 跨页面选择清单 {len(self.ctx.library.selection())} 篇"
+                f"本筛选 {len(ids)} 条来源 · 选择清单 {len(self.ctx.library.selection())} 条来源"
             )
 
         async def parse_marked():
-            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
+            ids = marked_library_ids(
+                await grid.get_selected_rows(),
+                getattr(self, "library_catalog_rows", self.library_rows),
+            )
             self.parse_dialog(ids)
 
         async def search_marked():
-            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
+            ids = marked_library_ids(
+                await grid.get_selected_rows(),
+                getattr(self, "library_catalog_rows", self.library_rows),
+            )
             self.search_handoff = {"ids": ids, "label": "文库勾选文献"}
             self.navigate("科研检索")
 
         async def organize_marked():
-            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
+            ids = marked_library_ids(
+                await grid.get_selected_rows(),
+                getattr(self, "library_catalog_rows", self.library_rows),
+            )
             self.organize_dialog(ids)
 
         async def translate_marked():
-            ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
+            ids = marked_library_ids(
+                await grid.get_selected_rows(),
+                getattr(self, "library_catalog_rows", self.library_rows),
+            )
             self.title_translation_dialog(ids)
 
         async def manage_organization():
             from .ui_organization import render_organization_dialog
 
             selected = await grid.get_selected_rows()
-            ids = marked_library_ids(selected, self.library_rows) if selected else []
+            ids = (
+                marked_library_ids(
+                    selected, getattr(self, "library_catalog_rows", self.library_rows)
+                )
+                if selected
+                else []
+            )
 
             async def updated(change):
                 collections = self.ctx.library.collections()
@@ -652,7 +764,18 @@ class LibraryPage:
         async def details(event):
             row = event.args.get("data") or {}
             if row.get("id"):
-                self.details_dialog(row["id"])
+                server_row = next(
+                    (
+                        r
+                        for r in getattr(self, "library_catalog_rows", [])
+                        if r["id"] == row["id"]
+                    ),
+                    None,
+                )
+                if server_row and server_row.get("is_catalog_group"):
+                    self.catalog_details_dialog(server_row)
+                else:
+                    self.details_dialog(row["id"])
 
         grid.on("rowDoubleClicked", guard(lambda: None))
         grid.on("cellDoubleClicked", details)
@@ -816,6 +939,93 @@ class LibraryPage:
         from .ui_title_translation import render_title_translation_dialog
 
         return render_title_translation_dialog(self, ids)
+
+    def catalog_details_dialog(self, group):
+        from nicegui import ui
+
+        with (
+            ui.dialog() as dialog,
+            ui.card().classes("w-[1050px] max-w-[95vw] an-card"),
+        ):
+            ui.label(
+                group.get("title_zh")
+                or group.get("title_original")
+                or group.get("title", "论文来源")
+            ).classes("text-xl font-semibold")
+            ui.label(
+                f"同一 DOI 与正文指纹 · {group['all_source_count']} 条独立来源；"
+                f"本次筛选明确包含 {len(group['member_ids'])} 条。"
+            ).classes("an-info w-full")
+            ui.label(
+                "原始来源、文件及 SI 分别保留。表格批量操作只处理本次筛选来源；解析和科研任务另行核对实际来源。"
+            ).classes("an-muted text-sm")
+            source_numbers = {
+                row["id"]: n for n, row in enumerate(group["variants"], 1)
+            }
+            for field, source_id in group.get("field_sources", {}).items():
+                ui.label(
+                    f"显示补充：{COLUMNS.get(field, field)}来自来源 {source_numbers[source_id]}；原始来源未改写。"
+                ).classes("an-muted text-xs")
+            if group.get("metadata_conflicts"):
+                ui.label(
+                    "部分来源的元数据不同，请展开核对："
+                    + "、".join(
+                        COLUMNS.get(field, field)
+                        for field in group["metadata_conflicts"]
+                    )
+                ).classes("an-info text-sm")
+            for variant in group["variants"]:
+                paper_id = variant["id"]
+                number = source_numbers[paper_id]
+                matched = paper_id in group["member_ids"]
+                with ui.expansion(
+                    f"来源 {number} · {Path(variant['pdf_path']).name} · {'本次筛选' if matched else '其它可用来源'}",
+                    value=matched,
+                    icon="description",
+                ).classes("w-full"):
+                    ui.label(variant["pdf_path"]).classes("text-xs break-all")
+                    ui.label(
+                        f"{value_label(variant.get('identity_basis'))} · "
+                        f"{INTEGRITY_LABELS.get(variant.get('integrity'), '尚未核验')} · "
+                        f"{value_label(variant.get('parse_status'))}"
+                    ).classes("an-muted text-sm")
+                    ui.label(
+                        " · ".join(
+                            str(variant.get(field) or "—")
+                            for field in ("first_author", "year", "journal")
+                        )
+                    ).classes("text-sm")
+                    attachments = variant.get("attachments", [])
+                    ui.label(
+                        f"此来源登记 {len(attachments)} 份附件；不转挂到其它来源。"
+                    ).classes("an-muted text-xs")
+                    for attachment in attachments:
+                        ui.label(
+                            f"{value_label(attachment['role'])} · {Path(attachment['path']).name}"
+                        ).classes("text-sm break-all")
+
+                    def open_source(identity=paper_id):
+                        dialog.close()
+                        self.details_dialog(identity)
+
+                    ui.button(
+                        "查看 / 编辑此来源及其 SI",
+                        icon="open_in_new",
+                        on_click=guard(open_source),
+                    ).props("outline dense")
+            with ui.row().classes("an-toolbar"):
+                ui.button(
+                    f"整理本次筛选的 {len(group['member_ids'])} 条来源",
+                    icon="drive_file_rename_outline",
+                    on_click=guard(
+                        lambda: (
+                            dialog.close(),
+                            self.organize_dialog(list(group["member_ids"])),
+                        )
+                    ),
+                ).props("outline")
+                ui.button("关闭", on_click=dialog.close).props("flat")
+        dialog.open()
 
     def details_dialog(self, paper_id):
         from nicegui import ui
@@ -1239,27 +1449,36 @@ class LibraryPage:
     def organize_dialog(self, ids):
         from nicegui import run, ui
 
+        from aletheia_nexus.processing.contracts import digest
+
+        from .catalog_groups import catalog_groups
+        from .jobs import TERMINAL
         from .translation import DEFAULT_OPTIONS
 
         if not ids:
             raise ValueError("请先勾选文献或加入当前选择清单")
         ids = list(dict.fromkeys(ids))
+        paper_count = len(
+            catalog_groups(self.ctx.library.scan()["items"], matching_ids=ids)
+        )
         state = {
             "preview": None,
             "job": None,
             "loaded": False,
             "grid": None,
             "preview_form": None,
+            "submitting": False,
+            "translation_buttons": [],
         }
         with (
             ui.dialog() as dialog,
             ui.card().classes("w-[1400px] max-w-[97vw] an-card"),
         ):
-            ui.label(f"批量翻译、实际重命名与分类移动 · {len(ids)} 篇论文").classes(
-                "text-xl font-semibold"
-            )
             ui.label(
-                "正文保存于分类根部；每篇关联附件迁移至该分类唯一 SI/。执行前逐项校验哈希与历史引用。"
+                f"批量翻译、实际重命名与分类移动 · {paper_count} 篇论文 / {len(ids)} 条来源"
+            ).classes("text-xl font-semibold")
+            ui.label(
+                "每条来源对应的主文与附件逐项预览，不合并或删除副本。正文保存于分类根部，附件进入该分类唯一 SI/；执行前校验哈希与历史引用。"
             )
             with ui.row().classes("an-toolbar w-full"):
                 template_names = self.ctx.library.templates()
@@ -1284,6 +1503,25 @@ class LibraryPage:
                 folder.set_visibility(False)
                 target_mode.on_value_change(
                     lambda e: folder.set_visibility(e.value == "category")
+                )
+
+                def choose_target_folder():
+                    from .ui_folders import choose_library_folder
+
+                    def selected(relative):
+                        folder.set_value(relative)
+                        target_mode.set_value("category" if relative else "root")
+
+                    choose_library_folder(
+                        self.ctx.library, selected, initial=folder.value or ""
+                    )
+
+                ui.button(
+                    "选择已有 / 新建分类",
+                    icon="folder_open",
+                    on_click=guard(choose_target_folder),
+                ).props("outline dense").bind_visibility_from(
+                    target_mode, "value", backward=lambda value: value == "category"
                 )
 
             def target_options():
@@ -1375,22 +1613,25 @@ class LibraryPage:
                 estimate()
 
                 def translate_only():
+                    if not may_start_translation():
+                        return
                     options = read_translation()
                     grant, forced = consent.value, force.value
                     if estimate() and not grant:
                         raise ValueError("请明确授权标题外发和费用")
-                    self.submit(
-                        "translation",
+                    submit_translation(
                         f"翻译 {len(ids)} 篇标题",
-                        ids,
                         lambda c: self.ctx.translation.translate(
                             ids, options, consent=grant, context=c, force=forced
                         ),
                         options,
+                        forced=forced,
                     )
 
-                ui.button(
-                    "仅翻译标题", on_click=guard(translate_only), icon="translate"
+                state["translation_buttons"].append(
+                    ui.button(
+                        "仅翻译标题", on_click=guard(translate_only), icon="translate"
+                    )
                 )
 
             with ui.expansion("批量显示名称与标签", icon="edit").classes("w-full"):
@@ -1412,6 +1653,97 @@ class LibraryPage:
                 ui.button("应用元数据", on_click=guard(metadata))
             preview_area = ui.column().classes("w-full")
             status = ui.label("").classes("an-info w-full")
+
+            def translation_controls(busy):
+                for button in state["translation_buttons"]:
+                    if not button.is_deleted:
+                        button.set_enabled(not busy)
+
+            def may_start_translation():
+                if state["submitting"]:
+                    ui.notify("正在提交标题任务，请等待，无需重复点击。")
+                    return False
+                if state["job"]:
+                    job = self.ctx.jobs.get(state["job"])
+                    if job["status"] not in TERMINAL:
+                        translation_controls(True)
+                        status.set_text(
+                            "本窗口的标题任务正在运行；请在任务中心查看进度，未重复提交。"
+                        )
+                        return False
+                    if not state["loaded"]:
+                        load_result()
+                return True
+
+            def submit_translation(
+                label, worker, options, *, forced=False, preview_form=None
+            ):
+                fingerprint = digest(
+                    {"ids": sorted(ids), "options": options, "force": forced}
+                )
+                # Another instance of this dialog can attach to the same active
+                # request. Different model/budget settings remain different requests.
+                existing = next(
+                    (
+                        job
+                        for job in self.ctx.jobs.list()
+                        if job["kind"] == "translation"
+                        and job["status"] not in TERMINAL
+                        and (job.get("parameters") or {}).get("organization_scope")
+                        == fingerprint
+                    ),
+                    None,
+                )
+                if existing:
+                    state.update(
+                        job=existing["id"],
+                        loaded=False,
+                        await_preview=False,
+                        preview=None,
+                    )
+                    preview_area.clear()
+                    consent.set_value(False)
+                    translation_controls(True)
+                    status.set_text(
+                        "相同标题范围和预算已有活动任务，已关联其进度，未重复提交。"
+                    )
+                    return
+                state["submitting"] = True
+                translation_controls(True)
+                try:
+                    receipt = self.submit(
+                        "translation",
+                        label,
+                        ids,
+                        worker,
+                        {
+                            "options": options,
+                            "force": forced,
+                            "ids": ids,
+                            "title_entry": "organization",
+                            "organization_scope": fingerprint,
+                        },
+                    )
+                    state.update(
+                        job=receipt.get("job_id", receipt.get("id")),
+                        loaded=False,
+                        await_preview=preview_form is not None,
+                        preview_form=preview_form,
+                    )
+                    state["preview"] = None
+                    preview_area.clear()
+                    consent.set_value(False)
+                    status.set_text(
+                        "标题任务已提交；关闭窗口后仍可在任务中心查看进度与费用。"
+                    )
+                except Exception:
+                    translation_controls(False)
+                    status.set_text(
+                        "标题任务尚未确认提交，请按错误提示处理后重试；未自动重发。"
+                    )
+                    raise
+                finally:
+                    state["submitting"] = False
 
             def display_preview(preview):
                 state["preview"] = preview
@@ -1495,6 +1827,10 @@ class LibraryPage:
                 )
 
             async def preview():
+                if (
+                    state.get("submitting") or state.get("job")
+                ) and not may_start_translation():
+                    return
                 template_value, target = template.value, target_options()
                 missing_policy = missing.value
                 state["preview_form"] = (
@@ -1504,6 +1840,8 @@ class LibraryPage:
                     missing.value,
                 )
                 if missing_policy == "translate":
+                    if not may_start_translation():
+                        return
                     options = read_translation()
                     grant = consent.value
                     if not grant:
@@ -1525,18 +1863,11 @@ class LibraryPage:
                             ),
                         }
 
-                    receipt = self.submit(
-                        "translation",
+                    submit_translation(
                         f"补齐译名并预览 {len(ids)} 篇命名",
-                        ids,
                         worker,
                         options,
-                    )
-                    state.update(
-                        job=receipt.get("job_id", receipt.get("id")), loaded=False
-                    )
-                    status.set_text(
-                        "正在任务中心翻译缺失标题，完成后预览自动出现在此处。"
+                        preview_form=state["preview_form"],
                     )
                 else:
                     status.set_text("正在后台检查来源、附件与历史引用，请稍候。")
@@ -1625,19 +1956,29 @@ class LibraryPage:
                 if not dialog.value or not state["job"] or state["loaded"]:
                     return
                 job = self.ctx.jobs.get(state["job"])
-                result = job.get("result") or {}
-                if result.get("preview"):
-                    state["loaded"] = True
-                    display_preview(result["preview"])
-                elif job["status"] in {"FAILED", "INTERRUPTED", "CANCELLED"}:
-                    state["loaded"] = True
+                if job["status"] not in TERMINAL:
                     status.set_text(
-                        f"翻译任务{value_label(job['status'])}，请在任务中心查看具体原因并重新生成预览。"
+                        f"标题任务{value_label(job['status'])} · "
+                        f"已处理 {job.get('current_index', 0)}/{job.get('total', len(ids))} 篇；"
+                        "完整进度与费用保存在任务中心。"
+                    )
+                    return
+                state["loaded"] = True
+                translation_controls(False)
+                result = job.get("result") or {}
+                if result.get("preview") and state.get("await_preview"):
+                    display_preview(result["preview"])
+                else:
+                    status.set_text(
+                        f"翻译任务{value_label(job['status'])}；请在任务中心核对逐篇结果与费用。"
+                        "需要重命名时请重新生成完整预览；后续操作由你明确发起。"
                     )
 
             ui.timer(2, guard(load_result))
             with ui.row().classes("an-toolbar"):
-                ui.button("生成完整预览", icon="preview", on_click=guard(preview))
+                state["translation_buttons"].append(
+                    ui.button("生成完整预览", icon="preview", on_click=guard(preview))
+                )
                 ui.button("应用逐篇修改并重做预检", on_click=guard(regenerate)).props(
                     "outline"
                 )

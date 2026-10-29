@@ -39,7 +39,7 @@ def setup_workflow(tmp_path):
 
     class Acquisition:
         def run(self, requests, options, **kwargs):
-            return {
+            report = {
                 "status": "COMPLETED",
                 "checkpoint": "fixture-checkpoint",
                 "items": [
@@ -60,11 +60,19 @@ def setup_workflow(tmp_path):
                     }
                 ],
             }
+            if callback := kwargs.get("on_item"):
+                report["items"] = [callback(row) or row for row in report["items"]]
+            return report
 
     class Translation:
         calls = 0
 
-        def translate(self, ids, options, *, consent, context):
+        def create_budget(self, options, context=None):
+            from aletheia_nexus.processing.provider import CallBudget
+
+            return CallBudget(20, max_cost=1), tmp_path / "fake-shared-ledger.json"
+
+        def translate(self, ids, options, *, consent, context, budget=None):
             assert consent
             self.calls += 1
             assert ids == [paper["id"]]

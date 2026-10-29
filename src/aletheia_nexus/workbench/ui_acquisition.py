@@ -133,6 +133,15 @@ class AcquisitionPage:
             value=current["max_cost"],
             min=0.01,
         ).bind_visibility_from(enabled, "value")
+        with ui.column().classes("w-full").bind_visibility_from(enabled, "value"):
+            read_calls = parameter_editor(
+                {"max_calls": current["max_calls"]},
+                labels={"max_calls": "本批标题翻译调用上限（含重试）"},
+            )
+        ui.label(
+            "每下载成功一篇即翻译、命名；人工译名和缓存优先。"
+            "未缓存标题通常每篇一次调用，整批共用费用与调用上限，达到上限后保留原题。"
+        ).classes("an-muted text-sm").bind_visibility_from(enabled, "value")
         consent = ui.checkbox(
             "我授权仅将待翻译的英文标题发送给DeepSeek，并接受所示费用上限", value=False
         ).bind_visibility_from(enabled, "value")
@@ -142,7 +151,7 @@ class AcquisitionPage:
             .bind_visibility_from(enabled, "value")
         ):
             read = parameter_editor(
-                {k: v for k, v in current.items() if k != "max_cost"}
+                {k: v for k, v in current.items() if k not in {"max_cost", "max_calls"}}
             )
 
         def options(require_consent=True):
@@ -150,7 +159,9 @@ class AcquisitionPage:
                 raise ValueError("请明确授权标题外发与费用，或关闭入库后自动翻译")
             result = {
                 "enabled": enabled.value,
-                "options": translation_options({**read(), "max_cost": cost.value}),
+                "options": translation_options(
+                    {**read(), **read_calls(), "max_cost": cost.value}
+                ),
             }
             if require_consent:
                 result["consent"] = bool(consent.value)
@@ -160,17 +171,29 @@ class AcquisitionPage:
             configuration = acquisition_workflow_preferences(
                 {"title_translation": configuration}
             )["title_translation"]
+            read_calls._pending_updates(
+                {"max_calls": configuration["options"]["max_calls"]}
+            )
             read._pending_updates(
-                {k: v for k, v in configuration["options"].items() if k != "max_cost"}
+                {
+                    k: v
+                    for k, v in configuration["options"].items()
+                    if k not in {"max_cost", "max_calls"}
+                }
             )
             return configuration
 
         def apply(configuration):
             configuration = validate(configuration)
             read.apply(
-                {k: v for k, v in configuration["options"].items() if k != "max_cost"}
+                {
+                    k: v
+                    for k, v in configuration["options"].items()
+                    if k not in {"max_cost", "max_calls"}
+                }
             )
             cost.set_value(configuration["options"]["max_cost"])
+            read_calls.apply({"max_calls": configuration["options"]["max_calls"]})
             enabled.set_value(configuration["enabled"])
             consent.set_value(False)
 
@@ -245,123 +268,252 @@ class AcquisitionPage:
         )
 
         def worker(context):
-            report = self.ctx.acquisition.run(
-                requests, options, context=context, checkpoint_path=checkpoint_path
-            )
-            context.progress(
-                stage="整理已获取论文",
-                task_phase="postprocess",
-                current={},
-                item="",
-            )
-            successful = {
-                r.get("pdf_path", r.get("pdf")): r
-                for r in report["items"]
-                if r.get("status") == "VERIFIED"
-            }
-            papers = [
-                r
-                for r in self.ctx.library.scan()["items"]
-                if r["pdf_path"] in successful
-            ]
-            paper_ids = [r["id"] for r in papers]
-            translated = self.translate_missing_english(
-                paper_ids, postprocess.get("title_translation", {}), context
-            )
-            report["translation"] = translated
-            if translated["status"] in {"PARTIAL", "FAILED"}:
-                report["status"] = "PARTIAL"
-            template = postprocess.get("template")
-            if template:
-                from .acquisition import normalize_request
+            from aletheia_nexus.acquire.metadata.titles import contains_cjk
 
-                preserve_names = set(postprocess.get("preserve_existing_names_for", []))
-                # The download engine has now resolved real bibliographic metadata.
-                # A DOI-only input must never force the DOI itself as the title.
-                rename_ids = [
-                    r["id"]
-                    for r in papers
-                    if not (successful[r["pdf_path"]].get("request") or {}).get(
-                        "filename"
+            from .acquisition import normalize_request
+            from .jobs import TaskCancelled
+            from .messages import error_record
+
+            reports = {"translation": [], "organization": [], "parsing": []}
+            budget, budget_path = None, None
+            warnings = []
+            partial = False
+
+            class PostprocessContext:
+                def __getattr__(self, name):
+                    return getattr(context, name)
+
+                def should_skip(self, *_args):
+                    # A skip queued during acquisition belongs to the next
+                    # paper, not to a title request or parsing file in this one.
+                    return False
+
+            post_context = PostprocessContext() if context is not None else None
+
+            def record(row):
+                if hasattr(context, "record"):
+                    context.record(
+                        row.get("id", row.get("paper_id", "acquired")),
+                        row["status"],
+                        **{k: v for k, v in row.items() if k not in {"id", "status"}},
                     )
-                    and (
-                        not preserve_names
-                        or normalize_request(successful[r["pdf_path"]]["request"]).key
-                        not in preserve_names
+
+            def update_paths(row, paper_id):
+                current = self.ctx.library.get(paper_id)
+                if not current:
+                    return
+                row.update(
+                    pdf=current["pdf_path"],
+                    sidecar=current["sidecar_path"],
+                    folder=str(Path(current["pdf_path"]).parent),
+                )
+                if "pdf_path" in row:
+                    row["pdf_path"] = current["pdf_path"]
+                attachments = {
+                    (a["sha256"], a["role"]): a for a in current.get("attachments", [])
+                }
+                supplements = row.get("supplements") or {}
+                for attachment in supplements.get("items", []):
+                    attached = attachments.get(
+                        (attachment.get("sha256"), attachment.get("role"))
                     )
-                ]
-                if rename_ids:
+                    if attached:
+                        attachment.setdefault(
+                            "original_retrieval_path", attachment.get("path")
+                        )
+                        attachment["path"] = attached["path"]
+                if current.get("attachments"):
+                    supplements["si_directory"] = str(
+                        Path(current["pdf_path"]).parent / "SI"
+                    )
+
+            def process_item(row):
+                nonlocal budget, budget_path, partial
+                if row.get("status") != "VERIFIED":
+                    return row
+                paper = next(
+                    (
+                        p
+                        for p in self.ctx.library.scan()["items"]
+                        if p["pdf_path"] == row.get("pdf_path", row.get("pdf"))
+                    ),
+                    None,
+                )
+                row["postprocess"] = details = {"status": "RUNNING"}
+                # A later paid/local failure cannot hide the delivered main.
+                record(row)
+                if paper is None:
+                    partial = True
+                    details.update(
+                        status="FAILED",
+                        message="正文已保存，但文库尚未能定位其稳定身份；请刷新文库核对。",
+                    )
+                    return row
+                paper_id = paper["id"]
+                row["paper_id"] = paper_id
+                if hasattr(context, "checkpoint"):
                     context.checkpoint()
-                    context.progress(0, len(rename_ids), stage="自动命名正文与关联SI")
-                    preview = self.ctx.library.preview_rename(
-                        rename_ids, template, missing_translation="fallback"
-                    )
-                    organized = self.ctx.library.execute_rename(preview)
-                    report["organization"] = organized
-                    if preview["skipped"] or organized.get("status") != "COMPLETED":
-                        report["status"] = "PARTIAL"
-                    for paper in papers:
-                        current = self.ctx.library.get(paper["id"])
-                        if current:
-                            row = successful[paper["pdf_path"]]
-                            row.update(
-                                pdf=current["pdf_path"],
-                                sidecar=current["sidecar_path"],
-                                folder=str(Path(current["pdf_path"]).parent),
-                            )
-                            attachments = {
-                                (a["sha256"], a["role"]): a
-                                for a in current.get("attachments", [])
-                            }
-                            supplements = row.get("supplements") or {}
-                            for attachment in supplements.get("items", []):
-                                current_attachment = attachments.get(
-                                    (attachment.get("sha256"), attachment.get("role"))
-                                )
-                                if current_attachment:
-                                    attachment["original_retrieval_path"] = (
-                                        attachment.get("path")
-                                    )
-                                    attachment["path"] = current_attachment["path"]
-                            if current.get("attachments"):
-                                supplements["si_directory"] = str(
-                                    Path(current["pdf_path"]).parent / "SI"
-                                )
-                            # A later parse/cancellation must not leave the
-                            # durable item receipt pointing at pre-rename files.
-                            context.record(
-                                row.get("id", paper["id"]),
-                                row["status"],
-                                **{
-                                    k: v
-                                    for k, v in row.items()
-                                    if k not in {"id", "status"}
-                                },
-                            )
-            collection_name = postprocess.get("collection")
-            if collection_name and paper_ids:
-                old = self.ctx.library.collections().get(collection_name, [])
-                self.ctx.library.save_collection(
-                    collection_name, list(dict.fromkeys([*old, *paper_ids]))
+                context.progress(
+                    stage="逐篇整理已入库论文", task_phase="postprocess", item=row
                 )
-            if postprocess.get("auto_parse") and paper_ids:
-                parse_options = deepcopy(postprocess.get("parse_options"))
-                if parse_options is None:
-                    # Historical trusted callers may lack a snapshot. The UI
-                    # recovery dialog creates a reviewed snapshot before submit;
-                    # never fetch mutable settings from this worker.
-                    report.setdefault("warnings", []).append(
-                        "历史任务未记录解析配置；本次仅使用内置解析默认，不读取运行中的全局设置。"
+
+                def step(name, operation):
+                    nonlocal partial
+                    try:
+                        result = operation()
+                    except TaskCancelled:
+                        record(row)
+                        raise
+                    except Exception as exc:
+                        result = {"status": "FAILED", "error": error_record(exc)}
+                    details[name] = result
+                    if name in reports:
+                        reports[name].append(result)
+                    if result.get("status") not in {"COMPLETED", "NOT_REQUESTED"}:
+                        partial = True
+                    return result
+
+                def translate():
+                    nonlocal budget, budget_path
+                    configuration = postprocess.get("title_translation", {})
+                    if not configuration.get("enabled"):
+                        return {"status": "NOT_REQUESTED", "calls": []}
+                    if paper.get("title_zh") or contains_cjk(
+                        paper.get("title_original") or paper["title"]
+                    ):
+                        return {"status": "COMPLETED", "items": [], "calls": []}
+                    if budget is None:
+                        budget, budget_path = self.ctx.translation.create_budget(
+                            configuration.get("options"), context=post_context
+                        )
+                    return self.ctx.translation.translate(
+                        [paper_id],
+                        configuration.get("options"),
+                        consent=bool(configuration.get("consent")),
+                        context=post_context,
+                        budget=budget,
                     )
-                parsed = self.ctx.research.parse(
-                    paper_ids,
-                    options=parse_options,
-                    context=context,
-                    include_si=options["include_si"],
+
+                step("translation", translate)
+                template = postprocess.get("template")
+                preserve = set(postprocess.get("preserve_existing_names_for", []))
+                request = row.get("request") or {}
+                if (
+                    template
+                    and not request.get("filename")
+                    and (not preserve or normalize_request(request).key not in preserve)
+                ):
+
+                    def rename():
+                        context.checkpoint()
+                        context.progress(stage="自动命名当前正文与关联SI")
+                        preview = self.ctx.library.preview_rename(
+                            [paper_id], template, missing_translation="fallback"
+                        )
+                        result = self.ctx.library.execute_rename(preview)
+                        if preview["skipped"] and result.get("status") == "COMPLETED":
+                            result = {**result, "status": "PARTIAL"}
+                        return result
+
+                    step("organization", rename)
+                update_paths(row, paper_id)
+                record(row)  # Persist new locators before parsing or cancellation.
+                collection = postprocess.get("collection")
+                if collection:
+
+                    def collect():
+                        old = self.ctx.library.collections().get(collection, [])
+                        self.ctx.library.save_collection(
+                            collection, list(dict.fromkeys([*old, paper_id]))
+                        )
+                        return {"status": "COMPLETED"}
+
+                    step("collection", collect)
+                if postprocess.get("auto_parse"):
+
+                    def parse():
+                        context.checkpoint()
+                        parse_options = deepcopy(postprocess.get("parse_options"))
+                        if parse_options is None:
+                            warning = "历史任务未记录解析配置；本次仅使用内置解析默认，不读取运行中的全局设置。"
+                            if warning not in warnings:
+                                warnings.append(warning)
+                        return self.ctx.research.parse(
+                            [paper_id],
+                            options=parse_options,
+                            context=post_context,
+                            include_si=options["include_si"],
+                        )
+
+                    step("parsing", parse)
+                details["status"] = (
+                    "PARTIAL"
+                    if any(
+                        isinstance(v, dict)
+                        and v.get("status") not in {"COMPLETED", "NOT_REQUESTED"}
+                        for v in details.values()
+                    )
+                    else "COMPLETED"
                 )
-                report["parsing"] = parsed
-                if parsed["status"] != "COMPLETED":
-                    report["status"] = "PARTIAL"
+                return row
+
+            def on_item(value):
+                nonlocal partial
+                row = deepcopy(value)
+                try:
+                    return process_item(row)
+                except TaskCancelled:
+                    record(row)
+                    raise
+                except Exception as exc:
+                    partial = True
+                    row["postprocess"] = {
+                        "status": "FAILED",
+                        "error": error_record(exc),
+                    }
+                    record(row)
+                    return row
+
+            report = self.ctx.acquisition.run(
+                requests,
+                options,
+                context=context,
+                checkpoint_path=checkpoint_path,
+                on_item=on_item,
+            )
+            for name, values in reports.items():
+                if not values:
+                    if name == "translation":
+                        report[name] = {"status": "NOT_REQUESTED", "calls": []}
+                    continue
+                if len(values) == 1:
+                    report[name] = values[0]
+                else:
+                    report[name] = {
+                        "status": "COMPLETED"
+                        if all(
+                            v.get("status") in {"COMPLETED", "NOT_REQUESTED"}
+                            for v in values
+                        )
+                        else "PARTIAL",
+                        "items": [item for v in values for item in v.get("items", [])],
+                        "runs": values,
+                    }
+            if budget is not None:
+                from aletheia_nexus.processing.provider import accounted_cost
+
+                report["translation"].update(
+                    calls=deepcopy(budget.calls),
+                    accounted_cost=sum(accounted_cost(c) or 0 for c in budget.calls),
+                    billing_uncertain=any(
+                        c.get("estimated_cost") is None for c in budget.calls
+                    ),
+                    budget_receipt=str(budget_path),
+                )
+            if warnings:
+                report.setdefault("warnings", []).extend(warnings)
+            if partial and report.get("status") == "COMPLETED":
+                report["status"] = "PARTIAL"
             return report
 
         return worker
@@ -790,22 +942,57 @@ class AcquisitionPage:
                 readiness = ui.label(browser_readiness(defaults)["message"]).classes(
                     "an-muted text-xs"
                 )
-                with ui.expansion("来源与登录处理（可选）", icon="tune").classes(
-                    "w-full"
-                ):
-                    sessions = browser_profile_choices(defaults["browser"])
-                    profile = ui.select(
-                        sessions["options"],
-                        value=sessions["current"]
-                        if sessions["current"] in sessions["options"]
-                        else None,
-                        label="浏览器登录会话",
-                        with_input=True,
-                        new_value_mode="add-unique",
-                    ).classes("w-full")
-                    ui.label(sessions["message"]).classes("an-muted text-xs")
-                    for warning in sessions["warnings"]:
-                        ui.label(warning).classes("text-orange-9 text-xs")
+                sessions = browser_profile_choices(defaults["browser"])
+                profile = ui.select(
+                    sessions["options"],
+                    value=sessions["current"]
+                    if sessions["current"] in sessions["options"]
+                    else None,
+                    label="浏览器登录会话",
+                    with_input=True,
+                    new_value_mode="add-unique",
+                ).classes("w-full")
+                ui.label(sessions["message"]).classes("an-muted text-xs")
+                for warning in sessions["warnings"]:
+                    ui.label(warning).classes("text-orange-9 text-xs")
+                ui.label("登录与验证").classes("font-medium")
+                interaction = ui.select(
+                    {
+                        "wait": "等待人工登录 / 验证",
+                        "skip": "跳过并继续后续论文",
+                        "pause": "暂停批次，等待人工决定",
+                    },
+                    value=defaults["interaction_policy"],
+                    label="需要人工操作时",
+                ).classes("w-full")
+                auto_resume = ui.switch(
+                    "人工验证完成后自动检测并继续",
+                    value=defaults["auto_resume_interaction"],
+                ).bind_enabled_from(
+                    interaction, "value", backward=lambda policy: policy == "wait"
+                )
+                ui.label(
+                    "开启后在正文浏览器等待期间自动复查；关闭后先点击“验证后继续”。"
+                    "仅在等待模式生效，暂停和跳过按各自策略执行。"
+                ).classes("an-muted text-xs")
+                timeout = ui.number(
+                    "交互等待（秒；0表示不限时）",
+                    value=defaults["interaction_timeout"],
+                    min=0,
+                )
+                ui.label("速度与失败自动重试").classes("font-medium")
+                common_option_keys = (
+                    "bulk_interval",
+                    "max_item_attempts",
+                    "retry_backoff",
+                )
+                read_common_options = parameter_editor(
+                    {key: deepcopy(defaults[key]) for key in common_option_keys}
+                )
+                ui.label(
+                    "尝试次数包含首次：1 表示不自动重试。任务结束后仍可只勾选一篇或几篇重试。"
+                ).classes("an-muted text-xs")
+                with ui.expansion("来源策略（可选）", icon="tune").classes("w-full"):
                     source = ui.select(
                         {
                             "auto": "自动来源（可用时含CNKI）",
@@ -815,20 +1002,6 @@ class AcquisitionPage:
                         value=defaults["source_preference"],
                         label="来源策略",
                     ).classes("w-full")
-                    interaction = ui.select(
-                        {
-                            "wait": "等待人工登录 / 验证",
-                            "skip": "跳过并继续后续论文",
-                            "pause": "暂停批次，等待人工决定",
-                        },
-                        value=defaults["interaction_policy"],
-                        label="需要人工操作时",
-                    ).classes("w-full")
-                    timeout = ui.number(
-                        "交互等待（秒；0表示不限时）",
-                        value=defaults["interaction_timeout"],
-                        min=0,
-                    )
 
         def text_changed():
             if state["preview"]:
@@ -852,7 +1025,9 @@ class AcquisitionPage:
             "browser_enabled",
             "source_preference",
             "interaction_policy",
+            "auto_resume_interaction",
             "interaction_timeout",
+            *common_option_keys,
         }
         with ui.expansion(
             "高级 · 超时、间隔、重试、路线和机构浏览器配置", icon="tune"
@@ -894,11 +1069,13 @@ class AcquisitionPage:
             return _options(
                 {
                     **advanced,
+                    **read_common_options(),
                     "include_si": include_si.value,
                     "public_only": strategy.value == "public",
                     "browser_enabled": strategy.value == "institution",
                     "source_preference": source.value,
                     "interaction_policy": interaction.value,
+                    "auto_resume_interaction": auto_resume.value,
                     "interaction_timeout": timeout.value,
                 }
             )
@@ -939,9 +1116,12 @@ class AcquisitionPage:
             advanced = {k: deepcopy(v) for k, v in engine.items() if k not in excluded}
             advanced["browser"].pop("profile_name")
             read_advanced._pending_updates(advanced)
+            common_options = {key: engine[key] for key in common_option_keys}
+            read_common_options._pending_updates(common_options)
             if not legacy:
                 read_translation.validate(preferences["title_translation"])
             read_advanced.apply(advanced)
+            read_common_options.apply(common_options)
             include_si.set_value(engine["include_si"])
             strategy.set_value("public" if engine["public_only"] else "institution")
             if engine["browser"]["profile_name"] not in profile.options:
@@ -951,6 +1131,7 @@ class AcquisitionPage:
             profile.set_value(engine["browser"]["profile_name"])
             source.set_value(engine["source_preference"])
             interaction.set_value(engine["interaction_policy"])
+            auto_resume.set_value(engine["auto_resume_interaction"])
             timeout.set_value(engine["interaction_timeout"])
             check_browser_configuration()
             if legacy:

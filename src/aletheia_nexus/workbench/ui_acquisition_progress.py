@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 from .jobs import TERMINAL
 from .labels import status_label, value_label
 from .messages import user_message
 from .task_view import state_color, task_counts, task_rows
 from .ui_common import guard, rows_table
-from .ui_tasks import skip_control
+from .ui_tasks import continue_label, skip_control
 
 
 def _paper_key(request):
@@ -66,6 +68,12 @@ def acquisition_progress(job):
     attachments = [
         row["si_status"] for row in rows if row["si_status"] != "NOT_REQUESTED"
     ]
+    completed = sum(
+        _paper_key(request) in delivered
+        and delivered[_paper_key(request)].get("status")
+        not in {None, "RUNNING", "DEFERRED", "NOT_ATTEMPTED"}
+        for request in requests
+    )
     return {
         "rows": rows,
         "counts": task_counts(rows),
@@ -87,7 +95,47 @@ def acquisition_progress(job):
             else current.get("title") or current.get("doi") or ""
         ),
         "status": job["status"],
+        "download_completed": completed,
+        "download_remaining": len(requests) - completed,
     }
+
+
+def acquisition_stage_summary(job, progress=None):
+    """Keep original paper scheduling separate from title/file work counters."""
+    progress = progress if progress is not None else acquisition_progress(job)
+    if job.get("task_phase") != "postprocess" or job["status"] in TERMINAL:
+        return ""
+    stage = value_label(job.get("stage") or "整理已入库论文")
+    unit = (
+        "文件"
+        if any(word in stage for word in ("解析", "OCR"))
+        else "标题"
+        if "翻译" in stage
+        else None
+    )
+    index, total = job.get("current_index"), job.get("total")
+    if unit and type(index) is int and type(total) is int and total > 0:
+        stage += f" · {unit} {index}/{total}"
+    if progress["counts"]["total"] and not progress["download_remaining"]:
+        return "下载阶段已完成，正在" + stage + "；整个任务将在后续处理结束后完成。"
+    return (
+        "当前篇正在"
+        + stage
+        + "；之后继续余下获取"
+        + (
+            f"（尚有 {progress['download_remaining']} 篇未完成获取）。"
+            if progress["download_remaining"]
+            else "。"
+        )
+    )
+
+
+def acquisition_count_summary(progress):
+    counts = progress["counts"]
+    return (
+        f"下载论文：正文成功 {counts['success']} · 失败 {counts['failed']} · 等待人工 {counts['interaction']} · "
+        f"跳过 {counts['skipped']} · 其余未完成 {counts['pending'] + counts['partial']} · 共 {counts['total']} 篇"
+    )
 
 
 class AcquisitionProgressPanel:
@@ -156,7 +204,20 @@ class AcquisitionProgressPanel:
         if self.body.is_deleted or not self.job_id:
             return
         job = self.manager.get(self.job_id)
-        marker = job.get("updated_at"), job["status"]
+        progress = acquisition_progress(job)
+        marker = deepcopy(
+            (
+                progress,
+                job.get("stage"),
+                job.get("task_phase"),
+                job.get("current_index"),
+                job.get("total"),
+                job.get("interaction"),
+                job.get("interaction_resolution"),
+                job.get("error"),
+                (job.get("result") or {}).get("warnings"),
+            )
+        )
         if marker == self.marker:
             return
         self.marker = marker
@@ -164,8 +225,6 @@ class AcquisitionProgressPanel:
         if self.choices.get(self.job_id) != label:
             self.choices[self.job_id] = label
             self.choice.set_options(self.choices, value=self.job_id)
-        progress = acquisition_progress(job)
-        counts = progress["counts"]
         self.body.clear()
         with self.body:
             with ui.row().classes("an-toolbar w-full"):
@@ -173,9 +232,10 @@ class AcquisitionProgressPanel:
                 ui.label(value_label(job.get("stage") or job["status"])).classes(
                     "font-medium"
                 )
-            ui.label(
-                f"正文成功 {counts['success']} · 失败 {counts['failed']} · 等待人工 {counts['interaction']} · 跳过 {counts['skipped']} · 其余未完成 {counts['pending'] + counts['partial']} · 共 {counts['total']} 篇"
-            ).classes("an-info w-full")
+            ui.label(acquisition_count_summary(progress)).classes("an-info w-full")
+            stage_summary = acquisition_stage_summary(job, progress)
+            if stage_summary:
+                ui.label(stage_summary).classes("an-info w-full text-sm")
             attachments = progress["attachments"]
             if attachments["total"]:
                 ui.label(
@@ -184,20 +244,24 @@ class AcquisitionProgressPanel:
                 ).classes("text-sm")
                 if attachments["interaction"]:
                     ui.label(
-                        "附件下载需要单独完成人工登录或验证，已验证正文保留。完成后点击“重试获取失败项”，"
-                        "选择“仅补取 SI”即可；不会重新下载有效正文或改掉现有正文名称。"
+                        "附件下载需要单独完成人工登录或验证，已验证正文保留。任务结束后点击“选择失败论文重试 / 仅补 SI”，"
+                        "选择“仅补 SI”即可；不会重新下载有效正文或改掉现有正文名称。"
                     ).classes("an-info w-full text-sm")
             if progress["current"] and job["status"] not in TERMINAL:
                 ui.label("当前论文 / 文件：" + str(progress["current"])).classes(
                     "text-sm break-all"
                 )
             interaction = job.get("interaction") or {}
-            at_boundary = interaction.get("stage") == "paper_boundary"
-            postprocess = job.get("task_phase") == "postprocess"
+            at_boundary = (
+                job["status"] == "INTERACTION_REQUIRED"
+                and interaction.get("stage") == "paper_boundary"
+            )
             if job["status"] == "INTERACTION_REQUIRED":
                 ui.label(
                     interaction.get("resume_instruction")
                     if at_boundary
+                    else "请在机构浏览器完成人工登录或验证，程序会自动复查并继续；“立即重新检查”只请求再次检查，不代表验证通过或论文已经获取。"
+                    if interaction.get("auto_monitoring")
                     else "请到机构浏览器完成登录或验证，然后点击“验证后继续”；也可跳过当前论文。"
                 ).classes("an-info w-full")
                 if interaction.get("source"):
@@ -216,17 +280,14 @@ class AcquisitionProgressPanel:
                     ),
                     (
                         "continue",
-                        "继续后续论文" if at_boundary else "验证后继续",
+                        continue_label(job),
                         job["status"] == "INTERACTION_REQUIRED",
                     ),
                     (
                         "skip",
-                        "跳过当前论文"
-                        if job["status"] == "INTERACTION_REQUIRED"
-                        else "跳过下一篇",
+                        skip_control(job)[0],
                         job["status"] in {"RUNNING", "INTERACTION_REQUIRED"}
-                        and not postprocess
-                        and not at_boundary,
+                        and skip_control(job)[1],
                     ),
                     (
                         "cancel",
@@ -278,7 +339,7 @@ class AcquisitionProgressPanel:
                 ui.label(user_message(warning)).classes("text-orange-9 text-sm")
             if job["status"] in {"PARTIAL", "FAILED", "CANCELLED", "INTERRUPTED"}:
                 ui.button(
-                    "重试获取失败项",
+                    "选择失败论文重试 / 仅补 SI",
                     icon="restart_alt",
                     on_click=guard(
                         lambda: self.controller.recover_acquisition_dialog(job)

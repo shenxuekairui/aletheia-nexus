@@ -341,6 +341,8 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
     def selection_dialog(self):
         from nicegui import ui
 
+        from .catalog_groups import catalog_groups
+
         with (
             ui.dialog() as dialog,
             ui.card().classes("w-[1050px] max-w-[95vw] an-card"),
@@ -356,21 +358,64 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
             def selected_rows():
                 rows = [self.ctx.library.get(i) for i in self.ctx.library.selection()]
                 rows = [r for r in rows if r]
+                groups = catalog_groups(rows)
                 summary.set_text(
-                    f"共 {len(rows)} 篇论文；AI执行前另行确认主文和 SI 材料范围。"
+                    f"共 {len(groups)} 篇论文、{len(rows)} 份已选来源；"
+                    "AI 执行前确认实际来源、主文和 SI 材料范围。"
                 )
                 if not rows:
                     ui.label("选择清单为空，可从文库或检索结果继续添加。").classes(
                         "an-muted"
                     )
-                for row in rows:
+
+                def show_sources(group):
+                    with (
+                        ui.dialog() as sources,
+                        ui.card().classes("an-card w-[900px] max-w-[95vw]"),
+                    ):
+                        ui.label("本论文的已选来源").classes("an-title")
+                        ui.label(
+                            "相同 PDF 按论文归并显示，原始来源与历史证据分别保留。"
+                        ).classes("an-muted")
+                        for index, variant in enumerate(group["matched_variants"], 1):
+                            with ui.card().classes("w-full an-card"):
+                                ui.label(f"来源 {index} · {variant['title']}")
+                                ui.label(
+                                    variant.get("pdf_path") or "路径待检查"
+                                ).classes("text-sm break-all")
+                                ui.label(
+                                    f"SI {variant.get('si_count', 0)} 份 · "
+                                    f"分类：{variant.get('folder') or '文库根目录'}"
+                                )
+                                ui.button(
+                                    "移除此来源",
+                                    on_click=guard(
+                                        lambda identity=variant["id"]: (
+                                            change_selection([identity], mode="remove"),
+                                            sources.close(),
+                                        )
+                                    ),
+                                ).props("flat")
+                        ui.button("关闭", on_click=sources.close).props("flat")
+                    sources.open()
+
+                for row in groups:
                     with ui.row().classes("an-toolbar w-full"):
                         ui.label(row.get("title_zh") or row["title"]).classes("grow")
-                        ui.badge(f"SI {row.get('si_count', 0)}").props("outline")
+                        if len(row["member_ids"]) > 1:
+                            ui.button(
+                                f"{len(row['member_ids'])} 份来源",
+                                icon="source",
+                                on_click=guard(lambda group=row: show_sources(group)),
+                            ).props("flat dense")
+                        else:
+                            ui.badge(f"SI {row.get('si_count', 0)}").props("outline")
                         ui.button(
                             icon="close",
                             on_click=guard(
-                                lambda i=row["id"]: change_selection([i], mode="remove")
+                                lambda ids=row["member_ids"]: change_selection(
+                                    ids, mode="remove"
+                                )
                             ),
                         ).props("flat round dense").tooltip("移出当前选择清单")
 
@@ -452,7 +497,7 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 }
             )
         with ui.dialog() as dialog, ui.card().classes("w-[1150px] max-w-[96vw]"):
-            ui.label("重试获取失败 / 补取 SI").classes("text-xl font-semibold")
+            ui.label("选择失败论文重试 / 仅补 SI").classes("text-xl font-semibold")
             ui.label(
                 "默认只选未成功项。正文已验证但 SI 待补时，复用正文，只继续附件获取；"
                 "完整完成项不重新调度。请核对篇数、目录和标签后开始。"
@@ -493,6 +538,16 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     ("reason", "核验与重试说明"),
                 )
             ]
+            columns.append(
+                {
+                    "name": "choose_one",
+                    "field": "id",
+                    "label": "快捷选择",
+                    "align": "left",
+                }
+            )
+            retry_state = {"busy": False}
+            start_button = None
             table = ui.table(
                 columns=columns,
                 rows=[row for row in table_rows if row["can_retry"]],
@@ -501,6 +556,11 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 pagination=10,
                 on_select=lambda _: selection_count(),
             ).classes("an-task-table w-full")
+            table.add_slot(
+                "body-cell-choose_one",
+                """<q-td :props="props"><q-btn flat dense label="只选这篇"
+                @click="$parent.$emit('choose-one', props.row.id)" /></q-td>""",
+            )
             table.selected = [row for row in table_rows if row["selected"]]
             excluded = [row for row in table_rows if not row["can_retry"]]
             if excluded:
@@ -508,17 +568,39 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     f"不重复调度 / 来源需核对：{len(excluded)} 篇", icon="fact_check"
                 ).classes("w-full"):
                     ui.table(
-                        columns=columns, rows=excluded, row_key="id", pagination=5
+                        columns=columns[:-1], rows=excluded, row_key="id", pagination=5
                     ).classes("an-task-table w-full")
             count = ui.label()
 
             def selection_count():
-                count.set_text(f"本次将重试 {len(table.selected)} 篇；不包括未勾选项。")
+                if retry_state["busy"]:
+                    table.selected = retry_state["selected_rows"]
+                    count.set_text(
+                        f"正在核验已选 {len(table.selected)} 篇；本次范围已固定，请等待。"
+                    )
+                else:
+                    count.set_text(
+                        f"本次将重试 {len(table.selected)} 篇；不包括未勾选项。"
+                    )
+                if start_button is not None:
+                    start_button.set_enabled(
+                        bool(table.selected) and not retry_state["busy"]
+                    )
+
+            def choose_one(event):
+                if retry_state["busy"]:
+                    return
+                table.selected = [row for row in table.rows if row["id"] == event.args]
+                selection_count()
+
+            table.on("choose-one", choose_one)
 
             selection_count()
             with ui.row().classes("an-toolbar"):
 
                 def choose(category=None):
+                    if retry_state["busy"]:
+                        return
                     table.selected = [
                         row
                         for row in table_rows
@@ -527,10 +609,25 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     ]
                     selection_count()
 
+                def clear_selection():
+                    if not retry_state["busy"]:
+                        table.selected = []
+                    selection_count()
+
                 ui.button("选择全部可重试项", on_click=lambda: choose()).props("flat")
-                ui.button("仅补取 SI", on_click=lambda: choose("SI_INCOMPLETE")).props(
+                ui.button(
+                    "取消全选",
+                    on_click=clear_selection,
+                ).props("flat")
+                ui.button("仅正文失败", on_click=lambda: choose("MAIN_FAILED")).props(
                     "flat"
                 )
+                ui.button("仅补 SI", on_click=lambda: choose("SI_INCOMPLETE")).props(
+                    "flat"
+                )
+            ui.label(
+                "“只选这篇”会清除其他勾选，不会立即执行。勾选一篇或几篇后，核对上方实际篇数再开始。"
+            ).classes("an-muted text-sm")
             for warning in preview["warnings"]:
                 ui.label(warning).classes("text-orange-9 text-sm")
             strategy = ui.select(
@@ -594,30 +691,32 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
 
             async def submit_retry():
                 selected_ids = [row["id"] for row in table.selected]
+                selected_strategy, selected_profile = strategy.value, profile.value
+                translation_configuration = read_translation()
                 # Revalidate on confirmation. Previewed status or a stale path
                 # never authorizes reuse, even when a previous task said success.
                 fresh = await run.io_bound(
                     recovery_preview, self.ctx.jobs.get(job["id"]), self.ctx.acquisition
                 )
                 requests = recovery_requests(fresh, selected_ids)
-                if strategy.value == "institution" and not profile.value:
+                if selected_strategy == "institution" and not selected_profile:
                     raise ValueError("请先选择有效的机构浏览器会话，再开始重试。")
                 options = _options(
                     {
                         **fresh["options"],
                         "browser": {
                             **fresh["options"]["browser"],
-                            "profile_name": profile.value
+                            "profile_name": selected_profile
                             or fresh["options"]["browser"]["profile_name"],
                         },
-                        "public_only": strategy.value == "public",
-                        "browser_enabled": strategy.value == "institution",
+                        "public_only": selected_strategy == "public",
+                        "browser_enabled": selected_strategy == "institution",
                         "resume": True,
                     }
                 )
                 reviewed_postprocess = {
                     **postprocess,
-                    "title_translation": read_translation(),
+                    "title_translation": translation_configuration,
                     "preserve_existing_names_for": [
                         normalize_request(row["request"]).key
                         for row in fresh["rows"]
@@ -655,37 +754,42 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 )
                 dialog.close()
 
-            retry_state = {"busy": False}
-
             async def start():
                 if retry_state["busy"]:
                     return
+                retry_state["selected_rows"] = list(table.selected)
                 retry_state["busy"] = True
-                start_button.disable()
+                selection_count()
                 try:
                     await submit_retry()
                 except Exception:
                     retry_state["busy"] = False
-                    start_button.enable()
+                    selection_count()
                     raise
 
             start_button = ui.button(
-                "确认重试所选未成功项", icon="play_arrow", on_click=guard(start)
+                "开始重试所选论文 / 补 SI", icon="play_arrow", on_click=guard(start)
             )
-            start_button.set_enabled(any(row["can_retry"] for row in table_rows))
+            selection_count()
             ui.button("关闭", on_click=dialog.close).props("flat")
         dialog.open()
 
     def settings_dialog(self):
         from nicegui import ui
 
+        from .acquisition import _options
+        from .research_defaults import research_defaults
         from .translation import DEFAULT_OPTIONS
+        from .ui_acquisition import acquisition_workflow_preferences
+        from .ui_api_settings import render_api_settings
+        from .ui_parameters import parameter_sections
 
         with (
             ui.dialog() as dialog,
             ui.card().classes("w-[1150px] max-w-[95vw] an-card"),
         ):
             ui.label("设置与任务预设").classes("an-title")
+            render_api_settings(self.ctx)
             root = ui.input("文献库根目录", value=str(self.ctx.library.root)).classes(
                 "w-full"
             )
@@ -697,7 +801,10 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     ui.navigate.to("/")
 
                 ui.button("切换文献库", icon="folder_open", on_click=guard(switch))
-            ui.label("API密钥从系统环境读取；预设与任务记录不保存密钥或Cookie。")
+            ui.label(
+                "下方默认值用于之后新建或重新打开的任务表单；已提交任务与已载入的历史计划保持原参数。"
+                "保存设置不会执行获取、解析或模型请求，也不会沿用付费授权。"
+            ).classes("an-info w-full")
             mode = ui.select(
                 {
                     "bilingual": "中英文双行",
@@ -717,6 +824,104 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     )
                 ),
             )
+            with ui.expansion("论文获取常用默认值", icon="download").classes("w-full"):
+                acquisition = _options(self.ctx.settings.get("acquisition", {}))
+                read_acquisition = parameter_sections(
+                    acquisition,
+                    common=(
+                        "public_only",
+                        "browser_enabled",
+                        "include_si",
+                        "bulk_interval",
+                        "max_item_attempts",
+                        "retry_backoff",
+                        "interaction_policy",
+                        "auto_resume_interaction",
+                        "interaction_timeout",
+                    ),
+                    advanced=tuple(
+                        key
+                        for key in acquisition
+                        if key
+                        not in {
+                            "public_only",
+                            "browser_enabled",
+                            "include_si",
+                            "bulk_interval",
+                            "max_item_attempts",
+                            "retry_backoff",
+                            "interaction_policy",
+                            "auto_resume_interaction",
+                            "interaction_timeout",
+                        }
+                    ),
+                )
+                ui.label(
+                    "仅公开获取时启用“仅公开来源”；需要机构回退时关闭该项并启用机构浏览器。"
+                    "人工验证策略和等待时间仍在实际获取中生效，0 表示不限时等待。"
+                ).classes("an-muted text-sm")
+
+                def save_acquisition():
+                    self.ctx.settings.set("acquisition", _options(read_acquisition()))
+                    ui.notify("已保存论文获取默认值；请重新打开获取页以载入。")
+
+                ui.button("保存论文获取默认值", on_click=guard(save_acquisition))
+            with ui.expansion(
+                "入库与命名默认值", icon="drive_file_rename_outline"
+            ).classes("w-full"):
+                workflow = acquisition_workflow_preferences(
+                    self.ctx.settings.get("acquisition_workflow", {}),
+                    translation_defaults=self.ctx.settings.get("translation", {}),
+                )
+                read_workflow = parameter_sections(
+                    workflow,
+                    common=("template", "folder", "tags", "collection", "auto_parse"),
+                    advanced=("title_translation",),
+                    labels={
+                        "template": "正文与 SI 共用命名模板",
+                        "folder": "默认分类（相对文库）",
+                        "tags": "默认标签（每行一个）",
+                        "collection": "默认固定研究集合",
+                        "auto_parse": "入库后自动解析",
+                        "title_translation": "入库后标题翻译偏好",
+                        "enabled": "默认开启标题翻译选项",
+                        "options": "标题翻译参数",
+                    },
+                )
+                ui.label(
+                    "中文译名缺失时按原题回退；SI 存入同分类共享 SI/ 目录。"
+                    "标题翻译偏好不会保存付费授权，开始任务时仍须明确确认。"
+                ).classes("an-muted text-sm")
+
+                def save_workflow():
+                    self.ctx.settings.set(
+                        "acquisition_workflow",
+                        acquisition_workflow_preferences(read_workflow()),
+                    )
+                    ui.notify("已保存入库与命名默认值；请重新打开获取页以载入。")
+
+                ui.button("保存入库与命名默认值", on_click=guard(save_workflow))
+            with ui.expansion("科研模型与预算默认值", icon="science").classes("w-full"):
+                research = research_defaults(self.ctx.settings.get("research", {}))
+                read_research = parameter_editor(
+                    research,
+                    labels={
+                        "planning_max_cost": "自然语言规划单独费用上限（按模型计费币种）"
+                    },
+                )
+                ui.label(
+                    "规划与科研执行分别计费；规划按最多 16384 输出 Token、最多 2 次请求预留。"
+                    "模型名称、单价和费用上限会载入新研究表单；已有任务优先使用其原计划参数。"
+                    "材料外发与额外页授权不会随默认值开启。"
+                ).classes("an-muted text-sm")
+
+                def save_research():
+                    self.ctx.settings.set(
+                        "research", research_defaults(read_research())
+                    )
+                    ui.notify("已保存科研默认参数；请重新打开 AI 研究页以载入。")
+
+                ui.button("保存科研默认参数", on_click=guard(save_research))
             for section, label, defaults in (
                 ("translation", "DeepSeek 标题翻译默认参数", DEFAULT_OPTIONS),
                 ("parsing", "PDF 解析默认参数", self.ctx.research.parser_options()),
@@ -781,7 +986,6 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 )
             with ui.expansion("环境诊断", icon="health_and_safety").classes("w-full"):
                 import importlib.util
-                import os
                 import shutil
                 import sys
 
@@ -791,9 +995,9 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     "poppler": bool(shutil.which("pdftoppm")),
                     "tesseract": bool(shutil.which("tesseract")),
                     "playwright": importlib.util.find_spec("playwright") is not None,
-                    "DeepSeek_API_key_present": bool(
-                        os.environ.get("DEEPSEEK_API_KEY")
-                    ),
+                    "DeepSeek_API_key_present": self.ctx.api_settings.status()[
+                        "configured"
+                    ],
                     "local_only": True,
                 }
                 ui.label(
@@ -846,7 +1050,7 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                             "next": "在获取页检查本次浏览器配置；此项不代表浏览器运行时、登录或机构权限已就绪。",
                         },
                         {
-                            "name": "DeepSeek API 环境变量",
+                            "name": "DeepSeek API 配置",
                             "state": "已配置"
                             if diagnostics["DeepSeek_API_key_present"]
                             else "未配置",

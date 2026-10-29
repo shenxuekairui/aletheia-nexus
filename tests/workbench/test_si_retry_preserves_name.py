@@ -26,12 +26,17 @@ def test_si_only_postprocess_keeps_existing_name_and_source_bytes(
     # This test isolates the postprocessing boundary: acquisition source gates
     # and checkpoint reuse have independent native integration coverage.
     row = {"status": "VERIFIED", "pdf": paper["pdf_path"], "request": request}
+
+    def run(*args, on_item=None, **kwargs):
+        return {
+            "status": "COMPLETED",
+            "items": [on_item(row) or row if on_item else row],
+        }
+
     page = AcquisitionPage()
     page.ctx = SimpleNamespace(
         library=library,
-        acquisition=SimpleNamespace(
-            run=lambda *a, **k: {"status": "COMPLETED", "items": [row]}
-        ),
+        acquisition=SimpleNamespace(run=run),
     )
     before_pdf = incoming.read_bytes()
     before_source = Path(paper["sidecar_path"]).read_bytes()

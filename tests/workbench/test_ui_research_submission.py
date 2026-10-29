@@ -215,7 +215,7 @@ def test_actual_execute_callback_blocks_double_click_during_async_preflight_and_
         for element in elements
     )
     assert any(
-        "当前选择 3 篇论文" == getattr(element, "text", "") for element in elements
+        "当前选择 3 份文献来源" == getattr(element, "text", "") for element in elements
     )
 
     async def scenario():

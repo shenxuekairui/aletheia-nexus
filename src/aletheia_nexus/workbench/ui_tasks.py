@@ -1,5 +1,7 @@
 """Readable task delivery and live controls, with native receipts as expert detail."""
 
+from copy import deepcopy
+
 from .jobs import TERMINAL
 from .labels import status_label, value_label
 from .messages import user_message
@@ -19,7 +21,8 @@ def skip_control(job):
     unavailable = (
         status in TERMINAL
         or status == "CANCEL_REQUESTED"
-        or (job.get("interaction") or {}).get("stage") == "paper_boundary"
+        or status == "INTERACTION_REQUIRED"
+        and (job.get("interaction") or {}).get("stage") == "paper_boundary"
         or kind in {"acquisition", "acquire"}
         and job.get("task_phase") == "postprocess"
         or kind == "import"
@@ -43,11 +46,15 @@ def skip_control(job):
 
 
 def continue_label(job):
-    return (
-        "继续后续论文"
-        if (job.get("interaction") or {}).get("stage") == "paper_boundary"
-        else "验证后继续"
-    )
+    interaction = job.get("interaction") or {}
+    if (
+        job["status"] == "INTERACTION_REQUIRED"
+        and interaction.get("stage") == "paper_boundary"
+    ):
+        return "继续后续论文"
+    if job["status"] == "INTERACTION_REQUIRED" and interaction.get("auto_monitoring"):
+        return "立即重新检查"
+    return "验证后继续"
 
 
 def render_browser_connection_cards(job):
@@ -104,12 +111,28 @@ def render_task_dialog(controller):
             container.clear()
             with container:
                 render_browser_connection_cards(job)
-                rows = task_rows(job)
+                acquisition = None
+                if job["kind"] in {"acquisition", "acquire"}:
+                    from .ui_acquisition_progress import acquisition_progress
+
+                    acquisition = acquisition_progress(job)
+                rows = (
+                    acquisition["rows"]
+                    if acquisition and acquisition["rows"]
+                    else task_rows(job)
+                )
                 if rows:
                     counts = task_counts(rows)
-                    ui.label(
-                        f"已交付 {counts['total']} 项 · 成功 {counts['success']} · 失败 {counts['failed']} · 等待人工 {counts['interaction']} · 部分 {counts['partial']} · 跳过/取消 {counts['skipped']} · 待处理 {counts['pending']}"
-                    ).classes("font-medium")
+                    if acquisition and acquisition["rows"]:
+                        from .ui_acquisition_progress import acquisition_count_summary
+
+                        ui.label(acquisition_count_summary(acquisition)).classes(
+                            "font-medium"
+                        )
+                    else:
+                        ui.label(
+                            f"已交付 {counts['total']} 项 · 成功 {counts['success']} · 失败 {counts['failed']} · 等待人工 {counts['interaction']} · 部分 {counts['partial']} · 跳过/取消 {counts['skipped']} · 待处理 {counts['pending']}"
+                        ).classes("font-medium")
                     fields = [
                         ("title", "文献 / 文件"),
                         ("document_role", "材料角色"),
@@ -285,7 +308,7 @@ def render_task_dialog(controller):
                 if job["status"] in {"PARTIAL", "FAILED", "CANCELLED", "INTERRUPTED"}:
                     if job["kind"] in {"acquisition", "acquire"}:
                         ui.button(
-                            "重试获取失败 / 补取 SI",
+                            "选择失败论文重试 / 仅补 SI",
                             icon="restart_alt",
                             on_click=guard(
                                 lambda j=job: controller.recover_acquisition_dialog(j)
@@ -338,12 +361,41 @@ def render_task_dialog(controller):
             ).classes("w-full an-job-card") as expansion:
                 live = ui.column().classes("w-full gap-2")
                 snapshot = ui.column().classes("w-full gap-3")
-            views = {"ready": False, "status": job["status"], "records": -1}
+            views = {"ready": False, "snapshot_marker": None, "live_marker": None}
 
             def update_live():
                 if not dialog.value or not expansion.value:
                     return
                 latest = manager.get(job_id)
+                acquisition = None
+                stage_summary = ""
+                if latest["kind"] in {"acquisition", "acquire"}:
+                    from .ui_acquisition_progress import (
+                        acquisition_progress,
+                        acquisition_stage_summary,
+                    )
+
+                    acquisition = acquisition_progress(latest)
+                    stage_summary = acquisition_stage_summary(latest, acquisition)
+                    live_marker = deepcopy(
+                        (
+                            acquisition,
+                            latest.get("task_phase"),
+                            latest.get("stage"),
+                            latest.get("current_index"),
+                            latest.get("total"),
+                            latest.get("interaction"),
+                            latest.get("interaction_resolution"),
+                            latest.get("interaction_error_type"),
+                            latest.get("error"),
+                            latest.get("billing_uncertain"),
+                            len(latest.get("records", [])),
+                            (latest.get("result") or {}).get("warnings"),
+                        )
+                    )
+                    if views["ready"] and live_marker == views["live_marker"]:
+                        return
+                    views["live_marker"] = live_marker
                 expansion.set_text(
                     f"{latest['label']} · {status_label(latest['status'])}"
                 )
@@ -357,12 +409,16 @@ def render_task_dialog(controller):
                         ui.label(
                             f"{value_label(latest.get('stage') or latest['kind'])} · "
                             + (
-                                f"已完成 {latest.get('total', 0)} 项"
+                                f"获取已处理 {acquisition['download_completed']}/{acquisition['counts']['total']} 篇"
+                                if acquisition and acquisition["counts"]["total"]
+                                else f"已完成 {latest.get('total', 0)} 项"
                                 if latest["status"] == "COMPLETED"
                                 else f"进度 {latest.get('current_index', 0)}/{latest.get('total', 0)}"
                             )
                         ).classes("text-sm")
                         ui.label(f"任务编号 {job_id[:10]}").classes("an-muted text-xs")
+                    if stage_summary:
+                        ui.label(stage_summary).classes("an-info w-full text-sm")
                     interaction = latest.get("interaction") or {}
                     if latest["status"] == "INTERACTION_REQUIRED":
                         paper = interaction.get("paper") or {}
@@ -375,7 +431,15 @@ def render_task_dialog(controller):
                         ui.label(
                             f"等待人工处理：{title}\n来源：{interaction.get('source') or '请查看机构浏览器当前页面'}\n{value_label(interaction.get('challenge') or interaction.get('status') or '')}"
                         ).classes("an-info w-full whitespace-pre-wrap")
-                        if interaction.get("resume_instruction"):
+                        if (
+                            interaction.get("auto_monitoring")
+                            and interaction.get("stage") != "paper_boundary"
+                        ):
+                            ui.label(
+                                "请在机构浏览器完成人工登录或验证，程序会自动复查并继续；"
+                                "“立即重新检查”只请求再次检查，不代表验证通过或论文已经获取。"
+                            ).classes("an-info w-full text-sm")
+                        elif interaction.get("resume_instruction"):
                             ui.label(interaction["resume_instruction"]).classes(
                                 "text-sm"
                             )
@@ -530,18 +594,19 @@ def render_task_dialog(controller):
                                 if planning
                                 else "科研模型不支持即时跳过；可在论文组边界暂停或取消，保留已交付结果后调整新计划。"
                             ).classes("an-muted text-xs")
-                if (
-                    not views["ready"]
-                    or len(latest.get("records", [])) != views["records"]
-                    or (
-                        latest["status"] in TERMINAL
-                        and views["status"] != latest["status"]
-                    )
-                ):
+                marker = (
+                    latest["status"],
+                    len(latest.get("records", [])),
+                    deepcopy(latest.get("interaction")),
+                    latest.get("interaction_resolution"),
+                    latest.get("interaction_error_type"),
+                    latest.get("task_phase"),
+                    latest.get("stage"),
+                )
+                if not views["ready"] or marker != views["snapshot_marker"]:
                     render_snapshot(latest, snapshot)
                     views["ready"] = True
-                views["status"] = latest["status"]
-                views["records"] = len(latest.get("records", []))
+                    views["snapshot_marker"] = marker
 
             expansion.on_value_change(guard(update_live))
             timer = ui.timer(2, guard(update_live))

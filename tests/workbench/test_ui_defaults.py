@@ -141,8 +141,16 @@ def test_first_use_wait_is_unlimited_at_real_acquisition_adapter_boundary(
             return False
 
         def wait_interaction(self, details, *, timeout, pump=None):
-            observed.append((details, timeout))
+            pytest.fail("Automatic first-use waiting must not block on a UI click")
+
+        def begin_interaction(self, details):
+            observed.append((details, None))
+
+        def poll_interaction(self, *, pump=None):
             return "skip"
+
+        def finish_interaction(self, resolution):
+            pass
 
     def forbidden(*args, **kwargs):
         pytest.fail("This deterministic test must not launch a browser")
@@ -150,7 +158,13 @@ def test_first_use_wait_is_unlimited_at_real_acquisition_adapter_boundary(
     def fetch(request, *, browser_session, **kwargs):
         assert browser_session.config.headless is False
         assert browser_session.config.interactive is True
+        assert browser_session.config.wait_for_interaction is True
         browser_session.config.interaction_callback(
+            ChallengeReport(ChallengeKind.AUTHENTICATION),
+            "https://publisher.example/login",
+        )
+        browser_session.config.interaction_poll_callback(
+            "poll",
             ChallengeReport(ChallengeKind.AUTHENTICATION),
             "https://publisher.example/login",
         )

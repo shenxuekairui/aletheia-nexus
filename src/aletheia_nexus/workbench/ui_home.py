@@ -31,10 +31,12 @@ GUIDE = [
             "设置分类目录、标签和主文/SI统一命名模板。分类中正文直接平铺，所有关联附件共用该分类的 SI/ 子目录。正文成功与 SI 获取状态独立报告。",
             "命名下拉包含“自定义模板”，也可直接编辑“实际模板”，例如 {year}-{journal}-{title_zh}，填写名称后保存复用。缺少译名时按现有原题回退；付费翻译需单独授权。保存命名模板不改动已有文件；已有文献在文库“批量整理”中预览并执行。",
             "自动 SI 获取尝试 DOI 一致的官方页面；正文来自受支持官方开放仓储时，也会核对同版本元数据与明确附件清单。受保护附件可能无法取得；非 PDF 附件先保存和登记，不承诺能够解析。",
-            "正文通过验证不等于附件入口已放行；若提示附件另需验证，请保留 AN 浏览器的论文页与附件页，人工完成后从“重试获取失败 / 补取 SI”选择“仅补取 SI”，并使用同一会话。软件不会保证通过验证码或越过访问权限，未取得的附件仍如实显示。",
+            "正文通过验证不等于附件入口已放行。自动 SI 获取会先检查已有的 DOI 匹配官方文章页；找不到时，可在本次允许的同一浏览器会话中打开自己的文章页，不操作你已有的标签页。若官方文章页或附件入口另需验证，保留该页，人工完成后从“选择失败论文重试 / 仅补 SI”选择仅补 SI，并使用同一会话。SI 目前不会实时等待人工后自动接着下载；未取得仍如实显示，不保证通过验证码或越过权限。",
             "新工作区默认“公开 + 机构浏览器”：公开路线先行，必要时打开 AN 独立的可见会话；也可改为“仅公开获取”。“检查本次浏览器配置”只检查依赖和配置，不代表已登录或具有访问权限。实际打开仍经过浏览器运行时和安全版本检查，登录与验证码由你完成。",
             "开始后直接查看本页获取进度，正文与 SI 分别显示；需要人工处理时可继续、跳过或取消，完整渠道、目录和检查点在“全部任务与历史”。关闭或刷新页面不取消任务，重新进入获取页可查看已保存进度。进程退出后则如实标记中断，须核对后恢复。",
             "新工作区默认不限时等待人工操作、普通论文间隔1秒、尝试 SI，并自动使用原生文本解析成功材料；OCR和入库后标题翻译关闭，已有保存偏好保持原样。开启标题翻译仍需明确确认仅标题外发与本批费用上限。",
+            "在常用“来源与登录处理”中，可开关“人工验证完成后自动检测并继续”，默认开启，仅在等待模式对正文获取生效。它复用引擎对当前目标页和下载的成熟检查；点击继续只要求重新检查，不会把未验证文件当成功，显式暂停也不会自动解除。",
+            "每篇正文与 SI 获取结束后即可处理该篇：按你授权的选项补标题翻译，按已选模板安全整理主文及对应 SI，再自动解析，然后继续后续论文。翻译的费用和调用次数上限由本批共享，不会每篇重新获得一份预算；到达上限、费用未知或失败会保留原因，不自动重发结果不确定的请求，也不静默上调预算。全部正文成功后若仍在整理或解析，请等待任务真正结束。",
         ],
     ),
     (
@@ -42,6 +44,8 @@ GUIDE = [
         "原题、译名、显示名与文件名各司其职",
         [
             "双击文献查看详情、来源、关联附件和原文。原始书目标题保持独立；中文译名可编辑并人工确认；显示名称只影响展示，不等于磁盘文件改名。",
+            "同 DOI、同正文指纹、同为已验证正文的多条来源默认归成一个论文行，作者等缺失显示值可以从其它来源补充，并注明出处；原始 PDF、来源记录和任务证据不会删除或合并。双击可逐份查看路径、解析状态和各自 SI，也可切换“按来源逐条查看”。不同 PDF 版本和用户声明来源保持独立。",
+            "表格勾选一行可能包含本次筛选的多条来源，工具栏会显示实际数量；标签、目录和集合先按原来源筛选，再归成论文行。整理前仍逐文件预览；解析或 AI 研究前需确认本次使用的来源，SI 保留原有父文归属，已有研究任务和集合不因归组自动扩范围。",
             "缺中文标题时，直接勾选一篇或多篇并点击“补中文标题”。单篇可手动填写，多篇默认只补缺失；先显示缓存和待外发范围，授权后才调用 DeepSeek。已有人工译名受保护，任务与费用保存在任务中心。可用“未翻译”筛选快速找出缺失项目，不必先打开改名窗口。",
             "勾选文献后加入“当前文献选择清单”。清单可跨页面累积并去重；“全选当前页面”与“加入全部筛选结果”对应不同范围，界面会显示实际数量。",
             "“批量整理”支持标题翻译、命名模板、逐篇名称覆盖、标签和分类移动。需要中文命名时，可在同一窗口补齐缺失译名。生成完整主文与 SI 路径预览，检查冲突和历史引用风险，再确认实际文件操作。",
@@ -92,8 +96,8 @@ GUIDE = [
             "获取页直接显示正文与 SI 的逐篇进度；任务中心统一查看获取、导入、解析、翻译、重命名和科研任务。简要进度自动刷新，详细诊断可手动刷新并展开阅读。",
             "暂停、跳过和取消在服务支持的安全边界生效。获取结束进入翻译、整理或解析后，不再提供按论文跳过。正在进行的请求或原子文件事务需先结束；取消不撤回已完成或可能收费的请求。",
             "获取任务可审阅原始参数与检查点后恢复，成功项仍要通过当前来源核验。标题翻译可复用缓存与已确认译名；重新请求需要再次检查范围和预算。",
-            "任务结束后点击“重试获取失败 / 补取 SI”，默认只勾选未成功项，可仅补 SI 或只选部分论文。核对篇数、最终目录和标签，必要时本次改用机构浏览器。已验证正文仍经来源门禁后复用；付费标题翻译不会默认重做。",
-            "浏览器仍在等待登录时，验证后继续才会接着当前尝试。若当前论文已经返回需要权限的失败结果，论文边界的继续只调度后续论文；本篇需之后核对检查点并恢复未成功项，不能把继续当作已经下载成功。",
+            "任务结束后点击“选择失败论文重试 / 仅补 SI”，先核对默认勾选的未成功项；可选择仅补 SI，或点击“只选这篇”清除其它勾选，仅处理这一篇。它不会立即执行，核对篇数、目录、标签和会话后再点“开始重试所选论文 / 补 SI”。已验证正文仍经来源门禁后复用，付费标题翻译不会默认重做。",
+            "正文仍在等待登录时，默认自动监测目标页或下载就绪；关闭自动继续后需点击“验证后继续”触发复查，暂停批次需明确恢复。若当前论文已返回需要权限的失败结果，论文边界的继续只调度后续；本篇需之后核对检查点并重试，不能把继续当成已经下载成功。SI 的独立人工验证仍须完成后显式补取。",
             "重命名和分类移动保存独立操作日志。出现中断或恢复要求时，在“文件操作日志与验证回滚”检查逐步路径，并执行经过哈希验证的回滚。",
             "进程终止后的未完成任务标为中断。费用未知会保留待核对状态，不当作零费用，也不自动重新执行。",
         ],
@@ -105,7 +109,7 @@ GUIDE = [
             "常用设置直接显示；高级参数可展开；专家区域保留原始任务契约与诊断字段。界面中的参数名称、单位和帮助对应后端实际参数。",
             "全局默认影响以后新建任务；命名预设保存一组可复用参数；本次任务临时修改不会隐式改变旧任务。预设不保存 API 密钥或认证 Cookie。",
             "普通论文间隔用于下一篇调度，CNKI间隔用于CNKI路线，失败退避用于重试；它们与单次网络、导航、登录等待超时分别生效。",
-            "默认仅绑定本机地址。远程模型的 API 密钥从系统环境读取，设置中心只显示是否可用；默认不上传整个文库。",
+            "默认仅绑定本机地址。设置顶部“DeepSeek API 配置”可设置本次进程使用的会话密钥；Windows 可选择保存到此工作区的用户凭据管理器，也兼容系统环境变量。现有密钥不回显，不写入预设、任务、普通文件、日志或导出；默认不上传整个文库。已配置不代表认证、余额或模型权限已核验，远程调用仍需各流程单独授权。",
             "若原页图像不可用，在设置的环境诊断检查 Poppler；OCR另外需要已安装的 OCR 引擎和语言数据。完整 PDF 可在支持的桌面浏览器中打开。",
         ],
     ),
@@ -127,6 +131,33 @@ def home_result_summary(result):
         parts.append("尚无已交付的数据或主张")
     parts.append(f"{result['revisions']} 次修订")
     return " · ".join(parts)
+
+
+def home_catalog_counts(rows, selected_ids=None):
+    from .catalog_groups import catalog_groups
+
+    chosen = (
+        rows
+        if selected_ids is None
+        else [row for row in rows if row.get("id") in set(selected_ids)]
+    )
+    identified = [row for row in chosen if row.get("id")]
+    # Legacy/incomplete overview data cannot be asserted to share a material
+    # identity. Count each such source separately without inventing an ID.
+    papers = len(catalog_groups(identified)) + len(chosen) - len(identified)
+    return {"papers": papers, "sources": len(chosen)}
+
+
+def home_job_summary(jobs):
+    from .jobs import TERMINAL
+
+    return {
+        "active_count": sum(job["status"] not in TERMINAL for job in jobs),
+        "recent": [
+            {key: job.get(key) for key in ("id", "label", "status", "stage")}
+            for job in jobs[:4]
+        ],
+    }
 
 
 class HomePages:
@@ -197,25 +228,105 @@ class HomePages:
             ui.label("本地导入、原生解析和关键词检索无需 API 密钥或远程模型。").classes(
                 "an-info text-sm w-full"
             )
-            if active:
+            task_button = (
                 ui.button(
                     f"查看正在处理的 {len(active)} 个任务",
                     icon="pending_actions",
                     on_click=self.task_dialog,
-                ).props("outline")
+                )
+                .props("outline")
+                .set_visibility(bool(active))
+            )
+        return task_button
+
+    def home_recent_jobs(self, jobs):
+        from nicegui import ui
+
+        from .jobs import TERMINAL
+        from .labels import status_label, value_label
+
+        if not jobs:
+            ui.label(
+                "还没有任务。获取或导入第一篇文献后，处理历史会保存在这里。"
+            ).classes("an-muted py-5")
+        for job in jobs[:4]:
+            with ui.row().classes("w-full items-center an-recent-row"):
+                ui.icon(
+                    "task_alt"
+                    if job["status"] in {"COMPLETED", "PARTIAL"}
+                    else "pending_actions",
+                    size="20px",
+                ).classes("an-muted")
+                with ui.column().classes("grow gap-0 min-w-0"):
+                    ui.label(job["label"]).classes(
+                        "font-medium text-sm truncate max-w-[400px]"
+                    )
+                    ui.label(
+                        "任务已结束，历史已保存"
+                        if job["status"] in TERMINAL
+                        else value_label(job.get("stage") or "任务已保存")
+                    ).classes("an-muted text-xs")
+                ui.badge(status_label(job["status"])).props("outline color=teal-7")
+
+    def watch_home_tasks(
+        self, jobs, *, active_label=None, recent_area=None, empty_button=None
+    ):
+        from nicegui import run, ui
+
+        from .ui_common import guard
+
+        state = {"summary": home_job_summary(jobs), "busy": False}
+        targets = [
+            element
+            for element in (active_label, recent_area, empty_button)
+            if element is not None
+        ]
+
+        async def refresh_tasks():
+            if state["busy"]:
+                return
+            if targets and all(element.is_deleted for element in targets):
+                timer.deactivate()
+                return
+            state["busy"] = True
+            try:
+                # TaskManager.list copies in-memory receipts. No library scan,
+                # PDF loading, network request or repeated result export occurs.
+                current = await run.io_bound(self.ctx.jobs.list)
+                summary = home_job_summary(current)
+                if summary == state["summary"]:
+                    return
+                if active_label is not None and not active_label.is_deleted:
+                    active_label.set_text(str(summary["active_count"]))
+                if empty_button is not None and not empty_button.is_deleted:
+                    empty_button.set_text(
+                        f"查看正在处理的 {summary['active_count']} 个任务"
+                    )
+                    empty_button.set_visibility(bool(summary["active_count"]))
+                if recent_area is not None and not recent_area.is_deleted:
+                    recent_area.clear()
+                    with recent_area:
+                        self.home_recent_jobs(summary["recent"])
+                state["summary"] = summary
+            finally:
+                state["busy"] = False
+
+        self._refresh_home_tasks = refresh_tasks
+        timer = ui.timer(2, guard(refresh_tasks))
+        return timer
 
     def home_page(self):
         from nicegui import ui
 
         from .jobs import TERMINAL
-        from .labels import status_label, value_label
 
         papers = self.ctx.library.scan()["items"]
         jobs = self.ctx.jobs.list()
         active = [j for j in jobs if j["status"] not in TERMINAL]
         parsed = sum(r.get("parse_status") in {"PARSED", "PARTIAL"} for r in papers)
         supplements = sum(r.get("si_count", 0) for r in papers)
-        selected = len(self.ctx.library.selection())
+        catalogue = home_catalog_counts(papers)
+        selected = home_catalog_counts(papers, self.ctx.library.selection())
         with ui.card().classes("an-hero w-full"):
             with ui.row().classes("w-full justify-between items-start gap-10"):
                 with ui.column().classes("gap-3 grow"):
@@ -248,26 +359,49 @@ class HomePages:
                         "阅读操作指南", icon="menu_book", on_click=self.guide_dialog
                     ).props("flat color=white").classes("mt-2")
         if not papers:
-            self.first_steps(active)
+            task_button = self.first_steps(active)
+            self.watch_home_tasks(jobs, empty_button=task_button)
             return
+        active_label = None
         with ui.grid(columns=4).classes("w-full an-stat-grid gap-4 mt-2"):
             for number, label, icon, detail in (
-                (len(papers), "文库论文", "description", "正文按逻辑身份计数"),
+                (
+                    catalogue["papers"],
+                    "文库论文",
+                    "description",
+                    f"{catalogue['sources']} 条独立来源；同指纹已验证正文按论文展示",
+                ),
                 (supplements, "关联 SI", "attach_file", "独立附件，不重复计论文"),
-                (parsed, "已登记解析", "document_scanner", "完整与部分解析均可检查"),
+                (
+                    parsed,
+                    "已登记解析",
+                    "document_scanner",
+                    "按来源计数；完整与部分解析均可检查",
+                ),
                 (
                     len(active),
                     "正在处理",
                     "pending_actions",
-                    f"当前选择清单 {selected} 篇",
+                    f"当前选择 {selected['papers']} 篇 / {selected['sources']} 条来源",
                 ),
             ):
                 with ui.card().classes("an-card an-stat-card"):
                     with ui.row().classes("w-full items-center justify-between"):
                         ui.label(label).classes("an-muted text-sm")
                         ui.icon(icon, size="22px").style("color:#3e9091")
-                    ui.label(str(number)).classes("an-stat-number")
+                    number_label = ui.label(str(number)).classes("an-stat-number")
+                    if label == "正在处理":
+                        active_label = number_label
                     ui.label(detail).classes("an-muted text-xs")
+        with ui.row().classes("w-full items-center gap-2"):
+            ui.label("任务状态自动更新；文库与成果统计为打开主页时的快照。").classes(
+                "an-muted text-xs"
+            )
+            ui.button(
+                "刷新文库与成果统计",
+                icon="refresh",
+                on_click=lambda: self.navigate("主页"),
+            ).props("flat dense")
         with ui.row().classes("w-full items-center justify-between mt-5"):
             ui.label("继续你的研究").classes("an-section-title")
             ui.button(
@@ -327,28 +461,9 @@ class HomePages:
                     ui.button(
                         "任务中心", icon="arrow_forward", on_click=self.task_dialog
                     ).props("flat dense")
-                if not jobs:
-                    ui.label(
-                        "还没有任务。获取或导入第一篇文献后，处理历史会保存在这里。"
-                    ).classes("an-muted py-5")
-                for job in jobs[:4]:
-                    with ui.row().classes("w-full items-center an-recent-row"):
-                        ui.icon(
-                            "task_alt"
-                            if job["status"] in {"COMPLETED", "PARTIAL"}
-                            else "pending_actions",
-                            size="20px",
-                        ).classes("an-muted")
-                        with ui.column().classes("grow gap-0 min-w-0"):
-                            ui.label(job["label"]).classes(
-                                "font-medium text-sm truncate max-w-[400px]"
-                            )
-                            ui.label(
-                                value_label(job.get("stage") or "任务已保存")
-                            ).classes("an-muted text-xs")
-                        ui.badge(status_label(job["status"])).props(
-                            "outline color=teal-7"
-                        )
+                recent_area = ui.column().classes("w-full gap-2")
+                with recent_area:
+                    self.home_recent_jobs(jobs)
             with ui.card().classes("an-card w-full gap-3"):
                 with ui.row().classes("w-full items-center justify-between"):
                     ui.label("研究成果").classes("an-section-title")
@@ -376,6 +491,7 @@ class HomePages:
                         ui.button(
                             "继续核对", icon="fact_check", on_click=open_result
                         ).props("flat dense")
+        self.watch_home_tasks(jobs, active_label=active_label, recent_area=recent_area)
         ui.label(
             "科研结果需要结合原文逐项判断；引用可定位与科学内容正确是两个独立的核对维度。"
         ).classes("an-muted text-xs mt-3")
