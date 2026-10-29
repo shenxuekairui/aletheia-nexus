@@ -578,8 +578,9 @@ class ResearchPages:
             coverage = report["coverage"]
             status.set_text(
                 f"返回 {report['returned_hits']} / {report['total_hits']} 条证据（偏移 {report['offset']}）；"
-                f"检索 {coverage['searched_documents']} 份PDF；完整解析 {coverage['completed']}、"
-                f"部分解析 {coverage['partial']}、未覆盖 {len(coverage['unsearched'])}。未命中不表示未报告。"
+                f"材料范围已核验 {coverage['searched_documents']} 份PDF（完整解析 {coverage['completed']}、"
+                f"部分解析 {coverage['partial']}）；另有 {len(coverage['unsearched'])} 份未覆盖。"
+                "命中结果按本次来源角色与章节条件筛选，材料覆盖数不代表当前角色的PDF数量。未命中不表示未报告。"
             )
             with results_area:
                 if view.value == "论文视图":

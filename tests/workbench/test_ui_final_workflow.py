@@ -101,6 +101,12 @@ def test_switch_search_views_rebuilds_same_report_and_clears_old_id_selection(
     offset = next(e for e in elements() if getattr(e, "label", None) == "证据偏移量")
     offset.set_value(50)
     asyncio.run(callbacks["检索本地原文"][0]())
+    summary = next(
+        e for e in elements() if getattr(e, "text", "").startswith("返回 1 / 100")
+    )
+    assert "材料范围已核验 1 份PDF（完整解析 1、部分解析 0）" in summary.text
+    assert "命中结果按本次来源角色与章节条件筛选" in summary.text
+    assert "材料覆盖数不代表当前角色的PDF数量" in summary.text
     evidence = next(e for e in elements() if isinstance(e, ui.table))
     evidence.selected = [evidence.rows[0]]
     view.set_value("论文视图")
