@@ -3,7 +3,14 @@
 from .jobs import TERMINAL
 from .labels import status_label, value_label
 from .messages import user_message
-from .task_view import attachment_rows, state_color, task_costs, task_counts, task_rows
+from .task_view import (
+    attachment_rows,
+    browser_connection_summaries,
+    state_color,
+    task_costs,
+    task_counts,
+    task_rows,
+)
 from .ui_common import guard, json_view, rows_table
 
 
@@ -41,6 +48,19 @@ def continue_label(job):
         if (job.get("interaction") or {}).get("stage") == "paper_boundary"
         else "验证后继续"
     )
+
+
+def render_browser_connection_cards(job):
+    """Explain one connection problem once; existing retry preview owns actions."""
+    from nicegui import ui
+
+    for summary in browser_connection_summaries(job):
+        with ui.column().classes("an-info an-browser-recovery w-full gap-1"):
+            ui.label(summary["heading"]).classes("font-medium")
+            ui.label(summary["summary"]).classes("text-sm")
+            ui.label(summary["observations"]).classes("an-muted text-xs")
+            for instruction in summary["instructions"]:
+                ui.label(instruction).classes("text-sm")
 
 
 def render_task_dialog(controller):
@@ -83,6 +103,7 @@ def render_task_dialog(controller):
         def render_snapshot(job, container):
             container.clear()
             with container:
+                render_browser_connection_cards(job)
                 rows = task_rows(job)
                 if rows:
                     counts = task_counts(rows)
@@ -262,7 +283,7 @@ def render_task_dialog(controller):
                             selected.on_value_change(guard(render_diagnostics))
                             render_diagnostics()
                 if job["status"] in {"PARTIAL", "FAILED", "CANCELLED", "INTERRUPTED"}:
-                    if job["kind"] == "acquisition":
+                    if job["kind"] in {"acquisition", "acquire"}:
                         ui.button(
                             "重试获取失败 / 补取 SI",
                             icon="restart_alt",

@@ -2,11 +2,202 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from .labels import status_label, value_label
 from .messages import user_message
+
+_CONNECTION_SCHEMA = "aletheia-nexus/browser-connection-diagnostic/v1"
+_CONNECTION_CODES = {
+    "browser_cdp_attach_timeout": "浏览器连接超时",
+    "browser_cdp_attach_failed": "浏览器连接未完成",
+    "browser_context_setup_failed": "浏览器安全初始化未完成",
+}
+_SI_INCOMPLETE = {
+    "FAILED",
+    "PARTIAL",
+    "INTERACTION_REQUIRED",
+    "AUTH_REQUIRED",
+    "NOT_FOUND",
+    "NOT_SUPPORTED",
+    "NOT_ATTEMPTED",
+}
+
+
+def _connection_diagnostics(item):
+    """Read only the known diagnostic locations, never recursive raw payloads."""
+    supplements = item.get("supplements")
+    supplements = supplements if isinstance(supplements, dict) else {}
+    candidates = [item.get("browser_connection")]
+    diagnostics = item.get("diagnostics")
+    candidates.extend(diagnostics if isinstance(diagnostics, list) else [])
+    diagnostics = supplements.get("diagnostics")
+    candidates.extend(diagnostics if isinstance(diagnostics, list) else [])
+    attachments = supplements.get("items")
+    for attachment in attachments if isinstance(attachments, list) else []:
+        if isinstance(attachment, dict):
+            diagnostics = attachment.get("diagnostics")
+            candidates.extend(diagnostics if isinstance(diagnostics, list) else [])
+    return [
+        value
+        for value in candidates
+        if isinstance(value, dict)
+        and value.get("schema") == _CONNECTION_SCHEMA
+        and isinstance(value.get("code"), str)
+        and value.get("code") in _CONNECTION_CODES
+    ]
+
+
+def _connection_items(job):
+    result = job.get("result")
+    result = result if isinstance(result, dict) else {}
+    items = result.get("items")
+    if isinstance(items, list):
+        return [item for item in items if isinstance(item, dict)]
+    # No final result yet: retain only each paper's latest native acquisition
+    # event. Parse/translation records must not create more affected papers.
+    latest = {}
+    records = job.get("records")
+    for event in [
+        *(records if isinstance(records, list) else []),
+        job.get("current_item"),
+    ]:
+        if not isinstance(event, dict):
+            continue
+        native = event.get("native")
+        item = {**event, **(native if isinstance(native, dict) else {})}
+        request = item.get("request")
+        if not isinstance(request, dict):
+            continue
+        key = (
+            item.get("id")
+            or item.get("item_id")
+            or request.get("doi")
+            or request.get("title")
+        )
+        if isinstance(key, (str, int)):
+            latest[str(key)] = item
+    return list(latest.values())
+
+
+def browser_connection_summaries(job: dict) -> list[dict]:
+    """Safe, grouped recovery cards; no raw messages, actions, URLs or IDs.
+
+    Receipts can contain arbitrary legacy/native fields. Rebuild ordinary-user
+    wording from a closed set of codes and typed facts rather than displaying
+    the stored SDK error, endpoint, target inventory, or suggested action text.
+    """
+    if job.get("kind") not in {"acquisition", "acquire"}:
+        return []
+
+    def number(value):
+        try:
+            return (
+                value
+                if type(value) in {int, float} and math.isfinite(value) and value >= 0
+                else None
+            )
+        except OverflowError:
+            return None
+
+    def count(value):
+        return value if type(value) is int and 0 <= value < 10**9 else None
+
+    def known_boolean(value):
+        return value if type(value) is bool else None
+
+    groups = {}
+    for index, item in enumerate(_connection_items(job)):
+        state = item.get("main_status") or item.get("status")
+        si_only = (
+            state == "VERIFIED"
+            and isinstance(item.get("si_status"), str)
+            and item["si_status"] in _SI_INCOMPLETE
+        )
+        if state != "BROWSER_UNAVAILABLE" and not si_only:
+            continue
+        # The same diagnostic occurs both on the paper and on its SI transport.
+        # A paper counts once per group, irrespective of the number of copies.
+        for diagnostic in _connection_diagnostics(item):
+            code = diagnostic["code"]
+            facts = {
+                "code": code,
+                "stage": "context_setup"
+                if code == "browser_context_setup_failed"
+                else "cdp_attach",
+                "timeout_seconds": number(diagnostic.get("timeout_seconds")),
+                "websocket_connected": known_boolean(
+                    diagnostic.get("websocket_connected")
+                ),
+                "endpoint_reachable": known_boolean(
+                    diagnostic.get("endpoint_reachable")
+                ),
+                "page_count": count(diagnostic.get("page_count")),
+                "pdf_like_page_count": count(diagnostic.get("pdf_like_page_count")),
+            }
+            key = tuple(facts.values())
+            group = groups.setdefault(key, {**facts, "main": set(), "si": set()})
+            group["si" if si_only else "main"].add(index)
+    summaries = []
+    retry_available = job.get("status") in {
+        "PARTIAL",
+        "FAILED",
+        "CANCELLED",
+        "INTERRUPTED",
+    }
+    for group in groups.values():
+        main, si = len(group.pop("main")), len(group.pop("si"))
+        timeout = group["timeout_seconds"]
+        stage = (
+            "连接现有浏览器" if group["stage"] == "cdp_attach" else "连接后的安全初始化"
+        )
+        state_labels = {True: "已连接", False: "未连接", None: "未知"}
+        endpoint_labels = {True: "可响应", False: "未确认可响应", None: "未知"}
+        facts = [
+            f"阶段：{stage}",
+            "连接期限：" + (f"{timeout:g} 秒" if timeout is not None else "未记录"),
+            "本机控制端点：" + endpoint_labels[group["endpoint_reachable"]],
+            "WebSocket：" + state_labels[group["websocket_connected"]],
+        ]
+        if group["page_count"] is not None:
+            facts.append(f"原有标签：{group['page_count']} 个")
+        if group["pdf_like_page_count"] is not None:
+            facts.append(f"可能的 PDF 标签：{group['pdf_like_page_count']} 个")
+        instructions = ["本页不会自动重新连接、关闭浏览器标签或重发模型请求。"]
+        if group["pdf_like_page_count"]:
+            instructions.append(
+                "PDF 标签只是排查线索。先保存阅读进度，再自行决定是否关闭无响应的 PDF 标签后重试，无需关闭整个浏览器。"
+            )
+        if retry_available:
+            instructions.append(
+                "使用下方“重试获取失败 / 补取 SI”预览实际范围并检查命名会话；选择其他会话时需另行完成机构登录，不迁移登录资料。"
+            )
+            if si:
+                instructions.append(
+                    "正文已验证的论文可仅补取 SI；恢复前仍会核对正文与来源文件，不重新下载有效正文。"
+                )
+        else:
+            instructions.append(
+                "任务结束后再核对失败项与恢复范围。"
+                if job.get("status") not in {"COMPLETED"}
+                else "这是已完成任务的历史诊断，本页不会重新执行。"
+            )
+        summaries.append(
+            {
+                **group,
+                "heading": _CONNECTION_CODES[group["code"]],
+                "affected_count": main + si,
+                "main_unavailable_count": main,
+                "si_only_count": si,
+                "summary": f"同一连接问题影响 {main + si} 篇：{main} 篇正文尚未验证成功，{si} 篇正文已验证、仅 SI 待处理。",
+                "observations": " · ".join(facts),
+                "instructions": instructions,
+                "retry_available": retry_available,
+            }
+        )
+    return summaries
 
 
 def _reason(value) -> str:
@@ -101,13 +292,26 @@ def task_rows(job: dict) -> list[dict]:
             or request.get("doi")
             or "文献 " + str(index)
         )
+        state = item.get("main_status") or item.get("status", "UNKNOWN")
+        connection_reason = None
+        if _connection_diagnostics(item):
+            if state == "BROWSER_UNAVAILABLE":
+                connection_reason = "浏览器连接未完成；请查看本批恢复提示。"
+            elif (
+                state == "VERIFIED"
+                and isinstance(item.get("si_status"), str)
+                and item["si_status"] in _SI_INCOMPLETE
+            ):
+                connection_reason = (
+                    "正文已验证；SI 浏览器连接未完成，请查看本批恢复提示。"
+                )
         rows.append(
             {
                 "id": str(item.get("id") or item.get("item_id") or index),
                 "title": title,
                 "document_role": item.get("document_role")
                 or identity.get("document_role", "ARTICLE"),
-                "status": item.get("main_status") or item.get("status", "UNKNOWN"),
+                "status": state,
                 "si_status": item.get("si_status", "NOT_REQUESTED"),
                 "phase": item.get("phase") or value_label(job.get("kind")),
                 "source": source
@@ -116,7 +320,8 @@ def task_rows(job: dict) -> list[dict]:
                 "attempts": item.get("attempts"),
                 "folder": item.get("folder")
                 or (str(Path(path).parent) if path else ""),
-                "reason": item.get("reason")
+                "reason": connection_reason
+                or item.get("reason")
                 or _reason(item.get("error") or item.get("errors")),
                 "resumed": bool(item.get("resumed")),
             }
@@ -142,7 +347,9 @@ def attachment_rows(job: dict) -> list[dict]:
                     "filename": Path(path).name,
                     "role": item.get("role", "SUPPLEMENT"),
                     "status": item.get("status", "UNKNOWN"),
-                    "reason": _reason(item.get("error") or item.get("errors")),
+                    "reason": "附件浏览器连接未完成；请查看本批恢复提示。"
+                    if _connection_diagnostics(item)
+                    else _reason(item.get("error") or item.get("errors")),
                     "path": item.get("path", ""),
                 }
             )
