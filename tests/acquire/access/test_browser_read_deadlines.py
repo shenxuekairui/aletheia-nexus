@@ -104,6 +104,10 @@ def test_popup_content_timeout_keeps_its_native_viewer_available(monkeypatch):
 def test_pdf_fetch_script_has_an_outer_deadline_even_before_its_js_timer_starts(
     monkeypatch, embedded
 ):
+    # This branch tests an invoked, stalled JS read. Keep its available budget
+    # deterministic: on a busy runner 50 ms can validly expire before invocation.
+    # Replace only this module's clock, not the process-wide time module.
+    monkeypatch.setattr(viewer, "time", SimpleNamespace(monotonic=lambda: 0.0))
     page = SimpleNamespace(url="https://publisher.example/target.pdf")
     page.frames = [SimpleNamespace(url=page.url)]
     calls = []
@@ -123,6 +127,29 @@ def test_pdf_fetch_script_has_an_outer_deadline_even_before_its_js_timer_starts(
         page, max_bytes=1000, validate_url=lambda value: value, timeout=0.05
     )
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("ticks", [(0.0, 0.06), (0.0, 0.0, 0.06)])
+def test_embedded_pdf_never_starts_js_after_budget_expires(monkeypatch, ticks):
+    # The deadline may expire before candidate inspection or while its URL is
+    # validated. Neither case permits starting a fresh request after the budget.
+    clock = iter(ticks)
+    monkeypatch.setattr(
+        viewer, "time", SimpleNamespace(monotonic=lambda: next(clock, ticks[-1]))
+    )
+    monkeypatch.setattr(
+        viewer,
+        "bounded_read",
+        lambda *args, **kwargs: pytest.fail("Expired budget must not start JS"),
+    )
+    page = SimpleNamespace(url="https://publisher.example/target.pdf")
+    page.frames = [SimpleNamespace(url=page.url)]
+    assert (
+        viewer.trigger_embedded_pdf_frame_fetch(
+            page, max_bytes=1000, validate_url=lambda value: value, timeout=0.05
+        )
+        is None
+    )
 
 
 def test_cnki_control_scan_shares_deadline_across_all_selectors(monkeypatch):
