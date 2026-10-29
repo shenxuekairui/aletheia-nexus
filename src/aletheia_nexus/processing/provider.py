@@ -82,6 +82,13 @@ def project_response(
                 path[0] == "claims"
                 or (path[0] == "replacements" and path[1].startswith("claim:"))
             )
+            is_field = (
+                len(path) == 4 and path[0] == "records" and path[2] == "fields"
+            ) or (
+                len(path) == 2
+                and path[0] == "replacements"
+                and by_target.get(path[1], {}).get("kind") == "field"
+            )
             if is_step and value.get("citations_note") in (None, "", "not_a_field"):
                 removable["citations_note"] = "empty_or_placeholder_step_note"
             if is_claim and value.get("citations_note") in (None, "", "not_a_field"):
@@ -108,7 +115,8 @@ def project_response(
                     key not in value
                     and key in contract.get("required", [])
                     and child.get("type") == "array"
-                    and child.get("maxItems") == 0
+                    and child.get("minItems", 0) == 0
+                    and (child.get("maxItems") == 0 or (is_field and key == "step_ids"))
                 ):
                     value[key] = []
                     changes.append(
@@ -116,7 +124,11 @@ def project_response(
                             "operation": "add",
                             "path": [*path, key],
                             "value": [],
-                            "reason": "disabled_steps_require_empty_array",
+                            "reason": (
+                                "disabled_steps_require_empty_array"
+                                if child.get("maxItems") == 0
+                                else "unprovided_field_step_links"
+                            ),
                         }
                     )
             for key in value:

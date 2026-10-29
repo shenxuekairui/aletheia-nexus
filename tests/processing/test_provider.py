@@ -72,7 +72,9 @@ def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenan
         }
     )
     original = deepcopy(schema)
-    raw = {"records": [{"id": "preparation", "fields": None, "step": "reported operation"}]}
+    raw = {
+        "records": [{"id": "preparation", "fields": None, "step": "reported operation"}]
+    }
 
     def handler(request):
         payload = json.loads(request.content)
@@ -84,7 +86,10 @@ def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenan
             json={
                 "status": "completed",
                 "output": [
-                    {"type": "message", "content": [{"type": "output_text", "text": json.dumps(raw)}]}
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": json.dumps(raw)}],
+                    }
                 ],
             },
         )
@@ -93,7 +98,9 @@ def test_empty_member_wire_placeholder_restores_only_constant_and_keeps_provenan
     result = adapter.generate({}, schema, [], CallBudget(1), 100)
     assert schema == original
     assert adapter.identity["adapter_version"] == "8"
-    assert result == {"records": [{"id": "preparation", "fields": {}, "step": "reported operation"}]}
+    assert result == {
+        "records": [{"id": "preparation", "fields": {}, "step": "reported operation"}]
+    }
     assert isinstance(result, ProjectedResponse)
     assert json.loads(result.metadata["raw_text"]) == raw
     assert result.metadata["changes"] == [
@@ -129,7 +136,8 @@ def test_nullable_readings_and_empty_array_items_keep_their_contract():
     assert result == {"reading": None}
     assert not isinstance(result, ProjectedResponse)
     assert _wire_schema(schema)["properties"]["reading"]["anyOf"] == [
-        {"type": "object"}, {"type": "null"}
+        {"type": "object"},
+        {"type": "null"},
     ]
     items = {"type": "array", "items": obj({})}
     assert _wire_schema(items) == items
@@ -791,8 +799,6 @@ def test_disabled_steps_missing_arrays_are_completed_with_replayable_raw(
     "fault",
     [
         "enabled_record_missing",
-        "enabled_field_missing",
-        "default_field_missing",
         "null_steps",
         "nonempty_step_ids",
         "wrong_type_steps",
@@ -829,4 +835,21 @@ def test_disabled_steps_completion_never_erases_or_infers_scientific_content(fau
     original = deepcopy(candidate)
     with pytest.raises(ValueError):
         project_response(candidate, response_schema(task))
+    assert candidate == original
+
+
+@pytest.mark.parametrize("explicit_steps", [True, False])
+def test_missing_enabled_field_links_mean_unprovided_association(explicit_steps):
+    from aletheia_nexus.processing.contracts import response_schema
+
+    task, candidate, _ = disabled_steps_example()
+    if explicit_steps:
+        task["include_steps"] = True
+    else:
+        task.pop("include_steps", None)
+    del candidate["records"][0]["fields"]["method"]["step_ids"]
+    original = deepcopy(candidate)
+    projected = project_response(candidate, response_schema(task))
+    assert projected["records"][0]["fields"]["method"]["step_ids"] == []
+    assert projected.metadata["changes"][0]["reason"] == "unprovided_field_step_links"
     assert candidate == original

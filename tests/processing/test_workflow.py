@@ -2471,10 +2471,14 @@ def test_issue_revision_cli_keeps_original_and_exports_corrected_diagnosis(
     report = (tmp_path / "export/report.md").read_text("utf-8")
     assert "The model misread the source" in report
     assert "Incorrect diagnosis" not in report
-    # Diagnosis changes cannot invent source positions or grant confirmation.
+    # A wrong auxiliary link is retained as unlocated, never confirmed or relinked.
     revision["replacement"]["page"] = 999
-    with pytest.raises(ProcessingError, match="invalid_issue_location"):
-        revise_result(updated, revision)
+    unlocated = revise_result(updated, revision)
+    verify_result(unlocated)
+    assert unlocated["response"]["issues"][0]["page"] == 999
+    assert unlocated["validation"]["unresolved_issue_locations"]["0"]["reason"] == (
+        "page_out_of_range"
+    )
     revision["replacement"]["page"] = 1
     revision.update(authority="human", confirm=True)
     with pytest.raises(ValueError, match="confirm=false"):

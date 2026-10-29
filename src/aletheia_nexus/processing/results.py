@@ -441,13 +441,22 @@ def check_response(
             for c in locations[start:]
         ):
             claim_states[str(index)] = "review_required"
-    for issue in response["issues"]:
+    unresolved_issues = {}
+    for index, issue in enumerate(response["issues"]):
         source = documents.get(issue["source_id"])
         if source is None or (
             issue["page"] is not None
             and not 1 <= issue["page"] <= source["source"]["page_count"]
         ):
-            raise ProcessingError("invalid_issue_location")
+            # Auxiliary diagnoses are retained verbatim even when their link is
+            # wrong. They neither validate a source nor invalidate unrelated,
+            # correctly located scientific fields. Do not guess another page/SI.
+            unresolved_issues[str(index)] = {
+                "state": "review_required",
+                "source_id": issue["source_id"],
+                "page": issue["page"],
+                "reason": "unknown_source" if source is None else "page_out_of_range",
+            }
     for request in response.get("requests", []):
         source = documents.get(request["source_id"])
         if (
@@ -469,6 +478,11 @@ def check_response(
         )
     if any(i["kind"] == "conflict" for i in response["issues"]):
         states = {key: "conflict" for key in states}
+    elif unresolved_issues:
+        states = {
+            key: "review_required" if state == "source_located" else state
+            for key, state in states.items()
+        }
     checked = {
         "record_states": states,
         "citations": locations,
@@ -477,6 +491,8 @@ def check_response(
     }
     if claim_states:
         checked["claim_states"] = claim_states
+    if unresolved_issues:
+        checked["unresolved_issue_locations"] = unresolved_issues
     return checked
 
 
@@ -848,6 +864,16 @@ def export_results(
                 for d in result["package"]["documents"]
             ],
         }
+        unresolved_issues = result["validation"].get("unresolved_issue_locations", {})
+        if unresolved_issues:
+            provenance["unresolved_issues"] = [
+                {
+                    "issue_index": int(index),
+                    "issue": result["response"]["issues"][int(index)],
+                    "location_validation": location,
+                }
+                for index, location in unresolved_issues.items()
+            ]
         if result.get("citation_source_resolution"):
             proof = result["citation_source_resolution"]
             provenance["citation_source_resolution"] = proof
@@ -968,8 +994,17 @@ def export_results(
             lines.extend(
                 [f"<details><summary>待核对事项（{len(issues)}）</summary>", ""]
             )
-            for issue in issues:
-                lines.extend([f"- {_md(issue['detail'])}", ""])
+            for index, issue in enumerate(issues):
+                detail = _md(issue["detail"])
+                if str(index) in unresolved_issues:
+                    detail += (
+                        "<br>提示位置未定位，待核对：原报 "
+                        + _md(issue["source_id"])
+                        + "，PDF 页码 "
+                        + _md(issue["page"])
+                        + "；保留原提示，未生成原文链接。"
+                    )
+                lines.extend([f"- {detail}", ""])
             lines.extend(["</details>", ""])
     if references:
         lines.extend(["## 原文入口", ""])
