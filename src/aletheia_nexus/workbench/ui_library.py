@@ -430,6 +430,11 @@ class LibraryPage:
                 icon="view_column",
                 on_click=guard(lambda: columns_dialog()),
             ).props("flat")
+            ui.button(
+                "管理集合 / 筛选 / 分组",
+                icon="folder_special",
+                on_click=guard(lambda: manage_organization()),
+            ).props("flat")
 
         grid = ui.aggrid(
             {
@@ -612,6 +617,37 @@ class LibraryPage:
         async def translate_marked():
             ids = marked_library_ids(await grid.get_selected_rows(), self.library_rows)
             self.title_translation_dialog(ids)
+
+        async def manage_organization():
+            from .ui_organization import render_organization_dialog
+
+            selected = await grid.get_selected_rows()
+            ids = marked_library_ids(selected, self.library_rows) if selected else []
+
+            async def updated(change):
+                collections = self.ctx.library.collections()
+                wanted = collection.value
+                if change["section"] == "collections" and wanted == change["name"]:
+                    wanted = change.get("new_name") or ""
+                collection.set_options(
+                    ["", *collections], value=wanted if wanted in collections else ""
+                )
+                # Clearing only the saved-object selector preserves the actual
+                # current filter controls and avoids implicitly applying rules.
+                saved.set_options(["", *self.ctx.library.filters()], value="")
+                await refresh()
+
+            def apply_filter(rules):
+                self.library_filters = rules
+                self.page_content.refresh()
+
+            await render_organization_dialog(
+                self,
+                marked_ids=ids,
+                current_filters=filters(),
+                on_updated=updated,
+                apply_filter=apply_filter,
+            )
 
         async def details(event):
             row = event.args.get("data") or {}
