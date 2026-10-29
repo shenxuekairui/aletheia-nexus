@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from collections import Counter
 from copy import deepcopy
-from html import unescape
 from pathlib import Path
 
 from .labels import GRID_LOCALE, field_label, value_label
 from .messages import user_message
+from .scientific_text import scientific_filename_text as display_scientific_text
 from .ui_common import (
     guard,
     json_view,
@@ -105,8 +105,11 @@ def metadata_column_state(state):
 
 def view_title(row, view, *, default_mode="bilingual"):
     mode = view.get("title_mode", default_mode)
-    original = row.get("title_original") or row.get("title", "")
-    zh, custom = row.get("title_zh"), row.get("custom_name")
+    original = display_scientific_text(
+        row.get("title_original") or row.get("title") or ""
+    )
+    zh = display_scientific_text(row.get("title_zh") or "")
+    custom = display_scientific_text(row.get("custom_name") or "")
     if mode == "bilingual" and zh and zh != original:
         return zh + "\n" + original
     if mode == "zh":
@@ -146,7 +149,11 @@ def library_table_row(row, title):
             separators=(",", ":"),
         ),
         "title": title,
-        "journal": unescape(row.get("journal") or ""),
+        "title_original": display_scientific_text(
+            row.get("title_original") or row.get("title") or ""
+        ),
+        "title_zh": display_scientific_text(row.get("title_zh") or ""),
+        "journal": display_scientific_text(row.get("journal") or ""),
         "path": row["pdf_path"],
         "tags": ", ".join(row["tags"]),
         "authors": "; ".join(str(a) for a in row.get("authors", [])),

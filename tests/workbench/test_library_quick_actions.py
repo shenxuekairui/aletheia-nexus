@@ -249,7 +249,6 @@ def test_refresh_updates_only_rows_and_keeps_checks_and_column_layout():
                 "title_for": lambda r: r["title"],
                 "value_label": ui_library.value_label,
                 "INTEGRITY_LABELS": ui_library.INTEGRITY_LABELS,
-                "unescape": ui_library.unescape,
                 "count": SimpleNamespace(set_text=lambda _: None),
                 "diagnostic_area": Area(),
                 "ui": SimpleNamespace(label=lambda _: Label()),
