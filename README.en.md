@@ -12,7 +12,17 @@ The browser opens at `http://127.0.0.1:8080`. Existing libraries remain usable.
 The workbench connects acquisition, category-level shared `SI/` attachments,
 library organization, title translation, previewed physical batch renaming,
 saved table views, parsing, keyword evidence search, research and result review.
-Remote model operations require explicit consent; credentials stay in the environment.
+Remote model operations require explicit consent. Settings provide a session API key,
+optional workspace-scoped Windows Credential Manager storage, and environment-variable compatibility;
+keys are not written to task files or presets. New UI workspaces try public sources before an
+authorized visible browser. Automatic checking after manual verification is optional and applies
+to main-article waiting; an explicit pause still needs resuming, and SI challenges require a reviewed retry.
+Per-paper translation, naming and parsing share the batch's translation call/cost limits;
+cached titles remain usable, and uncertain billing does not silently trigger another request.
+Retries can select one or several papers or fetch only incomplete SI after revalidating the main.
+Identical verified PDFs with the same DOI may share a display row while their raw sources and SI remain independent.
+Scientific markup is flattened only for new filename presentation, without changing source titles or human translations.
+Publisher SI coverage remains partial: an unconfirmed identity, challenge, viewer response or missing link is not a successful download.
 See the [workbench guide and support matrix](docs/WORKBENCH_USER_GUIDE.md),
 [implementation audit](docs/WORKBENCH_IMPLEMENTATION.md), and
 [acceptance record](docs/WORKBENCH_ACCEPTANCE.md). UI delivery does not establish
@@ -31,7 +41,8 @@ Aletheia Nexus (AN) is a **local-first scientific knowledge infrastructure** pro
 
 Give AN a DOI or a bibliography, and the result is more than a downloaded file. It records whether the file is the intended main article, where it came from, and whether its bytes have changed. Parsed content can then be traced back to a page and location in the source PDF.
 
-AN currently provides a Python package and command-line tools. It is not a graphical reference manager or an agent that independently conducts research.
+The published release provides a Python package and command-line tools; the development branch adds
+the optional graphical workbench described above. AN does not independently conduct scientific research.
 
 ## Why AN exists
 
