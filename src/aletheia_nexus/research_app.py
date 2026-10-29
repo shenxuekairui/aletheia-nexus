@@ -13,11 +13,12 @@ import secrets
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from importlib.metadata import version
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from uuid import uuid4
 
 from pypdf import PdfReader
@@ -133,7 +134,7 @@ class ResearchApplication:
         self.network = network
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="an-research")
         self._jobs: dict = {}
-        self._lock = Lock()
+        self._lock = RLock()
 
     def path(self, path: str | Path, *, write=False) -> Path:
         path = Path(path)
@@ -1051,11 +1052,41 @@ class ResearchApplication:
             raise
         return deepcopy(receipt)
 
+    @contextmanager
+    def _job_status_io(self, status_path: Path):
+        # Lock a stable sibling: status.json is replaced, and .owner is held
+        # throughout the job. Only brief status IO shares this separate lock.
+        lock_path = self.path(status_path.with_name(".status.lock"), write=True)
+        with self._lock, lock_path.open("a+b") as handle:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                if os.name == "nt":
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    def _read_job_status(self, path: Path) -> dict:
+        with self._job_status_io(path):
+            # Windows path resolution can itself open the target. Keep it in
+            # the transaction too, before another process replaces status.json.
+            return read_json(self.path(path))
+
     def _save_job(self, receipt):
-        path = self.path(
-            self.workspace / "jobs" / receipt["job_id"] / "status.json", write=True
-        )
-        write_json(path, receipt, overwrite=True)
+        path = self.workspace / "jobs" / receipt["job_id"] / "status.json"
+        self.path(path.parent, write=True).mkdir(parents=True, exist_ok=True)
+        with self._job_status_io(path):
+            write_json(self.path(path, write=True), receipt, overwrite=True)
 
     def _progress(self, receipt, row):
         receipt["latest_document"] = row
@@ -1064,8 +1095,8 @@ class ResearchApplication:
     def get_run_status(self, job_id: str, *, include_manifest=True) -> dict:
         if not re.fullmatch("[0-9a-f]{32}", job_id):
             raise ValueError("invalid job ID")
-        status_path = self.path(self.workspace / "jobs" / job_id / "status.json")
-        receipt = read_json(status_path)
+        status_path = self.workspace / "jobs" / job_id / "status.json"
+        receipt = self._read_job_status(status_path)
         if receipt["status"] in {"QUEUED", "RUNNING"}:
             ownership = self.path(self.workspace / "jobs" / job_id / ".owner")
             if ownership.exists():
@@ -1075,7 +1106,7 @@ class ResearchApplication:
                         # A worker can save its final state and release the lock
                         # after our first read. Only the fresh state can show an
                         # interruption once ownership is available.
-                        receipt = read_json(status_path)
+                        receipt = self._read_job_status(status_path)
                     finally:
                         probe.close()
                     if receipt["status"] in {"QUEUED", "RUNNING"}:
@@ -1524,9 +1555,12 @@ class ResearchApplication:
 
         for candidate in (self.workspace / "jobs").glob("*/status.json"):
             try:
-                path = self.path(candidate)
-                if not path.is_relative_to(self.workspace):
-                    raise ProcessingError("path_outside_allowed_directories")
+                with self._job_status_io(candidate):
+                    path = self.path(candidate)
+                    if not path.is_relative_to(self.workspace):
+                        raise ProcessingError("path_outside_allowed_directories")
+                    modified = path.stat().st_mtime
+                # get_run_status takes its own short lock for each fresh read.
                 receipt = self.get_run_status(path.parent.name, include_manifest=False)
                 row = {
                     "kind": receipt.get("kind", "research"),
@@ -1543,7 +1577,7 @@ class ResearchApplication:
                     },
                     "history_kind": "application_job",
                     "status_file": str(path),
-                    "_mtime": path.stat().st_mtime,
+                    "_mtime": modified,
                 }
                 # Only associate this locator with an independently discovered
                 # manifest below. Never open a path supplied by the receipt.
