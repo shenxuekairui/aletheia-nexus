@@ -117,3 +117,31 @@ def test_structure_reuse_is_bounded_and_exception_clears_the_request(tmp_path):
             assert len(page_counts) == 1024
             raise RuntimeError("request interrupted")
     assert gate._PDF_PAGE_COUNTS.get() is None
+
+
+def test_a_b_a_file_race_cannot_seed_structure_proof_for_other_pdf_bytes(
+    tmp_path, monkeypatch
+):
+    pdf, sidecar, _ = artifacts(tmp_path)
+    original = pdf.read_bytes()
+    other = tmp_path / "different.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=333, height=444)
+    writer.write(other)
+    different = other.read_bytes()
+    assert different != original
+    native_reader = gate.PdfReader
+
+    def changed_reader(*args, **kwargs):
+        pdf.write_bytes(different)
+        try:
+            return native_reader(*args, **kwargs)
+        finally:
+            pdf.write_bytes(original)
+
+    monkeypatch.setattr(gate, "PdfReader", changed_reader)
+    with gate._pdf_validation_session():
+        with pytest.raises(gate.ParserInputError, match="PDF_HASH_MISMATCH"):
+            gate.validate_parser_input(pdf, sidecar_path=sidecar)
+        assert gate._PDF_PAGE_COUNTS.get() == {}
+    assert pdf.read_bytes() == original

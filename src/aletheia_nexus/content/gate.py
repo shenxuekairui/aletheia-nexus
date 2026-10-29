@@ -8,6 +8,7 @@ import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 from pypdf import PdfReader
@@ -244,8 +245,17 @@ def validate_parser_input(
                     ParserInputErrorCode.PDF_HASH_MISMATCH,
                     "PDF changed while validating its page structure",
                 )
-            if len(page_counts) < 1024:
-                page_counts[actual_hash] = actual_pages
+            # A path could change A/B/A while PdfReader opens it. Its actual
+            # immutable in-memory input must match too, not just the path's
+            # before/after contents. Other reader stream types gain no reuse.
+            if isinstance(reader.stream, BytesIO):
+                if hashlib.sha256(reader.stream.getbuffer()).hexdigest() != actual_hash:
+                    raise _error(
+                        ParserInputErrorCode.PDF_HASH_MISMATCH,
+                        "PDF reader input differs from the validated file bytes",
+                    )
+                if len(page_counts) < 1024:
+                    page_counts[actual_hash] = actual_pages
     if actual_pages != recorded_pages:
         raise _error(
             ParserInputErrorCode.PAGE_COUNT_MISMATCH,
