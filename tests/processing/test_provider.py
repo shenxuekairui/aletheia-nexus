@@ -456,7 +456,10 @@ def test_rejected_candidate_diagnostics_redact_secret(monkeypatch):
             {
                 "type": "message",
                 "content": [
-                    {"type": "output_text", "text": '{"value":"secret-test-key"'}
+                    {
+                        "type": "output_text",
+                        "text": '{"value":"secret-test-key","missing_value":',
+                    }
                 ],
             }
         ],

@@ -21,7 +21,9 @@ from .provider import (
     ProcessingError,
     ProjectedResponse,
     Provider,
+    decode_response,
     project_response,
+    raw_response_value,
 )
 from .readings import READINGS_VERSION, preserve_readings
 from .results import (
@@ -158,6 +160,13 @@ def _metadata_cache(row: dict, run_dir: Path) -> dict:
     }
 
 
+def _replay_response_metadata(proof: dict) -> ProjectedResponse:
+    replay = decode_response(proof["raw_text"], proof["schema"], proof["targets"])
+    if not isinstance(replay, ProjectedResponse) or replay.metadata != proof:
+        raise ValueError("response metadata does not replay")
+    return replay
+
+
 def _verify_metadata_cache(cached: dict) -> None:
     for item in cached.get("response_metadata", []):
         if Path(item["file"]).name != item["file"]:
@@ -165,14 +174,7 @@ def _verify_metadata_cache(cached: dict) -> None:
         proof = cached["metadata_artifacts"][item["file"]]
         if digest(proof) != item["sha256"]:
             raise ValueError("response metadata changed")
-        replay = project_response(
-            json.loads(proof["raw_text"]),
-            proof["schema"],
-            proof["targets"],
-            raw_text=proof["raw_text"],
-        )
-        if not isinstance(replay, ProjectedResponse) or replay.metadata != proof:
-            raise ValueError("response metadata does not replay")
+        _replay_response_metadata(proof)
 
 
 def _restore_metadata_files(cached: dict, run_dir: Path, row: dict) -> None:
@@ -189,9 +191,20 @@ def _verify_inventory_artifact(artifact: dict, task: dict, package: dict) -> Non
     if artifact["artifact_id"] != "an:source-inventory:sha256:" + digest(body):
         raise ValueError("source inventory artifact changed")
     check_inventory(artifact["response"], task, package)
-    replay = project_response(artifact["raw_response"], inventory_schema(task, package))
+    schema = inventory_schema(task, package)
+    replay = project_response(artifact["raw_response"], schema)
     if dict(replay) != artifact["response"]:
         raise ValueError("source inventory response does not replay")
+    if "response_metadata" in artifact:
+        proof = artifact["response_metadata"]
+        if proof["schema"] != schema or proof["targets"]:
+            raise ValueError("source inventory metadata contract changed")
+        replay = _replay_response_metadata(proof)
+        if (
+            raw_response_value(replay) != artifact["raw_response"]
+            or dict(replay) != artifact["response"]
+        ):
+            raise ValueError("source inventory metadata belongs to another response")
 
 
 def _inventory_artifacts(row: dict, run_dir: Path) -> dict:
@@ -264,6 +277,7 @@ def _source_inventory(
             pass
     reused = artifact is not None
     filename = f"{prefix}.source-inventory.json"
+    metadata_path = run_dir / f"{prefix}.source-inventory.metadata.json"
     row["phase"] = request["phase"]
     budget.checkpoint()
     if artifact is None:
@@ -279,11 +293,7 @@ def _source_inventory(
                 {"code": error.code, "unvalidated": True, **(error.diagnostics or {})},
             )
             raise
-        raw = (
-            json.loads(response.metadata["raw_text"])
-            if isinstance(response, ProjectedResponse)
-            else deepcopy(response)
-        )
+        raw = raw_response_value(response)
         # Save unvalidated output even if location/shape checks fail afterwards.
         write_json(run_dir / f"{prefix}.source-inventory.candidate.json", raw)
         try:
@@ -291,7 +301,7 @@ def _source_inventory(
                 response,
                 request,
                 schema,
-                run_dir / f"{prefix}.source-inventory.metadata.json",
+                metadata_path,
                 row,
             )
             check_inventory(response, task, package)
@@ -307,8 +317,18 @@ def _source_inventory(
             "owner_run": str(run_dir),
             "owner_call_indices": list(range(start, len(budget.calls))),
         }
+        if metadata_path.is_file():
+            artifact["response_metadata"] = json.loads(metadata_path.read_text("utf-8"))
         artifact["artifact_id"] = "an:source-inventory:sha256:" + digest(artifact)
         write_json(cache, artifact, overwrite=True)
+    elif "response_metadata" in artifact:
+        _save_response_metadata(
+            ProjectedResponse(artifact["response"], artifact["response_metadata"]),
+            request,
+            schema,
+            metadata_path,
+            row,
+        )
     write_json(run_dir / filename, artifact)
     row.setdefault("source_inventories", []).append(
         {
@@ -375,11 +395,7 @@ def _generate_checked(
                 budget,
                 task["budget"]["max_output_tokens"],
             )
-            raw_response = (
-                json.loads(response.metadata["raw_text"])
-                if isinstance(response, ProjectedResponse)
-                else response
-            )
+            raw_response = raw_response_value(response)
             write_json(run_dir / f"{prefix}.candidate{suffix}.json", raw_response)
             response = _save_response_metadata(
                 response,
@@ -498,9 +514,7 @@ def _review_candidate(
                         )
                         save(
                             f"{batch_stem}.json",
-                            json.loads(part.metadata["raw_text"])
-                            if isinstance(part, ProjectedResponse)
-                            else part,
+                            raw_response_value(part),
                         )
                         part = _save_response_metadata(
                             part,

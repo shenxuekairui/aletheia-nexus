@@ -16,6 +16,7 @@ from typing import Callable, Protocol
 import httpx
 
 from .contracts import MODEL, PROMPT, PROMPT_VERSION, digest, validate
+from .json_closure import apply_closure, recover_closure
 from .review import REVIEW_PROMPT, REVIEW_VERSION, REVISION_PROMPT
 from .source_first import (
     ASSEMBLY_PROMPT,
@@ -153,6 +154,46 @@ def project_response(
             "output_sha256": digest(projected),
         },
     )
+
+
+def decode_response(
+    raw: str, schema: dict, targets: list | None = None, *, allow_closure: bool = True
+) -> dict:
+    """Decode a completed response, retaining reversible syntax and projection proof."""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        if not allow_closure:
+            raise
+        parsed, closure = recover_closure(
+            raw, lambda value: project_response(value, schema, targets)
+        )
+        response = project_response(parsed, schema, targets)
+        metadata = (
+            deepcopy(response.metadata)
+            if isinstance(response, ProjectedResponse)
+            else {
+                "version": 1,
+                "schema": deepcopy(schema),
+                "targets": deepcopy(targets or []),
+                "changes": [],
+                "output_sha256": digest(response),
+            }
+        )
+        metadata.update(raw_text=raw, json_closure=closure)
+        return ProjectedResponse(dict(response), metadata)
+    return project_response(parsed, schema, targets, raw_text=raw)
+
+
+def raw_response_value(response: dict) -> dict:
+    """Read pre-projection JSON without discarding its original malformed raw text."""
+    if not isinstance(response, ProjectedResponse):
+        return deepcopy(response)
+    metadata = response.metadata
+    raw = metadata["raw_text"]
+    if metadata.get("json_closure"):
+        raw = apply_closure(raw, metadata["json_closure"]["selected"]["insertion"])
+    return json.loads(raw)
 
 
 def _empty_object_schema(schema: dict) -> bool:
@@ -481,6 +522,7 @@ class DeepSeekProvider:
                     data = json.loads(json.dumps(data).replace(self._key, "[REDACTED]"))
                     row["response_id"] = data.get("id")
                     row["returned_model"] = data.get("model")
+                    row["response_status"] = data.get("status")
                     usage = data.get("usage")
                     if isinstance(usage, dict):
                         row["usage"] = {
@@ -555,8 +597,16 @@ class DeepSeekProvider:
                                 "unvalidated": True,
                             },
                         )
-                    result = project_response(
-                        json.loads(raw), schema, request.get("targets"), raw_text=raw
+                    result = decode_response(
+                        raw,
+                        schema,
+                        request.get("targets"),
+                        allow_closure=not data.get("incomplete_details")
+                        and all(
+                            item.get("finish_reason")
+                            not in {"length", "max_output_tokens", "content_filter"}
+                            for item in [data, *data.get("output", [])]
+                        ),
                     )
                 except (ValueError, KeyError, TypeError, AttributeError) as exc:
                     raise ProcessingError(
