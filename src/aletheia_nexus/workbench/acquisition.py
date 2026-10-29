@@ -218,10 +218,25 @@ def _outcome(item) -> dict:
         translated = error_record({"code": code, "message": code})
         if translated["known"]:
             reason += " " + translated["message"]
+    viewer_not_delivered = status not in {"VERIFIED", "RETRIEVED_UNVERIFIED"} and any(
+        isinstance(value, str)
+        and value.split(":", 1)[0] == "NativePdfViewerPlaceholder"
+        for value in [error, *(detail["reason_code"] for detail in details)]
+    )
+    if viewer_not_delivered:
+        reason += (
+            " 浏览器返回的是 PDF 阅读器页面，尚未交付可验证的 PDF 文件；"
+            "页面打开不代表文件已保存，也不能据此判断正文访问授权。"
+            "请保留当前页面，在任务结束后只选这篇论文重试。"
+        )
     attempts = item.attempts
     return {
         "main_status": status,
-        "phase": "正文核验完成" if status == "VERIFIED" else "获取正文结束",
+        "phase": "正文核验完成"
+        if status == "VERIFIED"
+        else "阅读器已响应，PDF 尚未交付"
+        if viewer_not_delivered
+        else "获取正文结束",
         "reason": reason,
         "reason_code": code or status,
         "message": _diagnostic_text(
