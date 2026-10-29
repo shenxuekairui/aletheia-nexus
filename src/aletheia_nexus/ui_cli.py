@@ -35,6 +35,7 @@ class ContextLease:
 
 def create_context(root: Path, workspace: Path):
     from .workbench.acquisition import AcquisitionService
+    from .workbench.api_settings import ApiSettingsService, load_saved_api_credentials
     from .workbench.defaults import bootstrap_ui_defaults
     from .workbench.input_normalization import InputNormalizationService
     from .workbench.jobs import TERMINAL, TaskManager
@@ -47,8 +48,23 @@ def create_context(root: Path, workspace: Path):
     workspace.mkdir(parents=True, exist_ok=True)
     settings = SettingsStore(workspace)
     bootstrap_ui_defaults(settings)
+    api_credentials = load_saved_api_credentials(workspace, settings)
     context = SimpleNamespace(
-        workspace=workspace, settings=settings, jobs=TaskManager(workspace)
+        workspace=workspace,
+        settings=settings,
+        jobs=TaskManager(workspace),
+        api_credentials=api_credentials,
+    )
+
+    def can_change_api_configuration():
+        return not any(job["status"] not in TERMINAL for job in context.jobs.list())
+
+    context.can_change_api_configuration = can_change_api_configuration
+    context.api_settings = ApiSettingsService(
+        settings,
+        workspace,
+        can_change=can_change_api_configuration,
+        source=api_credentials,
     )
     context.generation = 0
     context.input_normalization = InputNormalizationService(workspace)

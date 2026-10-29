@@ -164,6 +164,9 @@ def draft_task(
     key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if not key:
         raise ProcessingError("missing_api_key")
+    from .processing.api_config import resolve_deepseek_endpoint
+
+    endpoint = resolve_deepseek_endpoint("responses")
     config, limits = request["model"], request["planning_budget"]
     directory = app.path(app.workspace / "planning" / uuid4().hex, write=True)
     manifest = {
@@ -299,7 +302,7 @@ def draft_task(
                 follow_redirects=False,
             ) as client:
                 response = client.post(
-                    "https://api.deepseek.com/responses",
+                    endpoint,
                     headers={"Authorization": "Bearer " + key},
                     json=payload,
                 )

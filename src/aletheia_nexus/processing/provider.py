@@ -260,6 +260,9 @@ class DeepSeekProvider:
         self._key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
         if not self._key:
             raise ProcessingError("missing_api_key")
+        from .api_config import resolve_deepseek_endpoint
+
+        self._endpoint = resolve_deepseek_endpoint("responses")
         self._transport = transport
         self._last_call = 0.0
         # Trusted application services may reuse authentication, transport and
@@ -421,7 +424,7 @@ class DeepSeekProvider:
                     follow_redirects=False,
                 ) as client:
                     response = client.post(
-                        "https://api.deepseek.com/responses",
+                        self._endpoint,
                         headers={"Authorization": f"Bearer {self._key}"},
                         json=payload,
                     )
