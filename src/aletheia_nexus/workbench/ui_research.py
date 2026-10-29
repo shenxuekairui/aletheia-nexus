@@ -417,15 +417,18 @@ class ResearchPages:
         )
         library = self.ctx.library.scan()["items"]
         draft = getattr(self, "search_draft", {})
-        handoff = getattr(self, "search_handoff", None) or draft.get("handoff")
+        incoming_handoff = getattr(self, "search_handoff", None)
+        handoff = incoming_handoff or draft.get("handoff")
         self.search_handoff = None
         handoff_label = f"本次文库勾选（{len(handoff['ids'])} 篇）" if handoff else None
         scopes = ["全部文库", "当前选择清单", *self.ctx.library.collections()]
         if handoff_label:
             scopes.insert(0, handoff_label)
-        chosen_scope = handoff_label if handoff else draft.get("scope", "全部文库")
+        chosen_scope = (
+            handoff_label if incoming_handoff else draft.get("scope", "全部文库")
+        )
         if chosen_scope not in scopes:
-            chosen_scope = "全部文库"
+            scopes.append(chosen_scope)
         with ui.card().classes("an-card w-full"):
             with ui.row().classes("an-toolbar w-full"):
                 query = (
@@ -448,19 +451,28 @@ class ResearchPages:
                 ).classes("min-w-44")
             with ui.row().classes("an-toolbar w-full"):
                 folder = ui.select(
-                    ["", *sorted({r["folder"] for r in library if r["folder"]})],
-                    value="",
+                    [
+                        "",
+                        *sorted(
+                            {r["folder"] for r in library if r["folder"]}
+                            | ({draft["folder"]} if draft.get("folder") else set())
+                        ),
+                    ],
+                    value=draft.get("folder", ""),
                     label="分类目录",
                 ).props("clearable")
                 tags = ui.select(
-                    sorted({t for r in library for t in r["tags"]}),
+                    sorted(
+                        {t for r in library for t in r["tags"]}
+                        | set(draft.get("tags") or [])
+                    ),
                     multiple=True,
-                    value=[],
+                    value=draft.get("tags", []),
                     label="标签",
                 ).props("use-chips")
                 role = ui.select(
                     {"all": "正文 + PDF SI", "ARTICLE": "仅正文", "SUPPLEMENT": "仅SI"},
-                    value="all",
+                    value=draft.get("role", "all"),
                     label="来源角色",
                 )
                 section = ui.select(
@@ -478,14 +490,20 @@ class ResearchPages:
                             "references",
                         ]
                     },
-                    value="",
+                    value=draft.get("section", ""),
                     label="章节类型",
                 )
-                size = ui.number("每页证据条数", value=50, min=1, max=500, step=1)
+                size = ui.number(
+                    "每页证据条数", value=draft.get("size", 50), min=1, max=500, step=1
+                )
                 with ui.expansion("高级 · 指定检索起点", icon="tune"):
-                    offset = ui.number("证据偏移量", value=0, min=0, step=50)
+                    offset = ui.number(
+                        "证据偏移量", value=draft.get("offset", 0), min=0, step=50
+                    )
                 view = ui.select(
-                    ["证据视图", "论文视图"], value="证据视图", label="展示方式"
+                    ["证据视图", "论文视图"],
+                    value=draft.get("view", "证据视图"),
+                    label="展示方式",
                 )
             status = ui.label(
                 "尚未检索。已有CLI解析工件会按身份发现；未解析论文不会自动产生全文命中。"
@@ -498,13 +516,49 @@ class ResearchPages:
             "display_view": view.value,
         }
 
+        def remember_form():
+            self.search_draft = {
+                "query": query.value,
+                "mode": mode.value,
+                "exact": exact.value,
+                "scope": scope.value,
+                "handoff": handoff,
+                "folder": folder.value,
+                "tags": list(tags.value or []),
+                "role": role.value,
+                "section": section.value,
+                "size": size.value,
+                "offset": offset.value,
+                "view": view.value,
+            }
+
+        for control in (
+            query,
+            mode,
+            exact,
+            scope,
+            folder,
+            tags,
+            role,
+            section,
+            size,
+            offset,
+            view,
+        ):
+            control.on_value_change(lambda _: remember_form())
+
         def selected_ids():
             if handoff_label and scope.value == handoff_label:
                 ids = handoff["ids"]
             elif scope.value == "当前选择清单":
                 ids = self.ctx.library.selection()
             elif scope.value != "全部文库":
-                ids = self.ctx.library.collections()[scope.value]
+                collections = self.ctx.library.collections()
+                if scope.value not in collections:
+                    raise ValueError(
+                        "先前选择的研究集合已不存在，请明确选择新的检索范围。"
+                    )
+                ids = collections[scope.value]
             else:
                 ids = [r["id"] for r in library]
             return [
@@ -710,13 +764,7 @@ class ResearchPages:
             search_button.disable()
             searching.set_visibility(True)
             try:
-                self.search_draft = {
-                    "query": query.value,
-                    "mode": mode.value,
-                    "exact": exact.value,
-                    "scope": scope.value,
-                    "handoff": handoff,
-                }
+                remember_form()
                 status.set_text(
                     f"正在核对 {len(ids)} 篇论文及选定 PDF SI，并检索关键词；首次全库检索需要更多时间…"
                 )

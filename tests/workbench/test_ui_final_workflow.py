@@ -183,6 +183,100 @@ def mount_planning(tmp_path, monkeypatch):
     return page, callbacks, elements, jobs, submitted, notices, research_calls
 
 
+def test_returning_to_search_retains_all_conditions_without_cross_client_state(
+    monkeypatch,
+):
+    callbacks = buttons(monkeypatch)
+
+    class Page(ui_research.ResearchPages):
+        def title(self, *_):
+            pass
+
+    page = Page()
+    page.ctx = SimpleNamespace(
+        library=SimpleNamespace(scan=lambda **_: {"items": []}, collections=lambda: {})
+    )
+    saved = {
+        "query": "formate",
+        "mode": "or",
+        "exact": True,
+        "scope": "已被外部删除的旧集合",
+        "folder": "先前分类",
+        "tags": ["先前标签"],
+        "role": "SUPPLEMENT",
+        "section": "methods",
+        "size": 100,
+        "offset": 200,
+        "view": "论文视图",
+    }
+    page.search_draft = deepcopy(saved)
+    before = set(ui.context.client.elements)
+    page.search_page()
+    controls = {
+        element.label: element
+        for key, element in ui.context.client.elements.items()
+        if key not in before and getattr(element, "label", None)
+    }
+    labels = {
+        "query": "关键词 / 带引号短语",
+        "mode": "组合方式",
+        "scope": "检索范围",
+        "folder": "分类目录",
+        "tags": "标签",
+        "role": "来源角色",
+        "section": "章节类型",
+        "size": "每页证据条数",
+        "offset": "证据偏移量",
+        "view": "展示方式",
+    }
+    for key, label in labels.items():
+        assert controls[label].value == saved[key]
+    with pytest.raises(ValueError, match="集合已不存在"):
+        asyncio.run(callbacks["检索本地原文"][0]())
+    controls["章节类型"].set_value("results")
+    assert page.search_draft == {**saved, "section": "results", "handoff": None}
+
+    other = Page()
+    other.ctx = page.ctx
+    assert not hasattr(other, "search_draft")
+    before_other = set(ui.context.client.elements)
+    other.search_page()
+    other_role = next(
+        element
+        for key, element in ui.context.client.elements.items()
+        if key not in before_other and getattr(element, "label", None) == "来源角色"
+    )
+    assert other_role.value == "all"
+
+
+def test_reopening_a_handoff_draft_does_not_override_a_later_explicit_scope(
+    monkeypatch,
+):
+    buttons(monkeypatch)
+
+    class Page(ui_research.ResearchPages):
+        def title(self, *_):
+            pass
+
+    page = Page()
+    page.ctx = SimpleNamespace(
+        library=SimpleNamespace(scan=lambda **_: {"items": []}, collections=lambda: {})
+    )
+    page.search_draft = {
+        "handoff": {"ids": ["paper1"], "label": "文库勾选文献"},
+        "scope": "当前选择清单",
+    }
+    before = set(ui.context.client.elements)
+    page.search_page()
+    scope = next(
+        element
+        for key, element in ui.context.client.elements.items()
+        if key not in before and getattr(element, "label", None) == "检索范围"
+    )
+    assert scope.value == "当前选择清单"
+    assert "本次文库勾选（1 篇）" in scope.options
+
+
 def test_planning_blocks_reentrant_and_identical_active_requests_but_not_reviewed_changes(
     tmp_path, monkeypatch
 ):
