@@ -2,6 +2,7 @@ import logging
 import math
 import re
 import time
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
@@ -10,6 +11,9 @@ from threading import get_ident
 from urllib.parse import parse_qs, urlsplit
 
 from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
+from aletheia_nexus.acquire.access.browser_engine.connection import (
+    connection_failure_diagnostic,
+)
 from aletheia_nexus.acquire.access.browser_engine.launcher import (
     NormalBrowserError,
     ProfileLease,
@@ -56,6 +60,10 @@ _PROFILE_LOCK_MARKERS = (
 
 class BrowserCapabilityUnavailable(RuntimeError):
     """Raised when the optional browser capability cannot be started."""
+
+    def __init__(self, *args, diagnostic=None):
+        super().__init__(*args)
+        self.diagnostic = deepcopy(diagnostic)
 
 
 def _profile_appears_locked(profile_dir: Path) -> bool:
@@ -581,6 +589,14 @@ class BrowserSession:
         self._pending_hosts: dict[str, str | None] = {}
         self._cnki_finished_at: float | None = None
         self._cnki_rate_limit: BrowserAccessAttempt | None = None
+        self._connection_failure = None
+
+    @property
+    def connection_diagnostic(self) -> dict | None:
+        """Safe connection failure details, without endpoint or target identities."""
+        return (
+            deepcopy(self._connection_failure[1]) if self._connection_failure else None
+        )
 
     def interaction_ready(self, doi: str) -> bool:
         """True only when this session's retained challenge has visibly cleared."""
@@ -637,6 +653,9 @@ class BrowserSession:
             )
         if self._context is not None:
             return self._context
+        if self._connection_failure is not None:
+            message, diagnostic = self._connection_failure
+            raise BrowserCapabilityUnavailable(message, diagnostic=diagnostic)
 
         self.profile_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
@@ -684,11 +703,18 @@ class BrowserSession:
                 raise BrowserCapabilityUnavailable(message) from exc
 
         if endpoint is not None:
+            connection_started = time.monotonic()
+            connection_stage = "cdp_attach"
             try:
                 browser = playwright.chromium.connect_over_cdp(
                     endpoint.strip(),
                     timeout=self.config.navigation_timeout * 1000,
+                    # This preserves the existing context's download/focus/media
+                    # defaults. It does NOT skip initialization of existing page
+                    # targets and is not a workaround for an unresponsive PDF.
+                    no_defaults=True,
                 )
+                connection_stage = "context_setup"
                 _require_safe_download_browser(browser)
                 contexts = list(browser.contexts)
                 if not contexts:
@@ -707,17 +733,29 @@ class BrowserSession:
                     max_bytes=self.config.max_bytes,
                 )
             except Exception as exc:
+                diagnostic = None
+                if not isinstance(exc, BrowserCapabilityUnavailable):
+                    diagnostic = connection_failure_diagnostic(
+                        exc,
+                        endpoint=endpoint,
+                        stage=connection_stage,
+                        timeout_seconds=self.config.navigation_timeout,
+                        elapsed_seconds=time.monotonic() - connection_started,
+                    )
                 try:
                     manager.__exit__(type(exc), exc, exc.__traceback__)
+                except Exception as cleanup_exc:
+                    if diagnostic is not None:
+                        diagnostic["disconnect_error_type"] = type(cleanup_exc).__name__
                 finally:
                     if self._normal_lease is not None:
                         self._normal_lease.close()
                         self._normal_lease = None
                 if isinstance(exc, BrowserCapabilityUnavailable):
                     raise
+                self._connection_failure = (diagnostic["message"], diagnostic)
                 raise BrowserCapabilityUnavailable(
-                    "Could not attach to the external browser CDP endpoint. "
-                    f"Error type: {type(exc).__name__}"
+                    diagnostic["message"], diagnostic=diagnostic
                 ) from exc
 
             self._manager = manager
@@ -833,6 +871,7 @@ class BrowserSession:
         self._downloads = []
         self._pending_pages = {}
         self._pending_hosts = {}
+        self._connection_failure = None
 
         try:
             if context is not None and not attached_external:

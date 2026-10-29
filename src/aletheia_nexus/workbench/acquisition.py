@@ -992,6 +992,26 @@ class AcquisitionService:
                             if row["si_status"] == "COMPLETED"
                             else "正文已验证，附件需核对"
                         )
+                connection = session.connection_diagnostic
+                si_connection_failed = any(
+                    diagnostic.get("status") == "BROWSER_CONNECTION_UNAVAILABLE"
+                    for diagnostic in (row.get("supplements") or {}).get(
+                        "diagnostics", ()
+                    )
+                    if isinstance(diagnostic, dict)
+                )
+                # A previous paper's failed session is not a failure of this
+                # paper when its public main/SI routes completed independently.
+                if connection and (
+                    row["status"] == "BROWSER_UNAVAILABLE" or si_connection_failed
+                ):
+                    row["browser_connection"] = connection
+                    if row["status"] == "BROWSER_UNAVAILABLE":
+                        row.update(
+                            reason=connection["message"],
+                            message=connection["message"],
+                            reason_code=connection["code"],
+                        )
                 items.append(row)
                 if context:
                     context.record(

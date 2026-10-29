@@ -74,6 +74,34 @@ def test_missing_or_ambiguous_open_page_is_diagnostic_without_navigating_any_tab
     assert not hasattr(session._context.pages[0], "goto")
 
 
+def test_si_preserves_precise_connection_diagnostic_without_observing_or_closing_tabs():
+    from aletheia_nexus.acquire.access.browser import BrowserCapabilityUnavailable
+
+    details = {
+        "code": "browser_cdp_attach_timeout",
+        "stage": "cdp_attach",
+        "timeout_seconds": 45,
+        "websocket_connected": True,
+        "endpoint_reachable": True,
+        "page_count": 15,
+        "pdf_like_page_count": 2,
+        "message": "浏览器连接超时；原有标签保留，检查后可仅补取 SI。",
+    }
+
+    def unavailable():
+        raise BrowserCapabilityUnavailable(details["message"], diagnostic=details)
+
+    adapter = supplements_browser.SupplementBrowserTransport(
+        SimpleNamespace(_ensure_started=unavailable), doi=DOI
+    )
+    with pytest.raises(BrowserCapabilityUnavailable):
+        adapter.page_fetch(PAGE)
+    assert adapter.diagnostics == [
+        {"status": "BROWSER_CONNECTION_UNAVAILABLE", **details}
+    ]
+    assert not adapter.pages
+
+
 def test_existing_tab_inventory_is_not_truncated_by_source_route_budget(monkeypatch):
     wrong = [
         page(

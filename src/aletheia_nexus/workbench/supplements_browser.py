@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from aletheia_nexus.acquire.access.browser import BrowserCapabilityUnavailable
 from aletheia_nexus.acquire.access.browser_engine.downloads import CdpDownloadCapture
 from aletheia_nexus.acquire.access.browser_engine.observation import bounded_read
 from aletheia_nexus.acquire.access.browser_engine.viewer import _PDF_FETCH_SCRIPT
@@ -54,7 +55,18 @@ class SupplementBrowserTransport:
 
         # Passing this session is an explicit caller decision. Ordinary startup
         # reuses the named profile under its existing lease; never infer CDP.
-        context = self.session._ensure_started()
+        try:
+            context = self.session._ensure_started()
+        except BrowserCapabilityUnavailable as exc:
+            diagnostic = getattr(exc, "diagnostic", None)
+            self.diagnostics.append(
+                {
+                    "status": "BROWSER_CONNECTION_UNAVAILABLE",
+                    "message": str(exc),
+                    **(diagnostic or {"error_type": type(exc).__name__}),
+                }
+            )
+            raise
         self.session.pump_events(0)
         # Route-attempt budgets do not limit the user's existing tab inventory.
         # Prefer the requested URL/family, then newest tabs (canonical publisher
