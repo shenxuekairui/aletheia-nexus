@@ -14,6 +14,7 @@ CODES = [
     ("NativePdfViewerLocalSaveControlUnavailable", "本机保存控件"),
     ("NativePdfViewerLocalSaveNotAcknowledged", "没有确认操作开始"),
     ("NativePdfViewerOwnedDownloadIncomplete", "尚未完整交付"),
+    ("NativePdfViewerSaveDeadlineExceeded", "达到本次时限"),
     ("NativePdfViewerDownloadSizeLimit", "超过本次大小上限"),
     ("NativePdfViewerNonPdfDelivery", "不是可识别的 PDF"),
 ]

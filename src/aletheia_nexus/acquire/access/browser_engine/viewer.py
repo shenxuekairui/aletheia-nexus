@@ -629,25 +629,55 @@ def trigger_pdf_viewer_save(
                 min(1.0, max(0.0, operation_deadline - time.monotonic())),
             )
             owned_frame_ids.update(_frame_tree_ids(tree))
-            ready_deadline = min(operation_deadline, time.monotonic() + 3.0)
-            while True:
-                observed = _target_command(
-                    session,
-                    target_session,
+
+            def wait_ready(until):
+                while True:
+                    observed = _target_command(
+                        session,
+                        target_session,
+                        page,
+                        "Runtime.evaluate",
+                        {
+                            "expression": _PDF_VIEWER_SAVE_READY_EXPRESSION,
+                            "returnByValue": True,
+                        },
+                        min(1.0, max(0.0, until - time.monotonic())),
+                    )
+                    ready = (
+                        observed.get("result", {}).get("value", {}).get("ready", False)
+                    )
+                    if ready or time.monotonic() >= until:
+                        return bool(ready)
+                    page.wait_for_timeout(100)
+
+            ready = wait_ready(min(operation_deadline, time.monotonic() + 3.0))
+            target_url = urlsplit(str(target.get("url") or ""))
+            if (
+                not ready
+                and target_url.scheme == "chrome-extension"
+                and target_url.hostname == _PDF_VIEWER_EXTENSION_ID
+                and target_url.path == "/edge_pdf/index.html"
+                and time.monotonic() < operation_deadline
+                and callable(getattr(page, "bring_to_front", None))
+            ):
+                # Edge leaves its native toolbar unlaid-out in a background
+                # page. Ownership was established above, before this one focus
+                # action; do not activate a title-matching user tab or navigate.
+                # Reuse the existing owning-thread deadline bridge for this
+                # explicit action, within the original operation deadline.
+                bounded_read(
                     page,
-                    "Runtime.evaluate",
-                    {
-                        "expression": _PDF_VIEWER_SAVE_READY_EXPRESSION,
-                        "returnByValue": True,
-                    },
-                    min(1.0, max(0.0, ready_deadline - time.monotonic())),
+                    "bring_to_front",
+                    timeout=min(1.0, operation_deadline - time.monotonic()),
                 )
-                ready = observed.get("result", {}).get("value", {}).get("ready", False)
-                if ready or time.monotonic() >= ready_deadline:
-                    break
-                page.wait_for_timeout(100)
+                if diagnostics is not None:
+                    diagnostics.append("NativePdfViewerOwnedPageActivated")
+                ready = wait_ready(min(operation_deadline, time.monotonic() + 3.0))
             if not ready:
                 return unavailable("NativePdfViewerLocalSaveControlUnavailable")
+
+        if scoped and time.monotonic() >= operation_deadline:
+            return unavailable("NativePdfViewerSaveDeadlineExceeded")
 
         runtime_done = threading.Event()
         runtime_result: dict[str, object] = {}

@@ -252,6 +252,7 @@ def test_main_pdf_save_failure_is_recorded_without_raw_exception(
     )
 
     def save(*args, diagnostics, **kwargs):
+        diagnostics.append("NativePdfViewerOwnedPageActivated")
         diagnostics.append(
             "NativePdfViewerLocalSaveControlUnavailable"
             if failure == "no-control"
@@ -274,6 +275,10 @@ def test_main_pdf_save_failure_is_recorded_without_raw_exception(
     assert outcome.status != BrowserAttemptStatus.VERIFIED
     assert outcome.file_attempts[-1].method == "browser_viewer_save"
     assert outcome.file_attempts[-1].error.startswith("NativePdfViewer")
+    assert not outcome.file_attempts[-1].error.startswith(
+        "NativePdfViewerOwnedPageActivated"
+    )
+    assert "caller-owned Edge PDF page was activated" in outcome.file_attempts[-1].error
 
 
 def test_default_viewer_protocol_exception_has_only_safe_error_type(
@@ -304,3 +309,133 @@ def test_default_viewer_protocol_exception_has_only_safe_error_type(
         is None
     )
     assert diagnostics == ["NativePdfViewerSaveError:TimeoutError"]
+
+
+@pytest.mark.parametrize(
+    "edge,timeout,activated", [(True, 8, True), (False, 8, False), (True, 1, False)]
+)
+def test_only_scoped_edge_focuses_once_after_ready_timeout_within_original_budget(
+    tmp_path, monkeypatch, edge, timeout, activated
+):
+    from test_owned_viewer_save import fixture, target
+
+    path = "edge_pdf/index.html" if edge else "index.html"
+    url = "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/" + path
+    context, page, capture, commands = fixture(
+        tmp_path,
+        [
+            target("other", "other-page", url=url),
+            target("owned", "owned-page", url=url),
+        ],
+    )
+    clock, focus_times, waits = [0.0], [], []
+    monkeypatch.setattr(viewer.time, "monotonic", lambda: clock[0])
+    page.wait_for_timeout = lambda milliseconds: clock.__setitem__(
+        0, clock[0] + milliseconds / 1000
+    )
+    page.bring_to_front = lambda: focus_times.append(clock[0])
+    monkeypatch.setattr(
+        viewer,
+        "_target_command",
+        lambda *args: (
+            {"result": {"value": {"ready": bool(focus_times)}}}
+            if args[3] == "Runtime.evaluate"
+            else {}
+        ),
+    )
+    saved = tmp_path / "owned.pdf"
+    saved.write_bytes(b"%PDF-test")
+
+    def wait(owner, seconds):
+        waits.append(seconds)
+        return saved, page.url
+
+    diagnostics = []
+    result = viewer.trigger_pdf_viewer_save(
+        context,
+        page,
+        doi="10.1000/same",
+        output_dir=tmp_path,
+        expected_title=None,
+        timeout=timeout,
+        max_bytes=1000,
+        owned_page_only=True,
+        native_capture=capture,
+        owned_frame_ids=set(),
+        download_wait=wait,
+        diagnostics=diagnostics,
+    )
+    assert bool(result) == activated
+    if activated:
+        assert len(focus_times) == 1 and 3 <= focus_times[0] < 3.2
+        assert 0 < waits[0] <= timeout - focus_times[0]
+        assert diagnostics == ["NativePdfViewerOwnedPageActivated"]
+    else:
+        assert not focus_times and not waits
+        assert diagnostics == ["NativePdfViewerLocalSaveControlUnavailable"]
+    assert [
+        p["targetId"] for method, p in commands if method == "Target.attachToTarget"
+    ] == ["owned"]
+
+
+def test_confirmed_native_pdf_is_saved_before_embedded_cache_fetch(
+    tmp_path, monkeypatch
+):
+    import json
+
+    from pypdf import PdfWriter
+    from test_browser_challenge_flow import _RouteContext, _RoutePage
+
+    page = _RoutePage("https://publisher.example/document.pdf")
+    clear = ChallengeReport(ChallengeKind.NONE)
+    monkeypatch.setattr(browser_route, "_report_for_page", lambda p: clear)
+    monkeypatch.setattr(
+        browser_route, "_resolve_page_challenge", lambda p, **kw: (clear, (), False)
+    )
+    monkeypatch.setattr(browser_route, "native_pdf_url", lambda *a, **kw: page.url)
+    monkeypatch.setattr(
+        browser_route,
+        "_trigger_embedded_pdf_frame_fetch",
+        lambda *a, **kw: pytest.fail(
+            "A confirmed native PDF must not be re-fetched before Save"
+        ),
+    )
+    monkeypatch.setattr(
+        browser_route,
+        "_trigger_pdf_viewer_same_origin_fetch",
+        lambda *a, **kw: pytest.fail(
+            "Do not replace the entitled response before Save"
+        ),
+    )
+    title = "Electrochemical reduction of carboxylic acids"
+
+    def save(*args, diagnostics, **kwargs):
+        diagnostics.append("NativePdfViewerOwnedPageActivated")
+        stage = tmp_path / "stage"
+        stage.mkdir()
+        path = stage / "owned.pdf"
+        writer = PdfWriter()
+        writer.add_blank_page(width=100, height=100)
+        writer.add_metadata({"/Title": title})
+        writer.write(path)
+        return path, stage
+
+    monkeypatch.setattr(browser_route, "_trigger_pdf_viewer_save", save)
+    outcome = browser_route.attempt_browser_route(
+        _RouteContext(page),
+        page,
+        source=FullTextCandidate(doi="10.1000/example", url=page.url, provenance=()),
+        output_dir=tmp_path / "output",
+        expected_title=title,
+        config=BrowserAccessConfig(),
+        session_blocked_urls=[],
+        session_pdf_responses=[],
+        session_downloads=[],
+        _navigate_source=False,
+    )
+    assert outcome.status == BrowserAttemptStatus.VERIFIED
+    source = json.loads(outcome.result.sidecar_path.read_text(encoding="utf-8"))
+    assert any(
+        "caller-owned built-in Edge" in evidence
+        for evidence in source["access"]["evidence"]
+    )

@@ -1076,6 +1076,7 @@ def _download_to_file_attempt(
     config: BrowserAccessConfig,
     native_capture=None,
     page=None,
+    access_evidence: tuple[str, ...] = (),
 ) -> BrowserFileAttempt:
     download_url = str(getattr(download, "url", "") or "")
     browser_local_url = False
@@ -1135,6 +1136,7 @@ def _download_to_file_attempt(
             local_path=temporary,
         )
         evidence = ["Captured a browser download event"]
+        evidence.extend(access_evidence)
         if browser_local_url:
             evidence.append(
                 "Browser-local download URL was replaced by the parent HTTP(S) route "
@@ -2233,6 +2235,12 @@ def _attempt_browser_route(
         nonlocal failed_native_candidate
         viewer_page = page if target_page is None else target_page
         viewer_diagnostics: list[str] = []
+
+        def failure_text(reason):
+            if "NativePdfViewerOwnedPageActivated" in viewer_diagnostics:
+                return reason + ": caller-owned Edge PDF page was activated"
+            return reason
+
         try:
             viewer_save = _trigger_pdf_viewer_save(
                 context,
@@ -2257,7 +2265,7 @@ def _attempt_browser_route(
                     candidate=candidate,
                     source_page_url=viewer_page.url,
                     method="browser_viewer_save",
-                    error=str(exc),
+                    error=failure_text(str(exc)),
                 )
             )
             return None
@@ -2276,7 +2284,16 @@ def _attempt_browser_route(
                         candidate=source,
                         source_page_url=viewer_page.url,
                         method="browser_viewer_save",
-                        error="; ".join(viewer_diagnostics),
+                        error=failure_text(
+                            next(
+                                (
+                                    code
+                                    for code in reversed(viewer_diagnostics)
+                                    if code != "NativePdfViewerOwnedPageActivated"
+                                ),
+                                "NativePdfViewerLocalSaveControlUnavailable",
+                            )
+                        ),
                     )
                 )
             return None
@@ -2289,6 +2306,13 @@ def _attempt_browser_route(
                 output_dir=output_dir,
                 expected_title=expected_title,
                 config=config,
+                access_evidence=(
+                    (
+                        "Activated the caller-owned built-in Edge PDF viewer after its background save control was unavailable",
+                    )
+                    if "NativePdfViewerOwnedPageActivated" in viewer_diagnostics
+                    else ()
+                ),
             )
             attempt = replace(attempt, method="browser_viewer_save")
             file_attempts.append(attempt)
@@ -2919,6 +2943,23 @@ def _attempt_browser_route(
 
     sync_session_events()
 
+    # A native PDF has already reached the browser. Save those bytes before any
+    # JS cache re-fetch: request interception disables HTTP cache, so a denied
+    # re-fetch can replace the entitled response and cancel the later Save.
+    # HTML viewers keep the established embedded-frame acquisition path below.
+    native_document = _NATIVE_PDF in final_report.evidence or bool(
+        native_pdf_url(page, timeout=_OBSERVATION_TIMEOUT)
+    )
+    if native_document:
+        if save_current_pdf_viewer() is not None:
+            return finish_route(
+                BrowserAttemptStatus.VERIFIED,
+                final_url=page.url,
+                evidence=("Saved the confirmed native PDF before JavaScript re-fetch",),
+            )
+        if failed_native_candidate is not None and not _browser_native_only:
+            return recover_pdf_endpoint(failed_native_candidate)
+
     try:
         html = bounded_read(page, "content", timeout=_OBSERVATION_TIMEOUT)
         parsed = parse_html(html)
@@ -3038,7 +3079,7 @@ def _attempt_browser_route(
     # Chromium's built-in PDF webview keeps its Save control outside the normal
     # page/frame DOM. In an attached real browser, invoke that native control
     # through its isolated DevTools target and validate the resulting file.
-    if save_current_pdf_viewer() is not None:
+    if not native_document and save_current_pdf_viewer() is not None:
         return finish_route(
             BrowserAttemptStatus.VERIFIED,
             final_url=page.url,

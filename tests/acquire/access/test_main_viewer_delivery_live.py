@@ -105,9 +105,6 @@ def test_main_inline_pdf_native_save_retains_unrelated_same_url_tab(
             error="NativePdfViewerPlaceholder: synthetic unreadable response",
         ),
     )
-    monkeypatch.setattr(
-        browser_route, "_trigger_embedded_pdf_frame_fetch", lambda *args, **kw: None
-    )
     original_wait = CdpDownloadCapture.wait
 
     def observed_wait(capture, page, timeout, **kwargs):
