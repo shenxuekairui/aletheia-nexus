@@ -124,7 +124,9 @@ def test_unmapped_historical_source_uses_original_title_and_does_not_guess_paren
     assert aliases["si_1"]["reference"].startswith("补充材料")
 
 
-@pytest.mark.parametrize("kind", ["claims", "empty", "records"])
+@pytest.mark.parametrize(
+    "kind", ["claims", "empty", "records", "steps", "steps_without_evidence"]
+)
 def test_real_result_widgets_skip_empty_table_and_keep_citations_linked_to_exact_source(
     tmp_path, monkeypatch, kind
 ):
@@ -162,7 +164,7 @@ def test_real_result_widgets_skip_empty_table_and_keep_citations_linked_to_exact
                 "citations": [citation],
             }
         ]
-    elif kind == "records":
+    elif kind in {"records", "steps", "steps_without_evidence"}:
         result["response"]["records"] = [
             {
                 "id": "r1",
@@ -177,6 +179,16 @@ def test_real_result_widgets_skip_empty_table_and_keep_citations_linked_to_exact
                 },
             }
         ]
+        if kind.startswith("steps"):
+            result["response"]["records"][0]["steps"] = [
+                {
+                    "id": "step_original",
+                    "order": 1,
+                    "description": "Only the source-reported preparation step",
+                    "nature": "reported",
+                    "citations": [citation] if kind == "steps" else [],
+                }
+            ]
     before_result = deepcopy(result)
     table_calls, shown = [], []
 
@@ -223,7 +235,7 @@ def test_real_result_widgets_skip_empty_table_and_keep_citations_linked_to_exact
         element for key, element in ui.context.client.elements.items() if key not in old
     ]
     texts = [getattr(element, "text", "") for element in elements]
-    if kind == "records":
+    if kind in {"records", "steps", "steps_without_evidence"}:
         assert len(table_calls) == 1 and table_calls[0][0]["value"] == "Cu"
     else:
         assert table_calls == []
@@ -255,4 +267,22 @@ def test_real_result_widgets_skip_empty_table_and_keep_citations_linked_to_exact
         )
     elif kind == "empty":
         assert any("没有可展示的研究数据或主张" in text for text in texts)
+    elif kind == "steps":
+        button = next(
+            element
+            for element in elements
+            if getattr(element, "text", "").startswith("核对步骤 文献1")
+        )
+        handler = next(
+            listener.handler
+            for listener in button._event_listeners.values()
+            if listener.type == "click"
+        )
+        handler(None)
+        assert shown == [({"pdf": source_id + ".pdf"}, 1)]
+        assert "步骤 1 · 原文已报告" in texts
+    elif kind == "steps_without_evidence":
+        assert any("此步骤没有已保存引用" in text for text in texts)
+        assert not any(text.startswith("核对步骤") for text in texts)
+        assert not shown
     assert result == before_result

@@ -42,6 +42,22 @@ def active_research_task(jobs, task):
     return None
 
 
+def active_planning_job(jobs, fingerprint):
+    """A submitted metadata-planning request is distinct from a research run."""
+    from .jobs import TERMINAL
+
+    return next(
+        (
+            job
+            for job in jobs
+            if job.get("kind") == "research"
+            and job.get("status") not in TERMINAL
+            and (job.get("parameters") or {}).get("planning_fingerprint") == fingerprint
+        ),
+        None,
+    )
+
+
 def result_version_label(row):
     if row.get("comparison"):
         title = "跨论文比较"
@@ -475,7 +491,12 @@ class ResearchPages:
                 "尚未检索。已有CLI解析工件会按身份发现；未解析论文不会自动产生全文命中。"
             ).classes("an-info w-full")
         results_area = ui.column().classes("w-full")
-        state = {"table": None, "report": None, "searching": False}
+        state = {
+            "table": None,
+            "report": None,
+            "searching": False,
+            "display_view": view.value,
+        }
 
         def selected_ids():
             if handoff_label and scope.value == handoff_label:
@@ -495,6 +516,7 @@ class ResearchPages:
 
         def display(report):
             state["report"] = report
+            state["display_view"] = view.value
             self.search_report = report
             results_area.clear()
             coverage = report["coverage"]
@@ -619,8 +641,18 @@ class ResearchPages:
             return [
                 h
                 for h in state["report"]["hits"]
-                if (h["paper_id"] if view.value == "论文视图" else h["id"]) in wanted
+                if (h["paper_id"] if state["display_view"] == "论文视图" else h["id"])
+                in wanted
             ]
+
+        def change_view():
+            if state["report"] is not None:
+                display(state["report"])
+                ui.notify(
+                    "已切换本页展示并清空本页勾选，请按新视图重新选择；检索范围和页码不变。"
+                )
+
+        view.on_value_change(lambda _: change_view())
 
         def add_selected():
             ids = list(dict.fromkeys(h["paper_id"] for h in selected_hits()))
@@ -955,6 +987,7 @@ class ResearchPages:
             "loaded": False,
             "content_consent": None,
             "executing": False,
+            "planning": False,
         }
 
         def render_plan(task):
@@ -1346,50 +1379,74 @@ class ResearchPages:
             )
 
         def remote_plan():
+            if state["planning"]:
+                ui.notify("正在核对并提交规划请求，请等待；无需重复点击。")
+                return
             if not planning_consent.value:
                 raise ValueError("请先授权仅元数据的规划请求")
-            options = read_budget()
-            goal_value, si, model = goal.value, include_si.value, read_model()
-            cost = planning_cost.value
-            material_options = read_material_options()
-            parse_options = {
-                **self.ctx.research.parser_options(),
-                **self.ctx.settings.get("parsing", {}),
-            }
+            state["planning"] = True
+            planning_button.disable()
+            try:
+                from aletheia_nexus.processing.contracts import digest
 
-            def worker(context):
-                planned = self.ctx.research.plan(
-                    goal_value,
-                    ids,
-                    include_si=si,
-                    consent=True,
-                    model=model,
-                    max_cost=options["max_cost"],
-                    max_calls=options["max_calls"],
-                    planning_max_cost=cost,
-                    budget=options,
-                    parse_options=parse_options,
-                    context=context,
+                request = deepcopy(
+                    {
+                        "library_root": str(self.ctx.library.root),
+                        "goal": goal.value,
+                        "ids": list(ids),
+                        "include_si": include_si.value,
+                        "model": read_model(),
+                        "budget": read_budget(),
+                        "planning_max_cost": planning_cost.value,
+                        "material_options": read_material_options(),
+                        "parse_options": {
+                            **self.ctx.research.parser_options(),
+                            **self.ctx.settings.get("parsing", {}),
+                        },
+                    }
                 )
-                return self.ctx.research.configure_plan(
-                    planned["task"], material_options, previous=planned
-                )
+                fingerprint = digest(request)
+                existing = active_planning_job(self.ctx.jobs.list(), fingerprint)
+                if existing is not None:
+                    state.update(plan_job=existing["id"], loaded=False)
+                    ui.notify(
+                        "相同材料、目标和预算的规划请求已在排队或执行，未重复提交。",
+                        type="warning",
+                    )
+                    return
 
-            receipt = self.submit(
-                "research",
-                "自然语言科研规划（仅元数据）",
-                ids,
-                worker,
-                {
-                    "goal": goal_value,
-                    "planning_max_cost": cost,
-                    "model": model,
-                    "parse_options": parse_options,
-                },
-            )
-            state.update(
-                plan_job=receipt.get("job_id", receipt.get("id")), loaded=False
-            )
+                def worker(context):
+                    planned = self.ctx.research.plan(
+                        request["goal"],
+                        request["ids"],
+                        include_si=request["include_si"],
+                        consent=True,
+                        model=request["model"],
+                        max_cost=request["budget"]["max_cost"],
+                        max_calls=request["budget"]["max_calls"],
+                        planning_max_cost=request["planning_max_cost"],
+                        budget=request["budget"],
+                        parse_options=request["parse_options"],
+                        context=context,
+                    )
+                    return self.ctx.research.configure_plan(
+                        planned["task"], request["material_options"], previous=planned
+                    )
+
+                receipt = self.submit(
+                    "research",
+                    "自然语言科研规划（仅元数据）",
+                    request["ids"],
+                    worker,
+                    {**request, "planning_fingerprint": fingerprint},
+                )
+                state.update(
+                    plan_job=receipt.get("job_id", receipt.get("id")), loaded=False
+                )
+            finally:
+                state["planning"] = False
+                if not planning_button.is_deleted:
+                    planning_button.enable()
 
         def load_plan():
             if not state["plan_job"] or state["loaded"]:
@@ -1413,7 +1470,7 @@ class ResearchPages:
                 icon="edit_note",
                 on_click=guard(local_plan),
             )
-            ui.button(
+            planning_button = ui.button(
                 "授权自然语言规划", icon="auto_awesome", on_click=guard(remote_plan)
             ).props("outline")
         ui.timer(2, guard(load_plan))
@@ -1587,10 +1644,34 @@ class ResearchPages:
                     for record in result["response"].get("records", []):
                         if record.get("steps"):
                             with ui.expansion(
-                                f"实验步骤 · {record['id']}",
+                                f"实验步骤 · {record.get('subject') or record['id']}",
                                 icon="format_list_numbered",
                             ).classes("w-full"):
-                                rows_table(record["steps"], row_key="id")
+                                for step in record["steps"]:
+                                    with ui.card().classes("an-card w-full"):
+                                        ui.label(
+                                            f"步骤 {step['order']} · {value_label(step['nature'])}"
+                                        ).classes("text-xs an-muted")
+                                        ui.label(step["description"]).classes(
+                                            "whitespace-pre-wrap"
+                                        )
+                                        for citation in step.get("citations", []):
+                                            label, tooltip = citation_button_text(
+                                                citation,
+                                                citation_sources,
+                                                prefix="核对步骤",
+                                                aliases=aliases,
+                                            )
+                                            ui.button(
+                                                label,
+                                                on_click=guard(
+                                                    lambda c=citation: show_citation(c)
+                                                ),
+                                            ).props("flat dense").tooltip(tooltip)
+                                        if not step.get("citations"):
+                                            ui.label(
+                                                "此步骤没有已保存引用，不能自动定位或声称已有原文支持。"
+                                            ).classes("an-info w-full")
                     if result["response"].get("claims"):
                         with ui.expansion(
                             "文献对照（阅读名称）", icon="menu_book", value=True
