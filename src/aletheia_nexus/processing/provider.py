@@ -56,9 +56,18 @@ def project_response(
         if isinstance(value, dict):
             properties = contract.get("properties", {})
             removable = {
-                key: "empty_unknown_array_extension"
+                key: (
+                    "null_unknown_property_extension"
+                    if child is None
+                    else "empty_unknown_array_extension"
+                )
                 for key, child in value.items()
-                if "properties" in contract and key not in properties and child == []
+                if "properties" in contract
+                and key not in properties
+                and (
+                    child == []
+                    or (child is None and contract.get("additionalProperties") is False)
+                )
             }
             is_step = (
                 len(path) == 4

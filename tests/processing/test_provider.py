@@ -689,7 +689,7 @@ def test_empty_extension_arrays_preserve_response_and_replay_without_model_repai
     assert replay == expected and replay.metadata == result.metadata
 
 
-@pytest.mark.parametrize("value", [["s1"], None, {}, ""])
+@pytest.mark.parametrize("value", [["s1"], {}, "", 0, False])
 def test_empty_extension_projection_does_not_discard_other_unknown_values(value):
     _, schema, noisy, _ = metadata_example("claims")
     noisy["records"][0]["extension"] = value
