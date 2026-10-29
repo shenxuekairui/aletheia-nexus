@@ -1325,8 +1325,70 @@ class LibraryService:
             raise ValueError("invalid named library section")
         with self._locked():
             state = self._load()
+            if section == "collections":
+                references = [
+                    filter_name
+                    for filter_name, rules in state["filters"].items()
+                    if isinstance(rules, dict) and rules.get("collection") == name
+                ]
+                if references:
+                    raise ValueError(
+                        "该研究集合仍被保存筛选引用："
+                        + "、".join(references)
+                        + "。请先修改或删除这些筛选，再删除集合；本次未改动文库。"
+                    )
             state[section].pop(name, None)
             _write(self.state_path, state)
+
+    def rename_named(self, section, old, new):
+        """Rename mutable organization in one registry replacement.
+
+        A saved filter's collection reference follows the collection atomically.
+        View names can also be active in settings, so they are deliberately not
+        included in this registry-only operation.
+        """
+        if not isinstance(section, str) or section not in {
+            "collections",
+            "filters",
+            "tag_groups",
+        }:
+            raise ValueError("只能改名研究集合、保存筛选或标签分组。")
+        if not isinstance(old, str) or not old.strip():
+            raise ValueError("请先选择要改名的研究集合、保存筛选或标签分组。")
+        if (
+            not isinstance(new, str)
+            or not new.strip()
+            or len(new.strip()) > 100
+            or any(ord(char) < 32 or ord(char) == 127 for char in new)
+        ):
+            raise ValueError("新名称须为 1 至 100 个字符，且不能包含换行或控制字符。")
+        old, new = old.strip(), new.strip()
+        with self._locked():
+            state = self._load()
+            entries = state[section]
+            if old not in entries:
+                raise ValueError("所选项目已不存在，请刷新列表后再试。")
+            if new != old and new in entries:
+                raise ValueError("新名称已存在，请使用其他名称；本次不会覆盖已有项目。")
+            references = []
+            value = entries[old]
+            if new != old:
+                state[section] = {
+                    new if key == old else key: item for key, item in entries.items()
+                }
+                if section == "collections":
+                    for filter_name, rules in state["filters"].items():
+                        if isinstance(rules, dict) and rules.get("collection") == old:
+                            rules["collection"] = new
+                            references.append(filter_name)
+                _write(self.state_path, state)
+            return {
+                "section": section,
+                "old_name": old,
+                "name": new,
+                "value": deepcopy(value),
+                "updated_filters": references,
+            }
 
     def collections(self):
         return self._section("collections")
