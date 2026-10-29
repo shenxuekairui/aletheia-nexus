@@ -3,9 +3,11 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from nicegui import ui
+import pytest
 
 from aletheia_nexus.workbench.ui_home import GUIDE, HomePages, home_result_summary
+
+ui = pytest.importorskip("nicegui.ui")
 
 
 class Page(HomePages):

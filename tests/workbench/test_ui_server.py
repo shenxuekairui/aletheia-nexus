@@ -13,7 +13,8 @@ import pytest
 pytest.importorskip("nicegui")
 
 
-def test_local_server_renders_and_rejects_external_origin(tmp_path):
+@pytest.mark.parametrize("stdio_encoding", [None, "cp1252"])
+def test_local_server_renders_and_rejects_external_origin(tmp_path, stdio_encoding):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -22,6 +23,8 @@ def test_local_server_renders_and_rejects_external_origin(tmp_path):
     # A real subprocess must take NiceGUI's production path, not its in-process
     # pytest/screen fixture path inherited from the test runner.
     environment.pop("PYTEST_CURRENT_TEST", None)
+    if stdio_encoding:
+        environment["PYTHONIOENCODING"] = stdio_encoding + ":strict"
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
             [
@@ -29,9 +32,9 @@ def test_local_server_renders_and_rejects_external_origin(tmp_path):
                 "-m",
                 "aletheia_nexus.ui_cli",
                 "--library",
-                str(tmp_path / "library"),
+                str(tmp_path / "文库"),
                 "--workspace",
-                str(tmp_path / "workspace"),
+                str(tmp_path / "工作区"),
                 "--port",
                 str(port),
                 "--no-open",
@@ -77,7 +80,7 @@ def test_local_server_renders_and_rejects_external_origin(tmp_path):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
-    assert Path(tmp_path / "workspace" / "settings.json").exists()
+    assert Path(tmp_path / "工作区" / "settings.json").exists()
 
 
 def test_old_page_lease_cannot_target_a_different_library(tmp_path):

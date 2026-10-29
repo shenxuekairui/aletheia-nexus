@@ -5,12 +5,13 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
-from nicegui import ui
 
 from aletheia_nexus.workbench.acquisition import AcquisitionService
 from aletheia_nexus.workbench.library import LibraryService
 from aletheia_nexus.workbench.ui_acquisition_batch import AcquisitionBatchEditor
 from aletheia_nexus.workbench.ui_acquisition_groups import AcquisitionGroupPanel
+
+ui = pytest.importorskip("nicegui.ui")
 
 
 class Grid:

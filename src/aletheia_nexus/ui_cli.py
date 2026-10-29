@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import secrets
 import sys
 from pathlib import Path
@@ -83,6 +84,11 @@ def create_context(root: Path, workspace: Path):
 
 
 def main(argv=None) -> int:
+    # Redirected Windows stdio may default to cp1252 even though the application
+    # and local paths are Chinese. Configure only this optional UI entry point.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(
         prog="aletheia-nexus ui", description="启动本地科研工作台（仅 127.0.0.1）"
     )
