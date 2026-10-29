@@ -419,6 +419,8 @@ def _retrieve_official_file(url, *, source_page, diagnostics=None, **kwargs):
 
 
 def _source_page_candidates(sidecar, doi):
+    from .supplements_browser import _looks_like_pdf_url
+
     pages = []
     for url in (
         sidecar.get("access", {}).get("source_page_url"),
@@ -436,7 +438,7 @@ def _source_page_candidates(sidecar, doi):
             sidecar.get("candidate", {}).get("host_type") == "publisher"
             and sidecar.get("candidate", {}).get("url_type") == "landing_page"
         ) or url == sidecar.get("access", {}).get("source_page_url"):
-            if Path(parsed.path).suffix.casefold() != ".pdf":
+            if not _looks_like_pdf_url(url):
                 pages.append(url)
     pages.append("https://doi.org/" + doi)
     return list(dict.fromkeys(pages))
@@ -461,6 +463,49 @@ def acquire_supplements(
     Other roles are retained distinctly and never enter the parser as SI.
     """
     main = validate_parser_input(main_pdf)
+    browser = None
+    if browser_session is not None:
+        from .supplements_browser import SupplementBrowserTransport
+
+        browser = SupplementBrowserTransport(
+            browser_session, doi=main.doi, title=main.title
+        )
+    result = None
+    try:
+        result = _acquire_supplements(
+            main,
+            library=library,
+            page_urls=page_urls,
+            max_files=max_files,
+            max_bytes=max_bytes,
+            timeout=timeout,
+            page_fetch=page_fetch,
+            file_fetch=file_fetch,
+            browser=browser,
+        )
+    finally:
+        if browser is not None:
+            previous = len(browser.diagnostics)
+            browser.close()
+            if result is not None:
+                result.setdefault("diagnostics", []).extend(
+                    browser.diagnostics[previous:]
+                )
+    return result
+
+
+def _acquire_supplements(
+    main,
+    *,
+    library,
+    page_urls,
+    max_files,
+    max_bytes,
+    timeout,
+    page_fetch,
+    file_fetch,
+    browser,
+):
     if main.document_role != "ARTICLE":
         raise ValueError("attachments require a main article")
     if not main.doi:
@@ -492,13 +537,6 @@ def acquire_supplements(
     ):
         raise ValueError("unsafe_SI_record_directory")
     discoveries, errors, seen, diagnostics = [], [], set(), []
-    browser = None
-    if browser_session is not None:
-        from .supplements_browser import SupplementBrowserTransport
-
-        browser = SupplementBrowserTransport(
-            browser_session, doi=main.doi, title=main.title
-        )
     page_fetch = page_fetch or retrieve_page
     repository_provenance = None
     if page_urls is None:
@@ -587,7 +625,8 @@ def acquire_supplements(
             )
     # Use only a session the caller explicitly authorized for this task. Startup
     # follows the existing normal launcher/lease and reuses that named profile.
-    # Existing article tabs are observed, never navigated or refreshed here.
+    # Existing tabs are observed only; a missing article is loaded in an owned
+    # temporary tab. Clear owned pages live until all attachment fetches finish.
     if browser is not None and not discoveries:
         try:
             page = browser.page_fetch(
@@ -604,7 +643,7 @@ def acquire_supplements(
                 {
                     "status": discovery["status"],
                     "page": discovery.get("page_url"),
-                    "transport": "browser_existing_DOM",
+                    "transport": getattr(page, "transport", "browser_existing_DOM"),
                 }
             )
             for attachment in discovery["items"]:
@@ -624,7 +663,9 @@ def acquire_supplements(
         except Exception as exc:
             errors.append(
                 {
-                    "status": "BROWSER_PAGE_UNAVAILABLE",
+                    "status": "INTERACTION_REQUIRED"
+                    if str(exc) == "attachment_interaction_required"
+                    else "BROWSER_PAGE_UNAVAILABLE",
                     "error": str(exc)
                     if re.fullmatch(r"[a-z_]+", str(exc))
                     else type(exc).__name__,
@@ -858,7 +899,7 @@ def acquire_supplements(
         else "PARTIAL"
         if saved
         else "INTERACTION_REQUIRED"
-        if any(item["status"] == "INTERACTION_REQUIRED" for item in items)
+        if any(item["status"] == "INTERACTION_REQUIRED" for item in [*items, *errors])
         else "FAILED"
         if items or errors
         else "NOT_FOUND",
@@ -868,7 +909,7 @@ def acquire_supplements(
         "errors": errors,
         "diagnostics": diagnostics
         + (browser.diagnostics if browser is not None else []),
-        "browser_handoff_scope": "existing_DOI_confirmed_official_article_tabs_only"
+        "browser_handoff_scope": "DOI_confirmed_official_existing_or_owned_article_tabs"
         if browser is not None
         else None,
         "si_directory": str(directory) if directory.exists() else None,

@@ -154,6 +154,9 @@ def test_blocked_http_uses_explicit_session_and_saves_real_si_with_original_sour
         def __init__(self, session, **kwargs):
             assert session is explicit
 
+        def close(self):
+            pass
+
         def page_fetch(self, *args, **kwargs):
             return SimpleNamespace(text=HTML, final_url=PAGE)
 
@@ -527,6 +530,9 @@ def test_dom_discovery_tries_public_file_before_browser_and_preserves_real_attac
         diagnostics = []
 
         def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self):
             pass
 
         def page_fetch(self, *args, **kwargs):
