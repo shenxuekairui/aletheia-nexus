@@ -78,10 +78,11 @@ def guard(callback):
 
     async def run(*_):
         try:
-            result = callback()
-            if inspect.isawaitable(result):
-                return await result
-            return result
+            with client.layout:
+                result = callback()
+                if inspect.isawaitable(result):
+                    return await result
+                return result
         except Exception as exc:
             from .messages import error_record
 

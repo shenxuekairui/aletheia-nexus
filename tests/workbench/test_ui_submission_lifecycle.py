@@ -132,3 +132,26 @@ def test_guard_does_not_hide_original_exception_when_client_is_gone(monkeypatch)
     with pytest.raises(ValueError) as raised:
         asyncio.run(callback())
     assert raised.value is original
+
+
+def test_guard_keeps_normal_async_body_on_stable_client_after_parent_refresh():
+    client = ui.context.client
+    parent = ui.column()
+    with parent:
+        child = ui.card()
+
+    async def continue_after_refresh():
+        await asyncio.sleep(0)
+        parent.clear()
+        gc.collect()
+        ui.notify("合成正常回调继续")
+        result = ui.label("合成异步结果仍可见")
+        assert result.parent_slot.parent is client.layout
+        return ui.context.client
+
+    with child:
+        callback = guard(continue_after_refresh)
+    del child
+    # A guarded event retains its registered client even in a fresh task with
+    # no inherited slot; clearing its old parent must not turn success to failure.
+    assert asyncio.run(callback()) is client

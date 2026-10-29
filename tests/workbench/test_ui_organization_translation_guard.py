@@ -100,7 +100,8 @@ def mounted(tmp_path, monkeypatch):
         jobs=manager,
         settings=SettingsStore(tmp_path / "workspace"),
     )
-    before = set(ui.context.client.elements)
+    client = ui.context.client
+    before = set(client.elements)
 
     def open_dialog():
         page.organize_dialog([paper["id"]])
@@ -110,7 +111,7 @@ def mounted(tmp_path, monkeypatch):
     def elements():
         return [
             element
-            for key, element in ui.context.client.elements.items()
+            for key, element in client.elements.items()
             if key not in before and not element.is_deleted
         ]
 
@@ -129,6 +130,12 @@ def mounted(tmp_path, monkeypatch):
             if getattr(element, "label", None) == "缺失中文译名策略"
         )
 
+    async def preview():
+        # guard is intentionally bypassed to surface test exceptions, so restore
+        # the actual client's event context when entering a new asyncio task.
+        with client.layout:
+            return await callbacks["生成完整预览"][0]()
+
     try:
         yield SimpleNamespace(
             page=page,
@@ -142,6 +149,7 @@ def mounted(tmp_path, monkeypatch):
             release=release,
             consent=consent,
             missing=missing,
+            preview=preview,
             open_dialog=open_dialog,
         )
     finally:
@@ -162,7 +170,7 @@ def test_two_entry_points_and_rapid_clicks_create_one_task_and_one_mock_http(
         view.callbacks["仅翻译标题"][0]()
 
     def preview():
-        asyncio.run(view.callbacks["生成完整预览"][0]())
+        asyncio.run(view.preview())
 
     (translate if first == "translation" else preview)()
     assert view.entered.wait(3)
@@ -218,7 +226,7 @@ def test_reopened_dialog_attaches_identical_active_scope_without_another_request
     view.open_dialog()
     view.consent().set_value(True)
     view.missing().set_value("translate")
-    asyncio.run(view.callbacks["生成完整预览"][0]())
+    asyncio.run(view.preview())
     assert len(view.manager.list()) == len(view.http_calls) == 1
     assert any(
         "已关联其进度" in getattr(element, "text", "") for element in view.elements()
