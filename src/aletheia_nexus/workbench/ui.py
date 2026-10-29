@@ -13,37 +13,51 @@ from .ui_library import LibraryPage
 from .ui_research import ResearchPages
 
 _STYLE = """
-:root { --an-ink:#18314b; --an-muted:#60758a; --an-line:#dce5ed; }
-body { background:#f3f6fa; color:var(--an-ink); font-family:Inter,'Segoe UI','Microsoft YaHei',sans-serif; }
-.an-header { background:#132d47!important; color:#fff; }
-.an-brand { letter-spacing:.08em; font-size:18px; font-weight:700; }
-.an-subtitle { font-size:12px; color:#a9c6dc; }
-.an-nav { background:#fff; border-bottom:1px solid var(--an-line); }
-.an-nav-active { background:#e8f2f5!important; color:#17678b!important; border-radius:8px; }
-.an-main { width:100%; max-width:1760px; margin:0 auto; padding:28px 32px; }
-.an-title { font-size:25px; font-weight:650; letter-spacing:-.025em; }
+:root { --an-ink:#183247; --an-muted:#5b7082; --an-line:#dce5ec; --an-teal:#087f78; --an-surface:#fff; --an-canvas:#f3f6fa; --an-page-gutter:40px; }
+body { background:var(--an-canvas); color:var(--an-ink); font-family:Inter,'Segoe UI','Noto Sans CJK SC','Microsoft YaHei','PingFang SC',sans-serif; font-size:15px; line-height:1.6; }
+.nicegui-content { padding:0; gap:0; }
+.an-header { background:#102b40!important; color:#fff; padding:0!important; gap:0!important; box-shadow:0 1px 0 #ffffff12; }
+.an-header-inner { max-width:1760px; margin:0 auto; padding:16px var(--an-page-gutter); min-height:90px; gap:24px; }
+.an-brand-lockup { gap:14px; flex-shrink:0; }
+.an-brand-mark { width:46px; height:46px; display:flex; align-items:center; justify-content:center; border:1px solid #74c9c84d; border-radius:13px; color:#a0e7df; background:#1e655b44; }
+.an-brand { letter-spacing:.045em; font-size:28px; line-height:1.2; font-weight:750; white-space:nowrap; }
+.an-subtitle { font-size:12px; line-height:1.6; letter-spacing:.08em; color:#b8cdd9; margin-top:5px; }
+.an-header-tools { gap:8px; flex-wrap:nowrap; }
+.an-header-tools .q-btn { min-height:42px; border-radius:9px; font-size:14px; }
+.an-nav { background:#fff; border-bottom:1px solid var(--an-line); gap:0; }
+.an-nav-inner { max-width:1760px; margin:0 auto; padding:9px var(--an-page-gutter); gap:8px; }
+.an-nav .q-btn { min-height:42px; border-radius:8px; font-size:14px; padding:7px 13px; }
+.an-nav-active { background:#e6f3f1!important; color:#086a66!important; box-shadow:inset 0 -2px 0 #15988b; }
+.an-main { width:100%; max-width:1760px; margin:0 auto; padding:30px var(--an-page-gutter) 48px; gap:24px; }
+.an-page-heading { gap:6px; margin-bottom:0; }
+.an-title { font-size:28px; line-height:1.3; font-weight:700; letter-spacing:-.025em; }
+.an-page-heading .an-muted { max-width:85ch; font-size:14px; line-height:1.8; }
 .an-muted { color:var(--an-muted); }
-.an-card { border:1px solid var(--an-line); border-radius:12px; box-shadow:none; background:#fff; }
+.an-card { border:1px solid var(--an-line); border-radius:14px; box-shadow:0 2px 7px #17324b04; background:var(--an-surface); }
 .an-toolbar { gap:8px; align-items:center; flex-wrap:wrap; }
 .an-library { height:calc(100vh - 300px); min-height:340px; width:100%; }
-.q-btn { text-transform:none; font-weight:550; letter-spacing:0; }
+.q-btn { text-transform:none; font-weight:600; letter-spacing:0; }
+.q-btn:focus-visible, a:focus-visible { outline:3px solid #55b9bb; outline-offset:3px; }
 .q-field--outlined .q-field__control { border-radius:8px; }
+.q-field__label { color:#5b7082; }
 .an-pdf { width:100%; height:70vh; border:0; background:#e5ebf1; }
 .an-info { padding:10px 14px; border-left:3px solid #2e7896; background:#edf6fb; border-radius:5px; }
-.an-hero { padding:36px 40px; border-radius:16px; background:linear-gradient(112deg,#122d46 0%,#184c61 72%,#1c626b 100%); color:#fff; box-shadow:0 12px 30px #12304712; }
-.an-hero-kicker { font-size:12px; letter-spacing:.14em; color:#b1d7df; font-weight:650; }
-.an-hero-title { font-size:clamp(28px,2.6vw,42px); font-weight:650; line-height:1.4; letter-spacing:-.03em; }
-.an-hero-copy { font-size:15px; color:#d0e1e8; line-height:1.9; }
-.an-hero-aside { padding:22px 25px; min-width:270px; border-left:1px solid #ffffff26; }
+.an-hero { padding:32px 38px; border:1px solid #2c6173; border-radius:18px; background:radial-gradient(ellipse at 92% 8%,#438d8b35,transparent 55%),linear-gradient(112deg,#102a40 0%,#18485b 72%,#1b6065 100%); color:#fff; box-shadow:0 10px 28px #12304710; }
+.an-hero-kicker { font-size:13px; letter-spacing:.15em; color:#b4d9df; font-weight:600; }
+.an-hero-product { font-size:clamp(38px,3.5vw,54px); font-weight:750; line-height:1.08; letter-spacing:-.045em; }
+.an-hero-title { font-size:clamp(20px,1.5vw,25px); font-weight:600; line-height:1.5; letter-spacing:.01em; }
+.an-hero-copy { font-size:14px; color:#d4e5eb; line-height:1.85; }
+.an-hero-aside { padding:23px 26px; min-width:270px; border-left:1px solid #ffffff26; align-self:center; }
 .an-stat-card { padding:20px 22px; gap:8px; }
-.an-stat-number { font-size:35px; font-weight:650; letter-spacing:-.04em; line-height:1.2; }
-.an-section-title { font-size:19px; font-weight:650; }
-.an-flow-card { padding:22px; transition:border-color .15s; }
+.an-stat-number { font-size:36px; font-weight:700; letter-spacing:-.04em; line-height:1.2; font-variant-numeric:tabular-nums; }
+.an-section-title { font-size:21px; font-weight:700; line-height:1.4; }
+.an-flow-card { padding:22px; transition:border-color .15s,box-shadow .15s; }
 .an-flow-card:hover { border-color:#69aab1; }
 .an-step-number { color:#bdcbd7; font-size:22px; font-weight:600; }
 .an-recent-row { padding:10px 0; border-top:1px solid #e8edf2; }
 .an-guide-section { border-bottom:1px solid #e5ebf0; padding:6px 0; }
-.an-root-path { max-width:32vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--an-muted); align-self:center; }
+.an-root-path { max-width:26vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--an-muted); align-self:center; }
+.an-main .ag-root-wrapper { --ag-font-family:Inter,'Segoe UI','Microsoft YaHei',sans-serif; --ag-font-size:14px; --ag-row-hover-color:#eff7f7; --ag-header-background-color:#f5f8fa; border-color:var(--an-line); border-radius:10px; }
 .an-job-card { border:1px solid var(--an-line); border-radius:10px; background:#fff; }
 .an-job-card .q-expansion-item__content { padding:12px 18px 18px; }
 .an-task-table td { white-space:normal; max-width:360px; overflow-wrap:anywhere; vertical-align:top; }
@@ -51,8 +65,11 @@ body { background:#f3f6fa; color:var(--an-ink); font-family:Inter,'Segoe UI','Mi
 .an-task-dialog { padding:24px; }
 .an-acquisition-layout { display:grid!important; grid-template-columns:minmax(0,1fr) 390px; gap:20px; align-items:start; }
 @media(max-width:1000px){ .an-acquisition-layout { grid-template-columns:minmax(0,1fr); } }
-@media(max-width:1000px){ .an-main{padding:16px;} .an-parameter-grid{grid-template-columns:1fr 1fr;} }
+@media(max-width:1200px){ :root{--an-page-gutter:28px;} .an-brand{font-size:26px;} .an-header-inner{gap:16px;} .an-header-tools{gap:2px;} }
+@media(max-width:1000px){ :root{--an-page-gutter:20px;} .an-header-inner{flex-wrap:wrap!important;gap:12px;} .an-brand{font-size:24px;} .an-nav-inner{flex-wrap:wrap!important;} .an-parameter-grid{grid-template-columns:1fr 1fr;} .an-hero{padding:28px;} }
 @media(max-width:1050px){ .an-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .an-overview-grid{grid-template-columns:1fr;} .an-hero-aside{display:none;} }
+@media(max-width:760px){ .an-header-inner{padding:12px 20px;gap:8px;} .an-header-tools .q-btn{min-height:36px;font-size:13px;padding:4px 8px;} .an-nav-inner{padding:6px 20px;gap:4px;} .an-nav .q-btn{min-height:36px;font-size:13px;padding:6px 7px;} .an-root-path{display:none;} }
+@media(prefers-reduced-motion:reduce){ .an-flow-card{transition:none;} }
 """
 
 
@@ -72,8 +89,8 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
     def title(self, title, detail):
         from nicegui import ui
 
-        with ui.column().classes("gap-1 mb-4"):
-            ui.label(title).classes("an-title")
+        with ui.column().classes("an-page-heading"):
+            ui.label(title).classes("an-title").props("role=heading aria-level=1")
             ui.label(detail).classes("an-muted")
 
     def submit(self, kind, label, ids, worker, parameters=None, *, resume_of=None):
@@ -768,21 +785,79 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 import shutil
                 import sys
 
-                json_view(
-                    {
-                        "python": sys.version.split()[0],
-                        "platform": sys.platform,
-                        "poppler": bool(shutil.which("pdftoppm")),
-                        "tesseract": bool(shutil.which("tesseract")),
-                        "playwright": importlib.util.find_spec("playwright")
-                        is not None,
-                        "DeepSeek_API_key_present": bool(
-                            os.environ.get("DEEPSEEK_API_KEY")
-                        ),
-                        "local_only": True,
-                    },
-                    label="依赖状态",
+                diagnostics = {
+                    "python": sys.version.split()[0],
+                    "platform": sys.platform,
+                    "poppler": bool(shutil.which("pdftoppm")),
+                    "tesseract": bool(shutil.which("tesseract")),
+                    "playwright": importlib.util.find_spec("playwright") is not None,
+                    "DeepSeek_API_key_present": bool(
+                        os.environ.get("DEEPSEEK_API_KEY")
+                    ),
+                    "local_only": True,
+                }
+                ui.label(
+                    f"Python {diagnostics['python']} · "
+                    + {"win32": "Windows", "linux": "Linux", "darwin": "macOS"}.get(
+                        sys.platform, sys.platform
+                    )
+                ).classes("font-semibold")
+                ui.table(
+                    columns=[
+                        {
+                            "name": "name",
+                            "label": "组件",
+                            "field": "name",
+                            "align": "left",
+                        },
+                        {
+                            "name": "state",
+                            "label": "检测结果",
+                            "field": "state",
+                            "align": "left",
+                        },
+                        {
+                            "name": "next",
+                            "label": "用途与下一步",
+                            "field": "next",
+                            "align": "left",
+                        },
+                    ],
+                    rows=[
+                        {
+                            "name": "PDF 原页图像（Poppler）",
+                            "state": "已检测到"
+                            if diagnostics["poppler"]
+                            else "未检测到",
+                            "next": "用于原页渲染与局部放大。未安装时仍可阅读完整 PDF。",
+                        },
+                        {
+                            "name": "经典 OCR（Tesseract）",
+                            "state": "已检测到"
+                            if diagnostics["tesseract"]
+                            else "未检测到",
+                            "next": "扫描件需选择已安装的 OCR 引擎；原生文字 PDF 不要求启用 OCR。",
+                        },
+                        {
+                            "name": "机构浏览器 Python 依赖",
+                            "state": "已安装"
+                            if diagnostics["playwright"]
+                            else "未安装",
+                            "next": "在获取页检查本次浏览器配置；此项不代表浏览器运行时、登录或机构权限已就绪。",
+                        },
+                        {
+                            "name": "DeepSeek API 环境变量",
+                            "state": "已配置"
+                            if diagnostics["DeepSeek_API_key_present"]
+                            else "未配置",
+                            "next": "本地整理与检索无需密钥；远程请求仍须逐次核对材料与费用授权。",
+                        },
+                    ],
+                    row_key="name",
+                ).classes("an-task-table w-full").props(
+                    "flat bordered wrap-cells hide-bottom"
                 )
+                json_view(diagnostics, label="原始依赖状态（专家）")
             ui.button("关闭", on_click=dialog.close).props("flat")
         dialog.open()
 
@@ -800,43 +875,59 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
 
         ui.add_css(_STYLE)
         ui.colors(primary="#17678b", secondary="#45627c", accent="#18a999")
-        with ui.header().classes("an-header items-center px-7 py-3"):
-            with ui.column().classes("gap-0 grow"):
-                ui.label("ALETHEIA NEXUS").classes("an-brand")
-                ui.label("本地科研工作台 · v0.8").classes("an-subtitle")
-            ui.button(
-                "操作指南", icon="menu_book", on_click=guard(self.guide_dialog)
-            ).props("flat color=white")
-            ui.button(
-                "选择清单",
-                icon="playlist_add_check",
-                on_click=guard(self.selection_dialog),
-            ).props("flat color=white")
-            ui.button(
-                "任务中心", icon="pending_actions", on_click=guard(self.task_dialog)
-            ).props("flat color=white")
-            ui.button(
-                "设置", icon="settings", on_click=guard(self.settings_dialog)
-            ).props("flat color=white")
-        with ui.row().classes("an-nav w-full px-7 py-2 gap-3"):
-            for label, icon in (
-                ("主页", "space_dashboard"),
-                ("获取论文", "cloud_download"),
-                ("文献库", "local_library"),
-                ("科研检索", "manage_search"),
-                ("AI 研究", "science"),
-                ("研究成果", "fact_check"),
+        header = ui.header().classes("an-header")
+        with header:
+            with ui.row().classes("an-header-inner w-full items-center no-wrap"):
+                with ui.row().classes("an-brand-lockup items-center no-wrap"):
+                    with ui.element("div").classes("an-brand-mark"):
+                        ui.icon("hub", size="29px").props("aria-hidden=true")
+                    with ui.column().classes("gap-0"):
+                        ui.label("ALETHEIA NEXUS").classes("an-brand")
+                        ui.label("本地科研工作台 · v0.8").classes("an-subtitle")
+                ui.space()
+                with ui.row().classes("an-header-tools items-center"):
+                    ui.button(
+                        "操作指南", icon="menu_book", on_click=guard(self.guide_dialog)
+                    ).props("flat color=white")
+                    ui.button(
+                        "选择清单",
+                        icon="playlist_add_check",
+                        on_click=guard(self.selection_dialog),
+                    ).props("flat color=white")
+                    ui.button(
+                        "任务中心",
+                        icon="pending_actions",
+                        on_click=guard(self.task_dialog),
+                    ).props("flat color=white")
+                    ui.button(
+                        "设置", icon="settings", on_click=guard(self.settings_dialog)
+                    ).props("flat color=white")
+        with header, ui.row().classes("an-nav w-full"):
+            with (
+                ui.row()
+                .classes("an-nav-inner w-full items-center no-wrap")
+                .props("role=navigation aria-label=主导航")
             ):
-                button = ui.button(
-                    label, icon=icon, on_click=guard(lambda p=label: self.navigate(p))
-                ).props("flat")
-                if label == self.active:
-                    button.classes("an-nav-active")
-                self.nav_buttons[label] = button
-            ui.space()
-            ui.label(f"当前文库 · {self.ctx.library.root.name}").classes(
-                "an-root-path"
-            ).tooltip(str(self.ctx.library.root))
+                for label, icon in (
+                    ("主页", "space_dashboard"),
+                    ("获取论文", "cloud_download"),
+                    ("文献库", "local_library"),
+                    ("科研检索", "manage_search"),
+                    ("AI 研究", "science"),
+                    ("研究成果", "fact_check"),
+                ):
+                    button = ui.button(
+                        label,
+                        icon=icon,
+                        on_click=guard(lambda p=label: self.navigate(p)),
+                    ).props("flat")
+                    if label == self.active:
+                        button.classes("an-nav-active")
+                    self.nav_buttons[label] = button
+                ui.space()
+                ui.label(f"当前文库 · {self.ctx.library.root.name}").classes(
+                    "an-root-path"
+                ).tooltip(str(self.ctx.library.root))
 
         @ui.refreshable
         def page_content():

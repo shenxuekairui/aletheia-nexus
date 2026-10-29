@@ -219,8 +219,9 @@ class HomePages:
         with ui.card().classes("an-hero w-full"):
             with ui.row().classes("w-full justify-between items-start gap-10"):
                 with ui.column().classes("gap-3 grow"):
-                    ui.label("ALETHEIA NEXUS  /  本地科研工作台").classes(
-                        "an-hero-kicker"
+                    ui.label("本地科研工作台  /  v0.8").classes("an-hero-kicker")
+                    ui.label("Aletheia Nexus").classes("an-hero-product").props(
+                        "role=heading aria-level=1"
                     )
                     ui.label("从文献，到可信的研究积累。").classes("an-hero-title")
                     ui.label(
