@@ -3,9 +3,36 @@
 [中文主文档](V08_RELEASE_ACCEPTANCE.md) · English translation
 
 This record covers v0.8.0; GitHub Releases and the PyPI project page establish release identity. Integration on 2026-10-30 began with research branch `59ce727` and workbench `b4d1002`; old branch results do not replace integrated verification.
-**Every set of figures below belongs to an explicitly identified historical source snapshot, not automatically to the final frozen HEAD.** The root reviewer will update final source, full-suite results, package hashes, and current remote checks after freezing them. Existing records must not predeclare final success.
+Final local acceptance was frozen at `60a7756754e2be401542cd25c81a7d7f3f28ec3f` (H1); subsequent changes only update acceptance text and an old documentation link. The final section binds to this source; other records retain their historical snapshots without adding counts. GitHub Release and PyPI files establish public distributions and checksums.
 For entry points and use, see the [research CLI/MCP guide](V08_ENTRYPOINTS.en.md), [workbench guide](WORKBENCH_USER_GUIDE.en.md), and [v0.8 release notes](RELEASE_NOTES_v0.8.0.en.md).
 The latest scientific comparison is in the [ten-paper workflow report](V08_TEN_PAPER_COMPARISON.en.md); its historically reused denominators are not pooled with the older twenty- or eight-paper batches here.
+
+## Final frozen acceptance (2026-10-30)
+
+| Scope | Actual result and limits |
+| --- | --- |
+| Complete engineering suite | **3953 passed, zero failed, 148 skipped, 323.96 seconds**. Python 3.14.3 with UI/MCP installed; source, test, and script objects were unchanged before/after. |
+| Optional dependencies and platforms | Local skips comprise 138 opt-in browser fixtures, two OCR cases, and eight system-link permission cases. They are not passes; the final PR commit runs a separate full cloud matrix. |
+| Build and fresh installation | A fixed Git archive produced wheel/sdist and passed Twine. Two genuinely new venvs normally resolved and installed base and UI+MCP dependencies without old site-packages. Version, pip check, actual imports, and zero-model-call local mode passed. |
+| Windows CLI | Newly installed packages display both names under redirected cp1252:strict and utf-8:strict; the base entry point does not load NiceGUI/Playwright. |
+| Official MCP protocol | A real SDK 2.3 stdio client in the new installation discovered 23 tools and made eight successful local calls, including expected path-boundary and unauthorized-network rejections. Discovery does not establish online acceptance of every tool. |
+| Installed UI | An isolated loopback service returned home 200; wrong Host/Origin/cross-site requests 403; unknown/traversing file routes 404. Self-started services exited; the user's 8098 instance was untouched. |
+| Same-task real GUI | Ten checks and seven screenshots: Chinese metadata Mock planning → explicit content authorization → native reading/assembly → results and physical original page → clicked MD/CSV/JSONL and native ZIP export. Authorized UI task, run, result, and export share one fingerprint. The form explicitly changes hybrid to parsed after planning; the initial draft is not claimed to be the authorized final task. |
+| Documentation and data | Sixteen Chinese-primary/independent-English pairs; a project-wide README plus conduct, contributing, security, and collaboration guidance. Sensitive-data checks cover 710 tracked files and actual H1 packages: no PDFs in the wheel, only four self-made fixtures in the sdist, and no real papers, private raw answers, user scripts, or credentials. |
+| Ten-paper evidence integration | Completed answers are reused without paid reruns. Nine-paper primary analysis: AN 30/40 versus web 24/40; ten-paper supplementary analysis: 33/44 versus 24/44. Web remains stronger in some research-question comparisons. This is neither a new holdout nor a rerun on final release source. |
+
+Final engineering, installation, protocol, and GUI acceptance made **zero paid model calls**. The GUI uses explicit MockTransport, not an online scientific-quality claim. Final cloud-commit checks, merge, tagging, and PyPI upload are separate publication steps, not predeclared from local results.
+
+Source objects are `src=a90fe88a3c0884fa88c6d33e571f1b632e9c0f95`, `tests=81e9a455ef94b1ef1aeee91944af9edc19e3e299`, and `scripts=a7c46ede25633c76d4cf01be4f3ddde1d25875d1`. Subsequent acceptance-text/document-link-only changes reuse evidence through identical objects and wheel members; they do not claim a repeated full-suite execution.
+
+Local receipts are under `F:/AI4S/outputs/AN08_RELEASE_20261030/final-release-20261030/`: `full-h1/receipt.json`, `package-h1/summary.json`, `ui-h1/receipt.json`, and `final-content-audit.json`. H1 installation-acceptance SHA-256 values below are local evidence, not subsequent cloud-distribution checksums:
+
+- wheel: `68354c7eb7b4f8413453b282d9aa952e7999425ee5a97601608a50442dfc47d6`.
+- sdist: `91ea0053fbaaf5cc85e874b83fcc4c4616f19025c26f4b897330c7797d039988`.
+
+After bilingual branding, actual Windows CI reproduced a root-CLI UnicodeEncodeError under redirected cp1252:strict. Fix `ae0d465` configures UTF-8 text output, preserves lazy optional imports, and explicitly tests both encodings. Related regressions had 1127 passes and 18 skips, followed by eleven successful cloud checks on that commit. The final documentation commit still checks its own cloud results.
+
+The everyday 8098 workbench was subsequently restarted from integrated 0.8.0 with both names displayed; 81 source/canonical files, 26 historical tasks, and settings bytes stayed unchanged. The historical statement below that the old process was not restarted describes only earlier isolated acceptance.
 
 ## Integration scope
 
@@ -79,9 +106,9 @@ verification after the default change; inspect the PR's current checks directly.
 
 ## Scientific quality and data protection
 
-This is engineering/entry-point integration, adding no scientific-performance denominator and changing no old references or original model answers. The following preintegration batches are retained: among seventeen common papers from the original twenty, DS scored 71/84 and Qwen 69/84; a separate eight-paper B batch's normal route scored 21/24 and 5/8 records. All use assistant source review rather than expert gold. Complex relations, figure readings, and internal source conflicts remain limited. See the [scientific delivery report](V08_DELIVERY_REPORT.md); the subsequent ten-paper historical workflow comparison has its own [report](V08_TEN_PAPER_COMPARISON.en.md), without backfilling or pooling these original denominators.
+This is engineering/entry-point integration, adding no scientific-performance denominator and changing no old references or original model answers. The following preintegration batches are retained: among seventeen common papers from the original twenty, DS scored 71/84 and Qwen 69/84; a separate eight-paper B batch's normal route scored 21/24 and 5/8 records. All use assistant source review rather than expert gold. Complex relations, figure readings, and internal source conflicts remain limited. See the [scientific delivery report](V08_DELIVERY_REPORT.en.md); the subsequent ten-paper historical workflow comparison has its own [report](V08_TEN_PAPER_COMPARISON.en.md), without backfilling or pooling these original denominators.
 
-Acceptance used independent output, synthetic fixtures, and explicitly labeled Mock. The original user library/8098 service, two debug scripts, PDFs, provenance, and old canonical artifacts were preserved. Real browser fixtures, protocol acceptance, and online model/publisher results are recorded separately and cannot replace one another. See the [v0.8 release notes](RELEASE_NOTES_v0.8.0.md) for functionality and use.
+Acceptance used independent output, synthetic fixtures, and explicitly labeled Mock. The original user library/8098 service, two debug scripts, PDFs, provenance, and old canonical artifacts were preserved. Real browser fixtures, protocol acceptance, and online model/publisher results are recorded separately and cannot replace one another. See the [v0.8 release notes](RELEASE_NOTES_v0.8.0.en.md) for functionality and use.
 
 ## Rechecking integration by feature and filling coverage gaps
 
