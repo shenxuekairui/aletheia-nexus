@@ -56,6 +56,11 @@ def main(argv: list[str] | None = None) -> int:
         "--max-cost", type=float, default=2, help="科研提取费用估算上限CNY"
     )
     ask.add_argument("--max-calls", type=int, default=10)
+    ask.add_argument(
+        "--max-input-characters",
+        type=int,
+        help="显式设置科研请求字符上限并重新预览；省略时保留任务配置（默认100000）",
+    )
     ask.add_argument("--planning-max-cost", type=float, default=0.5)
     ask.add_argument(
         "--allow-planning", action="store_true", help="同意发送指令及文献元数据"
@@ -75,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
         "--approve-fingerprint", help="已审阅请求的绑定指纹，显式非交互批准"
     )
     args = parser.parse_args(argv)
+    if (
+        args.command == "ask"
+        and args.max_input_characters is not None
+        and args.max_input_characters < 1
+    ):
+        parser.error("--max-input-characters 必须大于0")
     app = None
     try:
         interactive = sys.stdin.isatty() and not getattr(args, "non_interactive", False)
@@ -193,6 +204,11 @@ def main(argv: list[str] | None = None) -> int:
                 overrides["material_presentation"] = args.material_presentation
             if args.source_assembly is not None:
                 overrides["source_assembly"] = args.source_assembly
+            if args.max_input_characters is not None:
+                overrides["budget"] = {
+                    **checked["task"]["budget"],
+                    "max_input_characters": args.max_input_characters,
+                }
             if overrides:
                 selected = {**checked["task"], **overrides}
                 checked = app.validate_research_task(selected)
@@ -243,6 +259,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{job['status']} · {job.get('run_directory', job['directory'])}")
         if job.get("usage"):
             print("科研调用用量：" + str(job["usage"]))
+        if job["status"] in {"FAILED", "PARTIAL"}:
+            status = app.get_run_status(job["job_id"])
+            manifest = status.get("manifest", {})
+            for item in [
+                *manifest.get("items", []),
+                {"id": "跨文献综合", **manifest.get("comparison", {})},
+                {"id": "科研任务", "error": status.get("error")},
+            ]:
+                if code := item.get("error"):
+                    title = item.get("source", {}).get("title") or item.get("id")
+                    reason = {
+                        "input_budget_exceeded": "输入材料与首读稿超出字符预算，该次模型请求未发送；已完成阶段保留。可使用 --max-input-characters <上限> 重新预览及授权；费用和调用次数上限不会自动提高。",
+                        "call_budget_exhausted": "已达到授权调用次数上限。",
+                        "cost_budget_exhausted": "已达到授权费用上限。",
+                    }.get(code, "")
+                    print(
+                        f"处理未完成：{title} · {code}"
+                        + (f" · {reason}" if reason else "")
+                    )
         return 0 if job["status"] in {"COMPLETED", "PREPARED", "PARTIAL"} else 1
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         print(

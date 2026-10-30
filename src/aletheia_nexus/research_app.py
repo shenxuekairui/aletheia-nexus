@@ -786,6 +786,8 @@ class ResearchApplication:
             f"上限：{task['budget']['max_calls']} 次HTTP；"
             f"{task['budget'].get('max_cost', '未设置')} "
             + task.get("model", {}).get("currency", "CNY"),
+            f"输入字符上限：{task['budget']['max_input_characters']}；"
+            "如需调整，使用 --max-input-characters 重新预览并授权。",
             "输出："
             + ", ".join(task.get("export_formats", ["markdown", "csv", "jsonl"])),
             "定位不等于科学支持；AI结果不会标为人工确认。",

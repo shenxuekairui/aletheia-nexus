@@ -51,6 +51,7 @@ from .source_first import (
     check_inventory,
     inventory_request,
     inventory_schema,
+    is_assembly_request,
     strategy_identity,
 )
 
@@ -134,6 +135,27 @@ def _within_input_budget(task: dict, request: dict) -> None:
         > task["budget"]["max_input_characters"]
     ):
         raise ProcessingError("input_budget_exceeded")
+
+
+def _fit_assembly_request(task: dict, request: dict) -> tuple[dict, dict | None]:
+    """Only rescue oversized source-first assembly with the existing lossless codec."""
+    original_size = len(json.dumps(request, ensure_ascii=False))
+    if (
+        original_size <= task["budget"]["max_input_characters"]
+        or not is_assembly_request(request)
+        or "compact_version" in request["material"]
+    ):
+        return request, None
+    encoded = compact_material(request)
+    return encoded, {
+        "reason": "source_first_assembly_input_budget",
+        "codec": encoded["material"]["compact_version"],
+        "original_characters": original_size,
+        "encoded_characters": len(json.dumps(encoded, ensure_ascii=False)),
+        "max_input_characters": task["budget"]["max_input_characters"],
+        "original_request_sha256": digest(request),
+        "effective_request_sha256": digest(encoded),
+    }
 
 
 def _save_response_metadata(
@@ -948,10 +970,17 @@ def run_task(
                                     check_response(response, task, package)
                                 else:
                                     request = assembly_request(request, inventory)
+                                    request, presentation = _fit_assembly_request(
+                                        task, request
+                                    )
                                     row["phase"] = request["phase"]
+                                    input_file = f"{owner_id}.{round_number}.source-first-assembly.input.json"
+                                    if presentation is not None:
+                                        row.setdefault(
+                                            "input_presentations", []
+                                        ).append({"file": input_file, **presentation})
                                     write_json(
-                                        run_dir
-                                        / f"{owner_id}.{round_number}.source-first-assembly.input.json",
+                                        run_dir / input_file,
                                         {
                                             "request": request,
                                             "schema": response_schema(task),
@@ -960,6 +989,11 @@ def run_task(
                                                 ASSEMBLY_PROMPT
                                             ),
                                             "package_id": package["artifact_id"],
+                                            **(
+                                                {"input_presentation": presentation}
+                                                if presentation is not None
+                                                else {}
+                                            ),
                                         },
                                     )
                                 checkpoint()

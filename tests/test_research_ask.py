@@ -15,6 +15,32 @@ from aletheia_nexus.research_planner import planning_request
 app = application_fixture
 
 
+@pytest.mark.parametrize("limit", ["0", "-1"])
+def test_invalid_character_limit_rejected_before_preparation_or_planning(
+    tmp_path, monkeypatch, limit
+):
+    def unexpected(*args, **kwargs):
+        pytest.fail("invalid limits must not prepare files or pay for a planner")
+
+    monkeypatch.setattr("aletheia_nexus.research_ask.ResearchApplication", unexpected)
+    with pytest.raises(SystemExit) as stopped:
+        main(
+            [
+                "ask",
+                "整理这些论文",
+                "--papers",
+                str(tmp_path),
+                "--output-dir",
+                str(tmp_path / "output"),
+                "--max-input-characters",
+                limit,
+                "--allow-planning",
+            ]
+        )
+    assert stopped.value.code == 2
+    assert not (tmp_path / "output").exists()
+
+
 @pytest.mark.parametrize(
     ("strategy", "presentation"),
     [
@@ -382,3 +408,149 @@ def test_cli_rejects_legacy_strategy_before_planning_or_execution(
     with pytest.raises(SystemExit) as error:
         main(["ask", "--extraction-strategy", "field_independent"])
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize("status", ["FAILED", "PARTIAL"])
+def test_cli_explains_saved_document_and_comparison_errors_locally(
+    app, monkeypatch, capsys, status
+):
+    service, pdf = app
+    documents = service.prepare_documents([str(pdf)])["documents"]
+    task = service.validate_research_task(task_for(documents))["task"]
+    task_file = service.workspace / "local-error-task.json"
+    write_json(task_file, task)
+
+    def failed_run(payload, *, output_dir, **kwargs):
+        directory = Path(output_dir) / "runs" / "synthetic-failure"
+        manifest = {
+            "status": status,
+            "run_directory": str(directory),
+            "usage": {"http_attempts": 0},
+            "outputs": [],
+            "items": [
+                {
+                    "id": documents[0]["id"],
+                    "source": {"title": "自编方法论文"},
+                    "error": "input_budget_exceeded",
+                }
+            ],
+            "comparison": {"error": "cost_budget_exhausted"},
+        }
+        write_json(directory / "manifest.json", manifest)
+        return manifest
+
+    monkeypatch.setattr("aletheia_nexus.research_app.run_task", failed_run)
+    assert main(
+        [
+            "ask",
+            "--papers",
+            str(pdf.parent),
+            "--output-dir",
+            str(service.workspace),
+            "--task",
+            str(task_file),
+            "--non-interactive",
+            "--execute",
+            "--confirm-plan",
+            service.binding("execute", task),
+        ]
+    ) == (1 if status == "FAILED" else 0)
+    output = capsys.readouterr().out
+    assert "自编方法论文 · input_budget_exceeded" in output
+    assert "超出字符预算" in output and "请求未发送" in output
+    assert "跨文献综合 · cost_budget_exhausted" in output and "费用上限" in output
+    assert "--max-input-characters" in output
+
+
+def test_cli_saved_task_input_limit_requires_new_preview_and_confirmation(
+    app, monkeypatch, capsys
+):
+    service, pdf = app
+    documents = service.prepare_documents([str(pdf)])["documents"]
+    task = service.validate_research_task(task_for(documents, mode="parsed"))["task"]
+    path = service.workspace / "original-limit.json"
+    write_json(path, task)
+    original = path.read_bytes()
+    arguments = [
+        "ask",
+        "--papers",
+        str(pdf.parent),
+        "--output-dir",
+        str(service.workspace),
+        "--task",
+        str(path),
+        "--max-input-characters",
+        "200000",
+        "--non-interactive",
+        "--execute",
+        "--allow-remote",
+        "--confirm-plan",
+    ]
+    assert main([*arguments, service.binding("execute", task)]) == 2
+    saved = next((service.workspace / "tasks").glob("*.json"))
+    selected = json.loads(saved.read_text("utf8"))
+    assert selected["budget"] == {**task["budget"], "max_input_characters": 200000}
+    assert selected["documents"] == task["documents"] and path.read_bytes() == original
+    executed = []
+
+    def execute(application, payload, *, authorization, background):
+        application.consume(authorization, "execute", payload)
+        executed.append(deepcopy(payload))
+        return {"status": "COMPLETED", "directory": str(application.workspace)}
+
+    monkeypatch.setattr(
+        "aletheia_nexus.research_app.ResearchApplication.execute_research_task", execute
+    )
+    assert main([*arguments, service.binding("execute", selected)]) == 0
+    assert executed == [selected] and path.read_bytes() == original
+    assert "输入字符上限：200000" in capsys.readouterr().out
+
+
+def test_cli_new_natural_language_plan_applies_explicit_input_limit_once(
+    app, monkeypatch
+):
+    service, pdf = app
+    planning_calls = []
+
+    def draft(application, request, *, authorization):
+        application.consume(authorization, "plan", request)
+        planning_calls.append(deepcopy(request))
+        task = task_for(request["documents"], mode="parsed")
+        task["budget"] = request["research_budget"]
+        checked = application.validate_research_task(task)
+        original = application.workspace / "planning" / "mock" / "task.json"
+        write_json(original, checked["task"])
+        return {**checked, "task_file": str(original)}
+
+    monkeypatch.setattr("aletheia_nexus.research_ask.draft_task", draft)
+    assert (
+        main(
+            [
+                "ask",
+                "整理研究目标和条件",
+                "--papers",
+                str(pdf.parent),
+                "--output-dir",
+                str(service.workspace),
+                "--allow-planning",
+                "--max-input-characters",
+                "200000",
+                "--non-interactive",
+                "--save-only",
+            ]
+        )
+        == 0
+    )
+    assert len(planning_calls) == 1
+    selected = json.loads(
+        next((service.workspace / "tasks").glob("*.json")).read_text("utf8")
+    )
+    assert selected["budget"] == {
+        **planning_calls[0]["research_budget"],
+        "max_input_characters": 200000,
+    }
+    original = json.loads(
+        (service.workspace / "planning/mock/task.json").read_text("utf8")
+    )
+    assert original["budget"]["max_input_characters"] == 100000
+    assert selected["documents"] == original["documents"]
