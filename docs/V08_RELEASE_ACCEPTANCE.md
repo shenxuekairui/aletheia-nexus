@@ -10,8 +10,8 @@
 
 ## 当前整合代码的实际验证
 
-以下本地验证绑定代码提交`feda03f4c34bd04edc6f0ad39108dfb5cc4028d1`，后续验收文档
-更新不改变`src/tests/scripts/pyproject.toml`对象。最终远端检查绑定PR实际HEAD，
+以下本地验证绑定代码提交`feda03f4c34bd04edc6f0ad39108dfb5cc4028d1`；后续生产源码、
+脚本和打包配置不变，仅修复下述跨Python版本的测试隔离。最终远端检查绑定PR实际HEAD，
 不能用这句话替代GitHub的当前检查结果。
 
 | 范围 | 当前状态 |
@@ -42,6 +42,17 @@ wheel不含论文PDF；sdist仅含4份仓库自制解析夹具，没有将真实
 本机完整日志、JUnit、源码对象、安装日志及截图位于`F:/AI4S/outputs/AN08_RELEASE_20261030/`：
 `full-suite-feda03f/receipt.json`、`ui-acceptance/final-handoff.json`、
 `package-acceptance/summary.json`、`parser-evaluation.json`。这些路径不是软件运行依赖。
+
+## 首次远端失败与修复（保留）
+
+第一次Python3.11基本环境为3675通过、313跳过、1失败：
+`test_history_status_resolution_and_mtime_share_short_io_lock`。测试的全局`Path.stat`
+钩子也拦截了较早版本`glob`发现字面文件名的过程，此时尚未进入被测状态IO锁。
+修复只在该测试预先固定已发现的候选，继续严格验证解析、mtime及并发写入的锁边界，
+没有放宽生产锁、加重试或按平台跳过。相关6项本地锁测试5.23秒通过；当前PR重新运行
+完整云端门槛。原失败日志保留为`ci-first-123926529755.log`，不把因上游失败跳过的
+后续job算作通过。发布候选也补入公开main的祖先关系：main的0.7.3 squash树与已包含
+历史版本完全相同，整合树未因此更换旧解析代码。
 
 ## 科学质量与数据保护
 

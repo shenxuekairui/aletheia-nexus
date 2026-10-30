@@ -245,9 +245,20 @@ def test_history_status_resolution_and_mtime_share_short_io_lock(tmp_path, monke
     assert owner is not None
     original_io, original_path = app._job_status_io, app.path
     original_status, original_stat = app.get_run_status, Path.stat
+    original_glob = Path.glob
+    jobs_root = app.workspace / "jobs"
+    candidates = tuple(jobs_root.glob("*/status.json"))
     local = threading.local()
     entered, release, finished = threading.Event(), threading.Event(), threading.Event()
     errors, snapshots = [], []
+
+    def discovered_jobs(path, pattern):
+        # Test status resolution/stat under the lock, independently of glob's
+        # discovery implementation: Python 3.11 may stat literal final names
+        # while discovering them, before the status IO protocol is entered.
+        if path == jobs_root and pattern == "*/status.json":
+            return iter(candidates)
+        return original_glob(path, pattern)
 
     @contextmanager
     def observed_io(path):
@@ -282,6 +293,7 @@ def test_history_status_resolution_and_mtime_share_short_io_lock(tmp_path, monke
 
     monkeypatch.setattr(app, "_job_status_io", observed_io)
     monkeypatch.setattr(app, "path", observed_path)
+    monkeypatch.setattr(Path, "glob", discovered_jobs)
     monkeypatch.setattr(Path, "stat", observed_stat)
     monkeypatch.setattr(app, "get_run_status", observed_status)
 
@@ -303,7 +315,7 @@ def test_history_status_resolution_and_mtime_share_short_io_lock(tmp_path, monke
     writer = threading.Thread(target=write)
     try:
         reader.start()
-        assert entered.wait(3)
+        assert entered.wait(3), errors
         writer.start()
         assert not finished.wait(0.05)
         release.set()
