@@ -24,6 +24,35 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _target_states(context):
+    """Track exact tabs across CDP discovery without depending on list order."""
+    browser_cdp = context.browser.new_browser_cdp_session()
+    states = {}
+    try:
+        for page in context.pages:
+            cdp = context.new_cdp_session(page)
+            try:
+                target = cdp.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+                window = browser_cdp.send(
+                    "Browser.getWindowForTarget", {"targetId": target}
+                )
+                states[target] = {
+                    "url": page.url,
+                    "state": page.evaluate(
+                        "({marker: window.anPreservationMarker, name: window.name, "
+                        "timeOrigin: performance.timeOrigin})"
+                    ),
+                    "window_id": window["windowId"],
+                    "history": cdp.send("Page.getNavigationHistory"),
+                }
+            finally:
+                cdp.detach()
+    finally:
+        browser_cdp.detach()
+    assert len(states) == len(context.pages)
+    return states
+
+
 def test_public_cdp_keeps_tabs_and_explicit_native_si_delivery(tmp_path):
     pytest.importorskip("playwright.sync_api")
     executable = (
@@ -113,7 +142,13 @@ def test_public_cdp_keeps_tabs_and_explicit_native_si_delivery(tmp_path):
                     source = context.new_page()
                     source.goto(main)
                     source.evaluate("window.localFixture = 'preserved'")
-                    original_urls = [page.url for page in context.pages]
+                    for index, page in enumerate(context.pages):
+                        page.evaluate(
+                            "marker => {window.anPreservationMarker = marker; "
+                            "window.name = marker}",
+                            f"preserved-tab-{index}",
+                        )
+                    original_pages = _target_states(context)
                     adapter = SupplementBrowserTransport(session, doi=doi)
                     adapter.page_fetch(main)
                     resource = adapter.file_fetch(
@@ -129,11 +164,13 @@ def test_public_cdp_keeps_tabs_and_explicit_native_si_delivery(tmp_path):
                     context.unroute("https://ars.els-cdn.com/**", respond)
                 else:
                     source = next(page for page in context.pages if page.url == main)
-                assert [page.url for page in context.pages] == original_urls
+                assert len(context.pages) == len(original_pages)
+                assert _target_states(context) == original_pages
                 assert source.evaluate("window.localFixture") == "preserved"
             # Disconnecting AN leaves the exact owned browser and pages alive.
             assert _active_endpoint(profile) == endpoint
-            assert inspect_local_endpoint(endpoint)["page_count"] == len(original_urls)
+            assert process.poll() is None
+            assert inspect_local_endpoint(endpoint)["page_count"] == len(original_pages)
         assert requests == [main, attachment]
         print(
             json.dumps(
@@ -141,7 +178,7 @@ def test_public_cdp_keeps_tabs_and_explicit_native_si_delivery(tmp_path):
                     "established_download_defaults": True,
                     "native_docx_delivery": True,
                     "reconnected": True,
-                    "original_pages_preserved": len(original_urls),
+                    "original_pages_preserved": len(original_pages),
                     "external_http": False,
                     "user_browser_touched": False,
                 }
