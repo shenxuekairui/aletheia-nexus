@@ -130,6 +130,69 @@ def test_other_letters_are_not_unit_m_corrections(outline):
     assert _mapped_m_outline(outline, 1000) is None
 
 
+@pytest.mark.parametrize(
+    "suffix", ["mol", "molcm-2h-1", "molL-1", "gL-1", "Acm-2", "s", "F"]
+)
+def test_verified_mu_supports_amount_and_compound_units(suffix):
+    page = symbol_page(m_program=program(MU))
+    content = page["/Contents"]
+    content.set_data(
+        b"BT /FR 12 Tf 50 700 Td (8.6 ) Tj /F1 12 Tf (m) Tj /FR 12 Tf ("
+        + suffix.encode()
+        + b"; 4 mmol; 9 mL; 2 m; 5 mm) Tj ET"
+    )
+    original = content.get_data()
+    layout = LayoutPdfBackend().extract_page(page, 1)
+    text = " ".join(line.text for line in layout.lines)
+    assert f"8.6 μ{suffix}; 4 mmol; 9 mL; 2 m; 5 mm" in text
+    warning = next(
+        w for w in layout.warnings if w["code"] == "NATIVE_UNIT_MAPPING_CORRECTED"
+    )
+    assert f"8.6 m{suffix}" in warning["before"]
+    assert f"8.6 μ{suffix}" in warning["after"]
+    assert content.get_data() == original
+
+
+@pytest.mark.parametrize(
+    "outline",
+    [CAPITAL, polygon([(0, 0), (80, 0), (80, 600), (0, 600)])],
+)
+def test_compound_suffix_does_not_supply_missing_mu_glyph_evidence(outline):
+    page = symbol_page(m_program=program(outline))
+    content = page["/Contents"]
+    content.set_data(
+        b"BT /FR 12 Tf 50 700 Td (8.6 ) Tj /F1 12 Tf (m) Tj "
+        b"/FR 12 Tf (molcm-2h-1; 4 mmol; 9 mL) Tj ET"
+    )
+    original = content.get_data()
+    layout = LayoutPdfBackend().extract_page(page, 1)
+    assert "8.6 mmolcm-2h-1; 4 mmol; 9 mL" in " ".join(
+        line.text for line in layout.lines
+    )
+    assert not any(
+        w["code"] == "NATIVE_UNIT_MAPPING_CORRECTED" for w in layout.warnings
+    )
+    assert content.get_data() == original
+
+
+@pytest.mark.parametrize("suffix", ["molecule", "prose", "molL"])
+def test_verified_mu_does_not_rewrite_prose_or_ambiguous_suffix(suffix):
+    page = symbol_page(m_program=program(MU))
+    content = page["/Contents"]
+    content.set_data(
+        b"BT /FR 12 Tf 50 700 Td (8.6 ) Tj /F1 12 Tf (m) Tj /FR 12 Tf ("
+        + suffix.encode()
+        + b") Tj ET"
+    )
+    original = content.get_data()
+    layout = LayoutPdfBackend().extract_page(page, 1)
+    assert f"8.6 m{suffix}" in " ".join(line.text for line in layout.lines)
+    assert not any(
+        w["code"] == "NATIVE_UNIT_MAPPING_CORRECTED" for w in layout.warnings
+    )
+    assert content.get_data() == original
+
+
 def test_minus_and_degree_follow_their_local_column_baseline():
     writer = PdfWriter()
     page = writer.add_blank_page(600, 800)

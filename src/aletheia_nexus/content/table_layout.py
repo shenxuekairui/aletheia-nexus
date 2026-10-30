@@ -13,6 +13,7 @@ from aletheia_nexus.content.captions import (
     _CAPTION,
     _UNNUMBERED_TABLE_CAPTION,
     _caption_match,
+    _is_table_caption,
 )
 from aletheia_nexus.content.models import LayoutLine
 
@@ -134,7 +135,7 @@ def _prepare_table_lines(
         match = _CAPTION.match(caption.text.strip()) or _UNNUMBERED_TABLE_CAPTION.match(
             caption.text.strip()
         )
-        if not match or match["kind"].casefold() not in {"table", "表", "таблица"}:
+        if not _is_table_caption(match):
             continue
         descriptions = []
         if not _caption_match(caption.text):
@@ -204,8 +205,7 @@ def _prepare_table_lines(
             and _CELL_NUMBER.fullmatch(item.text.strip())
         ]
         adjacent_caption = any(
-            (other_match := _CAPTION.match(item.text.strip()))
-            and other_match["kind"].casefold() in {"table", "表"}
+            _is_table_caption(_CAPTION.match(item.text.strip()))
             and (item.x0 < left_limit or item.x1 > right_limit)
             and min((cell.y0 for cell in outside), default=bottom) <= item.y0
             for item in lines
@@ -973,6 +973,12 @@ def _table_cells(
     )
     column_boxes.sort(key=lambda box: (box[0] + box[2]) / 2)
     column_count = len(column_boxes)
+    if column_count < 2 and not all(
+        block.get("content_region") == "table-cell" for row in rows for block, _ in row
+    ):
+        # Overlapping lines from ordinary prose can form several apparent
+        # rows. They are not evidence for even a single-column table.
+        return [], 0, 0
     cells: list[dict[str, object]] = []
     for row_index, row in enumerate(rows, start=1):
         for block, anchor in sorted(row, key=lambda pair: float(pair[1]["bbox"][0])):
@@ -1205,7 +1211,16 @@ def _table_local_warnings(table, blocks, anchors):
     """Flag observable column collisions or nearby omitted numeric rows."""
     cells = table.get("cells", [])
     if not cells:
-        return []
+        caption = anchors[table["anchor_id"]]
+        return [
+            {
+                "code": "TABLE_STRUCTURE_UNRESOLVED",
+                "object_id": table["id"],
+                "anchor_id": table["anchor_id"],
+                "page": caption["page"],
+                "detail": "The caption is retained, but no reliable cell grid was associated. Read the original page; nearby prose is not table content.",
+            }
+        ]
     by_id = {b["id"]: b for b in blocks}
     positioned = [(c, anchors[c["anchor_id"]]["bbox"]) for c in cells]
     positioned = [(c, box) for c, box in positioned if box]

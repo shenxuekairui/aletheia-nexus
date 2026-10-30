@@ -1,0 +1,1195 @@
+"""Local UI acquisition adapter over AN's existing trusted access engine.
+
+The engine owns retrieval, identity verification, retries and checkpoints. This
+adapter adds input preview, conservative title resolution and scheduling at paper
+boundaries. It never invokes the CLI or converts an unverified PDF to VERIFIED.
+"""
+
+from __future__ import annotations
+
+import csv
+import inspect
+import io
+import json
+import math
+import re
+import time
+from dataclasses import asdict, fields, replace
+from difflib import SequenceMatcher
+from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import urlsplit
+from uuid import uuid4
+
+from aletheia_nexus.acquire.access.batch import acquire_full_text_batch_maximized
+from aletheia_nexus.acquire.access.browser import (
+    BrowserSession,
+)
+from aletheia_nexus.acquire.access.browser import (
+    _validate_config as _validate_browser_config,
+)
+from aletheia_nexus.acquire.access.models import BrowserAccessConfig
+from aletheia_nexus.acquire.access.service import acquire_full_text_maximized
+from aletheia_nexus.acquire.metadata.crossref import CROSSREF_API, parse_crossref_work
+from aletheia_nexus.acquire.metadata.exceptions import MetadataParseError
+from aletheia_nexus.acquire.metadata.titles import contains_cjk
+from aletheia_nexus.acquire.metadata.transport import get_json
+from aletheia_nexus.content.gate import sha256_file, validate_parser_input
+from aletheia_nexus.core.artifact_paths import acquisition_sidecar_path
+from aletheia_nexus.core.identifiers.doi import normalize_doi
+from aletheia_nexus.core.organization import destination
+from aletheia_nexus.core.paper_request import PaperRequest, compact_bibliography
+from aletheia_nexus.core.urls import redact_url_for_record
+
+_INPUT_FIELDS = {f.name for f in fields(PaperRequest)}
+_PRIVATE_OPTIONS = {
+    "doi",
+    "output_dir",
+    "browser_config",
+    "browser_session",
+    "elsevier_config",
+    "expected_title",
+    "local_pdf_path",
+    "unpaywall_email",
+    "openalex_api_key",
+    "metadata_mailto",
+}
+_ACCESS_DEFAULTS = {
+    name: parameter.default
+    for name, parameter in inspect.signature(
+        acquire_full_text_maximized
+    ).parameters.items()
+    if name not in _PRIVATE_OPTIONS and parameter.default is not inspect.Parameter.empty
+}
+_BROWSER_DEFAULTS = {
+    f.name: getattr(BrowserAccessConfig(), f.name)
+    for f in fields(BrowserAccessConfig)
+    if f.name
+    not in {
+        "interaction_callback",
+        "interaction_poll_callback",
+        "interaction_timeout",
+        "wait_for_interaction",
+    }
+}
+_EXTRA_DEFAULTS = {
+    "browser_enabled": False,
+    "include_si": True,
+    "bulk_interval": 0.0,
+    "max_item_attempts": 1,
+    "retry_backoff": 1.0,
+    "interaction_policy": "pause",
+    "auto_resume_interaction": True,
+    "interaction_timeout": 180.0,
+    "resume": True,
+    "max_si_files": 20,
+    "si_max_bytes": 100 * 1024 * 1024,
+}
+
+_MAIN_REASONS = {
+    "VERIFIED": "正文已通过来源、文件内容与论文身份核验。",
+    "AUTH_REQUIRED": "来源要求登录或 API 授权。请检查所选会话与合法访问权限后再恢复。",
+    "INTERACTION_REQUIRED": "来源仍要求登录或验证；请查看任务中的实际等待方式与后续操作。",
+    "ENTITLEMENT_REQUIRED": "来源要求额外的全文访问权限；系统不会自动绕过订阅或机构授权。",
+    "ACCESS_DENIED": "来源拒绝当前访问。请核对账号、网络与合法权限，不要连续盲目重试。",
+    "BROWSER_UNAVAILABLE": "所选浏览器未能启动或连接，请检查浏览器安装、会话与连接设置。",
+    "UNSAFE_URL": "来源地址未通过网络安全检查，已拒绝访问。",
+    "EXHAUSTED": "已尝试本次允许的来源，仍未取得已验证正文；请检查逐条来源结果后再调整策略。",
+    "ERROR": "获取过程发生错误，已保留来源诊断；请核对原因后重试。",
+    "RUNNER_ERROR": "获取引擎未能完成当前论文，已保留错误类型；请检查诊断后重试。",
+    "AMBIGUOUS": "论文或文件身份仍有歧义，需要人工核对候选，不能自动选择第一项。",
+    "RETRIEVED_UNVERIFIED": "已取得文件，但未通过正文身份核验；未将其登记为已验证正文。",
+    "INVALID_DOI": "DOI 无效，请修正输入后重新预览。",
+    "DEFERRED": "当前论文尚未调度，等待后续恢复。",
+    "SKIPPED": "已按用户决定跳过当前论文，不会自动重新进入此论文。",
+    "CANCELLED": "已按用户决定停止当前论文；已完成的文件与来源记录保留。",
+}
+
+
+def _value(value):
+    return getattr(value, "value", value)
+
+
+def _diagnostic_text(value):
+    if value is None:
+        return None
+    from .messages import error_record
+
+    # Redact ALL URL query values, not just familiar token parameter names.
+    value = re.sub(
+        r"https?://[^\s<>\"']+", lambda m: redact_url_for_record(m[0]) or "", str(value)
+    )
+    return error_record(value)["raw"][:2000]
+
+
+def _diagnostic_url(value):
+    return _diagnostic_text(redact_url_for_record(value)) if value else None
+
+
+def _outcome(item) -> dict:
+    """Whitelist source diagnostics; never serialize response bodies or headers."""
+    from .messages import error_record
+
+    status = _value(item.status)
+    result = item.result
+    base = getattr(result, "base_result", None)
+    details = []
+
+    def append(phase, node, *, candidate=None, source_kind="公共来源", error=None):
+        route = _diagnostic_url(getattr(candidate, "url", None))
+        source = (
+            urlsplit(route).hostname
+            if route and route.startswith(("http:", "https:"))
+            else None
+        )
+        code = _diagnostic_text(error or getattr(node, "error", None))
+        details.append(
+            {
+                "phase": phase,
+                "status": _value(getattr(node, "status", None)),
+                "source": source,
+                "source_kind": source_kind,
+                "route": route,
+                "reason_code": code,
+                "message": _diagnostic_text(getattr(node, "message", None) or code),
+                "attempts": getattr(node, "attempts", None),
+                "elapsed_seconds": getattr(node, "elapsed_seconds", None),
+            }
+        )
+
+    provider_names = {
+        "crossref": "Crossref",
+        "openalex": "OpenAlex",
+        "unpaywall": "Unpaywall",
+        "pmc_cloud": "PMC 官方文献库",
+        "cnki": "中国知网",
+    }
+    for provider in getattr(getattr(base, "discovery", None), "providers", ()):
+        append("公共来源发现", provider)
+        provider_id = _value(provider.provider)
+        details[-1]["source"] = provider_names.get(
+            provider_id, _diagnostic_text(provider_id)
+        )
+        details[-1]["candidate_count"] = len(provider.candidates)
+    if getattr(base, "metadata_error", None):
+        append(
+            "书目信息读取", SimpleNamespace(status="FAILED", error=base.metadata_error)
+        )
+    for route in getattr(base, "route_attempts", ()):
+        append("公共来源页面", route.result, candidate=route.candidate)
+    for file in getattr(base, "file_attempts", ()):
+        append("公共正文文件", file.result, candidate=file.candidate)
+    official = getattr(result, "elsevier_attempt", None)
+    if official:
+        append("官方 API", official, source_kind="已授权官方 API")
+        details[-1]["source"] = "Elsevier 官方 API"
+    for browser in getattr(result, "browser_attempts", ()):
+        append(
+            "浏览器来源页面",
+            browser,
+            candidate=browser.source_candidate,
+            source_kind="浏览器来源",
+        )
+        details[-1]["challenge_kinds"] = [
+            _value(c.kind) for c in browser.challenge_history
+        ]
+        details[-1]["bibliographic_conflicts"] = list(browser.bibliographic_conflicts)
+        for file in browser.file_attempts:
+            append(
+                "浏览器正文文件",
+                file.result,
+                candidate=file.candidate,
+                source_kind="浏览器来源",
+                error=file.error,
+            )
+            details[-1]["method"] = _diagnostic_text(file.method)
+    latest = details[-1] if details else {}
+    error = _diagnostic_text(item.error)
+    # Earlier routes may have failed before a later verified delivery. Retain
+    # every attempt below, but do not promote its retry advice into success.
+    code = (
+        error
+        or next(
+            (row["reason_code"] for row in reversed(details) if row["reason_code"]),
+            None,
+        )
+        if status != "VERIFIED"
+        else None
+    )
+    base_status = _value(getattr(base, "status", None))
+    reason = _MAIN_REASONS.get(status, "当前获取结果需要核对，请查看逐条来源诊断。")
+    if base_status == "LIMIT_REACHED" and status != "VERIFIED":
+        reason = (
+            "本次公共来源路线或文件候选预算已用尽；尚不能判断所有可用来源都已尝试。"
+        )
+    if code:
+        translated = error_record({"code": code, "message": code})
+        if translated["known"]:
+            reason += " " + translated["message"]
+    viewer_not_delivered = status not in {"VERIFIED", "RETRIEVED_UNVERIFIED"} and any(
+        isinstance(value, str)
+        and value.split(":", 1)[0] == "NativePdfViewerPlaceholder"
+        for value in [error, *(detail["reason_code"] for detail in details)]
+    )
+    if viewer_not_delivered:
+        reason += (
+            " 浏览器返回的是 PDF 阅读器页面，尚未交付可验证的 PDF 文件；"
+            "页面打开不代表文件已保存，也不能据此判断正文访问授权。"
+            "请保留当前页面，在任务结束后只选这篇论文重试。"
+        )
+    attempts = item.attempts
+    return {
+        "main_status": status,
+        "phase": "正文核验完成"
+        if status == "VERIFIED"
+        else "阅读器已响应，PDF 尚未交付"
+        if viewer_not_delivered
+        else "获取正文结束",
+        "reason": reason,
+        "reason_code": code or status,
+        "message": _diagnostic_text(
+            getattr(result, "message", None)
+            or (getattr(base, "message", None) if status != "VERIFIED" else None)
+        )
+        or reason,
+        "base_status": base_status,
+        "source": latest.get("source"),
+        "source_kind": latest.get("source_kind"),
+        "route": latest.get("route"),
+        "attempts": attempts,
+        "retry_count": max(0, attempts - 1) if isinstance(attempts, int) else None,
+        "error": error,
+        "diagnostics": details[:200],
+        "diagnostics_truncated": len(details) > 200,
+    }
+
+
+def get_acquisition_defaults() -> dict:
+    """Actual supported engine parameters; credentials remain environment-only."""
+    return {
+        **_ACCESS_DEFAULTS,
+        **_EXTRA_DEFAULTS,
+        "public_only": True,
+        "auto_official_api": False,
+        "browser": dict(_BROWSER_DEFAULTS),
+    }
+
+
+def normalize_request(value) -> PaperRequest:
+    if isinstance(value, PaperRequest):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        try:
+            return PaperRequest(doi=normalize_doi(value))
+        except (ValueError, TypeError):
+            return PaperRequest(title=value)
+    if not isinstance(value, dict) or value.keys() - _INPUT_FIELDS:
+        raise ValueError("paper fields: " + ", ".join(sorted(_INPUT_FIELDS)))
+    payload = {k: v for k, v in value.items() if v is not None and v != ""}
+    for key in ("authors", "tags"):
+        if isinstance(payload.get(key), str):
+            payload[key] = tuple(
+                p.strip() for p in payload[key].split(";") if p.strip()
+            )
+        elif key in payload:
+            payload[key] = tuple(payload[key])
+    if isinstance(payload.get("year"), str):
+        payload["year"] = int(payload["year"])
+    return PaperRequest(**payload)
+
+
+def _options(value: dict | None) -> dict:
+    from .acquisition_labels import PARAMETER_LABELS, PARAMETER_RANGES
+
+    if value is not None and not isinstance(value, dict):
+        raise ValueError("acquisition options must be an object")
+    supplied = value or {}
+    defaults = get_acquisition_defaults()
+    if supplied.keys() - defaults.keys():
+        raise ValueError(
+            "unsupported acquisition options: "
+            + ", ".join(sorted(supplied.keys() - defaults.keys()))
+        )
+    result = {**defaults, **supplied}
+    browser = supplied.get("browser", {})
+    if not isinstance(browser, dict) or browser.keys() - _BROWSER_DEFAULTS.keys():
+        raise ValueError("unsupported browser options")
+    result["browser"] = {**_BROWSER_DEFAULTS, **browser}
+    if result["interaction_policy"] not in {"wait", "skip", "pause"}:
+        raise ValueError("interaction_policy must be wait, skip or pause")
+    if result["source_preference"] not in {"auto", "cnki", "exclude_cnki"}:
+        raise ValueError("source_preference must be auto, cnki or exclude_cnki")
+    for name, default in defaults.items():
+        actual = result[name]
+        if isinstance(default, bool) and type(actual) is not bool:
+            raise ValueError(name + " must be boolean")
+        if isinstance(default, (float, int)) and not isinstance(default, bool):
+            if (
+                isinstance(actual, bool)
+                or not isinstance(actual, (int, float))
+                or not math.isfinite(actual)
+                or actual < 0
+            ):
+                raise ValueError(name + " must be a finite non-negative number")
+            if isinstance(default, int) and type(actual) is not int:
+                raise ValueError(name + " must be an integer")
+    # These bounds mirror the existing engine/attachment validators. Check
+    # before discovery/metadata network work; native batches redact unexpected
+    # exceptions to a type name, which would otherwise lose the invalid field.
+    for path, rules in PARAMETER_RANGES.items():
+        if not any(key in rules for key in ("min", "exclusive_min", "max")):
+            continue
+        actual = (
+            result["browser"][path[8:]] if path.startswith("browser.") else result[path]
+        )
+        label = PARAMETER_LABELS[path]
+        if type(actual) not in (int, float) or not math.isfinite(actual):
+            raise ValueError(label + "必须填写有限数值，请核对类型与单位。")
+        if rules.get("integer") and type(actual) is not int:
+            raise ValueError(label + "必须填写整数。")
+        if "min" in rules and actual < rules["min"]:
+            raise ValueError(f"{label}不能小于 {rules['min']}。")
+        if "exclusive_min" in rules and actual <= rules["exclusive_min"]:
+            raise ValueError(f"{label}必须大于 {rules['exclusive_min']}。")
+        if "max" in rules and actual > rules["max"]:
+            raise ValueError(f"{label}不能大于 {rules['max']}。")
+    if not result["browser_enabled"] and not result["public_only"]:
+        raise ValueError(
+            "disable public_only only after explicitly enabling browser access"
+        )
+    if result["public_only"] and result["source_preference"] == "cnki":
+        raise ValueError(
+            "CNKI requires the explicitly enabled institutional browser strategy"
+        )
+    if result["public_only"] and result["auto_official_api"]:
+        raise ValueError(
+            "official authenticated APIs require the full access strategy; public_only disables them"
+        )
+    browser_options = dict(result["browser"])
+    browser_options.update(
+        interactive=result["interaction_policy"] != "skip"
+        and browser_options["interactive"],
+        wait_for_interaction=result["interaction_policy"] == "wait"
+        and result["auto_resume_interaction"]
+        and result["interaction_timeout"] == 0,
+        interaction_timeout=result["interaction_timeout"] or 180.0,
+    )
+    _validate_browser_config(BrowserAccessConfig(**browser_options))
+    # browser_profile_dir also accepts path-like values, but opens no files.
+    if browser_options["profile_root"] is not None:
+        Path(browser_options["profile_root"])
+    return result
+
+
+class AcquisitionService:
+    def __init__(
+        self, root: str | Path, state_dir: str | Path | None = None, library=None
+    ):
+        self.root = Path(root).resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.state_dir = (
+            Path(state_dir).resolve()
+            if state_dir
+            else self.root / ".an-workbench" / "acquisition"
+        )
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.library = library
+        if library is not None and hasattr(library, "register_reference_adapter"):
+            library.register_reference_adapter(
+                self.state_dir, "aletheia-nexus/access-batch-checkpoint/v1"
+            )
+            library.register_reference_adapter(
+                self.state_dir, "aletheia-nexus/acquisition-relocation/v1"
+            )
+
+    def _resume_locations(self, checkpoint: Path, prepared: list[PaperRequest]):
+        """Rebind missing mutable checkpoint locators, preserving old evidence.
+
+        Only the UI's explicitly registered library locator is consulted. Bytes,
+        source-record hash, main role and DOI must all match, and the match must
+        be unique. The original checkpoint is retained; a new lineage file holds
+        the effective placement and is still revalidated by the core batch.
+        """
+        if not checkpoint.exists():
+            return checkpoint, prepared, []
+        payload = json.loads(checkpoint.read_text("utf-8"))
+        if payload.get("schema") != "aletheia-nexus/access-batch-checkpoint/v1":
+            raise ValueError("unsupported acquisition checkpoint schema")
+        records = payload.get("records")
+        if not isinstance(records, dict):
+            raise ValueError("invalid acquisition checkpoint records")
+        if self.library is None:
+            return checkpoint, prepared, []
+        rows = None
+        relocations, effective = [], []
+        for request in prepared:
+            record = records.get(request.batch_key, {})
+            old = record.get("verified_path")
+            if record.get("status") != "VERIFIED" or not isinstance(old, str):
+                effective.append(request)
+                continue
+            original = Path(old).resolve()
+            if not original.is_relative_to(self.root):
+                raise ValueError("checkpoint source outside library")
+            if original.is_file():
+                effective.append(request)
+                continue
+            if rows is None:
+                rows = self.library.scan()["items"]
+            matches = []
+            for row in rows:
+                if row.get("pdf_sha256") != record.get("sha256"):
+                    continue
+                target = Path(row["pdf_path"]).resolve()
+                if not target.is_relative_to(self.root):
+                    continue
+                source_record = acquisition_sidecar_path(target).resolve()
+                if not source_record.is_relative_to(self.root):
+                    continue
+                try:
+                    checked = validate_parser_input(target, requested_doi=request.doi)
+                    if (
+                        checked.document_role == "ARTICLE"
+                        and checked.identity_basis == "acquisition_verified"
+                        and checked.pdf_sha256 == record.get("sha256")
+                        and checked.sidecar_sha256 == record.get("sidecar_sha256")
+                    ):
+                        matches.append(checked)
+                except (OSError, ValueError):
+                    continue
+            if len(matches) != 1:
+                raise ValueError(
+                    "checkpoint relocation requires one hash-and-source-verified library match"
+                )
+            checked = matches[0]
+            folder = checked.pdf_path.parent.relative_to(self.root).as_posix()
+            relocated = replace(request, folder=folder if folder != "." else None)
+            updated = {**record, "verified_path": str(checked.pdf_path)}
+            records[relocated.batch_key] = updated
+            effective.append(relocated)
+            relocations.append(
+                {
+                    "old_path": old,
+                    "new_path": str(checked.pdf_path),
+                    "pdf_sha256": checked.pdf_sha256,
+                    "source_sha256": checked.sidecar_sha256,
+                    "original_batch_key": request.batch_key,
+                    "effective_batch_key": relocated.batch_key,
+                }
+            )
+        if not relocations:
+            return checkpoint, effective, []
+        target = self.state_dir / (uuid4().hex + ".relocated.checkpoint.json")
+        payload["relocation_source"] = {
+            "path": str(checkpoint),
+            "sha256": sha256_file(checkpoint),
+            "items": relocations,
+        }
+        receipt = target.with_name(target.stem + ".relocation.json")
+        with receipt.open("x", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "schema": "aletheia-nexus/acquisition-relocation/v1",
+                    "source_checkpoint": str(checkpoint),
+                    "source_checkpoint_sha256": sha256_file(checkpoint),
+                    "effective_checkpoint": str(target),
+                    "items": relocations,
+                },
+                handle,
+                ensure_ascii=False,
+                indent=2,
+            )
+            handle.write("\n")
+        payload["relocation_source"]["receipt"] = str(receipt)
+        with target.open("x", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        return target, effective, relocations
+
+    def _store_bibliography(self, item, source) -> dict | None:
+        """Fill absent mutable bibliography using only this engine response.
+
+        This neither changes the original title/DOI nor makes extra metadata
+        requests. Existing researcher edits and acquisition evidence are retained.
+        Per-field source receipts identify exactly which values were filled.
+        """
+        metadata = getattr(getattr(item.result, "base_result", None), "metadata", None)
+        if metadata is None or self.library is None:
+            return None
+        if metadata.doi != source.doi:
+            return {"status": "NOT_APPLIED", "reason": "metadata_doi_mismatch"}
+        try:
+            rows = [
+                row
+                for row in self.library.scan()["items"]
+                if row["pdf_sha256"] == source.pdf_sha256
+                and row["article_id"] == source.article_id
+            ]
+            if len(rows) != 1:
+                return {
+                    "status": "NOT_APPLIED",
+                    "reason": "library_identity_not_unique",
+                }
+            row = rows[0]
+            values = {}
+            for name in (
+                "authors",
+                "year",
+                "journal",
+                "volume",
+                "issue",
+                "pages",
+                "publisher",
+                "published_date",
+            ):
+                value = getattr(metadata, name, None)
+                if value and not (row.get(name) or row.get("metadata", {}).get(name)):
+                    values[name] = list(value) if name == "authors" else value
+            if not values:
+                return {"status": "UNCHANGED", "doi": metadata.doi}
+            sources = row.get("metadata", {}).get("metadata_source") or {}
+            sources = dict(sources) if isinstance(sources, dict) else {}
+            for name in values:
+                sources[name] = {
+                    "kind": "acquisition_engine_metadata",
+                    "doi": metadata.doi,
+                    "acquisition_sidecar_sha256": source.sidecar_sha256,
+                }
+            self.library.update_metadata(row["id"], **values, metadata_source=sources)
+            return {
+                "status": "UPDATED",
+                "paper_id": row["id"],
+                "fields": list(values),
+                "doi": metadata.doi,
+                "network_requests": 0,
+            }
+        except (OSError, ValueError, KeyError) as exc:
+            # Bibliographic enrichment cannot demote an independently verified
+            # PDF or prevent its SI attempt; the application exposes this error.
+            return {"status": "FAILED", "error": type(exc).__name__}
+
+    def preview_inputs(self, value, format: str | None = None) -> dict:
+        """Normalize TXT/CSV/JSON or pasted citations; retain invalid-row diagnostics."""
+        from .acquisition_input import (
+            build_input_preview,
+            is_bracket_group,
+            parse_text_input,
+            structured_entries,
+        )
+
+        parsed_text = None
+        if isinstance(value, Path):
+            format = format or value.suffix.lower().lstrip(".")
+            value = value.read_text("utf-8-sig")
+        if isinstance(value, str):
+            if format == "json" or (
+                format is None and value.lstrip().startswith(("[", "{"))
+            ):
+                try:
+                    structured = json.loads(value)
+                except json.JSONDecodeError:
+                    first_line = next((s for s in value.splitlines() if s.strip()), "")
+                    if format is not None or not is_bracket_group(first_line):
+                        raise
+                    parsed_text = parse_text_input(value)
+                else:
+                    value = structured
+                    if isinstance(value, dict):
+                        value = value.get("papers", [value])
+            elif format == "csv":
+                value = list(csv.DictReader(io.StringIO(value.lstrip("\ufeff"))))
+            else:
+                parsed_text = parse_text_input(value)
+        if parsed_text is None and not isinstance(value, (list, tuple)):
+            raise ValueError("provide pasted lines or a TXT, CSV, JSON paper list")
+        parsed = parsed_text or {"entries": structured_entries(value)}
+        return build_input_preview(
+            parsed["entries"],
+            normalizer=normalize_request,
+            folder_check=lambda folder: destination(self.root, folder),
+            errors=parsed.get("errors", ()),
+            warnings=parsed.get("warnings", ()),
+        )
+
+    def resolve_title(self, request, *, limit=8, timeout=20.0, fetch=None) -> dict:
+        """Search Crossref; only exact, unique, constraint-consistent titles auto-resolve.
+
+        Similarity ranks candidates for human review, never selects the first hit.
+        CJK titles retain AN's existing CNKI bibliographic identity route.
+        """
+        request = normalize_request(request)
+        if request.doi:
+            return {"status": "RESOLVED", "request": asdict(request), "candidates": []}
+        if contains_cjk(request.title):
+            return {
+                "status": "CNKI_TITLE",
+                "request": asdict(request),
+                "candidates": [],
+                "source": "CNKI",
+            }
+        if type(limit) is not int or not 1 <= limit <= 30:
+            raise ValueError("title candidate limit must be 1..30")
+        data = (fetch or get_json)(
+            CROSSREF_API + "/works",
+            context="Crossref title search",
+            params={"query.title": request.title, "rows": limit},
+            timeout=timeout,
+        )
+        works = data.get("message", {}).get("items")
+        if not isinstance(works, list):
+            raise ValueError("invalid Crossref title search response")
+        candidates, seen = [], set()
+        wanted = compact_bibliography(request.title)
+        for work in works:
+            try:
+                metadata = parse_crossref_work(work)
+            except (TypeError, ValueError, KeyError, MetadataParseError):
+                continue
+            if metadata.doi in seen or not metadata.title:
+                continue
+            seen.add(metadata.doi)
+            conflicts = []
+            if request.year and request.year != metadata.year:
+                conflicts.append("year")
+            if request.journal and compact_bibliography(
+                request.journal
+            ) != compact_bibliography(metadata.journal or ""):
+                conflicts.append("journal")
+            if request.authors and not all(
+                any(
+                    compact_bibliography(a) == compact_bibliography(b)
+                    for b in metadata.authors
+                )
+                for a in request.authors
+            ):
+                conflicts.append("authors")
+            observed = compact_bibliography(metadata.title)
+            candidate = {
+                "doi": metadata.doi,
+                "title": metadata.title,
+                "authors": list(metadata.authors),
+                "year": metadata.year,
+                "journal": metadata.journal,
+                "source": "Crossref",
+                "title_exact": wanted == observed,
+                "similarity": round(SequenceMatcher(None, wanted, observed).ratio(), 4),
+                "conflicts": conflicts,
+            }
+            candidates.append(candidate)
+        candidates.sort(
+            key=lambda item: (
+                not item["conflicts"],
+                item["title_exact"],
+                item["similarity"],
+            ),
+            reverse=True,
+        )
+        reliable = [c for c in candidates if c["title_exact"] and not c["conflicts"]]
+        # Multiple versions/records with identical titles still require a human.
+        resolved = None
+        if len(reliable) == 1:
+            c = reliable[0]
+            resolved = asdict(
+                replace(
+                    request,
+                    doi=c["doi"],
+                    title=c["title"],
+                    authors=tuple(c["authors"]),
+                    year=c["year"],
+                    journal=c["journal"],
+                )
+            )
+        return {
+            "status": "RESOLVED"
+            if resolved
+            else "AMBIGUOUS"
+            if candidates
+            else "NOT_FOUND",
+            "request": resolved,
+            "candidates": candidates,
+            "source": "Crossref",
+            "pdf_acquired": False,
+        }
+
+    def run(
+        self,
+        requests,
+        options=None,
+        context=None,
+        checkpoint_path=None,
+        *,
+        on_item=None,
+    ) -> dict:
+        """Run sequentially with safe paper and browser-interaction boundaries.
+
+        Browser waits may monitor completion or require an explicit human decision.
+        No thread is killed during a file transfer; cancellation is checked after
+        the engine returns, so persisted files and provenance remain consistent.
+        """
+        options = _options(options)
+        if on_item is not None and not callable(on_item):
+            raise ValueError("逐篇入库处理必须是可调用操作。")
+        prepared = list(dict.fromkeys(normalize_request(r) for r in requests))
+        if not prepared:
+            raise ValueError("select at least one paper")
+        for request in prepared:
+            destination(self.root, request.folder)
+            if (
+                options["public_only"]
+                and not request.doi
+                and contains_cjk(request.title)
+            ):
+                raise ValueError(
+                    "title-only CNKI acquisition requires the explicitly enabled institutional browser strategy"
+                )
+            if not request.doi and not contains_cjk(request.title):
+                raise ValueError(
+                    "resolve and confirm English title identity before acquisition"
+                )
+        checkpoint = (
+            Path(checkpoint_path).resolve()
+            if checkpoint_path
+            else self.state_dir / (uuid4().hex + ".checkpoint.json")
+        )
+        if not checkpoint.is_relative_to(self.state_dir):
+            raise ValueError("checkpoint must be inside acquisition state directory")
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint, prepared, relocations = self._resume_locations(checkpoint, prepared)
+        if context:
+            context.progress(
+                0,
+                len(prepared),
+                stage="acquisition_prepared",
+                checkpoint=str(checkpoint),
+                relocations=relocations,
+            )
+        items = []
+        current = None
+        interaction_skipped = False
+        interaction_route = None
+        interaction_active = False
+        automatic_wait = (
+            context is not None
+            and options["interaction_policy"] == "wait"
+            and options["auto_resume_interaction"]
+        )
+
+        def interaction(challenge, url):
+            from .jobs import TaskCancelled
+
+            nonlocal interaction_skipped, interaction_route, interaction_active
+            if context is None or options["interaction_policy"] == "skip":
+                return
+            interaction_route = _diagnostic_url(url)
+            try:
+                if automatic_wait:
+                    context.checkpoint(pump=session.pump_events)
+                    context.begin_interaction(
+                        {
+                            "paper": asdict(current),
+                            "source": interaction_route,
+                            "challenge": challenge.kind.value,
+                            "stage": "browser_interaction",
+                            "auto_monitoring": True,
+                        }
+                    )
+                    interaction_active = True
+                    return
+                decision = context.wait_interaction(
+                    {
+                        "paper": asdict(current),
+                        "source": interaction_route,
+                        "challenge": challenge.kind.value,
+                        "stage": "browser_interaction",
+                    },
+                    timeout=options["interaction_timeout"] or None,
+                    pump=session.pump_events,
+                )
+                # Cancellation wins even if it arrived with a skip/continue.
+                context.checkpoint(pump=session.pump_events)
+            except TaskCancelled as exc:
+                raise _CancelAcquisition(exc) from exc
+            except Exception as exc:
+                # Do not let legacy Exception-as-retry handling restart a page
+                # whose human interaction dispatcher has stopped working.
+                raise _BrowserWaitFailed(exc) from exc
+            if decision == "skip":
+                interaction_skipped = True
+                # The legacy engine catches all Exception values as retryable.
+                # This private signal is caught at THIS adapter boundary instead.
+                raise _SkipInteraction("user_skipped_interaction")
+
+        def interaction_poll(event, report, url):
+            from .jobs import TaskCancelled
+
+            nonlocal interaction_skipped, interaction_active
+            if not automatic_wait or not interaction_active:
+                return
+            try:
+                if event == "resolved":
+                    # A completion check may already have committed a verified
+                    # file. Record the actual outcome before the next cancel
+                    # checkpoint; a late UI action cannot undo that delivery.
+                    context.finish_interaction(
+                        "auto_detected" if report.kind.value == "NONE" else "not_ready"
+                    )
+                    interaction_active = False
+                    return
+                if event == "poll":
+                    decision = context.poll_interaction(pump=session.pump_events)
+                    if decision == "skip":
+                        interaction_skipped = True
+                        raise _SkipInteraction("user_skipped_interaction")
+            except TaskCancelled as exc:
+                raise _CancelAcquisition(exc) from exc
+            except Exception as exc:
+                raise _BrowserWaitFailed(exc) from exc
+
+        browser_values = dict(options["browser"])
+        browser_values.update(
+            interaction_callback=interaction,
+            interaction_poll_callback=interaction_poll if automatic_wait else None,
+            interactive=options["interaction_policy"] != "skip"
+            and browser_values["interactive"],
+            wait_for_interaction=automatic_wait and options["interaction_timeout"] == 0,
+            interaction_timeout=options["interaction_timeout"] or 180.0,
+        )
+        browser = BrowserAccessConfig(**browser_values)
+        engine_options = {name: options[name] for name in _ACCESS_DEFAULTS}
+        with BrowserSession(browser) as session:
+            for index, current in enumerate(prepared, 1):
+                interaction_skipped = False
+                interaction_route = None
+                interaction_active = False
+                if context:
+                    context.checkpoint()
+                    if context.should_skip(current.key):
+                        row = {
+                            "id": current.key,
+                            "status": "SKIPPED",
+                            "request": asdict(current),
+                            "main_status": "SKIPPED",
+                            "si_status": "NOT_ATTEMPTED"
+                            if options["include_si"]
+                            else "NOT_REQUESTED",
+                            "phase": "调度前跳过",
+                            "reason": _MAIN_REASONS["SKIPPED"],
+                            "reason_code": "user_skipped_before_dispatch",
+                            "attempts": 0,
+                            "retry_count": 0,
+                            "folder": str(destination(self.root, current.folder)),
+                            "checkpoint": str(checkpoint),
+                        }
+                        items.append(row)
+                        context.record(
+                            current.key,
+                            "SKIPPED",
+                            **{
+                                k: v
+                                for k, v in row.items()
+                                if k not in {"id", "status"}
+                            },
+                        )
+                        continue
+                    context.progress(
+                        index - 1,
+                        len(prepared),
+                        stage="acquisition",
+                        task_phase="acquisition",
+                        current=asdict(current),
+                    )
+                if index > 1 and options["bulk_interval"]:
+                    deadline = time.monotonic() + options["bulk_interval"]
+                    while time.monotonic() < deadline:
+                        if context:
+                            context.checkpoint()
+                        time.sleep(min(0.2, max(0.0, deadline - time.monotonic())))
+                kwargs = {
+                    "output_dir": self.root,
+                    "checkpoint_path": checkpoint,
+                    "resume": options["resume"],
+                    "max_item_attempts": options["max_item_attempts"],
+                    "retry_backoff": options["retry_backoff"],
+                    **engine_options,
+                }
+                # Public-only ignores browser access exactly as the engine does.
+                kwargs["browser_session"] = session
+                item_started = time.monotonic()
+                try:
+                    result = acquire_full_text_batch_maximized([current], **kwargs)
+                    item = result.items[0]
+                except _SkipInteraction:
+                    item = SimpleNamespace(
+                        status="SKIPPED",
+                        result=None,
+                        verified_path=None,
+                        attempts=None,
+                        error="user_skipped_interaction",
+                        resumed=False,
+                        elapsed_seconds=time.monotonic() - item_started,
+                    )
+                except _CancelAcquisition as stopped:
+                    if context:
+                        context.record(
+                            current.key,
+                            "CANCELLED",
+                            main_status="CANCELLED",
+                            phase="人工验证时取消",
+                            reason=_MAIN_REASONS["CANCELLED"],
+                            request=asdict(current),
+                            route=interaction_route,
+                            folder=str(destination(self.root, current.folder)),
+                            checkpoint=str(checkpoint),
+                            attempts=None,
+                        )
+                    raise stopped.original
+                except _BrowserWaitFailed as stopped:
+                    reason = (
+                        "人工验证期间无法继续处理浏览器事件，已停止调度；"
+                        "请检查浏览器窗口后创建恢复任务。"
+                    )
+                    if context:
+                        context.record(
+                            current.key,
+                            "ERROR",
+                            main_status="ERROR",
+                            phase="人工验证浏览器事件处理失败",
+                            reason=reason,
+                            error_type=type(stopped.original).__name__,
+                            request=asdict(current),
+                            route=interaction_route,
+                            folder=str(destination(self.root, current.folder)),
+                            checkpoint=str(checkpoint),
+                        )
+                    raise ValueError(reason) from None
+                if interaction_active:
+                    context.finish_interaction("acquisition_returned")
+                    interaction_active = False
+                row = {
+                    "id": current.key,
+                    "request": asdict(current),
+                    "status": _value(item.status),
+                    **_outcome(item),
+                    "resumed": item.resumed,
+                    "elapsed_seconds": item.elapsed_seconds,
+                    "folder": str(destination(self.root, current.folder)),
+                    "checkpoint": str(checkpoint),
+                    "si_status": "NOT_ATTEMPTED"
+                    if options["include_si"]
+                    else "NOT_REQUESTED",
+                }
+                if interaction_skipped or (
+                    options["interaction_policy"] == "skip"
+                    and row["status"] in {"INTERACTION_REQUIRED", "AUTH_REQUIRED"}
+                ):
+                    prior_reason = (
+                        row["reason"]
+                        if row["status"] != "SKIPPED"
+                        else "在人工登录或验证阶段停止当前论文。"
+                    )
+                    row.update(
+                        status="SKIPPED",
+                        main_status="SKIPPED",
+                        acquisition_status=_value(item.status),
+                        phase="人工验证时跳过",
+                        reason=prior_reason + " " + _MAIN_REASONS["SKIPPED"],
+                        reason_code="user_skipped_interaction",
+                    )
+                    if interaction_route:
+                        row.update(
+                            route=interaction_route,
+                            source=urlsplit(interaction_route).hostname,
+                            source_kind="浏览器来源",
+                        )
+                if item.verified_path:
+                    if not Path(item.verified_path).resolve().is_relative_to(
+                        self.root
+                    ) or not acquisition_sidecar_path(
+                        item.verified_path
+                    ).resolve().is_relative_to(self.root):
+                        raise ValueError("acquisition output outside library")
+                    source = validate_parser_input(
+                        item.verified_path, requested_doi=current.doi or item.doi
+                    )
+                    if (
+                        source.document_role != "ARTICLE"
+                        or source.identity_basis != "acquisition_verified"
+                    ):
+                        raise ValueError(
+                            "acquisition engine returned an unverified main document"
+                        )
+                    row.update(
+                        pdf=str(source.pdf_path),
+                        sidecar=str(source.sidecar_path),
+                        pdf_sha256=source.pdf_sha256,
+                        identity_verified=True,
+                        folder=str(source.pdf_path.parent),
+                    )
+                    if source.title:
+                        # Display the recorded original title without changing
+                        # the immutable DOI-only request or making a new query.
+                        row.update(title=source.title, title_original=source.title)
+                    recorded = json.loads(source.sidecar_path.read_text("utf-8"))
+                    route = _diagnostic_url(
+                        (recorded.get("access") or {}).get("source_page_url")
+                        or (recorded.get("candidate") or {}).get("url")
+                        or (recorded.get("retrieval") or {}).get("final_url")
+                    )
+                    if route:
+                        row.update(route=route, source=urlsplit(route).hostname)
+                    if not row.get("source_kind"):
+                        row["source_kind"] = (
+                            "公共来源"
+                            if recorded.get("schema")
+                            == "aletheia-nexus/acquisition-record/v1"
+                            else "原始获取来源（已复核）"
+                        )
+                    bibliography = self._store_bibliography(item, source)
+                    if bibliography is not None:
+                        row["bibliography"] = bibliography
+                    if options["include_si"]:
+                        from aletheia_nexus.workbench.supplements import (
+                            acquire_supplements,
+                        )
+
+                        try:
+                            row.update(
+                                si_status="RUNNING", phase="正文已验证，正在获取附件"
+                            )
+                            if context:
+                                context.progress(
+                                    index - 1,
+                                    len(prepared),
+                                    item=row,
+                                    current=asdict(current),
+                                    stage="获取 SI 与关联附件",
+                                )
+                            si = acquire_supplements(
+                                source.pdf_path,
+                                library=self.library,
+                                browser_session=session
+                                if options["browser_enabled"]
+                                and not options["public_only"]
+                                else None,
+                                max_files=options["max_si_files"],
+                                max_bytes=options["si_max_bytes"],
+                                timeout=options["timeout"],
+                            )
+                            row.update(si_status=si["status"], supplements=si)
+                        except Exception as exc:
+                            # SI is independent: never rewrite successful main state.
+                            row.update(si_status="FAILED", si_error=type(exc).__name__)
+                        row["phase"] = (
+                            "正文与附件获取结束"
+                            if row["si_status"] == "COMPLETED"
+                            else "正文已验证，附件需核对"
+                        )
+                connection = session.connection_diagnostic
+                si_connection_failed = any(
+                    diagnostic.get("status") == "BROWSER_CONNECTION_UNAVAILABLE"
+                    for diagnostic in (row.get("supplements") or {}).get(
+                        "diagnostics", ()
+                    )
+                    if isinstance(diagnostic, dict)
+                )
+                # A previous paper's failed session is not a failure of this
+                # paper when its public main/SI routes completed independently.
+                if connection and (
+                    row["status"] == "BROWSER_UNAVAILABLE" or si_connection_failed
+                ):
+                    row["browser_connection"] = connection
+                    if row["status"] == "BROWSER_UNAVAILABLE":
+                        row.update(
+                            reason=connection["message"],
+                            message=connection["message"],
+                            reason_code=connection["code"],
+                        )
+                if on_item is not None:
+                    updated = on_item(row)
+                    if updated is not None:
+                        row = updated
+                items.append(row)
+                if context:
+                    context.record(
+                        current.key,
+                        row["status"],
+                        **{k: v for k, v in row.items() if k not in {"id", "status"}},
+                    )
+                    context.progress(
+                        index, len(prepared), item=row, stage="acquisition"
+                    )
+                    context.checkpoint()
+                if (
+                    row["status"]
+                    in {
+                        "INTERACTION_REQUIRED",
+                        "AUTH_REQUIRED",
+                    }
+                    and options["interaction_policy"] in {"pause", "wait"}
+                    and not automatic_wait
+                ):
+                    if context:
+                        context.wait_interaction(
+                            {
+                                "paper": asdict(current),
+                                "stage": "paper_boundary",
+                                "status": row["status"],
+                                "resume_instruction": "当前论文未获取，继续只调度后续；可使用相同检查点重试当前项。",
+                            },
+                            timeout=options["interaction_timeout"] or None,
+                            pump=session.pump_events,
+                        )
+                    else:
+                        return {
+                            "status": "WAITING_INTERACTION",
+                            "items": items,
+                            "checkpoint": str(checkpoint),
+                            "remaining": [asdict(p) for p in prepared[index:]],
+                            "relocations": relocations,
+                        }
+        successes = sum(i["status"] == "VERIFIED" for i in items)
+        incomplete_si = [
+            row["id"]
+            for row in items
+            if options["include_si"]
+            and row["status"] == "VERIFIED"
+            and (
+                row.get("si_status") != "COMPLETED"
+                or (row.get("supplements") or {}).get("truncated", False)
+            )
+        ]
+        return {
+            "status": "COMPLETED"
+            if successes == len(prepared) and not incomplete_si
+            else "PARTIAL"
+            if successes
+            else "FAILED",
+            "items": items,
+            "checkpoint": str(checkpoint),
+            "total": len(prepared),
+            "success": successes,
+            "si_incomplete_count": len(incomplete_si),
+            "warnings": [
+                f"正文验证结果保留；{len(incomplete_si)} 篇论文的 SI 未完整取得或无法确认覆盖，请查看逐篇附件状态与诊断。"
+            ]
+            if incomplete_si
+            else [],
+            "network_access": True,
+            "model_calls": 0,
+            "relocations": relocations,
+        }
+
+
+class _SkipInteraction(BaseException):
+    """Private cooperative signal; bypass legacy Exception-as-retry handlers."""
+
+
+class _CancelAcquisition(BaseException):
+    def __init__(self, original):
+        self.original = original
+
+
+class _BrowserWaitFailed(BaseException):
+    def __init__(self, original):
+        self.original = original

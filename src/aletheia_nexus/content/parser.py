@@ -16,6 +16,7 @@ from aletheia_nexus.content.captions import (
     _caption_match,
     _deduplicate_caption_blocks,
 )
+from aletheia_nexus.content.closed_table_cells import prepare_closed_table_cells
 from aletheia_nexus.content.diagnostics import safe_exception_detail
 from aletheia_nexus.content.embedded_tables import (
     append_embedded_tables,
@@ -56,7 +57,7 @@ from aletheia_nexus.content.table_layout import (
 from aletheia_nexus.core.identifiers.doi import extract_dois
 
 PARSER_NAME = "structured-pdf-pipeline"
-PARSER_VERSION = "3.10.15"
+PARSER_VERSION = "3.10.24"
 
 _HEADING_NUMBER = re.compile(
     r"^(?:(?P<numbered>[1-9]\d*(?:\.\d+){1,4})[.)]?"
@@ -374,10 +375,89 @@ def _order_layout_lines(lines, layout, config):
     return _order_lines(lines, layout.width, config)
 
 
+def _prose_columns(lines: list[LayoutLine]) -> list[list[LayoutLine]] | None:
+    """Find supported prose columns separated by an unbroken horizontal gap.
+
+    The caller has already isolated spanning images, tables and wide lines.
+    A crossing line or a weak side label leaves the original ordering in use.
+    """
+    if len(lines) < 6 or any(line.content_region != "body" for line in lines):
+        return None
+    size = statistics.median(line.font_size for line in lines)
+    columns: list[list[LayoutLine]] = []
+    right = float("-inf")
+    for line in sorted(lines, key=lambda item: (item.x0, item.x1)):
+        if not columns or line.x0 - right >= size * 0.5:
+            columns.append([line])
+            right = line.x1
+        else:
+            columns[-1].append(line)
+            right = max(right, line.x1)
+    if len(columns) < 2:
+        return None
+    extents = []
+    for column in columns:
+        substantial = [line for line in column if line.x1 - line.x0 >= 8 * size]
+        if len(substantial) < 3:
+            return None
+        extents.append(
+            (min(line.y0 for line in substantial), max(line.y1 for line in substantial))
+        )
+    if min(top for _, top in extents) - max(bottom for bottom, _ in extents) < 2 * size:
+        return None
+    return columns
+
+
+def _prose_band_order(lines: list[LayoutLine]) -> list[LayoutLine] | None:
+    """Isolate a supported text-style band when captions obscure its gutters."""
+    styles: dict[tuple[str, float], list[LayoutLine]] = {}
+    for line in lines:
+        if line.content_region == "body" and line.dominant_font:
+            styles.setdefault(
+                (line.dominant_font, round(line.font_size, 1)), []
+            ).append(line)
+    if not styles:
+        return None
+    family = max(
+        styles.values(), key=lambda group: sum(len(line.text) for line in group)
+    )
+    size = statistics.median(line.font_size for line in family)
+    bands: list[list[LayoutLine]] = []
+    bottom = float("inf")
+    for line in sorted(family, key=lambda item: -item.y1):
+        if not bands or bottom - line.y1 > size * 1.8:
+            bands.append([line])
+            bottom = line.y0
+        else:
+            bands[-1].append(line)
+            bottom = min(bottom, line.y0)
+    for band in sorted(bands, key=lambda group: -sum(len(line.text) for line in group)):
+        columns = _prose_columns(band)
+        if columns is None or len(columns) < 3:
+            continue
+        left = min(line.x0 for line in band) - size * 0.5
+        right = max(line.x1 for line in band) + size * 0.5
+        bottom, top = min(line.y0 for line in band), max(line.y1 for line in band)
+        actual = [
+            line
+            for line in lines
+            if line.x1 >= left
+            and line.x0 <= right
+            and line.y1 >= bottom
+            and line.y0 <= top
+        ]
+        if any(line.y0 < bottom - 0.01 or line.y1 > top + 0.01 for line in actual):
+            continue
+        columns = _prose_columns(actual)
+        if columns is not None and len(columns) >= 3:
+            return [line for column in columns for line in _sort_spatial_lines(column)]
+    return None
+
+
 def _order_lines(
     lines: tuple[LayoutLine, ...], width: float, config: ParserConfig
 ) -> list[LayoutLine]:
-    """Use spanning lines as bands, then read left column before right column."""
+    """Use spanning lines as bands, then read supported prose columns in order."""
 
     captions = [
         line for line in lines if line.content_region == "spanning-table-caption"
@@ -430,6 +510,9 @@ def _order_lines(
     def ordered_region(region: list[LayoutLine]) -> list[LayoutLine]:
         if not region:
             return []
+        columns = _prose_columns(region)
+        if columns is not None:
+            return [line for column in columns for line in _sort_spatial_lines(column)]
         split = width * config.column_split_ratio
         left = [line for line in region if (line.x0 + line.x1) / 2 < split]
         right = [line for line in region if (line.x0 + line.x1) / 2 >= split]
@@ -445,8 +528,15 @@ def _order_lines(
             and left_substantial >= 2
             and right_substantial >= 2
         ):
-            return _sort_spatial_lines(left) + _sort_spatial_lines(right)
-        return _sort_spatial_lines(region)
+            fallback = _sort_spatial_lines(left) + _sort_spatial_lines(right)
+        else:
+            fallback = _sort_spatial_lines(region)
+        prose = _prose_band_order(region)
+        if prose is None:
+            return fallback
+        selected = {id(line) for line in prose}
+        ordered = iter(prose)
+        return [next(ordered) if id(line) in selected else line for line in fallback]
 
     result: list[LayoutLine] = []
     upper = float("inf")
@@ -639,6 +729,11 @@ def _can_merge(
         or current.content_region == "table-cell"
         or previous.content_region != current.content_region
         or previous.extraction_method != current.extraction_method
+        or (
+            previous.dominant_font is not None
+            and current.dominant_font is not None
+            and previous.dominant_font != current.dominant_font
+        )
     ):
         return False
     chinese_prose = all(
@@ -683,6 +778,43 @@ def _can_merge_heading(
     if not -previous.font_size * 0.2 <= vertical_gap <= previous.font_size * 1.1:
         return False
     return abs(previous.x0 - current.x0) <= max(24.0, width * 0.08)
+
+
+def _can_merge_caption(
+    first: LayoutLine, previous: LayoutLine, current: LayoutLine, median_font: float
+) -> bool:
+    """Join a continued figure caption only within its observed line style.
+
+    A short final line still belongs to the caption's original column. Its end
+    is also a boundary: do not continue into nearby prose merely because that
+    prose uses the same font. Require smaller type than the dominant page text;
+    same-style prose and backends without font information stay unchanged.
+    """
+    match = _caption_match(first.text)
+    if not match or not match.group("kind").lower().startswith(("fig", "scheme", "图")):
+        return False
+    if (
+        first.content_region != "body"
+        or not first.dominant_font
+        or first.font_size >= median_font * 0.95
+    ):
+        return False
+    if any(
+        line.content_region != first.content_region
+        or line.extraction_method != first.extraction_method
+        or line.dominant_font != first.dominant_font
+        or abs(line.font_size / first.font_size - 1) > 0.05
+        for line in (previous, current)
+    ):
+        return False
+    size = first.font_size
+    gap = previous.y0 - current.y1
+    return (
+        -0.3 * size <= gap <= 0.65 * size
+        and abs(current.x0 - first.x0) <= 0.4 * size
+        and current.x1 <= first.x1 + 0.5 * size
+        and previous.x1 - previous.x0 >= 0.65 * (first.x1 - first.x0)
+    )
 
 
 def _union_bbox(first: list[float], second: list[float]) -> list[float]:
@@ -741,6 +873,7 @@ class _NativeExtractionStage:
                     crop_box=expected.crop_box,
                     rotation=expected.rotation,
                 )
+                layout = prepare_closed_table_cells(layout)
             except Exception as exc:
                 context.errors.append(
                     {
@@ -776,6 +909,7 @@ class _NativeExtractionStage:
             )
             previous_line: LayoutLine | None = None
             previous_kind: str | None = None
+            caption_first_line: LayoutLine | None = None
             prepared_lines = _associate_figure_labels(
                 layout.lines, layout.objects, layout.width, layout.height
             )
@@ -803,7 +937,19 @@ class _NativeExtractionStage:
                 *_order_layout_lines(ordinary, layout, config),
                 *_order_lines(alternatives, layout.width, config),
             ]
-            for line in ordered:
+            # Resolve duplicate caption starts before joining continuation text.
+            # Otherwise a prose reference can grow into a longer false caption,
+            # or a complete caption can lose to a reference under prose heuristics.
+            caption_starts = {
+                index: {"text": line.text, "kind": "caption", "page": page_index}
+                for index, line in enumerate(ordered)
+                if _kind(line, median_font, config.heading_font_ratio) == "caption"
+                and (match := _caption_match(line.text)) is not None
+                and match.group("kind").lower().startswith(("fig", "scheme", "图"))
+                and not _is_page_furniture(line, layout, repeated_furniture)
+            }
+            _deduplicate_caption_blocks(list(caption_starts.values()))
+            for index, line in enumerate(ordered):
                 line_engines = line.source_engines or (
                     f"{backend.name}@{backend.version}",
                 )
@@ -811,8 +957,11 @@ class _NativeExtractionStage:
                     context.suppressed_page_furniture += 1
                     previous_line = None
                     previous_kind = None
+                    caption_first_line = None
                     continue
                 kind = _kind(line, median_font, config.heading_font_ratio)
+                if index in caption_starts:
+                    kind = caption_starts[index]["kind"]
                 will_merge_paragraph = (
                     config.merge_paragraph_lines
                     and kind == previous_kind == "paragraph"
@@ -833,7 +982,19 @@ class _NativeExtractionStage:
                         width=layout.width,
                     )
                 )
-                will_merge = will_merge_paragraph or will_merge_heading
+                will_merge_caption = (
+                    previous_kind == "caption"
+                    and kind in {"paragraph", "equation"}
+                    and index not in caption_starts
+                    and previous_line is not None
+                    and caption_first_line is not None
+                    and _can_merge_caption(
+                        caption_first_line, previous_line, line, median_font
+                    )
+                )
+                will_merge = (
+                    will_merge_paragraph or will_merge_heading or will_merge_caption
+                )
                 projected_characters = (
                     text_characters + len(line.text) + int(will_merge)
                 )
@@ -855,7 +1016,9 @@ class _NativeExtractionStage:
                     anchor = context.anchors[-1]
                     block["text"] = f"{block['text']} {line.text}"
                     block["line_count"] = int(block["line_count"]) + 1
-                    block["uncertain"] = bool(block["uncertain"] or line.uncertain)
+                    block["uncertain"] = bool(
+                        block["uncertain"] or line.uncertain or kind == "equation"
+                    )
                     block["extraction_confidence"] = min(
                         float(block["extraction_confidence"]),
                         line.extraction_confidence,
@@ -943,6 +1106,7 @@ class _NativeExtractionStage:
                 text_characters = projected_characters
                 previous_line = line
                 previous_kind = kind
+                caption_first_line = line if kind == "caption" else None
 
 
 def _sections(blocks: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -1320,6 +1484,114 @@ def _positioned_image_groups(layout):
     return result
 
 
+def _figure_image_associations(blocks, anchors, image_groups):
+    """Resolve whole raster groups together; distance alone cannot choose a side."""
+    candidates = {}
+    for block in blocks:
+        match = _caption_match(str(block["text"]))
+        if (
+            block["kind"] != "caption"
+            or match is None
+            or not (
+                match.group("kind").lower().startswith(("fig", "scheme"))
+                or match.group("kind") in {"图", "图式"}
+            )
+        ):
+            continue
+        page = int(block["page"])
+        images = [region for region, _ in image_groups[page]]
+        caption_box = anchors[block["anchor_id"]]["bbox"]
+        positioned = [
+            (distance, i)
+            for i, image in enumerate(images)
+            if (distance := _image_caption_distance(image, caption_box)) is not None
+        ]
+        closest = min((distance for distance, _ in positioned), default=None)
+        seeds = {i for distance, i in positioned if distance <= closest + 0.03}
+        if not seeds or any(
+            images[i].bbox[1] < caption_box[3] and images[i].bbox[3] > caption_box[1]
+            for i in seeds
+        ):
+            continue
+        options = []
+        for above in (False, True):
+            on_side = {
+                i
+                for i, image in enumerate(images)
+                if (
+                    image.bbox[1] >= caption_box[3]
+                    if above
+                    else image.bbox[3] <= caption_box[1]
+                )
+            }
+            linked = seeds & on_side
+            if not linked:
+                continue
+            # Keep the existing aligned multi-row expansion, but never cross
+            # the current caption or seed panels from its opposite side.
+            while True:
+                added = set()
+                for i in on_side - linked:
+                    a = images[i].bbox
+                    for j in linked:
+                        b = images[j].bbox
+                        overlap = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+                        gap = max(0, a[1] - b[3], b[1] - a[3])
+                        separated = any(
+                            other["page"] == page
+                            and other["kind"] == "caption"
+                            and (box := anchors[other["anchor_id"]]["bbox"])
+                            and min(a[3], b[3])
+                            < (box[1] + box[3]) / 2
+                            < max(a[1], b[1])
+                            for other in blocks
+                        )
+                        if (
+                            0.002 < gap <= 0.04
+                            and overlap >= 0.8 * max(a[2] - a[0], b[2] - b[0])
+                            and not separated
+                        ):
+                            added.add(i)
+                            break
+                if not added:
+                    break
+                linked.update(added)
+            options.append({(page, i) for i in linked})
+        candidates[str(block["id"])] = options
+
+    assigned = {}
+    while candidates:
+        owned = set().union(*assigned.values()) if assigned else set()
+        proposals = {}
+        remaining = {}
+        for bid, options in candidates.items():
+            # A partially claimed group is not a smaller, complete figure.
+            if any(option & owned and not option <= owned for option in options):
+                continue
+            options = [option for option in options if not option <= owned]
+            if options:
+                remaining[bid] = options
+            if len(options) == 1:
+                proposals[bid] = options[0]
+        accepted = {
+            bid: group
+            for bid, group in proposals.items()
+            if not any(group & other for key, other in proposals.items() if key != bid)
+        }
+        if not accepted:
+            break
+        assigned.update(accepted)
+        candidates = {
+            bid: options for bid, options in remaining.items() if bid not in accepted
+        }
+    return {
+        bid: [
+            member for page, i in sorted(group) for member in image_groups[page][i][1]
+        ]
+        for bid, group in assigned.items()
+    }
+
+
 def _table_raster_warnings(table, blocks, anchors, layout, associated):
     """Disclose actual image regions between a table caption and its cells."""
     caption = anchors[table["anchor_id"]]
@@ -1377,6 +1649,7 @@ def _objects(
     image_groups = {
         page: _positioned_image_groups(layout) for page, layout in layouts.items()
     }
+    figure_images = _figure_image_associations(blocks, anchor_by_id, image_groups)
 
     for block in blocks:
         match = _caption_match(str(block["text"]))
@@ -1400,64 +1673,7 @@ def _objects(
             "interpretation_status": "not-interpreted",
         }
         if is_figure:
-            groups = image_groups[int(block["page"])]
-            images = [region for region, _ in groups]
-            members_by_name = {region.name: members for region, members in groups}
-            caption_bbox = anchor_by_id[str(block["anchor_id"])]["bbox"]
-            positioned = [
-                (distance, image)
-                for image in images
-                if (distance := _image_caption_distance(image, caption_bbox))
-                is not None
-            ]
-            closest = min((distance for distance, _ in positioned), default=None)
-            linked_images = [
-                image
-                for distance, image in positioned
-                if closest is not None and distance <= closest + 0.03
-            ]
-            # A multi-row figure has panels farther from its caption than the
-            # nearest row. Follow only aligned, closely spaced image columns;
-            # an intervening caption ends the group.
-            for _ in images:
-                added = []
-                for image in images:
-                    if image in linked_images or not image.bbox:
-                        continue
-                    a = image.bbox
-                    for neighbour in linked_images:
-                        b = neighbour.bbox
-                        if not b:
-                            continue
-                        overlap = max(0, min(a[2], b[2]) - max(a[0], b[0]))
-                        gap = max(0, a[1] - b[3], b[1] - a[3])
-                        separated = any(
-                            other["page"] == block["page"]
-                            and other["kind"] == "caption"
-                            and (box := anchor_by_id[other["anchor_id"]]["bbox"])
-                            and min(a[3], b[3])
-                            < (box[1] + box[3]) / 2
-                            < max(a[1], b[1])
-                            for other in blocks
-                        )
-                        if (
-                            0.002 < gap <= 0.04
-                            and overlap >= 0.8 * max(a[2] - a[0], b[2] - b[0])
-                            and not separated
-                        ):
-                            added.append(image)
-                            break
-                if not added:
-                    break
-                linked_images.extend(added)
-            # A PDF can store one figure as hundreds of adjacent one-pixel
-            # strips. Associate the observed contiguous region, but retain
-            # every original resource and its location in the evidence.
-            linked_images = [
-                member
-                for image in linked_images
-                for member in members_by_name[image.name]
-            ]
+            linked_images = figure_images.get(str(block["id"]), [])
             item["source_objects"] = [
                 {
                     "name": image.name,
@@ -1629,6 +1845,7 @@ class _QualityStage:
             "TABLE_COLUMN_COLLISION",
             "TABLE_CONTINUATION_UNRESOLVED",
             "TABLE_ROW_CONTEXT_MISSING",
+            "TABLE_STRUCTURE_UNRESOLVED",
             "OCR_ENGINE_DISAGREEMENT",
             "OCR_ORIENTATION_UNCERTAIN",
             "NATIVE_GLYPH_UNCERTAIN",

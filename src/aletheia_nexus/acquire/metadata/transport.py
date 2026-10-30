@@ -19,7 +19,7 @@ DEFAULT_TIMEOUT = 10.0
 
 @lru_cache(maxsize=1)
 def _package_version() -> str:
-    """Return the installed Aletheia Nexus version."""
+    """Return the installed 溯光 (Aletheia Nexus) version."""
 
     try:
         return version(PACKAGE_NAME)

@@ -6,6 +6,7 @@ import io
 import re
 import statistics
 import unicodedata
+from collections import Counter
 from importlib.metadata import version
 from typing import Any
 
@@ -25,7 +26,10 @@ from aletheia_nexus.content.backends.font_symbols import (
 )
 from aletheia_nexus.content.backends.glyph_readings import encoded_glyph_readings
 from aletheia_nexus.content.backends.native import _page_objects
-from aletheia_nexus.content.backends.vector_text import vector_text_regions
+from aletheia_nexus.content.backends.vector_text import (
+    VectorTextLimitError,
+    vector_text_regions,
+)
 from aletheia_nexus.content.backends.vertical_text import vertical_lines
 from aletheia_nexus.content.geometry import PageGeometry
 from aletheia_nexus.content.models import LayoutLine, PageLayout
@@ -55,6 +59,20 @@ def suspicious_text(text: str) -> bool:
             for index, c in enumerate(text)
         )
     )
+
+
+def _dominant_font(chars: list[LTChar]) -> str | None:
+    # Inline symbols, superscripts and occasional emphasized words should not
+    # change the paragraph's font face. Require a majority of full-size letters;
+    # an ambiguous mixture supplies no boundary evidence.
+    largest = max(c.size for c in chars)
+    names = [
+        c.fontname for c in chars if c.get_text().isalpha() and c.size >= largest * 0.85
+    ]
+    if not names:
+        return None
+    name, count = Counter(names).most_common(1)[0]
+    return name if count > len(names) / 2 else None
 
 
 def _ordered_glyphs(chars: list[LTChar]) -> list[LTChar]:
@@ -370,7 +388,7 @@ class LayoutPdfBackend:
     """Use actual glyph bounds instead of estimating widths from string length."""
 
     name = "pdfminer-native-layout"
-    version = "1.19.5"
+    version = "1.19.9"
 
     @property
     def execution_identity(self) -> dict[str, object]:
@@ -383,6 +401,12 @@ class LayoutPdfBackend:
         }
 
     def extract_page(self, page: Any, page_number: int) -> PageLayout:
+        # Enforce pypdf's existing decompression/concatenation guards before
+        # pdfminer expands the same stream. The pipeline records a failed page
+        # and continues; never relax the guard to force a parse.
+        contents = page.get_contents()
+        if contents is not None:
+            contents.get_data()
         unit_repairs = []
         recovered_count = 0
         writer = PdfWriter()
@@ -755,7 +779,8 @@ class LayoutPdfBackend:
                 # intervenes (ng mL-1). A real millilitre m has no such proof.
                 for offset, reading in unit_positions.items():
                     if reading == "μ" and re.match(
-                        r"m(?:m|L|l)(?![A-Za-z])", raw_text[offset:]
+                        r"m(?:mol|[mglLAsF])(?=$|[^A-Za-z]|[A-Za-z]+(?:[−⁻+-]?\d|[²³]))",
+                        raw_text[offset:],
                     ):
                         characters[offset] = reading
                 text = "".join(characters).strip()
@@ -856,6 +881,7 @@ class LayoutPdfBackend:
                         x1=x1,
                         y1=y1,
                         font_size=max(1.0, statistics.median(c.size for c in chars)),
+                        dominant_font=_dominant_font(chars),
                         bold=sum(
                             any(
                                 name in c.fontname.casefold()
@@ -938,9 +964,21 @@ class LayoutPdfBackend:
                 }
             )
         objects = _page_objects(copied, geometry)
-        outlined_text = vector_text_regions(
-            vector_shapes, lines, geometry.width, geometry.height
-        )
+        try:
+            outlined_text = vector_text_regions(
+                vector_shapes, lines, geometry.width, geometry.height
+            )
+        except VectorTextLimitError as exc:
+            outlined_text = (exc.region,)
+            warnings.append(
+                {
+                    "code": "VECTOR_TEXT_SCAN_LIMIT",
+                    "page": page_number,
+                    "bbox": list(exc.region.bbox),
+                    "source_object": exc.region.name,
+                    "detail": f"{exc}; native text is retained, but this drawing region needs visual review or OCR.",
+                }
+            )
         objects = (*objects, *outlined_text)
         for obj in outlined_text:
             warnings.append(
@@ -949,7 +987,7 @@ class LayoutPdfBackend:
                     "page": page_number,
                     "bbox": list(obj.bbox),
                     "source_object": obj.name,
-                    "detail": "Aligned painted outlines have no native text mapping. Their values, symbols and units need local OCR or source review; geometry alone does not establish a reading.",
+                    "detail": "Painted outlines have no verified native text reading. Their values, symbols and units need local OCR or source review; geometry alone does not establish a reading.",
                 }
             )
         if any(

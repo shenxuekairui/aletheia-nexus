@@ -1,6 +1,25 @@
-# Aletheia Nexus 使用说明书
+# 溯光（Aletheia Nexus）使用说明书
 
-本手册对应 **v0.7.2**，面向需要获取、核验、整理和解析文献的研究人员。AN 以命令行提供从 DOI/书目输入，到本地 PDF 与来源记录，再到可检索、可导出的结构化内容的工作流。支持无 DOI 文献、本地登记、PDF 补充材料、跨文献检索及按结果导出。科研日常操作见 [0.7.2 工作流程](V072_RESEARCH_WORKFLOW.md)。首次使用建议先看 [README](../README.md#快速开始)，升级变化见 [v0.7.2 发布说明](RELEASE_NOTES_v0.7.2.md)；实际可安装版本以 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准。
+[English](USER_MANUAL.en.md) · 中文为主文档，英文逐节对照。
+
+本手册对应 **v0.8.0 整合版本**，包含图形工作台、自然语言 CLI 和本地 stdio MCP。
+正式发行身份以 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)及
+[PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准；源码中的版本号不代表包已上传。
+
+普通使用优先查看 [工作台手册](WORKBENCH_USER_GUIDE.md)、
+[自然语言与 MCP 指南](V08_ENTRYPOINTS.md)及 [v0.8 科研任务指南](V08_USER_GUIDE.md)。
+`research run/export/revise`、DeepSeek 配置、自定义字段、原页核对、结果复用和修订均走同一科研引擎。
+新建自然语言任务和工作台任务默认先读后组装；既有任务省略策略时保持原直接提取行为。
+质量与发布状态分别见 [科研验收记录](V08_ACCEPTANCE.md)、
+[十篇论文对照](V08_TEN_PAPER_COMPARISON.md)、[整合发布检查](V08_RELEASE_ACCEPTANCE.md)和
+[v0.8 发布说明](RELEASE_NOTES_v0.8.0.md)。工程测试通过不代表科研内容已获确认。
+
+下文保留从 **v0.7.2** 延续的获取、核验、解析和本地文库 CLI，面向需要获取、核验、整理和解析文献的研究人员。
+AN 提供从 DOI/书目输入，到本地 PDF 与来源记录，再到可检索、可导出的结构化内容的工作流。
+支持无 DOI 文献、本地登记、PDF 补充材料、跨文献检索及按结果导出。
+科研日常操作见 [0.7.2 工作流程](V072_RESEARCH_WORKFLOW.md)，首次使用建议先看
+[README](../README.md#快速开始)。[v0.7.2 发布说明](RELEASE_NOTES_v0.7.2.md)和第 10 节保留历史版本语境，
+不作为 v0.8 当前发布门槛。
 
 AN 尽可能使用公开路径、已授权的官方 API 和用户自己的浏览器会话获取文件；只有 PDF 结构、论文身份和正文角色通过检查，才标记为 `VERIFIED`。AN 不提供订阅权限，也不会代替用户输入密码、MFA 或验证码。
 
@@ -80,7 +99,7 @@ aletheia-nexus acquire dois.txt `
   --non-interactive
 ```
 
-`--non-interactive` **不会禁用浏览器或官方 API**：已经有效的授权会话仍可能被复用，也可能自动打开浏览器；它只禁止等待人工操作。无人值守不等于绕过登录。遇到需要账号、订阅或验证的站点，AN 会记录相应状态；若站点未给出可识别的访问提示，也可能是 `EXHAUSTED`，需要查看报告诊断。若上层脚本要求每个有效 DOI 都成功，请再加 `--fail-on-unverified`。
+`--non-interactive` **不会禁用浏览器或官方 API**：已经有效的授权会话仍可能被复用，也可能自动打开浏览器；它只禁止等待人工操作。无人值守不等于绕过登录。遇到需要账号、订阅或验证的站点，AN 会记录相应状态；若站点未给出可识别的访问提示，也可能是 `EXHAUSTED`，需要查看报告诊断。若上层脚本要求每个输入条目都验证成功，请再加 `--fail-on-unverified`。
 
 当 OpenAlex 候选包含 PMC 记录时，AN 会先查询 PMC Article Datasets 的官方 AWS 公共数据桶，并优先验证其中的 PDF。该路径适配了 PMC 于 2026 年 8 月完成的数据分发迁移，不抓取 PMC 文章网页，也不依赖已下线的旧 OA Web Service。若文章不属于可自动获取的数据集、没有 PDF、已撤回，或元数据 DOI 不一致，AN 不会把该对象当作候选。
 
@@ -174,7 +193,7 @@ downloads/my-batch/
 
 `batch-report.json` 的 `items` 给出每篇 `status`、`verified_path`、是否 `resumed` 和安全诊断；`status_counts` 是当前这一次运行的统计。若要把多个独立复测合并成一个语料结果，应按 DOI 去重并保留每次运行的报告，不要将单篇复测冒充为一次完整批次。
 
-默认退出码 `0` 只表示批次正常处理结束，**不表示全部论文都已 `VERIFIED`**。退出码 `2` 表示至少一篇出现 `RUNNER_ERROR`，`3` 表示配置为遇到交互就暂停而批次已暂停，`4` 表示使用了 `--fail-on-unverified` 且有有效 DOI 未验证成功。无效 DOI 仍需在报告中逐项检查。不要仅凭进程退出码或 PDF 文件名判定科学验证成功。
+默认退出码 `0` 只表示批次正常处理结束，**不表示全部论文都已 `VERIFIED`**。退出码 `2` 表示至少一篇出现 `RUNNER_ERROR`，`3` 表示配置为遇到交互就暂停而批次已暂停，`4` 表示使用了 `--fail-on-unverified` 且有任意输入条目未达到 `VERIFIED`，包括无效 DOI；`RUNNER_ERROR` 和暂停状态仍分别优先返回 `2`、`3`。应逐项查看报告，不能仅凭进程退出码或文件名判断文献已核验，更不能据此认定科学内容正确。
 
 ### 如何理解状态
 
@@ -273,13 +292,17 @@ python scripts/verify_v07_rc.py --browser-smoke --visible-browser-smoke --ocr-sm
   --report qualification-report.json
 ```
 
-这些脚本与单元测试不替代实际机构环境中的授权验证，也不证明解析器适配所有真实论文版式。AN 0.7 将获取与核验衔接到带来源锚点的原生文本优先解析，并提供可选选择性 OCR；科学主张解释和科研知识组织仍属于后续能力。
+这些脚本与单元测试不替代实际机构环境中的授权验证，也不证明解析器适配所有真实论文版式。AN 0.7 将获取与核验衔接到带来源锚点的原生文本优先解析，并提供可选选择性 OCR。v0.8 在其基础上提供 AI 辅助科研整理；模型输出、实验条件关联和科学主张仍须按来源核对，不能用工程验证代替科学验收。
 
 v0.7 检查脚本会优先导入当前仓库的 `src`，避免复用环境时测到其他 checkout。`--browser-smoke` 需要 browser extra 和 Chromium；`--ocr-smoke` 需要 ocr extra、Poppler 与 Tesseract。缺少组件时应补齐环境后重跑，不能把跳过或 `PARTIAL` 写成通过。私有语料资格脚本要求非空输入且每篇都完成 `PARSED`；缺文件、哈希改变或部分解析会使检查失败。
 
 当前工作区的 CNKI 书目核验采用 `cnki_bibliographic/v5`。完整的 PDF 题名、作者和出版信息匹配即可通过，输入带 DOI 时也不额外要求确认 DOI；明确的 DOI 或书目冲突仍拒绝。支持刊名结构匹配、前 3 页页边出版信息，以及受约束知网记录与 PDF 的 DOI/文章编号/连续页码交叉核验；不使用论文或刊名白名单。详见 [通用核验规则](CNKI_AUTOMATION.md#通用书目核验规则v5)。原有接入设计与历史结果见 [CNKI 接入设计](CNKI_INTEGRATION_DESIGN.md) 和 [v3 验收报告](CNKI_V3_INTEGRATION_REPORT.md)。原 DOI 路径兼容；无 DOI 使用 CNKI ID/书目身份，候选歧义不自动选第一条。未验证 PDF 默认隔离保存，不计为成功；后续搜索超时不会抹去已取得文件的事实。可通过 `--no-cnki-keep-unverified` 关闭保留。
 
-## 10. 合并 main 前的发布检查
+## 10. 历史：v0.7.3 合并 main 前的发布检查
+
+本节封存 v0.7.3 的原发布要求和历史数字，不要求把 v0.8 版本改回 0.7.3。
+当前版本的检查与发行状态见 [v0.8 整合发布检查](V08_RELEASE_ACCEPTANCE.md)；
+准备记录、正式发布和公开安装验证应分别记录。
 
 v0.7.3 的最终 PR 必须直接面向 `main`；不要把功能分支直接推送到
 `main`，也不要把受版权保护的真实论文、机构配置、Cookie、令牌或带

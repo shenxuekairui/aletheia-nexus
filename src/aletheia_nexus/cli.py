@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import shutil
 import subprocess
@@ -17,6 +18,7 @@ from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
+from aletheia_nexus import DISPLAY_NAME
 from aletheia_nexus.acquire.access import (
     BatchAcquisitionItem,
     BatchItemStatus,
@@ -942,10 +944,15 @@ def library_main(argv: list[str] | None = None) -> int:
 def entrypoint(argv: list[str] | None = None) -> int:
     """Dispatch the stable installed CLI without importing optional Playwright."""
 
+    # Redirected Windows consoles may use cp1252; product names and scientific
+    # output must remain UTF-8, as in the optional UI entry point.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(
-            "Aletheia Nexus — verifiable paper acquisition and parsing\n\n"
+            f"{DISPLAY_NAME} — verifiable paper acquisition and parsing\n\n"
             "Usage:\n"
             "  aletheia-nexus acquire DOI [options]\n"
             "  aletheia-nexus acquire INPUT.txt [options]\n"
@@ -956,9 +963,11 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "  aletheia-nexus search CORPUS|PAPER.parsed.json QUERY [options]\n"
             "  aletheia-nexus export CORPUS|PAPER.parsed.json --format FORMAT --output PATH\n"
             "  aletheia-nexus open-source CORPUS RESULTS.json NUMBER [--launch]\n"
+            "  aletheia-nexus research run TASK.json --output-dir RESULTS [--allow-remote]\n"
             "  aletheia-nexus doctor\n"
             "  aletheia-nexus browser-install\n"
             "  aletheia-nexus library [DIRECTORY] [--folder NAME] [--tag TAG]\n"
+            "  aletheia-nexus ui [--library DIRECTORY] [--workspace DIRECTORY]\n"
             "  aletheia-nexus --version\n\n"
             "Use 'aletheia-nexus COMMAND --help' for command options."
         )
@@ -1044,8 +1053,20 @@ def entrypoint(argv: list[str] | None = None) -> int:
         ) as exc:
             print(f"Browser provisioning failed: {type(exc).__name__}", file=sys.stderr)
             return 2
+    if args[0] == "ui":
+        from aletheia_nexus.ui_cli import main as ui_main
+
+        return ui_main(args[1:])
     if args[0] == "acquire":
         return main(args[1:])
+    if args[0] == "research":
+        from aletheia_nexus.processing_cli import main as research_main
+
+        return research_main(args[1:])
+    if args[0] == "mcp":
+        from aletheia_nexus.mcp_server import main as mcp_main
+
+        return mcp_main(args[1:])
     if args[0] in {"import", "parse-batch", "open-source"}:
         from aletheia_nexus.research_cli import batch_main, import_main, open_main
 

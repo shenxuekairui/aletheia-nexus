@@ -1,4 +1,4 @@
-# CNKI 验证与 AN 接入设计（v3）
+# CNKI 验证与溯光（Aletheia Nexus）接入设计（v3）
 
 ## 定位与调用顺序
 

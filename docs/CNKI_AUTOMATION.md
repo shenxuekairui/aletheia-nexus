@@ -63,7 +63,7 @@ python scripts/download_cnki.py --doi "10.7503/cjcu20250333" --doi "10.13822/j.c
 
 验证码、登录、权限拒绝、浏览器关闭、仍在传输（含等待响应头）的请求不会被此策略强行刷新。短暂等待期间若文件已到达，则直接使用该文件；不会重复下载。身份冲突、仅 CAJ、没有 PDF 权限等也不靠刷新伪造成功。已有人工认证后的有限恢复逻辑保留；`download_started` 标记仍阻止通用批次重放已开始的下载。其他出版社本轮不增加刷新重试策略。
 
-分类输入在正式 acquire 的 JSON/CSV 中使用 `folder`、`filename`、`tags`，见 [主使用说明](../README.md#输入时分类命名与本地管理)。独立 CNKI CLI 同样支持 `--folder "化学/知网" --filename "我的重点论文" --tag "待读"`；Python `acquire_cnki_pdf` 接受相同字段（`tags` 为元组）。分类不参与论文身份匹配，也不会改变是否走知网的分流判断。
+分类输入在正式 acquire 的 JSON/CSV 中使用 `folder`、`filename`、`tags`，见 [主使用说明](USER_MANUAL.md#2-准备文献清单)。独立 CNKI CLI 同样支持 `--folder "化学/知网" --filename "我的重点论文" --tag "待读"`；Python `acquire_cnki_pdf` 接受相同字段（`tags` 为元组）。分类不参与论文身份匹配，也不会改变是否走知网的分流判断。
 
 默认 CLI 在可见浏览器中等待人工认证完成，没有固定认证超时。控制台会提示当前认证类型；认证完成后重新观察页面，必要时恢复检索或重试一次 PDF 控件。
 

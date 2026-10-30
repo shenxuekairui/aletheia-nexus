@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Browser
 )
 
@@ -18,7 +18,7 @@ function Invoke-AnCheck {
     }
 }
 
-Write-Host "Aletheia Nexus v0.6 release-candidate verification"
+Write-Host "溯光 · Aletheia Nexus v0.6 release-candidate verification"
 python --version
 if ($LASTEXITCODE -ne 0) {
     throw "Python is unavailable"

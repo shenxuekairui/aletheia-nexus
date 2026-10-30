@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from aletheia_nexus.content.captions import _CAPTION, _caption_match
+from aletheia_nexus.content.captions import _CAPTION, _caption_match, _is_table_caption
 
 _INDEX = re.compile(r"(\d{1,3})(?:\s*[a-z*†‡](?:\s*,\s*[a-z*†‡])*)?")
 
@@ -21,8 +21,7 @@ def _join_inline_table_captions(lines):
     for caption in lines:
         match = _CAPTION.match(caption.text.strip())
         if (
-            not match
-            or match["kind"].casefold() not in {"table", "表"}
+            not _is_table_caption(match)
             or caption.text[match.end() :].strip(" .:")
             or caption.content_region.endswith("alternative")
         ):
@@ -79,10 +78,7 @@ def indexed_grids(lines, layout):
         if not line.content_region.endswith("alternative")
     ]
     captions = [
-        line
-        for line in primary
-        if (m := _caption_match(line.text))
-        and m["kind"].casefold() in {"table", "表", "таблица"}
+        line for line in primary if _is_table_caption(_caption_match(line.text))
     ]
     grids = []
     for head in primary:

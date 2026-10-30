@@ -1,0 +1,1179 @@
+"""Resolvable references are necessary evidence, never proof of scientific support."""
+
+from __future__ import annotations
+
+import csv
+import html
+import io
+import json
+from copy import deepcopy
+from pathlib import Path
+from string import ascii_letters, ascii_lowercase
+
+from aletheia_nexus.content.export import write_ai_export
+from aletheia_nexus.content.gate import sha256_file
+
+from .contracts import digest, export_formats, response_schema, validate
+from .provider import ProcessingError
+
+RESULT_SCHEMA = "aletheia-nexus/extraction-result/v1"
+FIELD_STATUS = {
+    "reported": "原文报告",
+    "normalized": "规范化",
+    "not_reported": "材料中未报告",
+    "ambiguous": "有歧义",
+    "unconfirmed": "未确认",
+}
+NATURE_LABELS = {
+    None: "未指定",
+    "reported": "直接报告",
+    "author_interpretation": "作者解释",
+    "ai_synthesis": "AI 归纳",
+}
+
+
+def _quotation(text: str) -> str:
+    # Only presentation ligatures and whitespace are equivalent here. Do not use
+    # NFKC: it collapses scientifically distinct superscripts/subscripts and units.
+    return " ".join(
+        text.translate(
+            str.maketrans(
+                {
+                    "ﬀ": "ff",
+                    "ﬁ": "fi",
+                    "ﬂ": "fl",
+                    "ﬃ": "ffi",
+                    "ﬄ": "ffl",
+                    "ﬅ": "st",
+                    "ﬆ": "st",
+                }
+            )
+        ).split()
+    )
+
+
+def _citation_search_documents(document: dict, documents: list[dict]) -> list[dict]:
+    """Search siblings only when both parent identifiers resolve to one main."""
+    source = document["source"]
+    role = source.get("document_role")
+    if role == "ARTICLE":
+        parent = source
+    elif role == "SUPPLEMENT":
+        parent = source.get("parent") or {}
+    else:
+        return [document]
+    key = (parent.get("pdf_sha256"), parent.get("article_id"))
+    if not all(key):
+        return [document]
+    mains = [
+        d
+        for d in documents
+        if d["source"].get("document_role") == "ARTICLE"
+        and (d["source"].get("pdf_sha256"), d["source"].get("article_id")) == key
+    ]
+    if len(mains) != 1:
+        return [document]
+    family = []
+    for candidate in documents:
+        if candidate["id"] == document["id"]:
+            continue
+        source = candidate["source"]
+        parent = source.get("parent") or {}
+        if candidate is mains[0] or (
+            source.get("document_role") == "SUPPLEMENT"
+            and (parent.get("pdf_sha256"), parent.get("article_id")) == key
+        ):
+            family.append(candidate)
+    return [document, *sorted(family, key=lambda d: d["id"])]
+
+
+def _matching_locations(citation: dict, documents: list[dict]) -> list[dict]:
+    """Offer at most three literal locations, not a repair or proof of support."""
+    document = next((d for d in documents if d["id"] == citation["source_id"]), None)
+    quotation = _quotation(citation["quote"])
+    if document is None or not quotation:
+        return []
+    matches = []
+    for candidate in _citation_search_documents(document, documents):
+        for block in candidate["blocks"]:
+            if block["page"] not in candidate["pages_requested"]:
+                continue
+            if quotation in _quotation(block["text"]):
+                matches.append(
+                    {
+                        "source_id": candidate["id"],
+                        "block_id": block["id"],
+                        "page": block["page"],
+                    }
+                )
+                if len(matches) == 3:
+                    return matches
+    return matches
+
+
+def resolve_citation_source_ids(
+    response: dict, package: dict, *, version: int = 1
+) -> tuple[dict, list[dict]]:
+    """Resolve identifiers with explicit legacy or same-source location replay.
+
+    Version 1 resolves only an impossible source page with an exact family
+    page/block/quote. Page, block, quote and science stay unchanged; the link
+    remains unconfirmed. A quote may cross its original anchor and immediately
+    following same-page block, with that basis retained in the reversible trace.
+
+    Version 2 additionally restores page/block for a unique literal quote in the
+    same supplied source. A correct anchor stays put. Version 1 remains the exact
+    legacy replay behavior for saved results; neither version verifies support.
+    """
+    if version not in (1, 2):
+        raise ValueError("unsupported citation resolution version")
+    adjusted = deepcopy(response)
+    documents = {d["id"]: d for d in package["documents"]}
+    changes = []
+
+    def visit(value, path):
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, [*path, index])
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                if key != "citations":
+                    visit(child, [*path, key])
+                    continue
+                for index, citation in enumerate(child):
+                    document = documents.get(citation["source_id"])
+                    if (
+                        document is None
+                        or citation["block_id"] is None
+                        or document["source"].get("page_count") is None
+                        or citation["page"] <= document["source"]["page_count"]
+                    ):
+                        continue
+                    quote = _quotation(citation["quote"])
+                    if not quote:
+                        continue
+                    matches = []
+                    for candidate in _citation_search_documents(
+                        document, package["documents"]
+                    ):
+                        if (
+                            candidate["id"] == document["id"]
+                            or citation["page"] not in candidate["pages_requested"]
+                        ):
+                            continue
+                        basis = _source_quote_basis(citation, quote, candidate)
+                        if basis is not None:
+                            matches.append((candidate, basis))
+                    if len(matches) == 1:
+                        candidate, basis = matches[0]
+                        before = deepcopy(citation)
+                        citation["source_id"] = candidate["id"]
+                        changes.append(
+                            {
+                                "path": [*path, "citations", index],
+                                "before": before,
+                                "after": deepcopy(citation),
+                                "reason": (
+                                    "impossible_source_page_unique_family_adjacent_block_quote"
+                                    if basis
+                                    else "impossible_source_page_unique_family_page_block_quote"
+                                ),
+                                **({"evidence": basis} if basis else {}),
+                            }
+                        )
+
+    visit(adjusted, [])
+    if version == 2:
+        _resolve_same_source_locations(adjusted, documents, changes)
+    return adjusted, changes
+
+
+def _resolve_same_source_locations(
+    response: dict, documents: dict[str, dict], changes: list[dict]
+) -> None:
+    """Correct only a unique supplied block's locator, never its scientific text."""
+
+    def visit(value, path):
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, [*path, index])
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                if key != "citations":
+                    visit(child, [*path, key])
+                    continue
+                for index, citation in enumerate(child):
+                    document = documents.get(citation["source_id"])
+                    if document is None:
+                        continue
+                    quote = _quotation(citation["quote"])
+                    if not quote or "..." in quote or "…" in quote:
+                        continue
+                    # A correct anchor stays put even if its quote occurs again.
+                    if any(
+                        block["page"] in document["pages_requested"]
+                        and (block["page"], block["id"])
+                        == (citation["page"], citation["block_id"])
+                        and quote in _quotation(block["text"])
+                        for block in document["blocks"]
+                    ):
+                        continue
+                    # Passing just this source prevents the family fallback.
+                    matches = _matching_locations(citation, [document])
+                    if len(matches) != 1:
+                        continue
+                    location = matches[0]
+                    block = next(
+                        b
+                        for b in document["blocks"]
+                        if (b["page"], b["id"])
+                        == (location["page"], location["block_id"])
+                    )
+                    normalized = _quotation(block["text"])
+                    start = normalized.find(quote)
+                    if normalized.find(quote, start + 1) != -1:
+                        continue  # Repeated occurrences within one block are ambiguous.
+                    before = deepcopy(citation)
+                    after = {
+                        **citation,
+                        "page": location["page"],
+                        "block_id": location["block_id"],
+                    }
+                    child[index] = after
+                    changes.append(
+                        {
+                            "path": [*path, "citations", index],
+                            "before": before,
+                            "after": deepcopy(after),
+                            "reason": "same_source_unique_literal_quote_location",
+                            "evidence": {
+                                "page": block["page"],
+                                "block_id": block["id"],
+                                "block_text_sha256": digest(block["text"]),
+                                "normalized_quote_span": [start, start + len(quote)],
+                                "match_mode": "same_source_single_block_unique_quote",
+                            },
+                        }
+                    )
+
+    visit(response, [])
+
+
+def _source_quote_basis(citation: dict, quote: str, document: dict) -> dict | None:
+    """Return {} for the legacy single-block match, otherwise a literal span proof."""
+    blocks = document["blocks"]
+    anchors = [
+        (i, block)
+        for i, block in enumerate(blocks)
+        if (block["id"], block["page"]) == (citation["block_id"], citation["page"])
+    ]
+    if any(quote in _quotation(block["text"]) for _, block in anchors):
+        return {}  # Preserve old traces byte-for-byte.
+    if len(anchors) != 1:
+        return None
+    for i, block in anchors:
+        left = _quotation(block["text"])
+        if i + 1 >= len(blocks) or blocks[i + 1]["page"] != block["page"]:
+            continue
+        following = blocks[i + 1]
+        right = _quotation(following["text"])
+        joins = [(left + " " + right, "same_page_adjacent_blocks_whitespace", 1)]
+        if (
+            len(left) >= 2
+            and left.endswith("-")
+            and left[-2] in ascii_letters
+            and right
+            and right[0] in ascii_lowercase
+        ):
+            # Only this actual block boundary is joined. Keep the literal hyphen;
+            # do not normalize in-block text, scientific symbols, digits or units.
+            joins.append((left + right, "same_page_adjacent_blocks_line_end_hyphen", 0))
+        for combined, mode, separator in joins:
+            start = combined.find(quote)
+            if 0 <= start < len(left) and start + len(quote) > len(left) + separator:
+                return {
+                    "page": block["page"],
+                    "block_ids": [block["id"], following["id"]],
+                    "block_text_sha256": [
+                        digest(block["text"]),
+                        digest(following["text"]),
+                    ],
+                    "match_mode": mode,
+                }
+    return None
+
+
+def check_response(
+    response: dict, task: dict, package: dict, *, comparison: bool = False
+) -> dict:
+    validate(response, response_schema(task, comparison=comparison), "response")
+    if (
+        not response.get("records")
+        and not response["claims"]
+        and not response["issues"]
+        and not response.get("requests")
+    ):
+        raise ProcessingError("empty_result_without_explanation")
+    documents = {d["id"]: d for d in package["documents"]}
+    image_pages = {(i["source_id"], i["page"]) for i in package["images"]}
+    locations = []
+
+    citation_errors = {}
+
+    def locate_citation(citation: dict) -> bool:
+        review = False
+        document = documents.get(citation["source_id"])
+        if document is None or citation["page"] not in document["pages_requested"]:
+            raise ProcessingError("invalid_citation")
+        block = next(
+            (
+                b
+                for b in document["blocks"]
+                if b["id"] == citation["block_id"] and b["page"] == citation["page"]
+            ),
+            None,
+        )
+        reading = "parsed"
+        if block is None:
+            visual = (citation["source_id"], citation["page"]) in image_pages
+            if not visual and not any(
+                b["page"] == citation["page"] for b in document["blocks"]
+            ):
+                raise ProcessingError("invalid_citation")
+            # A real supplied page is a usable reading link even when the model
+            # omits/misidentifies a block. Preserve its reading, without claiming
+            # that the page supports it or silently substituting another block.
+            review = True
+            reading = (
+                "visual-unverified"
+                if visual and citation["block_id"] is None
+                else "page-unverified"
+            )
+        else:
+            quotation = _quotation(citation["quote"])
+            if not quotation or quotation not in _quotation(block["text"]):
+                correction = next(
+                    (
+                        c
+                        for c in document["corrections"]
+                        if quotation
+                        and c["block_id"] == block["id"]
+                        and quotation in _quotation(c["replacement"])
+                    ),
+                    None,
+                )
+                reading = (
+                    "human-correction-overlay"
+                    if correction
+                    else "parsed-quotation-unverified"
+                )
+                review = True
+            review |= bool(block.get("uncertain"))
+        locations.append(
+            {
+                **citation,
+                "source_artifact_id": document["source"]["artifact_id"],
+                "parsed_artifact_id": document["parsed_artifact_id"],
+                "pdf_sha256": document["source"]["pdf_sha256"],
+                "bbox": block["evidence"]["bbox"] if block else None,
+                "reading": reading,
+                "support": "not-verified",
+            }
+        )
+        return review
+
+    def citations(items: list[dict], *, required: bool = True) -> bool:
+        if required and not items:
+            return True
+        review = False
+        for citation in items:
+            try:
+                review |= locate_citation(citation)
+            except ProcessingError as exc:
+                key = digest(citation)
+                if key in citation_errors:
+                    continue
+                citation_errors[key] = {
+                    "code": exc.code,
+                    "citation": citation,
+                    **(exc.diagnostics or {}),
+                }
+                if exc.code in {"invalid_citation", "quotation_not_in_source"}:
+                    citation_errors[key]["exact_quote_locations"] = _matching_locations(
+                        citation, package["documents"]
+                    )
+        return review
+
+    states = {}
+    seen = set()
+    for record in response.get("records", []):
+        if (
+            not record["id"].strip()
+            or record["id"] in seen
+            or not record["subject"].strip()
+            or not record["stage"].strip()
+        ):
+            raise ProcessingError("invalid_record_identity")
+        seen.add(record["id"])
+        steps = record["steps"]
+        step_ids = {s["id"] for s in steps}
+        if (
+            len(step_ids) != len(steps)
+            or "" in step_ids
+            or [s["order"] for s in steps] != list(range(1, len(steps) + 1))
+        ):
+            raise ProcessingError("invalid_step_order")
+        review = False
+        insufficient = False
+        for step in steps:
+            if not step["description"].strip():
+                raise ProcessingError("empty_step")
+            review |= citations(step["citations"]) or step["nature"] != "reported"
+        definitions = {f["id"]: f for f in task["fields"]}
+        for field_id, field in record["fields"].items():
+            if not set(field["step_ids"]) <= step_ids:
+                raise ProcessingError(
+                    "invalid_step_reference",
+                    {
+                        "record_id": record["id"],
+                        "field_id": field_id,
+                        "unknown_step_ids": sorted(set(field["step_ids"]) - step_ids),
+                        "available_step_ids": sorted(step_ids),
+                        "validation": (
+                            "Use only IDs of steps in this record where the field "
+                            "actually applies. Use [] when no corresponding step "
+                            "is reported; do not invent steps to satisfy validation."
+                        ),
+                    },
+                )
+            if field["status"] == "not_reported":
+                if (
+                    field["value"] is not None
+                    or field["raw_value"] is not None
+                    or field["unit"] is not None
+                ):
+                    raise ProcessingError(
+                        "invented_missing_value",
+                        {
+                            "record_id": record["id"],
+                            "field_id": field_id,
+                            "validation": (
+                                "For status not_reported, value, raw_value and unit "
+                                "must all be JSON null. Put missing-information "
+                                "explanations in context. If the source reports a "
+                                "qualitative condition, preserve it with its citation "
+                                "and an appropriate status instead."
+                            ),
+                        },
+                    )
+                insufficient = True
+                citations(field["citations"], required=False)
+            else:
+                review |= citations(field["citations"])
+                needs_raw = field["status"] == "normalized" or definitions[field_id][
+                    "type"
+                ] in {"number", "integer", "boolean"}
+                if field["status"] in {"reported", "normalized"} and (
+                    field["value"] is None or (needs_raw and not field["raw_value"])
+                ):
+                    raise ProcessingError("missing_original_value")
+                if field["status"] in {"reported", "normalized"} and (
+                    isinstance(field["value"], str)
+                    and not field["value"].strip()
+                    or isinstance(field["value"], list)
+                    and not field["value"]
+                ):
+                    raise ProcessingError("empty_reported_value")
+                if field["nature"] is None:
+                    raise ProcessingError(
+                        "missing_field_nature",
+                        {
+                            "record_id": record["id"],
+                            "field_id": field_id,
+                            "validation": (
+                                "Nature may be JSON null only for status "
+                                "not_reported with null value, raw_value and unit. "
+                                "Otherwise use reported, author_interpretation "
+                                "or ai_synthesis without changing the scientific content."
+                            ),
+                        },
+                    )
+                review |= field["status"] != "reported" or field["nature"] != "reported"
+            if field["status"] == "normalized" and not field["context"].strip():
+                raise ProcessingError("normalization_requires_explanation")
+        states[record["id"]] = (
+            "evidence_insufficient"
+            if insufficient
+            else "review_required"
+            if review
+            else "source_located"
+        )
+    claim_states = {}
+    for index, claim in enumerate(response["claims"]):
+        if not claim["text"].strip():
+            raise ProcessingError("empty_claim")
+        start = len(locations)
+        citations(claim["citations"])
+        if not claim["citations"] or any(
+            c["reading"] in {"page-unverified", "parsed-quotation-unverified"}
+            or not c["quote"].strip()
+            for c in locations[start:]
+        ):
+            claim_states[str(index)] = "review_required"
+    unresolved_issues = {}
+    for index, issue in enumerate(response["issues"]):
+        source = documents.get(issue["source_id"])
+        if source is None or (
+            issue["page"] is not None
+            and not 1 <= issue["page"] <= source["source"]["page_count"]
+        ):
+            # Auxiliary diagnoses are retained verbatim even when their link is
+            # wrong. They neither validate a source nor invalidate unrelated,
+            # correctly located scientific fields. Do not guess another page/SI.
+            unresolved_issues[str(index)] = {
+                "state": "review_required",
+                "source_id": issue["source_id"],
+                "page": issue["page"],
+                "reason": "unknown_source" if source is None else "page_out_of_range",
+            }
+    for request in response.get("requests", []):
+        source = documents.get(request["source_id"])
+        if (
+            source is None
+            or not request["reason"].strip()
+            or any(
+                not 1 <= p <= source["source"]["page_count"] for p in request["pages"]
+            )
+        ):
+            raise ProcessingError("invalid_supplement_request")
+    if citation_errors:
+        errors = list(citation_errors.values())
+        raise ProcessingError(
+            errors[0]["code"],
+            {
+                "errors": errors,
+                "validation": "Fix all listed citation errors against supplied evidence; retain original scientific meanings. exact_quote_locations lists up to three literal matches, preferring the same supplied document, then supplied main/supplement documents with matching parent PDF and article identities. These locations are not proof that they support the claim. Reassess context before citing. Do not invent evidence.",
+            },
+        )
+    if any(i["kind"] == "conflict" for i in response["issues"]):
+        states = {key: "conflict" for key in states}
+    elif unresolved_issues:
+        states = {
+            key: "review_required" if state == "source_located" else state
+            for key, state in states.items()
+        }
+    checked = {
+        "record_states": states,
+        "citations": locations,
+        "scientific_support": "not-verified",
+        "absence_scope": "supplied_material_only",
+    }
+    if claim_states:
+        checked["claim_states"] = claim_states
+    if unresolved_issues:
+        checked["unresolved_issue_locations"] = unresolved_issues
+    return checked
+
+
+def seal_result(result: dict) -> dict:
+    result.pop("artifact_id", None)
+    result["artifact_id"] = "an:extraction:sha256:" + digest(result)
+    return result
+
+
+def assign_record_ids(response: dict) -> tuple[dict, list[dict]]:
+    """Give rows usable local identifiers without changing research content."""
+    response = deepcopy(response)
+    records = response.get("records", [])
+    occupied = {record["id"] for record in records}
+    seen, changes = set(), []
+    for index, record in enumerate(records):
+        original = record["id"]
+        if not original.strip() or original in seen:
+            stem = f"record-{index + 1}"
+            identifier = stem
+            suffix = 2
+            while identifier in occupied:
+                identifier = f"{stem}-{suffix}"
+                suffix += 1
+            record["id"] = identifier
+            occupied.add(identifier)
+            changes.append(
+                {"record_index": index, "before": original, "after": identifier}
+            )
+        seen.add(record["id"])
+    return response, changes
+
+
+def make_result(
+    task: dict,
+    package: dict,
+    provider: dict,
+    response: dict,
+    *,
+    comparison: bool = False,
+) -> dict:
+    validate(response, response_schema(task, comparison=comparison), "response")
+    response, adjustments = resolve_citation_source_ids(response, package, version=2)
+    result = {
+        "schema": RESULT_SCHEMA,
+        "task": deepcopy(task),
+        "package": deepcopy(package),
+        "provider": provider,
+        "response": response,
+        "comparison": comparison,
+        "history": [],
+    }
+    if adjustments:
+        # Source-ID-only corrections retain the old trace bytes and replay mode.
+        version = (
+            2
+            if any(
+                change["reason"] == "same_source_unique_literal_quote_location"
+                for change in adjustments
+            )
+            else 1
+        )
+        result["citation_source_resolution"] = {
+            "version": version,
+            "changes": adjustments,
+        }
+    result["validation"] = _review_validation(result)
+    return seal_result(result)
+
+
+def verify_result(result: dict) -> None:
+    payload = {k: v for k, v in result.items() if k != "artifact_id"}
+    if result.get("schema") != RESULT_SCHEMA or result.get(
+        "artifact_id"
+    ) != "an:extraction:sha256:" + digest(payload):
+        raise ValueError("result identity mismatch")
+    if _review_validation(result) != result["validation"]:
+        raise ValueError("result validation mismatch")
+
+
+def _revision_target(revision: dict) -> str:
+    targets = [
+        key for key in ("record_id", "claim_index", "issue_index") if key in revision
+    ]
+    if len(targets) != 1:
+        raise ValueError("revision must identify exactly one record, claim or issue")
+    return targets[0]
+
+
+def _revision_authority(revision: dict) -> str:
+    # Historical revisions came from the explicit human-review interface.
+    authority = revision.get("authority", "human")
+    if (
+        authority not in ("human", "assistant")
+        or type(revision.get("confirm")) is not bool
+        or (authority == "assistant" and revision["confirm"])
+    ):
+        raise ValueError("only an explicit human revision can confirm a result")
+    return authority
+
+
+def _review_validation(result: dict) -> dict:
+    checked = check_response(
+        result["response"],
+        result["task"],
+        result["package"],
+        comparison=result["comparison"],
+    )
+    for revision in result["history"]:
+        if not all(
+            revision.get(k) for k in ("author", "at", "reason", "parent_result_id")
+        ):
+            raise ValueError("invalid revision history")
+        target = _revision_target(revision)
+        authority = _revision_authority(revision)
+        if target == "issue_index":
+            index = revision["issue_index"]
+            if (
+                type(index) is not int
+                or not 0 <= index < len(result["response"]["issues"])
+                or revision["confirm"]
+            ):
+                raise ValueError(
+                    "issue revision requires an existing index and confirm=false"
+                )
+            # Diagnoses are editable notes, not scientific claims to confirm.
+            continue
+        if target == "claim_index":
+            index = revision["claim_index"]
+            if type(index) is not int or not 0 <= index < len(
+                result["response"]["claims"]
+            ):
+                raise ValueError("revision references a missing claim")
+            checked.setdefault("claim_states", {})[str(index)] = (
+                "human_confirmed" if revision["confirm"] else "review_required"
+            )
+            continue
+        key = revision["record_id"]
+        if key not in checked["record_states"]:
+            raise ValueError("revision references a missing record")
+        if revision["confirm"]:
+            checked["record_states"][key] = "human_confirmed"
+        else:
+            state = check_response(
+                result["response"],
+                result["task"],
+                result["package"],
+                comparison=result["comparison"],
+            )["record_states"][key]
+            checked["record_states"][key] = (
+                "review_required"
+                if authority == "assistant" and state == "source_located"
+                else state
+            )
+    _check_source_resolution(result, checked)
+    return checked
+
+
+def _check_source_resolution(result: dict, checked: dict) -> None:
+    """Replay reversible link changes before reviews; never confirm their support."""
+    proof = result.get("citation_source_resolution")
+    if proof is None:
+        return
+    if proof.get("version") not in (1, 2) or not proof.get("changes"):
+        raise ValueError("invalid citation source resolution")
+    base = deepcopy(result["response"])
+    # Revisions replace existing rows/claims/issues. Undo them only to verify
+    # the original local transformation; final scientific content stays intact.
+    for revision in reversed(result["history"]):
+        target = _revision_target(revision)
+        if target == "record_id":
+            items = base["records"]
+            index = next(i for i, r in enumerate(items) if r["id"] == revision[target])
+        else:
+            items = base["claims" if target == "claim_index" else "issues"]
+            index = revision[target]
+        items[index] = deepcopy(revision["before"])
+    original = deepcopy(base)
+    for change in proof["changes"]:
+        parent = original
+        for part in change["path"][:-1]:
+            parent = parent[part]
+        key = change["path"][-1]
+        if parent[key] != change["after"]:
+            raise ValueError("citation source resolution does not match response")
+        parent[key] = deepcopy(change["before"])
+    adjusted, changes = resolve_citation_source_ids(
+        original, result["package"], version=proof["version"]
+    )
+    if adjusted != base or changes != proof["changes"]:
+        raise ValueError("citation source resolution does not replay")
+    for change in changes:
+        path = change["path"]
+        if path[0] == "records":
+            key = base["records"][path[1]]["id"]
+            if checked["record_states"][key] not in {
+                "human_confirmed",
+                "conflict",
+                "evidence_insufficient",
+            }:
+                checked["record_states"][key] = "review_required"
+        elif path[0] == "claims":
+            states = checked.setdefault("claim_states", {})
+            key = str(path[1])
+            if states.get(key) != "human_confirmed":
+                states[key] = "review_required"
+        for citation in checked["citations"]:
+            if all(citation[k] == v for k, v in change["after"].items()):
+                citation["reading"] = (
+                    "source-location-unverified"
+                    if change["reason"] == "same_source_unique_literal_quote_location"
+                    else "source-identity-unverified"
+                )
+
+
+def revise_result(result: dict, revision: dict) -> dict:
+    """An explicit revision creates a child artifact, never modifies its parent."""
+    verify_result(result)
+    target = _revision_target(revision)
+    required = {target, "replacement", "author", "at", "reason", "confirm"}
+    if (
+        not required <= revision.keys()
+        or revision.keys() - (required | {"authority"})
+        or any(
+            not isinstance(revision[k], str) or not revision[k].strip()
+            for k in ("author", "at", "reason")
+        )
+        or type(revision["confirm"]) is not bool
+        or not isinstance(revision["replacement"], dict)
+    ):
+        raise ValueError(
+            "revision requires record_id, claim_index or issue_index, replacement, author, at, reason and confirm"
+        )
+    authority = _revision_authority(revision)
+    if target == "issue_index" and revision["confirm"]:
+        raise ValueError("issue revisions require confirm=false")
+    updated = deepcopy(result)
+    if target in {"claim_index", "issue_index"}:
+        items = updated["response"]["claims" if target == "claim_index" else "issues"]
+        index = revision[target]
+        if type(index) is not int or not 0 <= index < len(items):
+            raise ValueError("revision must identify an existing claim or issue")
+    else:
+        items = updated["response"].get("records", [])
+        index = next(
+            (i for i, r in enumerate(items) if r["id"] == revision["record_id"]), None
+        )
+        if index is None or revision["replacement"].get("id") != revision["record_id"]:
+            raise ValueError("revision must identify an existing record")
+    before = deepcopy(items[index])
+    items[index] = deepcopy(revision["replacement"])
+    updated["history"].append(
+        {
+            **deepcopy(revision),
+            "authority": authority,
+            "before": before,
+            "parent_result_id": result["artifact_id"],
+        }
+    )
+    # Replay explicit reviews so edits revoke only their own confirmation and keep
+    # unchanged records/claims confirmed. Provider responses cannot supply history;
+    # explicit assistant revisions remain unconfirmed.
+    updated["validation"] = _review_validation(updated)
+    return seal_result(updated)
+
+
+def _text(value: object) -> str:
+    if value is None:
+        return "未报告 / 待核对"
+    if isinstance(value, list):
+        return "; ".join(map(str, value))
+    return str(value)
+
+
+def _md(value: object) -> str:
+    # Evidence/model prose is literal text. Only the exporter creates active
+    # links, so a paper or model cannot embed remote images in a local report.
+    text = _text(value).replace("\\", "\\\\")
+    for character in "`*_[]()!#|~":
+        text = text.replace(character, "\\" + character)
+    return html.escape(text).replace("\n", "<br>")
+
+
+def _csv(value: object) -> str:
+    text = _text(value)
+    return "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
+
+
+def export_results(
+    results: list[dict], task: dict, output: Path, *, sources: dict | None = None
+) -> list[str]:
+    formats = export_formats(task)
+    sources = sources or {}
+    identities = {}
+    for result in results:
+        verify_result(result)
+        for document in result["package"]["documents"]:
+            sid = document["id"]
+            identity = document["source"]["pdf_sha256"]
+            if sid in identities and identities[sid] != identity:
+                raise ValueError("same source ID refers to incompatible PDF versions")
+            identities[sid] = identity
+            pdf = document.get("locators", {}).get("pdf")
+            if pdf:
+                sources.setdefault(document["id"], pdf)
+    valid_links = {}
+    for sid, pdf in sources.items():
+        try:
+            if sha256_file(Path(pdf)) == identities.get(sid):
+                valid_links[sid] = pdf
+        except OSError:
+            pass
+    field_ids = [f["id"] for f in task["fields"]]
+    lines = [
+        "# 文献整理结果",
+        "",
+        _md(task["objective"]),
+        "",
+        "结果为 AI 派生资料；引用定位不等于科学支持已核实。未报告仅指所提供材料范围。",
+        "",
+    ]
+    # Offline exports may combine compatible tasks with different document sets.
+    # A missing source can also mean a deliberately selected subset, not failure.
+    expected_sources = {
+        d["id"]
+        for source_task in [task, *(r["task"] for r in results)]
+        for d in source_task["documents"]
+    }
+    missing_sources = expected_sources - identities.keys()
+    if missing_sources:
+        lines.extend(
+            [
+                f"本报告的派生结果涉及 {len(expected_sources & identities.keys())}/{len(expected_sources)} 份任务文献材料（含 SI，如有）。",
+                "",
+                "本次未包含："
+                + "、".join(_md(s) for s in sorted(missing_sources))
+                + "。",
+                "可能因处理失败或仅选择部分结果导出；不表示原文未报告所需信息。已包含的材料也不代表字段已完整提取或科学内容已核实。",
+                "",
+            ]
+        )
+    csv_stream = io.StringIO(newline="")
+    writer = csv.writer(csv_stream)
+    writer.writerow(
+        ["record_id", "subject", "stage"]
+        + [
+            f"{fid}.{key}"
+            for fid in field_ids
+            for key in ("value", "raw_value", "unit", "status", "context")
+        ]
+        + ["result_id", "sources"]
+        + [f"{fid}.step_ids" for fid in field_ids]
+        + ["steps"]
+    )
+    jsonl = []
+    claim_jsonl = []
+    claim_csv_stream = io.StringIO(newline="")
+    claim_writer = csv.writer(claim_csv_stream)
+    claim_writer.writerow(
+        ["claim_index", "text", "nature", "state", "result_id", "sources"]
+    )
+    reference_numbers = {}
+    references = []
+
+    def refs(citations: list) -> str:
+        numbers = []
+        for citation in citations:
+            key = digest(citation)
+            if key not in reference_numbers:
+                reference_numbers[key] = len(references) + 1
+                references.append(citation)
+            numbers.append(f"[{reference_numbers[key]}]")
+        return " ".join(numbers)
+
+    for result in results:
+        verify_result(result)
+        provenance = {
+            "result_id": result["artifact_id"],
+            "package_id": result["package"]["artifact_id"],
+            "provider": result["provider"],
+            "source_documents": [
+                {
+                    "id": d["id"],
+                    "source": d["source"],
+                    "parsed_artifact_id": d["parsed_artifact_id"],
+                }
+                for d in result["package"]["documents"]
+            ],
+        }
+        unresolved_issues = result["validation"].get("unresolved_issue_locations", {})
+        if unresolved_issues:
+            provenance["unresolved_issues"] = [
+                {
+                    "issue_index": int(index),
+                    "issue": result["response"]["issues"][int(index)],
+                    "location_validation": location,
+                }
+                for index, location in unresolved_issues.items()
+            ]
+        if result.get("citation_source_resolution"):
+            proof = result["citation_source_resolution"]
+            provenance["citation_source_resolution"] = proof
+            lines.extend(
+                [
+                    (
+                        f"来源位置已按同源唯一原句纠正 {len(proof['changes'])} 处，仍待核对；原引用与变更保存在结果 JSON 中。"
+                        if proof["version"] == 2
+                        else f"来源标识已按同页、同块原句纠正 {len(proof['changes'])} 处，仍待核对；原引用与变更保存在结果 JSON 中。"
+                    ),
+                    "",
+                ]
+            )
+        for record in result["response"].get("records", []):
+            lines.extend(
+                [
+                    f"## {_md(record['subject'])} · {_md(record['stage'])}",
+                    "",
+                    "| 字段 | 值 | 单位 | 原始读法 | 性质 / 状态 / 来源 |",
+                    "| --- | --- | --- | --- | --- |",
+                ]
+            )
+            row = [record["id"], record["subject"], record["stage"]]
+            record_citations = []
+            step_orders = {step["id"]: step["order"] for step in record["steps"]}
+            for definition in task["fields"]:
+                field = record["fields"][definition["id"]]
+                references_text = refs(field["citations"])
+                value_text = _md(field["value"])
+                if field["context"]:
+                    value_text += "<br>说明：" + _md(field["context"])
+                if field["step_ids"]:
+                    value_text += "<br>关联本记录步骤：" + "、".join(
+                        str(step_orders[sid]) for sid in field["step_ids"]
+                    )
+                lines.append(
+                    f"| {_md(definition.get('label', definition['id']))} | {value_text} | {_md(field['unit'] or '')} | {_md(field['raw_value'] or ('见引用' if field['value'] is not None else None))} | {NATURE_LABELS[field['nature']]} / {FIELD_STATUS[field['status']]} {references_text} |"
+                )
+                row.extend(
+                    [
+                        field[k]
+                        for k in ("value", "raw_value", "unit", "status", "context")
+                    ]
+                )
+                record_citations.extend(field["citations"])
+            writer.writerow(
+                [_csv(v) for v in row]
+                + [
+                    result["artifact_id"],
+                    _csv(json.dumps(record_citations, ensure_ascii=False)),
+                ]
+                + [
+                    json.dumps(record["fields"][fid]["step_ids"], ensure_ascii=False)
+                    for fid in field_ids
+                ]
+                + [json.dumps(record["steps"], ensure_ascii=False)]
+            )
+            lines.append("")
+            for step in record["steps"]:
+                lines.append(
+                    f"{step['order']}. {_md(step['description'])} ({NATURE_LABELS[step['nature']]}) {refs(step['citations'])}"
+                )
+            lines.append("")
+            jsonl.append(
+                json.dumps(
+                    {
+                        "schema": "aletheia-nexus/research-record/v1",
+                        **record,
+                        **provenance,
+                        "state": result["validation"]["record_states"][record["id"]],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        for index, claim in enumerate(result["response"]["claims"]):
+            claim_state = (
+                result["validation"]
+                .get("claim_states", {})
+                .get(str(index), "review_required")
+            )
+            claim_writer.writerow(
+                [
+                    index,
+                    _csv(claim["text"]),
+                    claim["nature"],
+                    claim_state,
+                    result["artifact_id"],
+                    _csv(json.dumps(claim["citations"], ensure_ascii=False)),
+                ]
+            )
+            claim_jsonl.append(
+                json.dumps(
+                    {
+                        "schema": "aletheia-nexus/research-claim/v1",
+                        "claim_index": index,
+                        **claim,
+                        **provenance,
+                        "state": claim_state,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            lines.extend(
+                [
+                    f"- {_md(claim['text'])} ({NATURE_LABELS[claim['nature']]}) {refs(claim['citations'])}",
+                    "",
+                ]
+            )
+        material_requests = [
+            request
+            for request in result["response"].get("requests", [])
+            if not request["pages"]
+        ]
+        if material_requests:
+            lines.extend(["**待补充材料**", ""])
+            for request in material_requests:
+                lines.extend(
+                    [f"- {_md(request['source_id'])}：{_md(request['reason'])}", ""]
+                )
+        issues = result["response"]["issues"]
+        if issues:
+            lines.extend(
+                [f"<details><summary>待核对事项（{len(issues)}）</summary>", ""]
+            )
+            for index, issue in enumerate(issues):
+                detail = _md(issue["detail"])
+                if str(index) in unresolved_issues:
+                    detail += (
+                        "<br>提示位置未定位，待核对：原报 "
+                        + _md(issue["source_id"])
+                        + "，PDF 页码 "
+                        + _md(issue["page"])
+                        + "；保留原提示，未生成原文链接。"
+                    )
+                lines.extend([f"- {detail}", ""])
+            lines.extend(["</details>", ""])
+    if references:
+        lines.extend(["## 原文入口", ""])
+    for number, citation in enumerate(references, 1):
+        sid = citation["source_id"]
+        label = f"{sid} PDF p.{citation['page']}"
+        link = (
+            f"[{label}]({Path(valid_links[sid]).resolve().as_uri()}#page={citation['page']})"
+            if sid in valid_links
+            else label + "（本地原文件不可用或已变化；请按结果中的哈希定位）"
+        )
+        lines.append(f"[{number}] {link}：{_md(citation['quote'])}")
+    outputs = []
+    for format_name, name, payload in (
+        ("markdown", "report.md", "\n".join(lines) + "\n"),
+        ("csv", "table.csv", "\ufeff" + csv_stream.getvalue()),
+        ("jsonl", "records.jsonl", "\n".join(jsonl) + ("\n" if jsonl else "")),
+    ):
+        if format_name in formats:
+            write_ai_export(output / name, payload)
+            outputs.append(name)
+    if "jsonl" in formats and claim_jsonl:
+        write_ai_export(output / "claims.jsonl", "\n".join(claim_jsonl) + "\n")
+        outputs.append("claims.jsonl")
+    if "csv" in formats and claim_jsonl:
+        write_ai_export(output / "claims.csv", "\ufeff" + claim_csv_stream.getvalue())
+        outputs.append("claims.csv")
+    return outputs
+
+
+def export_prepared(packages: list[dict], task: dict, output: Path) -> None:
+    """Readable local material; no empty AI report pretending extraction occurred."""
+    lines = [
+        "# 本地文献材料",
+        "",
+        _md(task["objective"]),
+        "",
+        "已准备以下原文材料；未调用远程 AI，尚未执行字段提取。",
+        "",
+    ]
+    for package in packages:
+        for document in package["documents"]:
+            pdf = Path(document["locators"]["pdf"]).as_uri()
+            lines.extend(
+                [
+                    f"## {_md(document['source']['title'] or document['id'])}",
+                    "",
+                    f"[打开 PDF]({pdf}) · 所选页：{document['pages_requested']}",
+                    "",
+                ]
+            )
+            for block in document["blocks"]:
+                lines.extend(
+                    [
+                        _md(block["text"]),
+                        "",
+                        f"[PDF p.{block['page']}]({pdf}#page={block['page']})",
+                        "",
+                    ]
+                )
+            for note in document["notes"]:
+                lines.extend(["用户备注：" + _md(note), ""])
+            for correction in document["corrections"]:
+                lines.extend(
+                    [
+                        "人工读法修订：" + _md(correction["replacement"]),
+                        "依据：" + _md(correction["reason"]),
+                        "",
+                    ]
+                )
+    write_ai_export(output / "report.md", "\n".join(lines) + "\n")

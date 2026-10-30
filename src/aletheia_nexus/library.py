@@ -86,13 +86,18 @@ def update_tags(pdf: str | Path, *, add=(), remove=()) -> list[str]:
     return tags
 
 
-def scan_library(root: str | Path, *, folder=None, tag=None, query=None) -> dict:
+def scan_library(
+    root: str | Path, *, folder=None, tag=None, query=None, path_guard=None
+) -> dict:
+    """Read native records, optionally enforcing the host's read boundary per path."""
     root = Path(root).resolve()
     if not root.is_dir():
         raise ValueError("Library directory does not exist")
     folder = normalize_folder(folder)
     items, warnings = [], []
     for sidecar in sorted(root.rglob("*.acquisition.json")):
+        if path_guard is not None:
+            path_guard(sidecar)
         try:
             if not sidecar.resolve().is_relative_to(root):
                 continue
@@ -111,6 +116,9 @@ def scan_library(root: str | Path, *, folder=None, tag=None, query=None) -> dict
                 pdf = sidecar.parent.parent / pdf.name
             if sidecar != acquisition_sidecar_path(pdf):
                 continue
+            if path_guard is not None:
+                path_guard(pdf)
+                path_guard(find_json_path(pdf.with_suffix(".library.json")))
             if not pdf.resolve().is_relative_to(root):
                 continue
             if local:

@@ -1,4 +1,4 @@
-# Aletheia Nexus v0.6 — First Public Release
+# Aletheia Nexus (溯光) v0.6 — First Public Release
 
 这是 AN 的首个公开源码版本，以 Apache-2.0 许可证发布。它把论文获取中的 DOI 标识、候选发现、有界下载、PDF 身份与正文角色验证、授权访问和来源记录组织成一条可组合的本地链路。目标是给未来的文献解析与科研知识系统提供可信输入，而不是把任何能打开的 PDF 都算成成功。
 

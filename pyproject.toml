@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aletheia-nexus"
-version = "0.7.3"
-description = "Local-first, verifiable paper acquisition and source-linked parsing."
-readme = "README.en.md"
+version = "0.8.0"
+description = "溯光 (Aletheia Nexus): local-first literature acquisition, source-linked parsing, and opt-in research extraction."
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -39,14 +39,23 @@ Source = "https://github.com/shenxuekairui/aletheia-nexus"
 aletheia-nexus = "aletheia_nexus.cli:entrypoint"
 
 [project.optional-dependencies]
+ui = [
+    "nicegui>=3.18,<4",
+    "playwright>=1.63,<2",
+]
+mcp = [
+    "mcp>=2.3,<3",
+]
 browser = [
     "playwright>=1.63,<2",
 ]
 ocr = [
     "Pillow>=12.3,<13",
+    "numpy>=2,<3",
 ]
 image-ocr = [
     "Pillow>=12.3,<13",
+    "numpy>=2,<3",
     "rapidocr==3.10.0",
     "onnxruntime>=1.23,<2",
 ]

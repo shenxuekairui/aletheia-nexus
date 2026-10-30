@@ -26,7 +26,7 @@ DEFAULT_DOIS = ("10.1038/nphys1170",)
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run real-network Aletheia Nexus discovery benchmark checks."
+        description="Run real-network 溯光 · Aletheia Nexus discovery benchmark checks."
     )
     parser.add_argument(
         "dois",

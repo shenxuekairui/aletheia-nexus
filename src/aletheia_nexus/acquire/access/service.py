@@ -414,6 +414,7 @@ def acquire_full_text_maximized(
     browser_session: BrowserSession | None = None,
     elsevier_config: ElsevierAccessConfig | None = None,
     auto_official_api: bool = True,
+    public_only: bool = False,
     expected_title: str | None = None,
     local_pdf_path: str | Path | None = None,
     unpaywall_email: str | None = None,
@@ -455,6 +456,8 @@ def acquire_full_text_maximized(
         raise TypeError("elsevier_config must be an ElsevierAccessConfig or None")
     if not isinstance(auto_official_api, bool):
         raise TypeError("auto_official_api must be a boolean")
+    if not isinstance(public_only, bool):
+        raise TypeError("public_only must be a boolean")
     if browser_session is not None and not isinstance(browser_session, BrowserSession):
         raise TypeError("browser_session must be a BrowserSession or None")
     if browser_session is not None and browser_config is not None:
@@ -462,8 +465,12 @@ def acquire_full_text_maximized(
 
     if source_preference not in {"auto", "cnki", "exclude_cnki"}:
         raise ValueError("source_preference must be auto, cnki or exclude_cnki")
+    if public_only and source_preference == "cnki":
+        raise ValueError("public_only cannot enable CNKI browser access")
     request = doi if isinstance(doi, PaperRequest) else None
     normalized_doi = (request.doi or "") if request else normalize_doi(doi)
+    if public_only and not normalized_doi:
+        raise ValueError("public_only requires a DOI")
     if request and expected_title and request.title and expected_title != request.title:
         raise ValueError("Conflicting expected_title and PaperRequest.title")
     expected_title = expected_title or (request.title if request else None)
@@ -594,6 +601,18 @@ def acquire_full_text_maximized(
                 "v0.5 acquired and verified the article; authenticated escalation "
                 "was unnecessary."
             ),
+        )
+
+    if public_only:
+        statuses = {status.value: status for status in MaximizedAcquisitionStatus}
+        return MaximizedAcquisitionResult(
+            doi=normalized_doi,
+            status=statuses.get(
+                base.status.value, MaximizedAcquisitionStatus.EXHAUSTED
+            ),
+            base_result=base,
+            elapsed_seconds=time.perf_counter() - started_at,
+            message="Public acquisition finished; authenticated APIs and browser recovery were not enabled.",
         )
 
     if elsevier_config is None and auto_official_api:

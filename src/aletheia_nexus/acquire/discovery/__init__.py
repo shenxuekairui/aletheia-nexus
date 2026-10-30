@@ -1,4 +1,4 @@
-"""Full-text candidate discovery for Aletheia Nexus."""
+"""Full-text candidate discovery for 溯光 (Aletheia Nexus)."""
 
 from aletheia_nexus.acquire.discovery.batch import (
     DiscoveryLookupResult,

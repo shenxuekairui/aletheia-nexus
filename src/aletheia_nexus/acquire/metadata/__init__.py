@@ -1,4 +1,4 @@
-"""Metadata acquisition and resolution for Aletheia Nexus."""
+"""Metadata acquisition and resolution for 溯光 (Aletheia Nexus)."""
 
 from aletheia_nexus.acquire.metadata.batch import (
     MetadataLookupResult,

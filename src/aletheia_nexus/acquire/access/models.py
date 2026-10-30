@@ -117,7 +117,7 @@ class BrowserAccessConfig:
     """Configuration for the persistent authenticated browser capability.
 
     Browser profiles live outside the repository by default and may contain
-    sensitive authenticated session state. Aletheia Nexus never logs cookies,
+    sensitive authenticated session state. 溯光 (Aletheia Nexus) never logs cookies,
     credentials, local storage values, or authentication tokens.
     """
 
@@ -136,6 +136,10 @@ class BrowserAccessConfig:
     interactive: bool = True
     wait_for_interaction: bool = False
     interaction_callback: Callable[[ChallengeReport, str], None] | None = None
+    # Internal cooperative observer on the browser's owning thread. poll is a
+    # control boundary, not clearance; resolved carries the existing wait's
+    # final report (which may still be blocked/timed out), never PDF VERIFIED.
+    interaction_poll_callback: Callable[[str, ChallengeReport, str], None] | None = None
     navigation_timeout: float = 45.0
     request_timeout: float = 45.0
     auto_challenge_grace: float = 8.0

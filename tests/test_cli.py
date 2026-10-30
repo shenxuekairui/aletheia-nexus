@@ -109,7 +109,9 @@ def test_cli_export_cannot_overwrite_input_or_known_sources(
 
 def test_entrypoint_help_and_doctor(capsys):
     assert cli.entrypoint(["--help"]) == 0
-    assert "aletheia-nexus acquire" in capsys.readouterr().out
+    help_text = capsys.readouterr().out
+    assert "溯光" in help_text and "Aletheia Nexus" in help_text
+    assert "aletheia-nexus acquire" in help_text
     assert cli.entrypoint(["doctor"]) == 0
     assert "Python:" in capsys.readouterr().out
     assert cli.entrypoint(["doctor", "--help"]) == 0
