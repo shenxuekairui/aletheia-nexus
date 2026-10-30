@@ -13,6 +13,10 @@ The 0.8.0 tag and GitHub Release are public and preserved. Its PyPI build passed
 
 Version 0.8.1 selects by result-cache identity and covers both cache enumeration orders while retaining tampering and re-extraction assertions. Scientific implementation and historical denominators stay unchanged. Original failure logs and historical evidence remain; the patch records its own final checks and actual upload separately without rewriting published tags.
 
+Actual patch validation on P1 `838a6a91e1017a3cb032a0aa1cd170287cee5c77`: complete engineering suite **3954 passed, zero failed, 148 skipped**, with command elapsed time 307.94 seconds. After normally resolving and installing the 0.8.1 wheel in a genuinely new base environment, the original publisher’s five-path installed-package checks had **1193 passes, zero failures and 87 skips** (74.58 seconds); both directory-order cases actually ran. Version, doctor, dependencies and actual site-packages imports passed. This package check used Windows/Python 3.14.3, not the Linux/3.11 publishing workflow.
+
+Product `src`, `scripts` and workflow objects exactly match 0.8.0; this patch only changes tests, version and bilingual documentation. H1 real-GUI/protocol behavior is inherited through identical source, not called a repeated 0.8.1 GUI run; the public 0.8.1 package still needs actual installation checks. Local P1 receipts are `final-release-20261030/patch-v081/full-p1/receipt.json` and `patch-v081/package-p1/summary.json` under the same release-output root. Subsequent closeout only changes acceptance and historical-note text; the final commit independently runs cloud gates without predeclaring upload.
+
 ## Final frozen acceptance (2026-10-30)
 
 | Scope | Actual result and limits |

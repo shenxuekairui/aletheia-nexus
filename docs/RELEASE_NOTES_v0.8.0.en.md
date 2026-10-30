@@ -4,6 +4,8 @@
 
 This document covers 0.8.0 and was prepared on 2026-10-30. The release identity is determined by its tag/commit in [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases) and its actual [PyPI files](https://pypi.org/project/aletheia-nexus/). The pre-release integration branch is `release/v0.8.0`.
 
+> Historical-version note: the 0.8.0 GitHub tag and release are preserved, but its PyPI workflow stopped when a test selected the wrong cache, before upload. This page preserves 0.8.0 features and commands historically; see [0.8.1 notes](RELEASE_NOTES_v0.8.1.en.md) for installation and the correction. Actual PyPI files establish installability.
+
 ## What researchers can do
 
 - **Local workbench:** select raw PDFs or an existing library. Acquisition, import, categories/tags, main-paper/SI management, previewed renaming/moves, parsing, search, research tasks and results share local services. Progress, partial completion and recoverable history remain visible.

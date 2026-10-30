@@ -4,6 +4,8 @@
 
 本说明对应0.8.0，整理日期为2026-10-30。正式发行身份以[GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)中的标签、提交及[PyPI文件](https://pypi.org/project/aletheia-nexus/)为准；发布前的候选分支为`release/v0.8.0`。
 
+> 历史版本提示：0.8.0 的 GitHub 标签与发行保留，但 PyPI 流水线因测试选错缓存中断，未上传。本页保留 0.8.0 的功能与原命令作为历史；后续安装与修正见 [0.8.1 说明](RELEASE_NOTES_v0.8.1.md)，实际可安装状态以 PyPI 文件为准。
+
 ## 研究者可以做什么
 
 - **本地工作台**：选择原始PDF或已有文库，获取、导入、分类与标签、正文/SI管理、预览改名和迁移、解析、检索、科研任务及结果共用本地服务。支持任务进度、部分完成和可恢复历史。
