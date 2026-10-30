@@ -29,8 +29,8 @@ from aletheia_nexus.processing.results import (
 )
 from aletheia_nexus.processing.review import (
     apply_revision,
-    revision_schema,
     review_targets,
+    revision_schema,
 )
 
 

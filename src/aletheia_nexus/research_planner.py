@@ -204,10 +204,15 @@ def draft_task(app, request: dict, *, authorization: str, transport=None) -> dic
     messages = [
         {
             "role": "user",
-            "content": [{"type": "input_text", "text": json.dumps(
-                {"goal": request["goal"], "documents": request["metadata"]},
-                ensure_ascii=False,
-            )}],
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": json.dumps(
+                        {"goal": request["goal"], "documents": request["metadata"]},
+                        ensure_ascii=False,
+                    ),
+                }
+            ],
         }
     ]
     checkpoint()
@@ -263,10 +268,13 @@ def draft_task(app, request: dict, *, authorization: str, transport=None) -> dic
                 )
             row["http_status"] = response.status_code
             if response.status_code != 200:
-                write_json(directory / f"http-error-{attempt + 1}.json", {
-                    "status": response.status_code,
-                    "body": response.text.replace(key, "[REDACTED]")[:20000],
-                })
+                write_json(
+                    directory / f"http-error-{attempt + 1}.json",
+                    {
+                        "status": response.status_code,
+                        "body": response.text.replace(key, "[REDACTED]")[:20000],
+                    },
+                )
                 code = {
                     401: "authentication_failed",
                     402: "quota_exhausted",
@@ -331,9 +339,13 @@ def draft_task(app, request: dict, *, authorization: str, transport=None) -> dic
             messages.append(
                 {
                     "role": "user",
-                    "content": [{"type": "input_text", "text":
-                        "上次草案不符合任务契约。请重新输出完整JSON；"
-                        + str(exc).replace(key, "[REDACTED]")[:500]}],
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "上次草案不符合任务契约。请重新输出完整JSON；"
+                            + str(exc).replace(key, "[REDACTED]")[:500],
+                        }
+                    ],
                 }
             )
         except ProcessingError as exc:
