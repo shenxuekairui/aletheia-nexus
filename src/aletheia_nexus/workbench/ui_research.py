@@ -822,6 +822,8 @@ class ResearchPages:
     def research_page(self):
         from nicegui import ui
 
+        from aletheia_nexus.research_planner import DEFAULT_EXTRACTION_STRATEGY
+
         from .research_defaults import research_defaults
 
         self.title(
@@ -893,7 +895,11 @@ class ResearchPages:
             )
             extraction_strategy = ui.select(
                 {"direct": "单轮直接提取", "source_first": "先读后组装"},
-                value=(self.current_task or {}).get("extraction_strategy", "direct"),
+                value=(
+                    DEFAULT_EXTRACTION_STRATEGY
+                    if self.current_task is None
+                    else self.current_task.get("extraction_strategy", "direct")
+                ),
                 label="科研提取策略",
             )
         ui.label(

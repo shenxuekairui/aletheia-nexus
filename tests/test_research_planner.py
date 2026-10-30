@@ -89,6 +89,9 @@ def test_planning_metadata_only_separate_account_and_no_code_execution(
     )
     assert len(sent) == 1
     assert result["task"]["documents"] == request["documents"]
+    assert result["task"]["extraction_strategy"] == "source_first"
+    assert result["task"]["budget"] == request["research_budget"]
+    assert "至少2次模型调用" in result["plan"]
     manifest = json.loads(
         (Path(result["planning_directory"]) / "manifest.json").read_text()
     )

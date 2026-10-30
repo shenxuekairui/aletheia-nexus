@@ -15,7 +15,11 @@ from aletheia_nexus.research_app import (
     ResearchApplication,
     read_json,
 )
-from aletheia_nexus.research_planner import draft_task, planning_request
+from aletheia_nexus.research_planner import (
+    DEFAULT_EXTRACTION_STRATEGY,
+    draft_task,
+    planning_request,
+)
 
 
 def _consent(message: str, *, interactive: bool) -> bool:
@@ -40,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     ask.add_argument(
         "--extraction-strategy",
         choices=("direct", "source_first"),
-        help="选择直接提取或先读后组装；按新计划确认后执行",
+        help="新建AI任务默认先读后组装；加载任务保留原策略，显式选择后重新确认",
     )
     ask.add_argument(
         "--source-assembly",
@@ -200,6 +204,8 @@ def main(argv: list[str] | None = None) -> int:
             overrides = {}
             if args.extraction_strategy is not None:
                 overrides["extraction_strategy"] = args.extraction_strategy
+            elif args.task is None and "extraction_strategy" not in checked["task"]:
+                overrides["extraction_strategy"] = DEFAULT_EXTRACTION_STRATEGY
             if args.material_presentation is not None:
                 overrides["material_presentation"] = args.material_presentation
             if args.source_assembly is not None:

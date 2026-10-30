@@ -7,6 +7,10 @@ is 0.8.0; main merge, release tag and PyPI publication remain pending. See the
 [integrated acceptance](docs/V08_RELEASE_ACCEPTANCE.md). Historical scientific
 scores and their limitations remain separate from engineering validation.
 
+New AI task plans default to the validated source-first read/assemble strategy.
+Existing tasks and explicit strategy choices retain their semantics; approved
+call/cost limits are not increased, and local mode does not call a model.
+
 This version includes an optional **local NiceGUI research workbench**.
 It has not been released to PyPI. From this source checkout:
 

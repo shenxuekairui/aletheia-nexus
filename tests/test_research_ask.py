@@ -46,6 +46,7 @@ def test_invalid_character_limit_rejected_before_preparation_or_planning(
     [
         ("direct", None),
         ("source_first", None),
+        (None, None),
         (None, "compact"),
         ("source_first", "compact"),
     ],
@@ -93,10 +94,7 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
     saved = list((service.workspace / "tasks").glob("*.json"))
     assert len(saved) == 1
     task = json.loads(saved[0].read_text(encoding="utf-8"))
-    if strategy:
-        assert task["extraction_strategy"] == strategy
-    else:
-        assert "extraction_strategy" not in task
+    assert task["extraction_strategy"] == (strategy or "source_first")
     if presentation:
         assert task["material_presentation"] == presentation
     else:
@@ -108,7 +106,7 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
     assert "material_presentation" not in original
     output = capsys.readouterr().out
     assert service.binding("execute", task) in output
-    if strategy == "source_first":
+    if strategy != "direct":
         assert "至少2次模型调用" in output
     assert ("材料呈现：精简（compact）" in output) == (presentation == "compact")
     assert not (service.workspace / "research").exists()

@@ -196,3 +196,63 @@ def test_strategy_preset_roundtrip_and_retired_choice_rejection(tmp_path, monkey
             {"extraction_strategy": "field_independent", "budget": {"max_calls": 1}}
         )
     assert controls["read"]() == before
+
+
+@pytest.mark.parametrize(
+    ("kind", "button"),
+    [
+        ("local", "本地创建可编辑计划（零模型调用）"),
+        ("remote", "授权自然语言规划"),
+    ],
+)
+def test_new_ordinary_ui_plans_default_to_source_first_without_raising_budget(
+    tmp_path, monkeypatch, kind, button
+):
+    pytest.importorskip("nicegui")
+    import test_ui_catalog_submission as mounting
+    from nicegui import ui
+
+    from aletheia_nexus.research_planner import DEFAULT_EXTRACTION_STRATEGY
+
+    before = set(ui.context.client.elements)
+    _, callbacks, submitted, calls, _ = mounting.mount(tmp_path, monkeypatch, kind)
+    elements = [e for key, e in ui.context.client.elements.items() if key not in before]
+    strategy = next(e for e in elements if getattr(e, "label", "") == "科研提取策略")
+    assert strategy.value == DEFAULT_EXTRACTION_STRATEGY == "source_first"
+    assert not submitted and not calls
+    asyncio.run(callbacks[button]())
+    parameters = submitted[0][3]
+    assert parameters["material_options"]["extraction_strategy"] == "source_first"
+    assert parameters["budget"]["max_calls"] == 10
+    assert parameters["budget"]["max_cost"] == 2
+    assert not calls  # Only queued; neither planning nor research has run.
+
+
+def test_old_ui_task_without_strategy_keeps_legacy_direct_choice(tmp_path, monkeypatch):
+    pytest.importorskip("nicegui")
+    import test_ui_research_submission as mounting
+
+    _, (execute, _), elements, submitted, _, _, _ = mounting.mount(
+        tmp_path, monkeypatch
+    )
+    strategy = next(e for e in elements if getattr(e, "label", "") == "科研提取策略")
+    assert strategy.value == "direct"
+    asyncio.run(execute())
+    assert submitted[-1]["task"]["extraction_strategy"] == "direct"
+
+
+def test_local_mode_with_default_strategy_does_not_construct_or_call_model(research):
+    from aletheia_nexus.research_planner import DEFAULT_EXTRACTION_STRATEGY
+
+    task = research.local_plan("只准备本地自制夹具", ["p1"])
+    task = research.configure_plan(
+        task, {"extraction_strategy": DEFAULT_EXTRACTION_STRATEGY}
+    )["task"]
+
+    class ForbiddenProvider:
+        def generate(self, *_args, **_kwargs):
+            pytest.fail("Local source_first preparation must never call a model")
+
+    receipt = research.execute(task, provider=ForbiddenProvider())
+    assert receipt["status"] == "PREPARED"
+    assert task["mode"] == "local" and not task["allow_remote"]
