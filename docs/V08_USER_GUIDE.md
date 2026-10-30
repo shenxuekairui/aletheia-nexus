@@ -2,7 +2,7 @@
 
 [English](V08_USER_GUIDE.en.md) · 中文为主文档，英文逐节对照。
 
-本指南对应 v0.8.0 整合版本，包含科研引擎、图形工作台、自然语言 CLI 与本地 MCP。
+本指南对应 v0.8.1 整合版本，包含科研引擎、图形工作台、自然语言 CLI 与本地 MCP。
 正式发行以 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)和
 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准；源码版本不等于上传状态。
 普通用户可从 [工作台](WORKBENCH_USER_GUIDE.md)或

@@ -2,11 +2,13 @@
 
 [English](V08_STATUS.en.md) · 中文主文档 · 更新：2026-10-30
 
-本页对应 **0.8.0 整合版本**，是当前范围与质量的主入口。
+本页对应 **0.8.1 整合版本**，是当前范围与质量的主入口。
 正式发行身份以 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)和
 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准，源码版本不等于已上传。
 历史 dev0、旧提交、旧 PR 与当时的“待办/禁止发布”见[原始状态归档](V08_STATUS_HISTORY.md)，
 均为旧快照，不覆盖本页；归档保留原始成绩与局限，不作为当前操作指令。
+
+0.8.0 的 GitHub 标签与发行保留；其 PyPI 流水线在安装包测试选错缓存时中断，没有上传。0.8.1 修复测试文件的确定性定位，科研运行与评分不变，上传状态仍以公开文件为准。
 
 ## 统一的实际能力
 
@@ -100,4 +102,4 @@ A 类总体持平，B 类网页更好，C 类实验条件与步骤整理是 AN �
 [v0.8 整合发布检查](V08_RELEASE_ACCEPTANCE.md)，不以旧提交的全量数字替代最终 gate。
 源码、main 合并、标签、GitHub Release、PyPI 上传与公开安装验证是不同状态，按实际凭据分别记录。
 详细使用边界见[评测口径](V08_EVALUATION.md)、[科研验收](V08_ACCEPTANCE.md)与
-[发布说明](RELEASE_NOTES_v0.8.0.md)；旧状态全文只在[历史归档](V08_STATUS_HISTORY.md)查阅。
+[发布说明](RELEASE_NOTES_v0.8.1.md)；旧状态全文只在[历史归档](V08_STATUS_HISTORY.md)查阅。

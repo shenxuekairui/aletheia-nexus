@@ -7,6 +7,12 @@ Final local acceptance was frozen at `60a7756754e2be401542cd25c81a7d7f3f28ec3f` 
 For entry points and use, see the [research CLI/MCP guide](V08_ENTRYPOINTS.en.md), [workbench guide](WORKBENCH_USER_GUIDE.en.md), and [v0.8 release notes](RELEASE_NOTES_v0.8.0.en.md).
 The latest scientific comparison is in the [ten-paper workflow report](V08_TEN_PAPER_COMPARISON.en.md); its historically reused denominators are not pooled with the older twenty- or eight-paper batches here.
 
+## 0.8.1 installed-package acceptance patch
+
+The 0.8.0 tag and GitHub Release are public and preserved. Its PyPI build passed 3679 source tests (316 skips), build/Twine, a fresh wheel installation, dependencies, version and doctor. Final installed-package regressions had 1191 passes, one failure and 87 skips; publishing was skipped and nothing was uploaded to PyPI. The failing test nondeterministically selected the first cache JSON, mistaking a reading-inventory cache for a result cache before reaching its intended result-tampering check.
+
+Version 0.8.1 selects by result-cache identity and covers both cache enumeration orders while retaining tampering and re-extraction assertions. Scientific implementation and historical denominators stay unchanged. Original failure logs and historical evidence remain; the patch records its own final checks and actual upload separately without rewriting published tags.
+
 ## Final frozen acceptance (2026-10-30)
 
 | Scope | Actual result and limits |

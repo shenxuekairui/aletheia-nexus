@@ -2,6 +2,12 @@
 
 [English](RELEASE_HISTORY.en.md) · [当前质量与状态](V08_STATUS.md) · [最新十篇对照](V08_TEN_PAPER_COMPARISON.md)
 
+## v0.8.1：安装包验收修正
+
+2026-10-30，v0.8.0 的 GitHub Release 触发独立 PyPI 发布流程后，安装包验收测试因宽泛缓存匹配误选首读清单而失败，上传任务跳过，PyPI 未上传0.8.0。原v0.8.0标签和GitHub Release保留，不移动或覆盖。
+
+`release/v0.8.1` 修正测试的目标结果选择，同步版本标识与文档；科研和产品运行行为沿用0.8.0，不增加科学评分分母。检查与发布状态见 [0.8.1说明](RELEASE_NOTES_v0.8.1.md)和[当前验收](V08_RELEASE_ACCEPTANCE.md)；候选版本号不表示已经上传或公开安装成功。
+
 ## v0.8.0：AI科研整理与本地工作台
 
 2026-10-30将科研/MCP分支与本地工作台分支整合为`release/v0.8.0`，安装包版本0.8.0。

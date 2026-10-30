@@ -21,7 +21,7 @@ from aletheia_nexus.processing.provider import (
     project_response,
     raw_response_value,
 )
-from aletheia_nexus.processing.results import verify_result
+from aletheia_nexus.processing.results import RESULT_SCHEMA, verify_result
 from aletheia_nexus.processing.source_first import INVENTORY_PHASE, inventory_schema
 
 
@@ -186,8 +186,11 @@ def test_normal_valid_JSON_and_projection_metadata_remain_unchanged(monkeypatch)
     )
 
 
+@pytest.mark.parametrize(
+    "inventory_first", [True, False], ids=["inventory-first", "result-first"]
+)
 def test_native_source_first_closures_survive_cache_and_trace_tampering(
-    papers, tmp_path, monkeypatch
+    papers, tmp_path, monkeypatch, inventory_first
 ):
     task = source_task(papers)
     task["model"] = {
@@ -231,13 +234,48 @@ def test_native_source_first_closures_survive_cache_and_trace_tampering(
         )
     cached = run_task(task, **args)
     assert cached["items"][0]["reused"] and len(seen) == 2
-    cache_file = next((output / "cache").glob("*.json"))
-    envelope = json.loads(cache_file.read_text("utf-8"))
+    cache_dir = output / "cache"
+    original_glob = Path.glob
+
+    def ordered_cache_glob(path, pattern, *args, **kwargs):
+        paths = list(original_glob(path, pattern, *args, **kwargs))
+        if path == cache_dir and pattern == "*.json":
+            paths.sort(
+                key=lambda item: (
+                    item.name.startswith("source-inventory-") != inventory_first,
+                    item.name,
+                )
+            )
+        return iter(paths)
+
+    monkeypatch.setattr(Path, "glob", ordered_cache_glob)
+    cache_paths = list(cache_dir.glob("*.json"))
+    assert len(cache_paths) == 2
+    assert cache_paths[0].name.startswith("source-inventory-") == inventory_first
+    envelopes = [(path, json.loads(path.read_text("utf-8"))) for path in cache_paths]
+    result_caches = [
+        (path, payload)
+        for path, payload in envelopes
+        if payload.get("result", {}).get("schema") == RESULT_SCHEMA
+        and payload["result"].get("artifact_id") == row["result_id"]
+    ]
+    assert len(result_caches) == 1
+    cache_file, envelope = result_caches[0]
+    inventory_caches = [
+        path
+        for path, payload in envelopes
+        if payload.get("schema") == "aletheia-nexus/source-inventory/v1"
+    ]
+    assert len(inventory_caches) == 1
+    inventory_file = inventory_caches[0]
+    inventory_bytes = inventory_file.read_bytes()
+    assert len(envelope["response_metadata"]) == 2
     entry = envelope["response_metadata"][-1]
     proof = envelope["metadata_artifacts"][entry["file"]]
     proof["json_closure"]["selected"]["insertion"]["characters"] = "]"
     entry["sha256"] = digest(proof)
     cache_file.write_text(json.dumps(envelope), "utf-8")
+    assert inventory_file.read_bytes() == inventory_bytes
     rebuilt = run_task(task, **args)
     assert not rebuilt["items"][0]["reused"] and len(seen) > 2
 

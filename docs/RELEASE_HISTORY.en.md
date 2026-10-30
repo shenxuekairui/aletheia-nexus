@@ -2,6 +2,12 @@
 
 [中文](RELEASE_HISTORY.md) · [Current quality and status](V08_STATUS.en.md) · [Latest ten-paper comparison](V08_TEN_PAPER_COMPARISON.en.md)
 
+## v0.8.1: package-validation correction
+
+On 2026-10-30, after the v0.8.0 GitHub Release triggered its independent PyPI workflow, installed-package acceptance failed because a broad cache selection chose the source-reading inventory. The upload job was skipped and 0.8.0 was not uploaded to PyPI. The original v0.8.0 tag and GitHub Release remain, without moving or overwriting them.
+
+`release/v0.8.1` corrects the test's result selection and updates version identifiers and documentation. Scientific and product runtime behavior carries forward from 0.8.0, with no new scientific-scoring denominator. See the [0.8.1 notes](RELEASE_NOTES_v0.8.1.en.md) and [current acceptance](V08_RELEASE_ACCEPTANCE.en.md) for checks and publication status. A candidate version number does not establish upload or successful public installation.
+
 ## v0.8.0: AI literature processing and the local workbench
 
 On 2026-10-30 the research/MCP and local-workbench branches were integrated into `release/v0.8.0`, with package version 0.8.0.

@@ -60,7 +60,7 @@ All three entrypoints share core capabilities, provenance and results. Your mate
 Requires Python 3.11 or newer; a virtual environment is recommended. Install the release package and open the local workbench:
 
 ```bash
-python -m pip install "aletheia-nexus[ui,mcp]>=0.8.0"
+python -m pip install "aletheia-nexus[ui,mcp]>=0.8.1"
 aletheia-nexus --version
 aletheia-nexus doctor
 aletheia-nexus ui --library "./library"
@@ -112,7 +112,7 @@ Primary documents are Chinese with independent English counterparts:
 | Literature processing and extraction | [科研指南](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_USER_GUIDE.md) | [Research guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_USER_GUIDE.en.md) |
 | Natural language and MCP | [入口与配置](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.md) | [Entrypoints and configuration](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.en.md) |
 | Scientific quality and latest comparison | [质量说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_STATUS.md) · [十篇对照](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_TEN_PAPER_COMPARISON.md) | [Quality](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_STATUS.en.md) · [Ten-paper comparison](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_TEN_PAPER_COMPARISON.en.md) |
-| Versions and acceptance | [发布说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.0.md) · [版本记录](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) · [验收](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.md) | [Release notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.0.en.md) · [Release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.en.md) · [Acceptance](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.en.md) |
+| Versions and acceptance | [发布说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.1.md) · [版本记录](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) · [验收](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.md) | [Release notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.1.en.md) · [Release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.en.md) · [Acceptance](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.en.md) |
 
 Report real research needs and usability problems in [Issues](https://github.com/shenxuekairui/aletheia-nexus/issues), or follow the [contribution guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.en.md) to improve code and documentation. The community follows a [code of conduct](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CODE_OF_CONDUCT.en.md); report sensitive matters according to the [security guidance](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.en.md).
 

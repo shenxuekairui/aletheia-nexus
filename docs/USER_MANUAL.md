@@ -2,7 +2,7 @@
 
 [English](USER_MANUAL.en.md) · 中文为主文档，英文逐节对照。
 
-本手册对应 **v0.8.0 整合版本**，包含图形工作台、自然语言 CLI 和本地 stdio MCP。
+本手册对应 **v0.8.1 整合版本**，包含图形工作台、自然语言 CLI 和本地 stdio MCP。
 正式发行身份以 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)及
 [PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准；源码中的版本号不代表包已上传。
 
@@ -12,7 +12,7 @@
 新建自然语言任务和工作台任务默认先读后组装；既有任务省略策略时保持原直接提取行为。
 质量与发布状态分别见 [科研验收记录](V08_ACCEPTANCE.md)、
 [十篇论文对照](V08_TEN_PAPER_COMPARISON.md)、[整合发布检查](V08_RELEASE_ACCEPTANCE.md)和
-[v0.8 发布说明](RELEASE_NOTES_v0.8.0.md)。工程测试通过不代表科研内容已获确认。
+[v0.8 发布说明](RELEASE_NOTES_v0.8.1.md)。工程测试通过不代表科研内容已获确认。
 
 下文保留从 **v0.7.2** 延续的获取、核验、解析和本地文库 CLI，面向需要获取、核验、整理和解析文献的研究人员。
 AN 提供从 DOI/书目输入，到本地 PDF 与来源记录，再到可检索、可导出的结构化内容的工作流。

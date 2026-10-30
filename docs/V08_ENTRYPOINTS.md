@@ -1,8 +1,8 @@
-# 溯光（Aletheia Nexus）v0.8.0：中文科研入口与本地 MCP
+# 溯光（Aletheia Nexus）v0.8.1：中文科研入口与本地 MCP
 
 [English](V08_ENTRYPOINTS.en.md) · 中文主文档
 
-本指南对应 v0.8.0；发行身份以 GitHub Releases 与 PyPI 项目页为准，源码或发布包以实际检出的提交、安装版本为准。两个入口共用
+本指南对应 v0.8.1；发行身份以 GitHub Releases 与 PyPI 项目页为准，源码或发布包以实际检出的提交、安装版本为准。两个入口共用
 `ResearchApplication → research-task/v1 → run_task → export_results`。
 规划只决定要整理什么，科研提取才读取论文；计划不是已核实的科学结论。
 本页保留代码 `8e3e82b` 开发快照的实际 CLI、官方 SDK 协议与工程记录，不能作为最终整合源码的测试结果。
