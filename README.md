@@ -1,4 +1,4 @@
-# Aletheia Nexus
+# 溯光（Aletheia Nexus）
 
 [English README](README.en.md) · [使用说明](docs/USER_MANUAL.md) · [v0.8.0 发布说明](docs/RELEASE_NOTES_v0.8.0.md) · [贡献指南](CONTRIBUTING.md) · [安全报告](SECURITY.md)
 
@@ -8,7 +8,7 @@
 
 > **从一篇论文的可信获取，走向可积累、可协作、可演化的科研知识基础设施。**
 
-Aletheia Nexus（AN）是一个 **local-first（本地优先）的科研知识基础设施项目**。当前从文献入手：帮助研究者获取和核验论文，在本地整理保存，再把经过验证的 PDF 转换为带有原文位置、可供 AI 使用的结构化数据。
+溯光（Aletheia Nexus，简称 AN）是一个 **local-first（本地优先）的科研知识基础设施项目**。当前从文献入手：帮助研究者获取和核验论文，在本地整理保存，再把经过验证的 PDF 转换为带有原文位置、可供 AI 使用的结构化数据。
 
 简单来说，你可以交给 AN 一个 DOI 或一份文献清单，得到的不只是下载文件，还包括“这是不是目标论文、从哪里获得、文件是否改变过”的记录。继续解析后，提取出的内容可以回到原始 PDF 的页码和位置。
 

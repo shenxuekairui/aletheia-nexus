@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from aletheia_nexus import DISPLAY_NAME
+
 
 class ContextLease:
     """A stale browser page cannot silently write to a newly selected library."""
@@ -106,7 +108,8 @@ def main(argv=None) -> int:
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(
-        prog="aletheia-nexus ui", description="启动本地科研工作台（仅 127.0.0.1）"
+        prog="aletheia-nexus ui",
+        description=f"启动{DISPLAY_NAME}本地科研工作台（仅 127.0.0.1）",
     )
     parser.add_argument(
         "--library",
@@ -146,14 +149,14 @@ def main(argv=None) -> int:
     app.on_shutdown(lambda: context.research.close())
     build_ui(context)
     print(
-        f"Aletheia Nexus: http://127.0.0.1:{args.port}\n文库：{context.root}\n工作区：{context.workspace}"
+        f"{DISPLAY_NAME}: http://127.0.0.1:{args.port}\n文库：{context.root}\n工作区：{context.workspace}"
     )
     ui.run(
         host="127.0.0.1",
         port=args.port,
         reload=False,
         show=not args.no_open,
-        title="Aletheia Nexus · 科研工作台",
+        title=f"{DISPLAY_NAME} · 科研工作台",
         language="zh-CN",
         storage_secret=secrets.token_urlsafe(32),
         binding_refresh_interval=0.2,

@@ -103,7 +103,7 @@ def main() -> int:
     )
 
     print("=" * 64)
-    print("Aletheia Nexus v0.6 one-click browser handoff")
+    print("溯光 · Aletheia Nexus v0.6 one-click browser handoff")
     print("=" * 64)
     print(f"DOI: {doi}")
     print()

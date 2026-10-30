@@ -131,7 +131,7 @@ class WindowsCredentialStore:
             2,
         )  # Generic, current user/local machine.
         credential.TargetName = target
-        credential.Comment = "Aletheia Nexus workspace API credential"
+        credential.Comment = "溯光 · Aletheia Nexus workspace API credential"
         credential.UserName = "AletheiaNexus"
         credential.CredentialBlobSize = len(encoded)
         credential.CredentialBlob = ctypes.cast(blob, ctypes.POINTER(ctypes.c_ubyte))

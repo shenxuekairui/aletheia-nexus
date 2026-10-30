@@ -17,6 +17,7 @@ from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
+from aletheia_nexus import DISPLAY_NAME
 from aletheia_nexus.acquire.access import (
     BatchAcquisitionItem,
     BatchItemStatus,
@@ -945,7 +946,7 @@ def entrypoint(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(
-            "Aletheia Nexus — verifiable paper acquisition and parsing\n\n"
+            f"{DISPLAY_NAME} — verifiable paper acquisition and parsing\n\n"
             "Usage:\n"
             "  aletheia-nexus acquire DOI [options]\n"
             "  aletheia-nexus acquire INPUT.txt [options]\n"

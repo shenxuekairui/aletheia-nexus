@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from aletheia_nexus import DISPLAY_NAME
+
 from .labels import status_label, value_label
 from .ui_acquisition import AcquisitionPage
 from .ui_common import FileRegistry, guard, json_text, json_view, parameter_editor
@@ -68,7 +70,7 @@ body { background:var(--an-canvas); color:var(--an-ink); font-family:Inter,'Sego
 @media(max-width:1200px){ :root{--an-page-gutter:28px;} .an-brand{font-size:26px;} .an-header-inner{gap:16px;} .an-header-tools{gap:2px;} }
 @media(max-width:1000px){ :root{--an-page-gutter:20px;} .an-header-inner{flex-wrap:wrap!important;gap:12px;} .an-brand{font-size:24px;} .an-nav-inner{flex-wrap:wrap!important;} .an-parameter-grid{grid-template-columns:1fr 1fr;} .an-hero{padding:28px;} }
 @media(max-width:1050px){ .an-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));} .an-overview-grid{grid-template-columns:1fr;} .an-hero-aside{display:none;} }
-@media(max-width:760px){ .an-header-inner{padding:12px 20px;gap:8px;} .an-header-tools .q-btn{min-height:36px;font-size:13px;padding:4px 8px;} .an-nav-inner{padding:6px 20px;gap:4px;} .an-nav .q-btn{min-height:36px;font-size:13px;padding:6px 7px;} .an-root-path{display:none;} }
+@media(max-width:760px){ .an-header-inner{padding:12px 20px;gap:8px;} .an-brand{font-size:clamp(18px,4.4vw,24px);} .an-header-tools .q-btn{min-height:36px;font-size:13px;padding:4px 8px;} .an-nav-inner{padding:6px 20px;gap:4px;} .an-nav .q-btn{min-height:36px;font-size:13px;padding:6px 7px;} .an-root-path{display:none;} }
 @media(prefers-reduced-motion:reduce){ .an-flow-card{transition:none;} }
 """
 
@@ -1114,7 +1116,7 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                     with ui.element("div").classes("an-brand-mark"):
                         ui.icon("hub", size="29px").props("aria-hidden=true")
                     with ui.column().classes("gap-0"):
-                        ui.label("ALETHEIA NEXUS").classes("an-brand")
+                        ui.label(DISPLAY_NAME).classes("an-brand")
                         ui.label("本地科研工作台 · v0.8").classes("an-subtitle")
                 ui.space()
                 with ui.row().classes("an-header-tools items-center"):

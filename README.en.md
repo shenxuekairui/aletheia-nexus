@@ -1,4 +1,4 @@
-# Aletheia Nexus
+# Aletheia Nexus (溯光)
 
 **v0.8.0 release candidate:** `release/v0.8.0` combines scientific extraction,
 Chinese natural-language CLI, local MCP and the NiceGUI workbench. Package version
@@ -54,7 +54,7 @@ public title candidates and DOI acquisition require separate local grants.
 
 > **From one verified paper to scientific knowledge infrastructure that can grow with research.**
 
-Aletheia Nexus (AN) is a **local-first scientific knowledge infrastructure** project. It starts with literature: acquire and verify papers, organize them locally, and turn verified PDFs into structured data that retains its connection to the original evidence.
+Aletheia Nexus (溯光, AN) is a **local-first scientific knowledge infrastructure** project. It starts with literature: acquire and verify papers, organize them locally, and turn verified PDFs into structured data that retains its connection to the original evidence.
 
 Give AN a DOI or a bibliography, and the result is more than a downloaded file. It records whether the file is the intended main article, where it came from, and whether its bytes have changed. Parsed content can then be traced back to a page and location in the source PDF.
 

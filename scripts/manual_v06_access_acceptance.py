@@ -904,7 +904,7 @@ def main() -> int:
             )
 
     print()
-    print("Aletheia Nexus v0.6 acceptance summary")
+    print("溯光 · Aletheia Nexus v0.6 acceptance summary")
     print(f"Cases:              {len(cases)}")
     print(f"Total v0.5 VERIFIED:{base_verified:>6}")
     print(f"Total v0.6 VERIFIED:{verified:>6}")

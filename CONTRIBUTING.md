@@ -1,4 +1,4 @@
-# Contributing to Aletheia Nexus
+# Contributing to Aletheia Nexus (溯光)
 
 Thank you for helping make research inputs more trustworthy. AN is early-stage software; small, reproducible reports are more useful than broad claims about publisher support.
 

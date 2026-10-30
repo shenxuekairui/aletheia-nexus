@@ -60,7 +60,7 @@ def test_local_server_renders_and_rejects_external_origin(tmp_path, stdio_encodi
                             pytest.fail(log_path.read_text(encoding="utf-8"))
                         time.sleep(0.1)
                 assert response.status_code == 200, log_path.read_text(encoding="utf-8")
-                assert "ALETHEIA NEXUS" in response.text
+                assert "溯光" in response.text and "Aletheia Nexus" in response.text
                 assert (
                     client.get(
                         url, headers={"Origin": "https://external.invalid"}

@@ -1,4 +1,4 @@
-# Aletheia Nexus 使用说明书
+# 溯光（Aletheia Nexus）使用说明书
 
 v0.8.0发布候选已整合图形工作台、自然语言CLI和MCP。普通使用优先查看
 [工作台手册](WORKBENCH_USER_GUIDE.md)、[自然语言与MCP指南](V08_ENTRYPOINTS.md)及

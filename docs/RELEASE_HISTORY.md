@@ -1,4 +1,4 @@
-# Aletheia Nexus — 版本与验收记录
+# 溯光（Aletheia Nexus） — 版本与验收记录
 
 ## v0.8.0：AI科研整理与本地工作台（发布候选）
 

@@ -1,4 +1,4 @@
-# v0.8 开发版：中文科研入口与本地 MCP
+# 溯光（Aletheia Nexus） v0.8 开发版：中文科研入口与本地 MCP
 
 本功能位于 `feat/v0.8-extraction`，尚未正式发布。两个入口共用
 `ResearchApplication → research-task/v1 → run_task → export_results`。

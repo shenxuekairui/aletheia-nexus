@@ -117,7 +117,7 @@ class BrowserAccessConfig:
     """Configuration for the persistent authenticated browser capability.
 
     Browser profiles live outside the repository by default and may contain
-    sensitive authenticated session state. Aletheia Nexus never logs cookies,
+    sensitive authenticated session state. 溯光 (Aletheia Nexus) never logs cookies,
     credentials, local storage values, or authentication tokens.
     """
 

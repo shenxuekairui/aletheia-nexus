@@ -261,7 +261,7 @@ def main() -> int:
 
     from playwright.sync_api import sync_playwright
 
-    print("Aletheia Nexus v0.6 browser page diagnostic")
+    print("溯光 · Aletheia Nexus v0.6 browser page diagnostic")
     print("Profile:", profile)
     print("Target:", redact_url_for_record(args.url) or "[unparseable-url]")
     print()

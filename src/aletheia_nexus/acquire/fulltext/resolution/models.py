@@ -42,7 +42,7 @@ class PageType(StrEnum):
 
 
 class DerivationMethod(StrEnum):
-    """How Aletheia Nexus derived a more concrete file route."""
+    """How 溯光 (Aletheia Nexus) derived a more concrete file route."""
 
     DIRECT_PDF_RESPONSE = "DIRECT_PDF_RESPONSE"
     CITATION_PDF_URL = "CITATION_PDF_URL"

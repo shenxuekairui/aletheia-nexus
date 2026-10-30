@@ -1,4 +1,4 @@
-# Aletheia Nexus v0.6.1 — Installable Research Acquisition
+# Aletheia Nexus (溯光) v0.6.1 — Installable Research Acquisition
 
 v0.6.1 makes the first public acquisition layer easier to install, run, and extend. It does not change the frozen v0.6.0 tag or claim that every publisher or institution is supported.
 

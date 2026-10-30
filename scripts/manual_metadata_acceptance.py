@@ -53,7 +53,7 @@ def print_results(
 
     print()
     print("=" * 132)
-    print("Aletheia Nexus — Metadata Manual Acceptance Test")
+    print("溯光 · Aletheia Nexus — Metadata Manual Acceptance Test")
     print("=" * 132)
 
     print(

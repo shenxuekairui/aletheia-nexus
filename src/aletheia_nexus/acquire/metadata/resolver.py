@@ -19,7 +19,7 @@ CROSSREF_API = "https://api.crossref.org/v1"
 
 
 class DoiAgency(StrEnum):
-    """DOI registration agencies supported by Aletheia Nexus."""
+    """DOI registration agencies supported by 溯光 (Aletheia Nexus)."""
 
     CROSSREF = "crossref"
     DATACITE = "datacite"

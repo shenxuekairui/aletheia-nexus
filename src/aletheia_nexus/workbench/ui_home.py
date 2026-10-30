@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from aletheia_nexus import DISPLAY_NAME
+
 GUIDE = [
     (
         "首次使用",
@@ -331,7 +333,7 @@ class HomePages:
             with ui.row().classes("w-full justify-between items-start gap-10"):
                 with ui.column().classes("gap-3 grow"):
                     ui.label("本地科研工作台  /  v0.8").classes("an-hero-kicker")
-                    ui.label("Aletheia Nexus").classes("an-hero-product").props(
+                    ui.label(DISPLAY_NAME).classes("an-hero-product").props(
                         "role=heading aria-level=1"
                     )
                     ui.label("从文献，到可信的研究积累。").classes("an-hero-title")

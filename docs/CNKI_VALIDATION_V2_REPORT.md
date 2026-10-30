@@ -1,4 +1,4 @@
-# CNKI 验证与 AN 接入优化报告
+# CNKI 验证与溯光（Aletheia Nexus）接入优化报告
 
 历史 v2 阶段记录：最新分流、交付默认值、集成与推送状态见 [最终集成验收](CNKI_FINAL_INTEGRATION_REPORT.md)。
 
