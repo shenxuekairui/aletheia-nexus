@@ -1,5 +1,10 @@
 # Aletheia Nexus 使用说明书
 
+v0.8.0发布候选已整合图形工作台、自然语言CLI和MCP。普通使用优先查看
+[工作台手册](WORKBENCH_USER_GUIDE.md)、[自然语言与MCP指南](V08_ENTRYPOINTS.md)及
+[0.8发布说明](RELEASE_NOTES_v0.8.0.md)。下文保留兼容的获取、解析和文库CLI；
+版本对应说明属于原历史手册，不代表本次发布候选仍只有0.7功能。
+
 开发分支新增的 `research run/export/revise`、DeepSeek 配置、任务字段、原页核对和
 结果复用见 [v0.8 开发版指南](V08_USER_GUIDE.md)。该功能未正式发布；下文保留既有
 获取、解析与本地文库操作说明。

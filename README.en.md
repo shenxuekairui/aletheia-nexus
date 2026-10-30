@@ -1,6 +1,13 @@
 # Aletheia Nexus
 
-The development branch includes an optional **local NiceGUI research workbench**.
+**v0.8.0 release candidate:** `release/v0.8.0` combines scientific extraction,
+Chinese natural-language CLI, local MCP and the NiceGUI workbench. Package version
+is 0.8.0; main merge, release tag and PyPI publication remain pending. See the
+[release notes](docs/RELEASE_NOTES_v0.8.0.md) and
+[integrated acceptance](docs/V08_RELEASE_ACCEPTANCE.md). Historical scientific
+scores and their limitations remain separate from engineering validation.
+
+This version includes an optional **local NiceGUI research workbench**.
 It has not been released to PyPI. From this source checkout:
 
 ```console

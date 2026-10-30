@@ -124,6 +124,48 @@ jobs:
           smoke-venv/bin/aletheia-nexus doctor
           smoke-venv/bin/python -m pytest -q tests/test_cli.py tests/test_research_cli.py tests/test_library.py tests/content tests/processing
 
+  mcp-extra:
+    name: mcp-extra (SDK v2 stdio)
+    needs: test
+    if: >-
+      (github.event_name != 'pull_request' ||
+       !github.event.pull_request.draft ||
+       (github.event.action == 'labeled' && github.event.label.name == 'ci:full')) &&
+      (github.event_name != 'workflow_dispatch' || inputs.tier == 'full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install MCP extra and test tools
+        run: python -m pip install -e ".[dev,mcp]"
+      - name: Check dependencies and installed entry points
+        run: |
+          python -m pip check
+          aletheia-nexus --version
+          aletheia-nexus mcp serve --help
+      - name: Run local SDK transport and independent authorization checks
+        run: >-
+          python -m pytest -q
+          tests/test_mcp_stdio.py tests/test_mcp_library.py
+          tests/test_mcp_acquisition_stdio.py tests/test_mcp_title_discovery_stdio.py
+          tests/test_research_app.py tests/test_research_acquisition.py
+          tests/test_research_revision_app.py
+          --junitxml=mcp-extra.junit.xml
+      - name: Upload MCP protocol evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-extra-${{ github.sha }}
+          path: mcp-extra.junit.xml
+          if-no-files-found: error
+          retention-days: 30
+
   browser-extra:
     name: browser-extra
     needs: test

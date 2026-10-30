@@ -891,6 +891,15 @@ class ResearchPages:
             compare = ui.checkbox(
                 "跨论文比较", value=(self.current_task or {}).get("synthesize", False)
             )
+            extraction_strategy = ui.select(
+                {"direct": "单轮直接提取", "source_first": "先读后组装"},
+                value=(self.current_task or {}).get("extraction_strategy", "direct"),
+                label="科研提取策略",
+            )
+        ui.label(
+            "标准先读后组装每篇通常至少需要2次模型请求；跨篇比较、补页和重试另计，"
+            "缓存可减少新调用。请选择足够的调用和费用预算，程序不会自动提高上限。"
+        ).classes("an-muted text-sm")
         with ui.expansion("模型、调用及费用预算", icon="tune", value=True).classes(
             "an-card w-full"
         ):
@@ -964,6 +973,7 @@ class ResearchPages:
                     "type": task_type.value,
                     "include_steps": include_steps.value,
                     "synthesize": compare.value,
+                    "extraction_strategy": extraction_strategy.value,
                     **read_material_options(),
                 }
 
@@ -975,6 +985,7 @@ class ResearchPages:
                     "type",
                     "include_steps",
                     "synthesize",
+                    "extraction_strategy",
                     "rules",
                     "query",
                     "context_pages",
@@ -1000,6 +1011,10 @@ class ResearchPages:
                     raise ValueError("科研预设中的材料模式不受支持")
                 if "type" in parameters and parameters["type"] not in CHOICES["type"]:
                     raise ValueError("科研预设中的任务类型不受支持")
+                if "extraction_strategy" in parameters and parameters[
+                    "extraction_strategy"
+                ] not in {"direct", "source_first"}:
+                    raise ValueError("科研提取策略仅支持单轮直接提取或先读后组装")
                 for key in ("include_steps", "synthesize"):
                     if key in parameters and type(parameters[key]) is not bool:
                         raise ValueError("科研预设的步骤与比较选项必须为是或否")
@@ -1010,6 +1025,7 @@ class ResearchPages:
                     ("type", task_type),
                     ("include_steps", include_steps),
                     ("synthesize", compare),
+                    ("extraction_strategy", extraction_strategy),
                 ):
                     if key in parameters:
                         element.set_value(parameters[key])
@@ -1045,6 +1061,7 @@ class ResearchPages:
             task_type.set_value(task["type"])
             include_steps.set_value(bool(task.get("include_steps")))
             compare.set_value(bool(task.get("synthesize")))
+            extraction_strategy.set_value(task.get("extraction_strategy", "direct"))
             read_model.apply(task.get("model", {}))
             read_budget.apply(task.get("budget", {}))
             read_material_options.apply(
@@ -1250,6 +1267,7 @@ class ResearchPages:
                         allow_remote=mode.value != "local",
                         include_steps=include_steps.value,
                         synthesize=compare.value,
+                        extraction_strategy=extraction_strategy.value,
                         model=read_model(),
                         budget=read_budget(),
                         rules=read_material_options()["rules"],
@@ -1381,7 +1399,10 @@ class ResearchPages:
             )
             steps, synthesis = include_steps.value, compare.value
             requested_mode = mode.value
-            material_options = read_material_options()
+            material_options = {
+                **read_material_options(),
+                "extraction_strategy": extraction_strategy.value,
+            }
             parse_options = {
                 **self.ctx.research.parser_options(),
                 **self.ctx.settings.get("parsing", {}),
@@ -1456,7 +1477,10 @@ class ResearchPages:
                         "model": read_model(),
                         "budget": read_budget(),
                         "planning_max_cost": planning_cost.value,
-                        "material_options": read_material_options(),
+                        "material_options": {
+                            **read_material_options(),
+                            "extraction_strategy": extraction_strategy.value,
+                        },
                         "parse_options": {
                             **self.ctx.research.parser_options(),
                             **self.ctx.settings.get("parsing", {}),

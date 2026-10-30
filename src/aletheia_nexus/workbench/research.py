@@ -227,8 +227,9 @@ class WorkbenchResearch:
             "rules",
             "query",
             "context_pages",
+            "extraction_strategy",
         }:
-            raise ValueError("取材参数仅支持研究规则、关键词和上下文页数")
+            raise ValueError("取材参数仅支持研究规则、关键词、上下文页数和提取策略")
         if "rules" in parameters and (
             not isinstance(parameters["rules"], list)
             or any(not isinstance(rule, str) for rule in parameters["rules"])
@@ -246,6 +247,8 @@ class WorkbenchResearch:
             value.pop("query", None)
         if "context_pages" in parameters:
             value["context_pages"] = parameters["context_pages"]
+        if "extraction_strategy" in parameters:
+            value["extraction_strategy"] = parameters["extraction_strategy"]
         checked = self.validate_plan(value)
         path = (
             self.workspace
