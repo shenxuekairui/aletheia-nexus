@@ -2,11 +2,14 @@
 
 [中文](V08_STATUS.md) · Chinese primary document · Updated: 2026-10-30
 
-This page covers the **integrated 0.8.0 version** and is the primary current scope/quality entry point.
+This page covers the **integrated 0.8.1 version** and is the primary current scope/quality entry point.
 Official release identity is determined by [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)
 and [PyPI](https://pypi.org/project/aletheia-nexus/); a source version is not proof of upload.
 Old dev0, commit, PR, and then-current pending/no-publication statements remain in the [status archive](V08_STATUS_HISTORY.md).
 They are historical snapshots, not current instructions; the archive retains their scores and limitations.
+
+The 0.8.0 GitHub tag and release are preserved. Its PyPI workflow stopped when an installed-package test selected the wrong cache; no upload occurred. Version 0.8.1 fixes deterministic test-file selection without changing scientific execution or scores. Public files still establish upload status.
+
 
 ## One set of actual capabilities
 
@@ -100,5 +103,5 @@ The user removed the hard 90% stopping threshold; frozen references were not cha
 See [v0.8 integrated release checks](V08_RELEASE_ACCEPTANCE.md) for integrated engineering tests, actual UI/CLI/MCP,
 packages, current CI, and skip scope; an old commit's full-suite count does not replace the final gate.
 Source, main merge, tags, GitHub Release, PyPI upload, and public-install verification are separate states recorded from actual evidence.
-See [evaluation definitions](V08_EVALUATION.md), [scientific acceptance](V08_ACCEPTANCE.md), and [release notes](RELEASE_NOTES_v0.8.0.en.md)
+See [evaluation definitions](V08_EVALUATION.md), [scientific acceptance](V08_ACCEPTANCE.md), and [release notes](RELEASE_NOTES_v0.8.1.en.md)
 for detail. The full old status text belongs only to the [historical archive](V08_STATUS_HISTORY.md).

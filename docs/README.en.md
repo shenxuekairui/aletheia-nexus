@@ -18,6 +18,7 @@ Primary documents are Chinese with independent English counterparts. Commands, f
 
 | What you need | 中文 | English |
 | --- | --- | --- |
+| v0.8.1 installation-acceptance patch | [发布说明](RELEASE_NOTES_v0.8.1.md) | [Release notes](RELEASE_NOTES_v0.8.1.en.md) |
 | v0.8.0 features and compatibility | [发布说明](RELEASE_NOTES_v0.8.0.md) | [Release notes](RELEASE_NOTES_v0.8.0.en.md) |
 | Scientific quality, scope and scoring limits | [质量说明](V08_STATUS.md) | [Quality and scope](V08_STATUS.en.md) |
 | Latest 10-paper native PDF workflow comparison | [对照报告](V08_TEN_PAPER_COMPARISON.md) | [Comparison report](V08_TEN_PAPER_COMPARISON.en.md) |

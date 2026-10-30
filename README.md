@@ -60,7 +60,7 @@
 需要 Python 3.11 或更新版本，建议使用虚拟环境。安装发布包后打开本地工作台：
 
 ```bash
-python -m pip install "aletheia-nexus[ui,mcp]>=0.8.0"
+python -m pip install "aletheia-nexus[ui,mcp]>=0.8.1"
 aletheia-nexus --version
 aletheia-nexus doctor
 aletheia-nexus ui --library "./library"
@@ -112,7 +112,7 @@ AI 仍可能漏掉信息、误读图表或混淆实验对象与条件；解析�
 | 科研整理与提取 | [科研指南](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_USER_GUIDE.md) | [Research guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_USER_GUIDE.en.md) |
 | 自然语言与 MCP | [入口与配置](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.md) | [Entrypoints and configuration](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.en.md) |
 | 科研质量与最新对照 | [质量说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_STATUS.md) · [十篇对照](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_TEN_PAPER_COMPARISON.md) | [Quality](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_STATUS.en.md) · [Ten-paper comparison](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_TEN_PAPER_COMPARISON.en.md) |
-| 版本与验收 | [发布说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.0.md) · [版本记录](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) · [验收](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.md) | [Release notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.0.en.md) · [Release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.en.md) · [Acceptance](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.en.md) |
+| 版本与验收 | [发布说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.1.md) · [版本记录](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) · [验收](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.md) | [Release notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.1.en.md) · [Release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.en.md) · [Acceptance](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.en.md) |
 
 欢迎通过 [Issues](https://github.com/shenxuekairui/aletheia-nexus/issues)反馈真实科研需求与使用问题，或按[贡献指南](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md)参与开发和文档改进。社区遵循[行为准则](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CODE_OF_CONDUCT.md)，敏感信息按[安全说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)报告。
 

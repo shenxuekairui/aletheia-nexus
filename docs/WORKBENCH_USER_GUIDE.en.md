@@ -2,7 +2,7 @@
 
 [中文主文档](WORKBENCH_USER_GUIDE.md) · English translation
 
-This guide covers v0.8.0 (updated 2026-10-30). Python 3.11 or later is supported; Windows is the primary acceptance platform.
+This guide covers v0.8.1 (updated 2026-10-30). Python 3.11 or later is supported; Windows is the primary acceptance platform.
 GitHub Releases and the PyPI project page establish release identity; use the actual checked-out commit or installed package version. Engineering acceptance is documented in the [release acceptance record](V08_RELEASE_ACCEPTANCE.en.md).
 Scientific extraction still has limitations in chart relationships, omissions, and condition assignment. Passing UI engineering checks does not establish scientific accuracy.
 The latest ten-paper workflow comparison, historical reuse, source review, and statistical boundaries are documented in the [scientific comparison report](V08_TEN_PAPER_COMPARISON.en.md).

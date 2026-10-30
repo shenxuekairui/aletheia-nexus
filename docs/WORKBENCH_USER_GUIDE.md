@@ -2,7 +2,7 @@
 
 [English](WORKBENCH_USER_GUIDE.en.md) · 中文主文档
 
-本手册对应 v0.8.0（2026-10-30 更新）。支持 Python 3.11 及以上，主要验收平台为 Windows。
+本手册对应 v0.8.1（2026-10-30 更新）。支持 Python 3.11 及以上，主要验收平台为 Windows。
 发行身份以 GitHub Releases 与 PyPI 项目页为准；源码或发布包以实际检出的提交、安装版本为准。工程验收见[版本验收记录](V08_RELEASE_ACCEPTANCE.md)。
 科研抽取仍有图表关系、信息遗漏与条件归属局限；界面工程通过不等于科学准确率达标。
 最新 10 篇工作流对照及其历史复用、源审和统计边界见[科研对照报告](V08_TEN_PAPER_COMPARISON.md)。

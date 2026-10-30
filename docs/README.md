@@ -19,6 +19,7 @@
 
 | 需要了解的内容 | 中文 | English |
 | --- | --- | --- |
+| v0.8.1 安装验收补丁 | [发布说明](RELEASE_NOTES_v0.8.1.md) | [Release notes](RELEASE_NOTES_v0.8.1.en.md) |
 | v0.8.0功能与兼容性 | [发布说明](RELEASE_NOTES_v0.8.0.md) | [Release notes](RELEASE_NOTES_v0.8.0.en.md) |
 | 科学质量、适用范围与评分边界 | [质量说明](V08_STATUS.md) | [Quality and scope](V08_STATUS.en.md) |
 | 最新10篇原生PDF工作流对照 | [对照报告](V08_TEN_PAPER_COMPARISON.md) | [Comparison report](V08_TEN_PAPER_COMPARISON.en.md) |

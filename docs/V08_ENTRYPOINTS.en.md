@@ -1,8 +1,8 @@
-# 溯光 (Aletheia Nexus) v0.8.0: Chinese research entry point and local MCP
+# 溯光 (Aletheia Nexus) v0.8.1: Chinese research entry point and local MCP
 
 [中文主文档](V08_ENTRYPOINTS.md) · English translation
 
-This guide covers v0.8.0. GitHub Releases and the PyPI project page establish release identity; use the actual checked-out commit or installed package version. Both entry points share
+This guide covers v0.8.1. GitHub Releases and the PyPI project page establish release identity; use the actual checked-out commit or installed package version. Both entry points share
 `ResearchApplication → research-task/v1 → run_task → export_results`.
 Planning determines what to organize; scientific extraction reads the papers. A plan is not a verified scientific conclusion.
 This page retains actual CLI, official-SDK protocol, and engineering records from development snapshot `8e3e82b`; they are not test results for the final integrated source.
