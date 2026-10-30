@@ -22,7 +22,6 @@ app = application_fixture
         ("source_first", None),
         (None, "compact"),
         ("source_first", "compact"),
-        ("field_independent", None),
     ],
 )
 def test_cli_strategy_applied_to_new_draft_without_extra_planning(
@@ -36,8 +35,6 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
         planning_calls.append(deepcopy(request))
         task = task_for(request["documents"], mode="parsed")
         task["budget"] = request["research_budget"]
-        if strategy == "field_independent":
-            task.update(include_steps=False, include_claims=False)
         checked = application.validate_research_task(task)
         original = application.workspace / "planning" / "mock" / "task.json"
         write_json(original, checked["task"])
@@ -87,8 +84,6 @@ def test_cli_strategy_applied_to_new_draft_without_extra_planning(
     assert service.binding("execute", task) in output
     if strategy == "source_first":
         assert "至少2次模型调用" in output
-    elif strategy == "field_independent":
-        assert "逐字段独立阅读" in output and "每篇至少1次模型调用" in output
     assert ("材料呈现：精简（compact）" in output) == (presentation == "compact")
     assert not (service.workspace / "research").exists()
 
@@ -339,3 +334,51 @@ def test_authorize_requires_review_and_prints_one_use_token(app, capsys):
     token = capsys.readouterr().out.strip().splitlines()[-1]
     assert len(token) == 64
     service.consume(token, "plan", request)
+
+
+def test_cli_rejects_legacy_strategy_before_planning_or_execution(
+    app, monkeypatch, capsys
+):
+    service, pdf = app
+    task = task_for(
+        [{"id": "unread", "artifact": str(pdf.parent / "missing.parsed.json")}]
+    )
+    task.update(
+        extraction_strategy="field_independent",
+        include_steps=False,
+        include_claims=False,
+    )
+    path = service.workspace / "legacy-task.json"
+    write_json(path, task)
+    original = path.read_bytes()
+    monkeypatch.setattr(
+        "aletheia_nexus.research_ask.draft_task",
+        lambda *a, **k: pytest.fail("must not plan"),
+    )
+    assert (
+        main(
+            [
+                "ask",
+                "--papers",
+                str(pdf.parent),
+                "--output-dir",
+                str(service.workspace),
+                "--task",
+                str(path),
+                "--non-interactive",
+                "--execute",
+                "--allow-remote",
+            ]
+        )
+        == 2
+    )
+    assert (
+        "field_independent_retired_use_source_first_or_direct_and_preview_again"
+        in capsys.readouterr().err
+    )
+    assert path.read_bytes() == original
+    assert not (service.workspace / "jobs").exists()
+    assert not (service.workspace / "research").exists()
+    with pytest.raises(SystemExit) as error:
+        main(["ask", "--extraction-strategy", "field_independent"])
+    assert error.value.code == 2

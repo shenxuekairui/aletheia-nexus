@@ -112,15 +112,21 @@ def _matching_locations(citation: dict, documents: list[dict]) -> list[dict]:
 
 
 def resolve_citation_source_ids(
-    response: dict, package: dict
+    response: dict, package: dict, *, version: int = 1
 ) -> tuple[dict, list[dict]]:
-    """Resolve only an impossible source page with an exact family page/block/quote.
+    """Resolve identifiers with explicit legacy or same-source location replay.
 
-    Page, block, quotation and scientific content stay unchanged. The derived
-    link remains unconfirmed; ordinary valid references are never redirected.
-    A quote may cross its original anchor and the immediately following same-page
-    block. Such matches retain the two-block basis in the reversible trace.
+    Version 1 resolves only an impossible source page with an exact family
+    page/block/quote. Page, block, quote and science stay unchanged; the link
+    remains unconfirmed. A quote may cross its original anchor and immediately
+    following same-page block, with that basis retained in the reversible trace.
+
+    Version 2 additionally restores page/block for a unique literal quote in the
+    same supplied source. A correct anchor stays put. Version 1 remains the exact
+    legacy replay behavior for saved results; neither version verifies support.
     """
+    if version not in (1, 2):
+        raise ValueError("unsupported citation resolution version")
     adjusted = deepcopy(response)
     documents = {d["id"]: d for d in package["documents"]}
     changes = []
@@ -177,7 +183,80 @@ def resolve_citation_source_ids(
                         )
 
     visit(adjusted, [])
+    if version == 2:
+        _resolve_same_source_locations(adjusted, documents, changes)
     return adjusted, changes
+
+
+def _resolve_same_source_locations(
+    response: dict, documents: dict[str, dict], changes: list[dict]
+) -> None:
+    """Correct only a unique supplied block's locator, never its scientific text."""
+
+    def visit(value, path):
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, [*path, index])
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                if key != "citations":
+                    visit(child, [*path, key])
+                    continue
+                for index, citation in enumerate(child):
+                    document = documents.get(citation["source_id"])
+                    if document is None:
+                        continue
+                    quote = _quotation(citation["quote"])
+                    if not quote or "..." in quote or "…" in quote:
+                        continue
+                    # A correct anchor stays put even if its quote occurs again.
+                    if any(
+                        block["page"] in document["pages_requested"]
+                        and (block["page"], block["id"])
+                        == (citation["page"], citation["block_id"])
+                        and quote in _quotation(block["text"])
+                        for block in document["blocks"]
+                    ):
+                        continue
+                    # Passing just this source prevents the family fallback.
+                    matches = _matching_locations(citation, [document])
+                    if len(matches) != 1:
+                        continue
+                    location = matches[0]
+                    block = next(
+                        b
+                        for b in document["blocks"]
+                        if (b["page"], b["id"])
+                        == (location["page"], location["block_id"])
+                    )
+                    normalized = _quotation(block["text"])
+                    start = normalized.find(quote)
+                    if normalized.find(quote, start + 1) != -1:
+                        continue  # Repeated occurrences within one block are ambiguous.
+                    before = deepcopy(citation)
+                    after = {
+                        **citation,
+                        "page": location["page"],
+                        "block_id": location["block_id"],
+                    }
+                    child[index] = after
+                    changes.append(
+                        {
+                            "path": [*path, "citations", index],
+                            "before": before,
+                            "after": deepcopy(after),
+                            "reason": "same_source_unique_literal_quote_location",
+                            "evidence": {
+                                "page": block["page"],
+                                "block_id": block["id"],
+                                "block_text_sha256": digest(block["text"]),
+                                "normalized_quote_span": [start, start + len(quote)],
+                                "match_mode": "same_source_single_block_unique_quote",
+                            },
+                        }
+                    )
+
+    visit(response, [])
 
 
 def _source_quote_basis(citation: dict, quote: str, document: dict) -> dict | None:
@@ -535,7 +614,7 @@ def make_result(
     comparison: bool = False,
 ) -> dict:
     validate(response, response_schema(task, comparison=comparison), "response")
-    response, adjustments = resolve_citation_source_ids(response, package)
+    response, adjustments = resolve_citation_source_ids(response, package, version=2)
     result = {
         "schema": RESULT_SCHEMA,
         "task": deepcopy(task),
@@ -546,7 +625,19 @@ def make_result(
         "history": [],
     }
     if adjustments:
-        result["citation_source_resolution"] = {"version": 1, "changes": adjustments}
+        # Source-ID-only corrections retain the old trace bytes and replay mode.
+        version = (
+            2
+            if any(
+                change["reason"] == "same_source_unique_literal_quote_location"
+                for change in adjustments
+            )
+            else 1
+        )
+        result["citation_source_resolution"] = {
+            "version": version,
+            "changes": adjustments,
+        }
     result["validation"] = _review_validation(result)
     return seal_result(result)
 
@@ -644,7 +735,7 @@ def _check_source_resolution(result: dict, checked: dict) -> None:
     proof = result.get("citation_source_resolution")
     if proof is None:
         return
-    if proof.get("version") != 1 or not proof.get("changes"):
+    if proof.get("version") not in (1, 2) or not proof.get("changes"):
         raise ValueError("invalid citation source resolution")
     base = deepcopy(result["response"])
     # Revisions replace existing rows/claims/issues. Undo them only to verify
@@ -667,7 +758,9 @@ def _check_source_resolution(result: dict, checked: dict) -> None:
         if parent[key] != change["after"]:
             raise ValueError("citation source resolution does not match response")
         parent[key] = deepcopy(change["before"])
-    adjusted, changes = resolve_citation_source_ids(original, result["package"])
+    adjusted, changes = resolve_citation_source_ids(
+        original, result["package"], version=proof["version"]
+    )
     if adjusted != base or changes != proof["changes"]:
         raise ValueError("citation source resolution does not replay")
     for change in changes:
@@ -687,7 +780,11 @@ def _check_source_resolution(result: dict, checked: dict) -> None:
                 states[key] = "review_required"
         for citation in checked["citations"]:
             if all(citation[k] == v for k, v in change["after"].items()):
-                citation["reading"] = "source-identity-unverified"
+                citation["reading"] = (
+                    "source-location-unverified"
+                    if change["reason"] == "same_source_unique_literal_quote_location"
+                    else "source-identity-unverified"
+                )
 
 
 def revise_result(result: dict, revision: dict) -> dict:
@@ -879,7 +976,11 @@ def export_results(
             provenance["citation_source_resolution"] = proof
             lines.extend(
                 [
-                    f"来源标识已按同页、同块原句纠正 {len(proof['changes'])} 处，仍待核对；原引用与变更保存在结果 JSON 中。",
+                    (
+                        f"来源位置已按同源唯一原句纠正 {len(proof['changes'])} 处，仍待核对；原引用与变更保存在结果 JSON 中。"
+                        if proof["version"] == 2
+                        else f"来源标识已按同页、同块原句纠正 {len(proof['changes'])} 处，仍待核对；原引用与变更保存在结果 JSON 中。"
+                    ),
                     "",
                 ]
             )

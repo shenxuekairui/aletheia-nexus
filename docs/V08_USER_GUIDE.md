@@ -56,25 +56,17 @@ MCP 的任务校验和执行接受同一 `task.extraction_strategy` 参数与引
 任务、图片、材料、模型或提示词改变后重新读取。复用记录指向原运行及调用序号，
 历史失败、费用和耗时留在原清单中，不冒充新调用或零成本。
 
-## 可选的逐字段独立阅读
+## 旧逐字段策略的兼容
 
-`extraction_strategy: "field_independent"` 让模型分别从同一原文和图片读取每个字段，
-再由程序逐值归档，不增加一次跨字段模型改写。每篇仅有一条文献级记录；它不表示论文
-只有一个实验。此策略需要任务明确设置 `include_steps=false`、`include_claims=false`、
-`budget.max_review_rounds=0`，不适用于操作步骤、多过程记录或 `source_assembly` 组合；
-不兼容任务会明确报错。跨文献综合仍由已有引擎单独执行。
+`field_independent` 已退役：在8篇新论文确认中，完整字段表现低于正常
+`source_first`，因此不再提供新的独立逐字段执行。CLI与MCP只提供
+`direct` 和 `source_first`；旧任务直接运行会在读取文献、创建运行或调用模型前
+报 `field_independent_retired_use_source_first_or_direct_and_preview_again`。
 
-```powershell
-aletheia-nexus research ask "只整理各论文的研究对象、证据与局限，每篇一行，不提取操作步骤，不增加额外主张" --papers ./papers --output-dir ./research-output --extraction-strategy field_independent
-```
-
-每篇正常调用数等于字段数，补材料及有限修复会增加调用，始终共用已确认的次数和费用
-上限。某个字段技术失败时保留已完成阶段，整篇暂不交付；相同任务恢复会复用成功字段，
-不把未执行字段填成“原文未报告”。阶段原始响应、投影、来源及费用归属保留在运行目录。
-若调用已完成却因中断没有可校验的阶段工件，报告 `field_stage_recovery_required`，
-需核查原运行再恢复，不自动重复购买答案。本地模式不调用模型。
-来源验证、补材料、结果修订与导出继续使用原流程；仍需检查遗漏、条件归属和科学支持。
-这是可选策略，尚不承诺每类任务都优于直接提取。
+旧 `research-task/v1`、结果、历史记录和缓存文件保持原样，仍可查看、核验、修订和
+通过 `research export` 或MCP重新导出，不需要密钥。重新提取时请另存任务副本，
+显式改为 `source_first` 或 `direct`，重新预览范围、调用次数和费用并授权；
+程序不会自动替换旧策略或重买历史答案。
 
 ## 可选的精简材料呈现
 
@@ -654,3 +646,14 @@ v0.8 开发版可调用 `read_native_table(path="F:/papers/SI/data.xlsx", sheets
 超限会明确返回 `native_table_resource_limit`，不会截掉表的一部分后声称完整。
 当已读到工作表目录时，错误也返回 `available_sheets`，客户端可据此按研究范围显式选择工作表重读。
 工具的固定上限不会自动提高；未选中材料仍列出，不能将其当作已读取或原文没有报告。
+
+## 引文位置的本地恢复
+
+新生成的结果中，若引用原句能在同一已提供文献的文本块中唯一逐字定位，AN 可确定性纠正
+页码或文本块编号。只将空白和排版连字视为等价；不模糊匹配、不改数字、单位、引文或科学值。
+重复、带省略的引文、只在图像中可见或不在已提供文本内的读法保持原状。已有正确位置不重定向。
+
+结果 JSON 的 `citation_source_resolution` v2 保存原引用、新位置、原块摘要及可重放依据，
+Markdown、CSV、JSONL 使用纠正后的位置，并保留追溯信息。位置有效不代表科学主张获得支持，
+这类结果仍待核对，不会自动标为人工确认。旧 v1 轨迹和有效缓存继续读取、复用，不为定位规则
+升级重新调用模型，也不覆盖旧工件。

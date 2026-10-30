@@ -2694,7 +2694,10 @@ def test_unmatched_reading_preserves_output_without_spending_on_repairs(
 
 
 @pytest.mark.parametrize("defect", ["wrong_block", "wrong_page", "page_only"])
-def test_imprecise_block_preserves_real_page_link(papers, tmp_path, defect):
+@pytest.mark.parametrize("exact_quote", [True, False])
+def test_imprecise_block_preserves_or_recovers_real_page_link(
+    papers, tmp_path, defect, exact_quote
+):
     def generate(request):
         answer = response_for(request)
         citation = answer["records"][0]["fields"]["method"]["citations"][0]
@@ -2704,6 +2707,8 @@ def test_imprecise_block_preserves_real_page_link(papers, tmp_path, defect):
             citation["page"] = 2
         else:
             citation["block_id"] = None
+        if not exact_quote:
+            citation["quote"] += " [visual interpretation]"
         return answer
 
     mock = MockProvider(generate)
@@ -2718,11 +2723,24 @@ def test_imprecise_block_preserves_real_page_link(papers, tmp_path, defect):
     directory = Path(run["run_directory"])
     original = json.loads((directory / "paper0.0.candidate.json").read_text("utf-8"))
     result = json.loads((directory / "paper0.result.json").read_text("utf-8"))
-    assert result["response"] == original
+    if exact_quote:
+        proof = result["citation_source_resolution"]
+        assert proof["version"] == 2
+        restored = deepcopy(result["response"])
+        for change in proof["changes"]:
+            assert change["before"]["quote"] == change["after"]["quote"]
+            parent = restored
+            for key in change["path"][:-1]:
+                parent = parent[key]
+            parent[change["path"][-1]] = change["before"]
+        assert restored == original
+        reading = "source-location-unverified"
+    else:
+        assert result["response"] == original
+        assert "citation_source_resolution" not in result
+        reading = "page-unverified"
     assert result["validation"]["record_states"] == {"r1": "review_required"}
-    assert any(
-        c["reading"] == "page-unverified" for c in result["validation"]["citations"]
-    )
+    assert any(c["reading"] == reading for c in result["validation"]["citations"])
     assert result["validation"]["scientific_support"] == "not-verified"
     verify_result(result)
 

@@ -81,6 +81,28 @@ def test_stdio_history_optional_directory_read_and_reexport_without_key(
         )
         async with Client(params, read_timeout_seconds=30) as client:
             tools = await client.list_tools()
+            legacy = deepcopy(result["task"])
+            legacy.update(
+                extraction_strategy="field_independent",
+                include_steps=False,
+                include_claims=False,
+            )
+            # Reject before opening the deliberately nonexistent material or
+            # creating an authorization/job; the transport remains valid stdio.
+            legacy["documents"][0]["artifact"] = str(papers / "missing.parsed.json")
+            for name in (
+                "draft_research_task",
+                "validate_research_task",
+                "execute_research_task",
+            ):
+                entry = next(t for t in tools.tools if t.name == name)
+                assert "field_independent" not in entry.description
+                rejected = await client.call_tool(name, {"task": legacy})
+                assert rejected.structured_content == {
+                    "ok": False,
+                    "error": "field_independent_retired_use_source_first_or_direct_and_preview_again",
+                }
+            assert not (workspace / "jobs").exists()
             history_tool = next(
                 t for t in tools.tools if t.name == "list_research_runs"
             )

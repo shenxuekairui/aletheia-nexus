@@ -256,6 +256,7 @@ TASK = obj(
         "synthesize": BOOLEAN,
         "include_steps": BOOLEAN,
         "include_claims": BOOLEAN,
+        # field_independent is read-only legacy compatibility; execution rejects it.
         "extraction_strategy": choice("direct", "source_first", "field_independent"),
         "source_assembly": choice("model", "preserve_readings"),
         "material_presentation": choice("compact"),

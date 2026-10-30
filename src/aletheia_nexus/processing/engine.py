@@ -13,19 +13,6 @@ from uuid import uuid4
 from aletheia_nexus.content.export import write_ai_export
 
 from .contracts import FIELD_ONLY_INSTRUCTION, digest, response_schema, validate_task
-from .field_independent import (
-    VERSION as FIELD_INDEPENDENT_VERSION,
-)
-from .field_independent import (
-    assemble_field,
-    check_stage_cache,
-    field_stage,
-    merge_fields,
-    narrow_response,
-)
-from .field_independent import (
-    strategy_identity as field_strategy_identity,
-)
 from .materials import Source, build_package, load_source, model_material
 from .presentation import compact_material, presentation_identity
 from .provider import (
@@ -356,178 +343,6 @@ def _source_inventory(
     )
     budget.checkpoint()
     return artifact["response"]
-
-
-def _independent_fields(
-    task,
-    package,
-    request,
-    images,
-    sources,
-    provider,
-    provider_identity,
-    budget,
-    run_dir,
-    cache_dir,
-    prefix,
-    row,
-    *,
-    resume,
-):
-    """Use native per-field results/caches; do not model-rewrite their assembly."""
-    responses = []
-    for definition in task["fields"]:
-        fid = definition["id"]
-        partial, schema, scoped = field_stage(task, package, request, definition)
-        binding = {
-            "task": task,
-            "provider": provider_identity,
-            "package_id": package["artifact_id"],
-            "request": scoped,
-            "schema": schema,
-            "version": FIELD_INDEPENDENT_VERSION,
-            "images": [
-                {
-                    **{k: v for k, v in image.items() if k != "bytes"},
-                    "sha256": hashlib.sha256(image["bytes"]).hexdigest(),
-                }
-                for image in images
-            ],
-        }
-        fingerprint = digest(binding)
-        cache = cache_dir / ("field-" + fingerprint + ".json")
-        pending = cache_dir / ("field-" + fingerprint + ".pending.json")
-        artifact = None
-        if resume and cache.is_file():
-            try:
-                candidate = json.loads(cache.read_text("utf-8"))
-                check_stage_cache(candidate, schema, package)
-                if candidate["binding"] == binding:
-                    artifact = _restore_cache(
-                        cache, partial, sources, package, provider_identity
-                    )
-            except (OSError, ValueError, KeyError, TypeError):
-                pass
-        stage = {
-            "field_id": fid,
-            "fingerprint": fingerprint,
-            "package_id": package["artifact_id"],
-            "status": "RUNNING",
-            "reused": artifact is not None,
-        }
-        row.setdefault("field_stages", []).append(stage)
-        row["phase"] = "independent_field:" + fid
-        stage_row = {"id": row["id"]}
-        stage_prefix = f"{prefix}.field.{fid}"
-        budget.checkpoint()
-        if artifact is None:
-            # A completed/unknown call with no recoverable artifact is not an
-            # invitation to buy a different answer after an interrupted write.
-            if resume and pending.is_file():
-                prior = json.loads(pending.read_text("utf-8"))
-                if prior["status"] in {"RUNNING", "COMPLETED"}:
-                    try:
-                        owner = json.loads(
-                            (Path(prior["owner_run"]) / "manifest.json").read_text(
-                                "utf-8"
-                            )
-                        )
-                        calls = owner["calls"][prior["start_call_index"] :]
-                        if any(c["status"] in {"started", "completed"} for c in calls):
-                            stage.update(
-                                status="BLOCKED", error="field_stage_recovery_required"
-                            )
-                            raise ProcessingError("field_stage_recovery_required")
-                    except (OSError, ValueError, KeyError, TypeError):
-                        stage.update(
-                            status="BLOCKED", error="field_stage_recovery_required"
-                        )
-                        raise ProcessingError("field_stage_recovery_required") from None
-            start = len(budget.calls)
-            state = {
-                "status": "RUNNING",
-                "owner_run": str(run_dir),
-                "start_call_index": start,
-                "fingerprint": fingerprint,
-            }
-            write_json(pending, state, overwrite=pending.exists())
-            write_json(run_dir / f"{stage_prefix}.input.json", binding)
-            try:
-                response = _generate_checked(
-                    partial,
-                    package,
-                    scoped,
-                    images,
-                    provider,
-                    budget,
-                    run_dir,
-                    stage_prefix,
-                    stage_row,
-                    output_schema=schema,
-                    assemble=lambda value: assemble_field(value, package),
-                )
-                suffix = ".repair1" if stage_row.get("output_repairs") else ""
-                raw = json.loads(
-                    (run_dir / f"{stage_prefix}.candidate{suffix}.json").read_text(
-                        "utf-8"
-                    )
-                )
-                final_metadata = run_dir / f"{stage_prefix}.metadata{suffix}.json"
-                artifact = {
-                    "binding": binding,
-                    "result": make_result(
-                        partial, package, provider_identity, response
-                    ),
-                    "packages": [package],
-                    "model_reviews": [],
-                    "review_artifacts": {},
-                    **_metadata_cache(stage_row, run_dir),
-                    "field_wire_response": narrow_response(response),
-                    "field_raw_response": raw,
-                    "owner_run": str(run_dir),
-                    "owner_call_indices": list(range(start, len(budget.calls))),
-                }
-                if final_metadata.is_file():
-                    artifact["field_final_metadata"] = json.loads(
-                        final_metadata.read_text("utf-8")
-                    )
-                artifact["field_artifact_id"] = "an:field-stage:sha256:" + digest(
-                    artifact
-                )
-                check_stage_cache(artifact, schema, package)
-                write_json(cache, artifact, overwrite=True)
-                state["status"] = "COMPLETED"
-            except (ProcessingError, ValueError) as exc:
-                state["status"] = stage["status"] = "FAILED"
-                stage["error"] = getattr(exc, "code", "invalid_model_output")
-                raise
-            finally:
-                state["owner_call_indices"] = list(range(start, len(budget.calls)))
-                write_json(pending, state, overwrite=True)
-                if stage_row.get("response_metadata"):
-                    row.setdefault("response_metadata", []).extend(
-                        stage_row["response_metadata"]
-                    )
-                if stage_row.get("output_repairs"):
-                    row.setdefault("output_repairs", []).extend(
-                        {"field_id": fid, **r} for r in stage_row["output_repairs"]
-                    )
-                budget.checkpoint()
-        else:
-            _restore_metadata_files(artifact, run_dir, stage_row)
-            row.setdefault("response_metadata", []).extend(
-                stage_row.get("response_metadata", [])
-            )
-        stage.update(
-            status="COMPLETED",
-            usage_owner_run=artifact["owner_run"],
-            usage_owner_call_indices=artifact["owner_call_indices"],
-            artifact_id=artifact["field_artifact_id"],
-        )
-        saved = {k: v for k, v in artifact.items() if not k.startswith("_")}
-        write_json(run_dir / f"{stage_prefix}.artifact.json", saved)
-        responses.append(artifact["result"]["response"])
-    return merge_fields(responses, task, package)
 
 
 def _generate_checked(
@@ -912,6 +727,14 @@ def _restore_cache(
         return None
 
 
+def require_active_strategy(task: dict) -> None:
+    """Old task/result contracts remain readable; retired execution is explicit."""
+    if task.get("extraction_strategy") == "field_independent":
+        raise ProcessingError(
+            "field_independent_retired_use_source_first_or_direct_and_preview_again"
+        )
+
+
 def run_task(
     payload: dict,
     *,
@@ -923,6 +746,7 @@ def run_task(
     progress: Callable[[dict], None] | None = None,
 ) -> dict:
     task = validate_task(payload)
+    require_active_strategy(task)
     base = Path(base_dir).resolve()
     output = Path(output_dir).resolve()
     remote = task["mode"] != "local"
@@ -935,7 +759,6 @@ def run_task(
     provider_identity = deepcopy(provider.identity) if remote else {"provider": "local"}
     if remote:
         provider_identity.update(strategy_identity(task))
-        provider_identity.update(field_strategy_identity(task))
     provider_identity.update(presentation_identity(task))
     run_id = (
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
@@ -1140,23 +963,7 @@ def run_task(
                                         },
                                     )
                                 checkpoint()
-                            if task.get("extraction_strategy") == "field_independent":
-                                response = _independent_fields(
-                                    task,
-                                    package,
-                                    request,
-                                    images,
-                                    sources,
-                                    provider,
-                                    provider_identity,
-                                    budget,
-                                    run_dir,
-                                    cache_dir,
-                                    f"{owner_id}.{round_number}",
-                                    row,
-                                    resume=resume,
-                                )
-                            elif task.get("source_assembly") != "preserve_readings":
+                            if task.get("source_assembly") != "preserve_readings":
                                 response = _generate_checked(
                                     task,
                                     package,
@@ -1283,26 +1090,20 @@ def run_task(
                     for source in sources:
                         source.verify()
                     result = make_result(task, package, provider_identity, response)
-                    row["reused"] = bool(row.get("field_stages")) and all(
-                        s["reused"] for s in row["field_stages"]
-                    )
+                    row["reused"] = False
                     # Supplied pages, requests awaiting user input and exhausted
                     # supplement budgets are stable under the exact same task.
                     # Changing the budget/material changes the cache key; an
                     # identical resume must not buy the same incomplete reading.
                     # Failures after adding material still retry on the next run.
-                    if (
-                        task.get("extraction_strategy") != "field_independent"
-                        and not row.get("review_status")
-                        and (
-                            not response["requests"]
-                            or row.get("supplement_status")
-                            in {
-                                "no_new_material",
-                                "needs_input",
-                                "round_budget_exhausted",
-                            }
-                        )
+                    if not row.get("review_status") and (
+                        not response["requests"]
+                        or row.get("supplement_status")
+                        in {
+                            "no_new_material",
+                            "needs_input",
+                            "round_budget_exhausted",
+                        }
                     ):
                         write_json(
                             cache,
