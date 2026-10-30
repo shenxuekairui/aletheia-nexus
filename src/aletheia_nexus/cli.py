@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import shutil
 import subprocess
@@ -943,6 +944,11 @@ def library_main(argv: list[str] | None = None) -> int:
 def entrypoint(argv: list[str] | None = None) -> int:
     """Dispatch the stable installed CLI without importing optional Playwright."""
 
+    # Redirected Windows consoles may use cp1252; product names and scientific
+    # output must remain UTF-8, as in the optional UI entry point.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         print(

@@ -1,6 +1,7 @@
 """First-use UI choices are useful, opt-in for costs, and isolated from CLI."""
 
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -230,7 +231,8 @@ def test_ui_extra_includes_browser_python_dependency_but_core_stays_optional():
     )
 
 
-def test_core_cli_help_does_not_load_nicegui_or_playwright():
+@pytest.mark.parametrize("stdio_encoding", ["utf-8", "cp1252:strict"])
+def test_core_cli_help_does_not_load_nicegui_or_playwright(stdio_encoding):
     code = """
 import importlib.abc,sys,json
 class BlockOptional(importlib.abc.MetaPathFinder):
@@ -244,7 +246,14 @@ except SystemExit as exc: assert exc.code==0
 assert not {'nicegui','playwright'} & set(sys.modules)
 print(json.dumps({'core_lazy':True}))
 """
+    environment = {**os.environ, "PYTHONIOENCODING": stdio_encoding}
     result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=environment,
+        check=True,
     )
+    assert "溯光" in result.stdout and "Aletheia Nexus" in result.stdout
     assert json.loads(result.stdout.splitlines()[-1]) == {"core_lazy": True}
