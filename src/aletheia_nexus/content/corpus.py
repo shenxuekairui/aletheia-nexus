@@ -489,30 +489,34 @@ def search_corpus(
                     (hit["parsed_artifact_id"], anchor["page"]), []
                 ).append(anchor)
     repeated_readings: set[str] = set()
+    # Context overlap is meaningful only within one parsed document. Bucket
+    # once rather than comparing every context with every hit in the corpus.
+    hits_by_artifact: dict[str, list[dict]] = {}
+    for hit in hits:
+        hits_by_artifact.setdefault(hit["parsed_artifact_id"], []).append(hit)
     for hit in hits:
         if hit["kind"] in {"context", "figure"} and any(
-            other["parsed_artifact_id"] == hit["parsed_artifact_id"]
-            and other["kind"] not in {"context", "figure"}
+            other["kind"] not in {"context", "figure"}
             and other["id"] not in alternative_ids
             and set(other["block_ids"]) <= set(hit["block_ids"])
-            for other in hits
+            for other in hits_by_artifact[hit["parsed_artifact_id"]]
         ):
             repeated_readings.add(hit["id"])
     # Sliding windows of the same passage must not occupy the entire result
     # page. Keep them available after distinct passages; do not discard text.
-    distinct_contexts = []
+    distinct_contexts: dict[str, list[dict]] = {}
     for hit in sorted(hits, key=lambda h: (-h["score"], h["id"])):
         if hit["kind"] != "context" or hit["id"] in repeated_readings:
             continue
+        previous_contexts = distinct_contexts.setdefault(hit["parsed_artifact_id"], [])
         if any(
-            other["parsed_artifact_id"] == hit["parsed_artifact_id"]
-            and len(set(other["block_ids"]) & set(hit["block_ids"]))
+            len(set(other["block_ids"]) & set(hit["block_ids"]))
             >= min(len(other["block_ids"]), len(hit["block_ids"])) / 2
-            for other in distinct_contexts
+            for other in previous_contexts
         ):
             repeated_readings.add(hit["id"])
         else:
-            distinct_contexts.append(hit)
+            previous_contexts.append(hit)
     for hit in hits:
         if hit["id"] in alternative_ids and all(
             any(

@@ -1,5 +1,6 @@
 """Engineering fixtures are self-authored, not scientific model performance data."""
 
+import base64
 import csv
 import json
 import runpy
@@ -32,8 +33,23 @@ from aletheia_nexus.processing_cli import main
 
 
 def test_exhausted_supplement_rounds_reuse_exact_task_but_allow_budget_change(
-    papers, tmp_path
+    papers, tmp_path, monkeypatch
 ):
+    # This tests cache and budget semantics, independently of optional Poppler.
+    # Real rendering is exercised by the conditional page-vision tests below.
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        "AAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg=="
+    )
+    rendered = []
+
+    def render_fixture(pdf, page):
+        rendered.append(page)
+        return png
+
+    monkeypatch.setattr(
+        "aletheia_nexus.processing.materials.render_page", render_fixture
+    )
     task = task_for(papers[:1], mode="hybrid")
     task["documents"][0]["image_pages"] = []
     task["budget"].update(max_supplement_rounds=0, max_calls=3)
@@ -77,6 +93,48 @@ def test_exhausted_supplement_rounds_reuse_exact_task_but_allow_budget_change(
     assert provider.requests[-1]["evidence_update"]["current_coverage"][0][
         "current_image_pages"
     ] == [2]
+    assert rendered == [2]
+
+
+def test_missing_supplement_renderer_keeps_partial_result_without_another_model_call(
+    papers, tmp_path, monkeypatch
+):
+    # Keep the real render_page preflight: missing optional system tooling must
+    # not become a claimed image, a discarded candidate or a new model call.
+    native_which = shutil.which
+    monkeypatch.setattr(
+        "aletheia_nexus.processing.materials.shutil.which",
+        lambda name: None if name == "pdftoppm" else native_which(name),
+    )
+    task = task_for(papers[:1], mode="hybrid")
+    task["documents"][0]["image_pages"] = []
+    task["budget"].update(max_supplement_rounds=1, max_calls=3)
+
+    def generate(request):
+        response = response_for(request)
+        response["requests"] = [
+            {"source_id": "paper0", "pages": [2], "reason": "Read test page"}
+        ]
+        return response
+
+    provider = MockProvider(generate)
+    manifest = run_task(
+        task,
+        base_dir=tmp_path,
+        output_dir=tmp_path / "without-renderer",
+        allow_remote=True,
+        provider=provider,
+    )
+    assert manifest["status"] == "PARTIAL"
+    assert manifest["items"][0]["supplement_status"] == "page_renderer_unavailable"
+    assert len(provider.requests) == 1
+    result = json.loads(
+        (Path(manifest["run_directory"]) / "paper0.result.json").read_text("utf-8")
+    )
+    verify_result(result)
+    assert result["response"]["records"]
+    assert result["response"]["requests"][0]["pages"] == [2]
+    assert result["package"]["images"] == []
 
 
 ROOT = Path(__file__).resolve().parents[2]

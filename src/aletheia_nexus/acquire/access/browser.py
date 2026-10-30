@@ -2,18 +2,24 @@ import logging
 import math
 import re
 import time
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
+from threading import get_ident
 from urllib.parse import parse_qs, urlsplit
 
 from aletheia_nexus.acquire.access.base_provider import BaseBrowserProvider
+from aletheia_nexus.acquire.access.browser_engine.connection import (
+    connection_failure_diagnostic,
+)
 from aletheia_nexus.acquire.access.browser_engine.launcher import (
     NormalBrowserError,
     ProfileLease,
     normal_browser_endpoint,
 )
+from aletheia_nexus.acquire.access.browser_engine.observation import bounded_read
 from aletheia_nexus.acquire.access.browser_engine.runtime import (
     affected_download_version,
     fixed_installed_browser,
@@ -45,6 +51,8 @@ from aletheia_nexus.core.models import PaperMetadata
 
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _LOGGER = logging.getLogger(__name__)
+_ATTACHED_TITLE_BUDGET = 3.0
+_ATTACHED_TITLE_READ_TIMEOUT = 0.5
 _PROFILE_LOCK_MARKERS = (
     "lockfile",
     "SingletonLock",
@@ -55,6 +63,10 @@ _PROFILE_LOCK_MARKERS = (
 
 class BrowserCapabilityUnavailable(RuntimeError):
     """Raised when the optional browser capability cannot be started."""
+
+    def __init__(self, *args, diagnostic=None):
+        super().__init__(*args)
+        self.diagnostic = deepcopy(diagnostic)
 
 
 def _profile_appears_locked(profile_dir: Path) -> bool:
@@ -144,6 +156,10 @@ def _validate_config(config: BrowserAccessConfig) -> None:
         config.interaction_callback
     ):
         raise TypeError("interaction_callback must be callable or None")
+    if config.interaction_poll_callback is not None and not callable(
+        config.interaction_poll_callback
+    ):
+        raise TypeError("interaction_poll_callback must be callable or None")
     if config.headless and config.interactive:
         raise ValueError("headless browser mode cannot use interactive human handoff")
     for name in (
@@ -380,7 +396,7 @@ def _select_attached_page(
     )
     pages = list(getattr(context, "pages", ()) or ())
     expected = _normalized_page_title(expected_title)
-    ranked: list[tuple[int, int, object]] = []
+    candidates: list[tuple[int, int, object, bool]] = []
     for index, page in enumerate(pages):
         try:
             if page.is_closed():
@@ -409,21 +425,45 @@ def _select_attached_page(
         if any(len(token) >= 6 and token in compact_url for token in preferred_tokens):
             score += 450
 
-        if expected:
+        candidates.append((score, index, page, pdf_page))
+
+    title_scores: dict[int, int] = {}
+    if expected:
+        # Page.title has no public timeout argument. An old native PDF may
+        # leave its execution context unresponsive indefinitely. Reuse the
+        # existing owning-thread observation deadline, and share one budget
+        # across all tabs instead of multiplying a long timeout by tab count.
+        # URL scores only prioritize observations; the ranking below retains
+        # exactly the original weights and original-index tie rule.
+        deadline = time.monotonic() + _ATTACHED_TITLE_BUDGET
+        for _score, index, page, pdf_page in sorted(
+            candidates, key=lambda item: (item[0], item[1]), reverse=True
+        ):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
             try:
-                observed = _normalized_page_title(page.title())
+                observed = _normalized_page_title(
+                    bounded_read(
+                        page,
+                        "title",
+                        timeout=min(_ATTACHED_TITLE_READ_TIMEOUT, remaining),
+                    )
+                )
             except Exception:
                 observed = ""
             if observed:
                 similarity = SequenceMatcher(None, expected, observed).ratio()
                 if similarity >= 0.92:
-                    score += 300
-                    if pdf_page:
-                        score += 100
+                    title_scores[index] = 300 + (100 if pdf_page else 0)
 
-        # Later pages win exact ties. This follows the normal handoff workflow,
-        # where the researcher leaves the most recently opened target tab active.
-        ranked.append((score, index, page))
+    # Later pages win exact ties, as before. An unreadable/unobserved title is
+    # unknown, not positive identity evidence and not permission to lower the
+    # caller's minimum_score.
+    ranked = [
+        (score + title_scores.get(index, 0), index, page)
+        for score, index, page, _pdf in candidates
+    ]
 
     if not ranked:
         return None
@@ -567,6 +607,7 @@ class BrowserSession:
         self._use_system_proxy = self.config.resolved_use_system_proxy
         self.profile_dir = browser_profile_dir(self.config)
         self._manager = None
+        self._event_thread_id = None
         self._context = None
         self._attached_browser = None
         self._attached_external = False
@@ -579,6 +620,14 @@ class BrowserSession:
         self._pending_hosts: dict[str, str | None] = {}
         self._cnki_finished_at: float | None = None
         self._cnki_rate_limit: BrowserAccessAttempt | None = None
+        self._connection_failure = None
+
+    @property
+    def connection_diagnostic(self) -> dict | None:
+        """Safe connection failure details, without endpoint or target identities."""
+        return (
+            deepcopy(self._connection_failure[1]) if self._connection_failure else None
+        )
 
     def interaction_ready(self, doi: str) -> bool:
         """True only when this session's retained challenge has visibly cleared."""
@@ -605,6 +654,27 @@ class BrowserSession:
         self.close()
         return False
 
+    def pump_events(self, seconds: float = 0.25) -> None:
+        """Service browser events during a caller's cooperative human wait.
+
+        Keep request guards and download callbacks responsive on Playwright's
+        owning thread. This never starts a browser, navigates, reloads, clicks,
+        or decides that authentication has succeeded.
+        """
+        if isinstance(seconds, bool) or not math.isfinite(seconds) or seconds < 0:
+            raise ValueError("browser event wait must be finite and nonnegative")
+        if self._context is None:
+            time.sleep(seconds)
+            return
+        if self._event_thread_id != get_ident():
+            raise RuntimeError("Browser events must be processed on the owning thread")
+        pages = [page for page in self._context.pages if not page.is_closed()]
+        if not pages:
+            raise BrowserCapabilityUnavailable(
+                "The browser has no live page during the human interaction wait"
+            )
+        pages[0].wait_for_timeout(seconds * 1000)
+
     def _ensure_started(self):
         _validate_config(self.config)
         if self.config.resolved_use_system_proxy != self._use_system_proxy:
@@ -614,6 +684,9 @@ class BrowserSession:
             )
         if self._context is not None:
             return self._context
+        if self._connection_failure is not None:
+            message, diagnostic = self._connection_failure
+            raise BrowserCapabilityUnavailable(message, diagnostic=diagnostic)
 
         self.profile_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
@@ -661,11 +734,17 @@ class BrowserSession:
                 raise BrowserCapabilityUnavailable(message) from exc
 
         if endpoint is not None:
+            connection_started = time.monotonic()
+            connection_stage = "cdp_attach"
             try:
                 browser = playwright.chromium.connect_over_cdp(
                     endpoint.strip(),
                     timeout=self.config.navigation_timeout * 1000,
+                    # Keep the established download/focus defaults used by the
+                    # native article-PDF route. no_defaults is not a workaround
+                    # for initialization of an unresponsive existing PDF target.
                 )
+                connection_stage = "context_setup"
                 _require_safe_download_browser(browser)
                 contexts = list(browser.contexts)
                 if not contexts:
@@ -684,20 +763,33 @@ class BrowserSession:
                     max_bytes=self.config.max_bytes,
                 )
             except Exception as exc:
+                diagnostic = None
+                if not isinstance(exc, BrowserCapabilityUnavailable):
+                    diagnostic = connection_failure_diagnostic(
+                        exc,
+                        endpoint=endpoint,
+                        stage=connection_stage,
+                        timeout_seconds=self.config.navigation_timeout,
+                        elapsed_seconds=time.monotonic() - connection_started,
+                    )
                 try:
                     manager.__exit__(type(exc), exc, exc.__traceback__)
+                except Exception as cleanup_exc:
+                    if diagnostic is not None:
+                        diagnostic["disconnect_error_type"] = type(cleanup_exc).__name__
                 finally:
                     if self._normal_lease is not None:
                         self._normal_lease.close()
                         self._normal_lease = None
                 if isinstance(exc, BrowserCapabilityUnavailable):
                     raise
+                self._connection_failure = (diagnostic["message"], diagnostic)
                 raise BrowserCapabilityUnavailable(
-                    "Could not attach to the external browser CDP endpoint. "
-                    f"Error type: {type(exc).__name__}"
+                    diagnostic["message"], diagnostic=diagnostic
                 ) from exc
 
             self._manager = manager
+            self._event_thread_id = get_ident()
             self._context = context
             self._attached_browser = browser
             self._attached_external = True
@@ -763,6 +855,7 @@ class BrowserSession:
             max_bytes=self.config.max_bytes,
         )
         self._manager = manager
+        self._event_thread_id = get_ident()
         self._context = context
         self._context_closed = False
         if hasattr(context, "on"):
@@ -800,6 +893,7 @@ class BrowserSession:
         normal_lease, self._normal_lease = self._normal_lease, None
         self._context = None
         self._manager = None
+        self._event_thread_id = None
         self._attached_browser = None
         self._attached_external = False
         self._blocked_unsafe_urls = []
@@ -807,6 +901,7 @@ class BrowserSession:
         self._downloads = []
         self._pending_pages = {}
         self._pending_hosts = {}
+        self._connection_failure = None
 
         try:
             if context is not None and not attached_external:

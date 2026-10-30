@@ -505,9 +505,13 @@ def test_profile_lease_released_even_when_driver_disconnect_fails(
         lambda *a, **kw: "ws://127.0.0.1:43210/devtools/browser/owned-id",
     )
     session = browser.BrowserSession(BrowserAccessConfig(profile_root=tmp_path))
-    with pytest.raises(RuntimeError, match="disconnect failed"):
+    expected = browser.BrowserCapabilityUnavailable if attach_fails else RuntimeError
+    match = "本机控制连接失败" if attach_fails else "disconnect failed"
+    with pytest.raises(expected, match=match) as caught:
         session._ensure_started()
         session.close()
+    if attach_fails:
+        assert caught.value.diagnostic["disconnect_error_type"] == "RuntimeError"
     assert not manager.context.closed
     launcher.ProfileLease(session.profile_dir).close()
 

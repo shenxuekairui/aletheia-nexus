@@ -319,6 +319,8 @@ class DeepSeekProvider:
         *,
         enabled: bool = False,
         transport: httpx.BaseTransport | None = None,
+        instructions: str | None = None,
+        prompt_version: str | None = None,
     ):
         if not enabled:
             raise ProcessingError("remote_disabled")
@@ -327,8 +329,16 @@ class DeepSeekProvider:
         self._key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
         if not self._key:
             raise ProcessingError("missing_api_key")
+        from .api_config import resolve_deepseek_endpoint
+
+        self._endpoint = resolve_deepseek_endpoint("responses")
         self._transport = transport
         self._last_call = 0.0
+        # Trusted application services may reuse authentication, transport and
+        # accounting for a small independent operation (e.g. title translation).
+        # Scientific callers retain the exact default prompt and cache identity.
+        self._instructions = instructions
+        self._prompt_version = prompt_version or PROMPT_VERSION
 
     @property
     def identity(self) -> dict:
@@ -338,8 +348,8 @@ class DeepSeekProvider:
             "temperature": 0,
             "model": self.config["name"],
             "config": self.config,
-            "prompt_version": PROMPT_VERSION,
-            "prompt_sha256": digest(PROMPT),
+            "prompt_version": self._prompt_version,
+            "prompt_sha256": digest(self._instructions or PROMPT),
             "review_version": REVIEW_VERSION,
             "review_prompt_sha256": digest([REVIEW_PROMPT, REVISION_PROMPT]),
         }
@@ -354,7 +364,7 @@ class DeepSeekProvider:
     ) -> dict:
         phase = request.get("phase")
         assembly = is_assembly_request(request)
-        prompt = (
+        prompt = self._instructions or (
             INVENTORY_PROMPT
             if phase == INVENTORY_PHASE
             else ASSEMBLY_PROMPT
@@ -366,9 +376,11 @@ class DeepSeekProvider:
             else PROMPT
         )
         prompt_version = (
-            SOURCE_FIRST_VERSION + (":assembly" if assembly else ":inventory")
+            self._prompt_version
+            if self._instructions
+            else SOURCE_FIRST_VERSION + (":assembly" if assembly else ":inventory")
             if phase == INVENTORY_PHASE or assembly
-            else PROMPT_VERSION
+            else self._prompt_version
         )
         serialized = json.dumps(request, ensure_ascii=False, allow_nan=False)
         content = [{"type": "input_text", "text": serialized}]
@@ -493,7 +505,7 @@ class DeepSeekProvider:
                     follow_redirects=False,
                 ) as client:
                     response = client.post(
-                        "https://api.deepseek.com/responses",
+                        self._endpoint,
                         headers={"Authorization": f"Bearer {self._key}"},
                         json=payload,
                     )

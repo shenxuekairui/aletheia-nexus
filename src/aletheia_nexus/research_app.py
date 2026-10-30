@@ -1511,6 +1511,7 @@ class ResearchApplication:
         verify_result(value)
         return {
             "artifact_id": value["artifact_id"],
+            "comparison": value["comparison"],
             "task": value["task"],
             "response": value["response"],
             "validation": value["validation"],
