@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "aletheia-nexus"
 version = "0.8.0"
 description = "溯光 (Aletheia Nexus): local-first literature acquisition, source-linked parsing, and opt-in research extraction."
-readme = "README.en.md"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

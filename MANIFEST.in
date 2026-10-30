@@ -1,4 +1,6 @@
 include README.md README.en.md CONTRIBUTING.md SECURITY.md
+include CONTRIBUTING.en.md SECURITY.en.md CODE_OF_CONDUCT.md CODE_OF_CONDUCT.en.md
+include AGENTS.md AGENTS.en.md
 recursive-include docs *.md
 recursive-include examples *.json *.py
 recursive-include tests *.py *.json

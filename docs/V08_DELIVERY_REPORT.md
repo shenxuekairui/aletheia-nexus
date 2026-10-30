@@ -1,4 +1,8 @@
-# v0.8 开发版交付报告
+# 溯光（Aletheia Nexus）v0.8 开发版交付报告（历史快照）
+
+[English](V08_DELIVERY_REPORT.en.md) · [当前质量与状态](V08_STATUS.md) · [当前发布说明](RELEASE_NOTES_v0.8.0.md) · [最新十篇对照](V08_TEN_PAPER_COMPARISON.md)
+
+> 本页完整保存2026-10-30代码快照 `8e3e82b` 的开发交付记录。下文的 `0.8.0.dev0`、草稿PR以及当时的未合并、未发布安排均属于历史，不代表当前发布授权或发行状态。当前状态以上方链接为准，不能用本页的旧工程或科学成绩替代后续验收。
 
 更新：2026-10-30。当前交付为 `0.8.0.dev0`，代码验收快照 `8e3e82b`；最终文档提交只更新说明。开发分支 `feat/v0.8-extraction`，沿用[草稿 PR #11](https://github.com/shenxuekairui/aletheia-nexus/pull/11)，不合并 main、不打标签或正式发布。
 

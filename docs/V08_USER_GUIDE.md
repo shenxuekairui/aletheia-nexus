@@ -1,13 +1,23 @@
-# 溯光（Aletheia Nexus） v0.8 开发版：AI 文献整理与知识提取
+# 溯光（Aletheia Nexus） v0.8：AI 文献整理与知识提取
 
-这是未发布开发功能，真实留出评测尚未达到科学验收目标；关键实验条件应查看原文。
-各路径的正确率、遗漏及完整记录结果见 [验收记录](V08_ACCEPTANCE.md)。
-原有 acquire、import、parse、search、
-export、EvidenceJudge 接口继续使用。新功能入口为 `aletheia-nexus research`。
+[English](V08_USER_GUIDE.en.md) · 中文为主文档，英文逐节对照。
+
+本指南对应 v0.8.0 整合版本，包含科研引擎、图形工作台、自然语言 CLI 与本地 MCP。
+正式发行以 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)和
+[PyPI 项目页](https://pypi.org/project/aletheia-nexus/)为准；源码版本不等于上传状态。
+普通用户可从 [工作台](WORKBENCH_USER_GUIDE.md)或
+[自然语言与 MCP 入口](V08_ENTRYPOINTS.md)开始，不需要先手写任务 JSON。
+原有 acquire、import、parse、search、export、EvidenceJudge 接口继续使用，
+本指南详细说明统一的 `aletheia-nexus research` 契约及行为。
+
+各路径的正确率、遗漏及完整记录结果见 [科研验收记录](V08_ACCEPTANCE.md)，
+最新十篇对照见 [十篇论文对照](V08_TEN_PAPER_COMPARISON.md)，工程门槛与发行状态见
+[整合发布检查](V08_RELEASE_ACCEPTANCE.md)。模型阅读、有效交付与科学正确率分开报告；
+助手原文复核不冒称人工金标准，不承诺所有领域达到 90%，关键实验条件应查看原文。
 
 ## 快速开始
 
-在当前源码环境安装开发版后，复制 `examples/research-theme.json`，把文献路径改为自己
+从当前发布候选源码安装后，复制 `examples/research-theme.json`，把文献路径改为自己
 的 `.parsed.json` 路径。路径相对于任务 JSON 所在目录解析，也支持绝对路径。
 未登记的 PDF 先使用既有 `import` 命令，正文与 SI 的登记方式见
 [科研流程](V072_RESEARCH_WORKFLOW.md)。不要为 AI 绕过来源校验。
@@ -25,10 +35,11 @@ aletheia-nexus research run task.json --output-dir research-output
 aletheia-nexus research run task.json --output-dir research-output --allow-remote
 ```
 
-## 可选的先读后提取
+## 默认的新任务路径：先读后提取
 
-开发版可以在原 `research-task/v1` 任务中设置
-`"extraction_strategy": "source_first"`。省略时继续直接提取，不改变旧任务或缓存。
+新建自然语言任务和工作台任务默认使用 `source_first`，先阅读原文、再组装结果。
+手工任务也可在原 `research-task/v1` 中设置 `"extraction_strategy": "source_first"`。
+为兼容历史，已保存任务省略该字段时继续直接提取，不改变旧任务或缓存。
 此策略先整理带对象、阶段、来源页和字段关联的原文证据清单，再把同一原始文本与图片
 连同该清单交给模型生成现有字段、步骤和结果；清单是可能出错的 AI 阅读草稿，不能代替原文。
 
@@ -42,7 +53,8 @@ aletheia-nexus research run task.json --output-dir research-output --allow-remot
 aletheia-nexus research ask "整理这些论文的方法、条件和主要结果" --papers ./papers --output-dir ./research-output --extraction-strategy source_first
 ```
 
-`--extraction-strategy direct` 选择直接提取；省略参数时保留任务原配置。
+`--extraction-strategy direct` 选择直接提取；加载已有任务并省略参数时保留其原配置，
+新建自然语言任务省略参数时采用 `source_first`。
 加载已有任务时也可使用该参数，程序在预览与授权指纹生成前保存包含该选择的任务副本，
 用户原任务文件保持不变；旧策略的授权指纹不能授权改后的任务。
 也可继续使用 `research run task.json --output-dir research-output --allow-remote`；
@@ -78,9 +90,10 @@ MCP 的任务校验和执行接受同一 `task.extraction_strategy` 参数与引
 
 ## 可选的精简材料呈现
 
-开发版可显式选择 `material_presentation=compact`，与提取策略独立配置：
+可显式选择 `material_presentation=compact`，与提取策略独立配置：
 它仅省略重复的材料结构默认标记，原文、数值、图表和图片不删减；请求附带恢复默认值
-的元数据，完整材料包仍单独保存。该选项尚待更多新论文验证，不是默认设置。
+的元数据，完整材料包仍单独保存。它用于减少重复编码和缓解输入资源限制，
+不是已证明提高科学准确率的策略，也不是默认设置。
 
 ```powershell
 aletheia-nexus research ask "整理这些论文的方法与条件" --papers ./papers --output-dir ./research-output --material-presentation compact
@@ -528,15 +541,18 @@ confirm必须为false；只替换选中诊断，不删除或重排索引，旧�
 ## 当前验收边界
 
 自动化测试验证工程行为，不能证明领域正确率。真实 API 连通测试、开发集论文结果、
-助手原页复核、真正人工标注和独立留出评测必须分别记录。20–30 篇/100 字段/40 记录
-的正式评测完成前，不承诺查准率 90% 或支持率 95%。另见 [设计与审计](V08_DESIGN.md)。
+助手原页复核、真正人工标注和独立留出评测必须分别记录。最初任务书提出的
+20–30 篇/100 字段/40 记录规模及查准率 90%、支持率 95% 是初步评测目标，
+不是已达到的成绩或通用质量承诺。当前交付按已冻结实验、泛化收益和已知限制说明，
+不以硬性达到 90% 作为宣称完成的依据。另见 [设计与审计](V08_DESIGN.md)。
 评分定义和评阅文件格式见 [评测口径](V08_EVALUATION.md)，实际执行见
-[验收记录](V08_ACCEPTANCE.md)。
+[验收记录](V08_ACCEPTANCE.md)。[十篇论文对照](V08_TEN_PAPER_COMPARISON.md)
+单独说明 AN 与网页原生 PDF 阅读的范围、模型及历史回答限制，不等同于新的独立留出评测。
 
 
-## 开发版的输入保真与格式恢复
+## 输入保真与格式恢复
 
-最新开发版保留全部选定原文与表格，将重复解析警告合并后送给模型；完整诊断仍在本地
+当前版本保留全部选定原文与表格，将重复解析警告合并后送给模型；完整诊断仍在本地
 材料包。图像未被解析器自动转录，不表示模型不能读取已经提供的原页；视觉读法仍需核对。
 图题附近的段落作为上下文保留，不自动合并为图题或改写原文。
 
@@ -627,11 +643,11 @@ AN不访问网络、不调用模型，也不覆盖原始PDF、来源记录或既
 
 首读也可能读错或漏掉信息。字段没有分配到条目会保持未确认，不推断为原文未报告；
 未分配条目与完整引用、原读法保存在关联的首读清单中。省略此选项仍执行原有流程。
-这是开发版可选路径，尚未证明普遍提高科学准确率。
+这是特定阅读笔记用途的可选路径，尚未证明普遍提高科学准确率。
 
 ## MCP 读取原始 XLSX 表格
 
-v0.8 开发版可调用 `read_native_table(path="F:/papers/SI/data.xlsx", sheets=["Sheet1"])`，
+v0.8 可调用 `read_native_table(path="F:/papers/SI/data.xlsx", sheets=["Sheet1"])`，
 读取允许目录内原始工作簿的完整选定工作表。省略 `sheets` 时读取全部工作表；名称须精确匹配。
 不需要 API Key，AN 不联网、不调用模型、不创建新文件，也不修改原工作簿或既有解析工件。
 

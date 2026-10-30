@@ -2,7 +2,7 @@ name: Local workbench
 
 on:
   push:
-    branches: [feat/v0.8-local-workbench]
+    branches: [main, feat/v0.8-local-workbench]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths:

@@ -1,261 +1,119 @@
 # Aletheia Nexus (溯光)
 
-**v0.8.0 release candidate:** `release/v0.8.0` combines scientific extraction,
-Chinese natural-language CLI, local MCP and the NiceGUI workbench. Package version
-is 0.8.0; main merge, release tag and PyPI publication remain pending. See the
-[release notes](docs/RELEASE_NOTES_v0.8.0.md) and
-[integrated acceptance](docs/V08_RELEASE_ACCEPTANCE.md). Historical scientific
-scores and their limitations remain separate from engineering validation.
-
-New AI task plans default to the validated source-first read/assemble strategy.
-Existing tasks and explicit strategy choices retain their semantics; approved
-call/cost limits are not increased, and local mode does not call a model.
-
-This version includes an optional **local NiceGUI research workbench**.
-It has not been released to PyPI. From this source checkout:
-
-```console
-python -m pip install -e ".[ui]"
-aletheia-nexus ui --library /path/to/library
-```
-
-The browser opens at `http://127.0.0.1:8080`. Existing libraries remain usable.
-The workbench connects acquisition, category-level shared `SI/` attachments,
-library organization, title translation, previewed physical batch renaming,
-saved table views, parsing, keyword evidence search, research and result review.
-Remote model operations require explicit consent. Settings provide a session API key,
-optional workspace-scoped Windows Credential Manager storage, and environment-variable compatibility;
-keys are not written to task files or presets. New UI workspaces try public sources before an
-authorized visible browser. Automatic checking after manual verification is optional and applies
-to main-article waiting; an explicit pause still needs resuming, and SI challenges require a reviewed retry.
-Per-paper translation, naming and parsing share the batch's translation call/cost limits;
-cached titles remain usable, and uncertain billing does not silently trigger another request.
-Retries can select one or several papers or fetch only incomplete SI after revalidating the main.
-Identical verified PDFs with the same DOI may share a display row while their raw sources and SI remain independent.
-Scientific markup is flattened only for new filename presentation, without changing source titles or human translations.
-Publisher SI coverage remains partial: an unconfirmed identity, challenge, viewer response or missing link is not a successful download.
-See the [workbench guide and support matrix](docs/WORKBENCH_USER_GUIDE.md),
-[implementation audit](docs/WORKBENCH_IMPLEMENTATION.md), and
-[acceptance record](docs/WORKBENCH_ACCEPTANCE.md). UI delivery does not establish
-scientific extraction accuracy or change the existing v0.8 evaluation conclusions.
-
-The development branch adds opt-in literature processing and field extraction with
-DeepSeek Flash, with local, source-linked results. See the [v0.8 development guide](docs/V08_USER_GUIDE.md)
-and [audit/design](docs/V08_DESIGN.md). This is unreleased work; the v0.7.3 release
-capabilities and historical benchmark claims below remain separate.
-
-The development version also provides `research ask` and an optional local stdio
-MCP server using the same task engine. See the [entrypoint guide](docs/V08_ENTRYPOINTS.md)
-for Windows configuration and separate planning/extraction consent. MCP supports
-local preparation, explicit supplements, library labels, search, research and exports;
-public title candidates and DOI acquisition require separate local grants.
-
-[中文 README](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) · [v0.7.3 Release Notes](docs/RELEASE_NOTES_v0.7.3.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) · [Security](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md)
+[中文](https://github.com/shenxuekairui/aletheia-nexus/blob/main/README.md) · [User manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.en.md) · [Local workbench](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/WORKBENCH_USER_GUIDE.en.md) · [Research and MCP](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.en.md) · [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.en.md)
 
 > **From one verified paper to scientific knowledge infrastructure that can grow with research.**
 
-Aletheia Nexus (溯光, AN) is a **local-first scientific knowledge infrastructure** project. It starts with literature: acquire and verify papers, organize them locally, and turn verified PDFs into structured data that retains its connection to the original evidence.
+Aletheia Nexus (溯光, AN) is a **local-first scientific knowledge infrastructure project**. It connects paper acquisition, local organization, structured reading, AI-assisted information processing and source review so that notes, experimental conditions, comparison tables and research history can be saved, revised and reused over time.
 
-Give AN a DOI or a bibliography, and the result is more than a downloaded file. It records whether the file is the intended main article, where it came from, and whether its bytes have changed. Parsed content can then be traced back to a page and location in the source PDF.
-
-The published release provides a Python package and command-line tools; the development branch adds
-the optional graphical workbench described above. AN does not independently conduct scientific research.
+Starting a topic, comparing methods, preparing an experiment or writing a review should not require repeatedly searching download folders, copying passages and rebuilding the same tables. AN aims to make that work cumulative: retain where materials came from and how they were processed, then use them again for a new question.
 
 ## Why AN exists
 
-Stronger models alone do not create reliable scientific systems. Research also depends on things that must outlast a model or platform: original data, evidence, processing history, experimental rules, tools, workflows, and the methods and judgment researchers develop over time.
+The longer-term question goes beyond acquiring papers:
 
-Much of that context is scattered across browser tabs, download folders, scripts, notes, and conversations. AN aims to help researchers and laboratories retain reusable digital assets instead of starting again whenever a project, person, or tool changes.
+> **As AI, software engineering, workflows and agents enter research, what infrastructure lets researchers and laboratories accumulate data, evidence, knowledge, tools and methods?**
 
-The starting point is deliberately concrete: **make one paper a trustworthy, traceable, reusable local research artifact.** Build reliable tools and data first, then scientific knowledge, workflows, and agents.
+Stronger models alone do not create reliable scientific systems. Original data, evidence, processing history, experimental rules and the judgment researchers develop need their own durable organization.
 
-> **Stable capabilities belong in tools; repeatable processes belong in workflows; genuinely open-ended decisions belong in agents.**
+Today, much of this context is scattered across browser tabs, download folders, scripts, notes and conversations. Projects end, people leave and tools change. We begin with a concrete task: **make one paper a readable, traceable, reusable local research artifact.** Reliable data and tools can then support knowledge organization, composable workflows and agent collaboration where it is useful.
 
-Human scientific judgment remains at the center of that system.
+> **Stable capabilities belong in tools; repeatable processes belong in workflows; open-ended decisions belong in agents. Human scientific judgment remains central.**
 
 ## What you can do today
 
-AN connects acquisition, local organization, and source-linked parsing:
+| Your task | Materials and capabilities you receive |
+| --- | --- |
+| Prepare a research topic | Start with DOIs, titles, bibliographies or local PDFs; organize papers, link supplements and prepare reading materials and notes |
+| Compare experiments and methods | Define objects, methods, parameters, steps and results to extract; retain original values, units, experimental scope and sources; export comparison tables |
+| Investigate a research question | Search local original text, organize relevant evidence, competing explanations and open questions, then return to articles, figures and supplements |
+| Maintain your own library | Import and batch acquisition, folders and tags, title translation, previewed renaming or relocation, parsed versions and local task history |
+| Revise and reuse results | Move between results and source locations, preserve revisions, and export Markdown, CSV, JSONL and relevant provenance |
+| Let other AI tools use the library | Call acquisition, parsing, search, research and result tools through local MCP, using the same underlying services |
+
+Materials can accumulate through one continuous workflow:
 
 ```text
-DOI / bibliography (CNKI also accepts titles)
-        ↓
-Discover sources → acquire through public or already authorized access
-        ↓
-Verify the main article → save PDF and provenance → organize folders and tags
-        ↓
-Parse verified or locally registered articles and supplements → retain structure and source locations
-        ↓
-Cross-paper search → select evidence and condition pages → Markdown / JSONL / source manifests
-        ↓
-Use in your own research, LLM, RAG, workflow, or agent tools
+Papers and supplementary materials
+    ↓
+Local library: sources, folders, tags and files
+    ↓
+Reading materials, tables, original pages and evidence with locations
+    ↓
+Research question → notes / information tables / procedures / cross-paper comparison
+    ↓
+Check, revise and export → the next experiment, review or research workflow
 ```
 
-| Your task | AN's capability |
-| --- | --- |
-| Find a paper | DOI normalization, Crossref / DataCite metadata, OpenAlex / Unpaywall / PMC and related full-text leads |
-| Acquire the main article | Public HTTP, authorized official APIs, browser institutional sessions, sequential batches and resume |
-| Acquire CNKI journal articles | DOI or title requests, bibliographic routing and verification; failed foreign-publisher requests are not all sent to CNKI |
-| Check the file | PDF structure, article identity, main-document role, source records and SHA-256 checksums |
-| Organize locally | Input folders, optional names and tags; year-journal-title naming; filter the local library |
-| Read and locate content | Native-text-first parsing, optional OCR, sections, blocks, references and observed figure/table evidence with page locations |
-| Use other tools | Search parsed artifacts; export Markdown, JSONL or structure-aware chunks without a model or vector-database dependency |
+Different research tasks share general fields and execution mechanisms; they do not require a fixed template for one scientific discipline.
 
-This is not universal coverage or a promise to download every paper. Online acquisition depends on sources, entitlement, and site behavior; parsing reports incomplete results explicitly. Scientific semantic interpretation, knowledge graphs, and autonomous research remain future work.
+## Three ways to use AN
+
+- **Local research workbench:** a Chinese-language interface for acquisition, library management, research search, AI tasks and source review. Start with your folders and research needs.
+- **Command line:** batch processing, scripts and repeatable tasks. `research ask` accepts natural language without requiring a handwritten task JSON file.
+- **MCP server:** let an MCP-capable AI client compose AN's local tools. A client that already supplies a valid structured task does not need an additional planning-model call.
+
+All three entrypoints share core capabilities, provenance and results. Your materials do not remain confined to one conversation.
 
 ## Quick start
 
-Requires Python 3.11+. Commands below are single-line examples for common shells. This README describes v0.7.3; check [PyPI](https://pypi.org/project/aletheia-nexus/) for the currently published version.
-
-### 1. Install and check the environment
+Requires Python 3.11 or newer; a virtual environment is recommended. Install the release package and open the local workbench:
 
 ```bash
-python -m pip install -U aletheia-nexus
+python -m pip install "aletheia-nexus[ui,mcp]>=0.8.0"
 aletheia-nexus --version
 aletheia-nexus doctor
+aletheia-nexus ui --library "./library"
 ```
 
-The base installation needs neither a browser nor a model API key. Online acquisition still needs network access: local-first does not mean every step is offline.
+The browser opens at `http://127.0.0.1:8080`. Import your own PDF folder or acquire a public paper first. For CLI and local parsing only, use `python -m pip install aletheia-nexus`. To start from source, run `python -m pip install -e ".[ui,mcp]"` inside the cloned project directory.
 
-### 2. Try a public paper
+UI and MCP are optional dependencies. Configure browser binaries, Poppler or OCR engines according to environment diagnostics and the manual; installing the Playwright Python package does not provision every browser runtime. Check [PyPI](https://pypi.org/project/aletheia-nexus/) and [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases) for published versions and files. Source progress does not establish publication status.
+
+### Start with a research request
+
+Select papers in the workbench and describe the materials you need, or use the CLI:
 
 ```bash
-aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir downloads/first-paper
+aletheia-nexus research ask "Organize these papers by research object, methods, main results and limitations; export a comparison table with original sources" --papers "./papers" --output-dir "./results"
 ```
 
-Look for `VERIFIED`: the PDF passed identity and main-document checks. A saved file, an open PDF tab, or a completed command alone is not proof of success. If public sources cannot provide a verifiable article, AN reports that outcome explicitly.
+Review the draft task, literature scope, fields, model and budget before executing. Tasks, raw responses, provenance, results and failures are saved in the output directory for later review, revision and export.
 
-### 3. Use browser-assisted institutional access
+New AI plans default to reading the materials before assembling fields; single-pass extraction remains selectable in the plan. Existing tasks retain their strategy, and the program does not increase call or cost limits for the user.
+
+The built-in AI workflow currently uses DeepSeek. Configure a key in the workbench or the local `DEEPSEEK_API_KEY` environment variable. Planning sends your objective and necessary metadata; sending paper content requires separate authorization. A configured key does not enable remote processing automatically. Local management, parsing, search and exports of existing results need no model API.
+
+### Acquire papers or connect other AI tools
 
 ```bash
-python -m pip install -U "aletheia-nexus[browser]"
-python -m playwright install chromium
-aletheia-nexus acquire 10.7503/cjcu20250333 --output-dir downloads/papers
+aletheia-nexus acquire 10.1371/journal.pone.0310216 --public-only --output-dir "./library"
+aletheia-nexus mcp serve --allow-dir "./papers" --workspace "./results"
 ```
 
-Visible acquisition defaults to an ordinary dedicated browser launch, preferring available Chrome/Edge, with an AN-owned profile and the system proxy settings. Use `--direct-connection` to explicitly bypass browser proxies. The selected network mode stays fixed throughout a task, including reconnects. AN does not read or modify your everyday browser profile. The browser stays open after the task; subsequent tasks can reuse the same session. Close the dedicated window when you finish using it.
+Acquisition uses public sources or existing authorized institutional access. Complete logins and CAPTCHAs yourself in the dedicated browser when required. MCP uses local stdio by default, restricts document access to allowed directories and requires independent authorization for remote operations. See the [natural-language and MCP guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.en.md).
 
-AN can reuse existing institutional IP, campus-network or VPN access. If login or a CAPTCHA is still required, complete it in that window while AN waits. **AN does not supply subscriptions, bypass paywalls, or solve CAPTCHAs.** No browser configuration guarantees that a site will waive verification.
+## Your materials remain local
 
-Use `--browser-launch-mode managed` for a program-managed browser lifecycle. On Windows / Linux x64, `aletheia-nexus browser-install` can provision a separate browser runtime. See the [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) for browser and network settings.
+Users control original papers, parsed artifacts, tasks, history and exports; an external model is a replaceable capability. Core local functions do not require a particular model, vector database or cloud account system. Provenance and history remain with the materials for later tools and workflows.
 
-### 4. Acquire and organize a bibliography
+AI may still omit information, misread figures or confuse experimental objects and conditions. Successful parsing, a valid structured response or a resolvable citation does not establish scientific correctness. Check important conclusions against the original source, particularly complex figures, units, experimental stages and article–SI relationships. Saved review items and failures allow researchers to retain uncertainty and revise results.
 
-Save this as `papers.json`, replacing the DOI, folder and tags as needed:
+See the [scientific quality notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_STATUS.en.md) and [latest ten-paper comparison](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_TEN_PAPER_COMPARISON.en.md) for current boundaries, evaluation methods and observed performance. Scientific evaluation is separate from engineering acceptance. Examples, assistant reviews and development-set improvements are not expert certification or universal performance guarantees.
 
-```json
-[
-  {
-    "doi": "10.7503/cjcu20250333",
-    "folder": "chemistry/to-read",
-    "tags": ["to-read", "priority"]
-  }
-]
-```
+## Documentation and participation
 
-```bash
-aletheia-nexus acquire papers.json --output-dir downloads/library --fail-on-unverified
-aletheia-nexus library downloads/library --folder "chemistry" --tag "to-read"
-aletheia-nexus library downloads/library --query "catalysis"
-```
+Primary documents are Chinese with independent English counterparts:
 
-TXT files can contain one DOI per line; JSON/CSV also accept titles, authors, journals and years. CNKI requests without a DOI can use a title; supply authors and a year when possible to distinguish similar papers. See the [input guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md#2-准备文献清单) and [complete example](https://github.com/shenxuekairui/aletheia-nexus/blob/main/examples/classified-papers.json).
+| Topic | 中文 | English |
+| --- | --- | --- |
+| Installation and common workflows | [使用手册](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md) | [User manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.en.md) |
+| Graphical workbench | [工作台指南](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/WORKBENCH_USER_GUIDE.md) | [Workbench guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/WORKBENCH_USER_GUIDE.en.md) |
+| Literature processing and extraction | [科研指南](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_USER_GUIDE.md) | [Research guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_USER_GUIDE.en.md) |
+| Natural language and MCP | [入口与配置](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.md) | [Entrypoints and configuration](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_ENTRYPOINTS.en.md) |
+| Scientific quality and latest comparison | [质量说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_STATUS.md) · [十篇对照](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_TEN_PAPER_COMPARISON.md) | [Quality](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_STATUS.en.md) · [Ten-paper comparison](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_TEN_PAPER_COMPARISON.en.md) |
+| Versions and acceptance | [发布说明](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.0.md) · [版本记录](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md) · [验收](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.md) | [Release notes](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_NOTES_v0.8.0.en.md) · [Release history](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.en.md) · [Acceptance](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V08_RELEASE_ACCEPTANCE.en.md) |
 
-New files use **year-journal-title**, followed by short identity/content hashes to avoid collisions. Missing metadata is omitted, not invented. An optional `filename` sets the readable name. Existing files are not renamed, and AN does not guess subject categories with a model.
+Report real research needs and usability problems in [Issues](https://github.com/shenxuekairui/aletheia-nexus/issues), or follow the [contribution guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.en.md) to improve code and documentation. The community follows a [code of conduct](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CODE_OF_CONDUCT.en.md); report sensitive matters according to the [security guidance](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.en.md).
 
-Generated acquisition records, batch reports and checkpoints default to a `json/` subdirectory. Classified folders keep their acquisition records and labels in their own `json/` directory. Legacy layouts remain readable and resumable; explicit report and checkpoint paths are respected.
-
-Repeating a batch checks the files and provenance before resuming. You can edit tags separately without changing the PDF or acquisition evidence; replace `PAPER.pdf` with the actual path:
-
-```bash
-aletheia-nexus library tag PAPER.pdf --add "read" --remove "to-read"
-```
-
-### 5. Parse, search and export
-
-Replace `PAPER.pdf` with the acquired file path and use that paper's real DOI. Keep its `.acquisition.json` provenance file in `json/`; legacy records beside the PDF are also supported:
-
-```bash
-aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216
-aletheia-nexus search PAPER.parsed.json "Methods" --verify-sources
-aletheia-nexus export PAPER.parsed.json --format markdown --output PAPER.ai.md
-aletheia-nexus export PAPER.parsed.json --format jsonl --output PAPER.ai.jsonl
-aletheia-nexus export PAPER.parsed.json --format chunks --output PAPER.chunks.json
-```
-
-Parsing creates a separate `.parsed.json` artifact without modifying the PDF or acquisition record. Markdown suits reading and model context, JSONL suits data pipelines, and structure-aware chunks suit downstream retrieval and RAG. All are derived views of the same parsed artifact.
-
-For scanned pages, install Poppler and Tesseract, then enable the optional OCR dependency:
-
-```bash
-python -m pip install -U "aletheia-nexus[ocr]"
-aletheia-nexus parse PAPER.pdf --doi 10.1371/journal.pone.0310216 --ocr
-```
-
-To supplement printed figure labels, install `aletheia-nexus[image-ocr]` and add `--ocr --image-ocr rapidocr`. Image models run locally; their identity and source image locations are recorded. A length label retains its text and position, but its scientific role requires source review: a length unit alone does not establish a scale bar. Single-paper and batch parsing share model-directory, DPI, pixel-budget and paragraph-merge controls. See the [OCR guide](docs/V07_OCR.md) for setup and limitations.
-
-Verified DOI-less papers can now be parsed. Use `import` to register local PDFs and `--parent` to link PDF supplements. Native/OCR disagreements retain both readings with explicit uncertainty. Corpus search, numbered evidence selection, condition-page expansion and export coverage are described in the [0.7.2 research workflow](docs/V072_RESEARCH_WORKFLOW.md).
-
-## Trust means more than a successful download
-
-The expensive mistakes in research are often not formatting errors. They are a supplement mistaken for a main article, the wrong paper fed to a model, or extracted content that can no longer be located in its source. AN treats these as data-infrastructure problems, not just prompting problems.
-
-### Files and identity
-
-Acquisition routes share the main-document verification boundary. Readable bytes are not enough: identity and role must match the request. Similar titles, insufficient evidence or identity conflicts are not resolved by blindly accepting the first result. Checksums allow later checks to detect changed files.
-
-### Content and provenance
-
-Before parsing, AN rechecks provenance, document role, file hashes and page count, plus DOI when present. Acquired PDFs require `VERIFIED / MATCH`; local imports retain `REGISTERED / DECLARED` identity without claiming automatic verification. Main articles and linked PDF supplements are supported, each with its own PDF page numbers. Parsed blocks, references and observed figure/table evidence retain source locations. Exported chunks preserve the chain:
-
-```text
-chunk → block → source anchor → PDF page and position → original paper
-```
-
-**`PARSED` means the relevant document parsing completed, not that the paper is scientifically true or all figures and scientific meaning are understood.** Incomplete work is marked with states such as `PARTIAL`.
-
-Version 0.7.3 addresses links between values, metrics, experiment rows and conditions, OCR fusion, and local source review. Both holdout evaluations have completed; material subsequently used for repairs is exposed regression data. The second set contains 12 main articles and four supplements, totaling 673 pages. First complete-answer accuracy with the primary OCR configuration improved from 25/60 to 35/60, but the original accuracy and zero-unflagged-error targets were not met. The owner subsequently authorized closure based on practical design goals; this amendment was made after results were known. The [acceptance record](docs/V073_ACCEPTANCE.md) retains first scores, remaining errors and final verification status. AN supports local evidence preparation and traceable review; critical data citations still require checking the original page, especially small chemical formulae, incomplete experiment relationships and complex figures. Default parsing does not call AI; advisory AI interfaces remain separate from original parsing. Tests and anchors do not establish scientific accuracy. The [v0.7.2 historical record](docs/V072_PRACTICAL_ACCEPTANCE.md) retains its first 14/16 and subsequent 16/16 exposed regression unchanged.
-
-### Access and human boundaries
-
-`INTERACTION_REQUIRED` means a human step is needed; `ENTITLEMENT_REQUIRED` means the current session lacks full-text access; `EXHAUSTED` means the attempted routes did not yield a verified main article. These are useful outcomes, not failures to hide.
-
-CNKI currently focuses on journal PDFs, not CAJ conversion or whole-database coverage. Recovery is bounded: AN does not pursue automation by repeatedly refreshing login pages, defeating challenges, or weakening identity checks.
-
-### Local ownership
-
-PDFs, provenance, parsed artifacts and labels are local files. No database, background index or model service is required. Keep companion files together when moving or backing up papers. Browser profiles may contain login state and should be protected like account information.
-
-## Engineering principles and direction
-
-Correctness comes before automation; explicit failure comes before silent corruption. Derived views must not overwrite source evidence. Stable data should not depend on one model or platform. Abstract real repetition rather than adding complexity for hypothetical future needs.
-
-The current focus is a reliable literature foundation. The longer-term direction is:
-
-```text
-Trustworthy research data → verifiable tools → reproducible workflows → accumulated knowledge → contextual agents
-```
-
-Entities, methods, experimental conditions, measurements, claims and their evidence belong to a future scientific semantic layer, not a completed capability of this release.
-
-## Verification and documentation
-
-The project uses deterministic regression tests, real-browser fixtures, parser benchmarks and package checks. Live publisher evidence is recorded separately. Results from a particular environment are neither a universal download rate nor a scientific-semantic accuracy score.
-
-- [User Manual](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/USER_MANUAL.md): installation, input, batches, organization, parsing, OCR and troubleshooting.
-- [v0.7.3 Release Notes](docs/RELEASE_NOTES_v0.7.3.md): changes, acceptance results and boundaries.
-- [Practical research acceptance](docs/V072_PRACTICAL_ACCEPTANCE.md): current research tasks, first-run and regression results, source traceability, review workload and remaining limits.
-- [Release History](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/RELEASE_HISTORY.md): version-specific evidence and release status.
-- [CNKI Guide](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/CNKI_AUTOMATION.md): inputs, institutional access and limitations.
-- [Parsing Contract](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_PARSING_CONTRACT.md), [Architecture](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_ARCHITECTURE.md), [OCR](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/V07_OCR.md): integration and technical boundaries.
-- [CI Architecture](https://github.com/shenxuekairui/aletheia-nexus/blob/main/docs/CI_ARCHITECTURE.md) and [Benchmarks](https://github.com/shenxuekairui/aletheia-nexus/blob/main/benchmarks/README.md): reproducible engineering checks.
-
-## Participate
-
-Reproducible bug reports, legally shareable fixtures, institutional-access feedback and first-use experiences are welcome. Share onboarding feedback in [Issue #3](https://github.com/shenxuekairui/aletheia-nexus/issues/3); see [Contributing](https://github.com/shenxuekairui/aletheia-nexus/blob/main/CONTRIBUTING.md) for development guidance.
-
-Do not post copyrighted PDFs, cookies, tokens, institutional login screenshots, signed URLs or unredacted local paths in public issues. Follow the [Security Policy](https://github.com/shenxuekairui/aletheia-nexus/blob/main/SECURITY.md) for security reports.
-
-Code is licensed under [Apache License 2.0](https://github.com/shenxuekairui/aletheia-nexus/blob/main/LICENSE). Papers and other third-party content retain their own copyright, licenses and access conditions; AN's license does not grant redistribution rights to them.
-
-*Aletheia* means truth; *Nexus* means connection. AN is not trying to become a smarter download script, but scientific data and knowledge infrastructure that can be trusted over time: **so that every conclusion has a path back to its evidence.**
+Code is licensed under [Apache-2.0](https://github.com/shenxuekairui/aletheia-nexus/blob/main/LICENSE). Papers and other third-party materials retain their own copyright and access conditions; the code license does not grant redistribution rights to those materials.

@@ -1,55 +1,60 @@
-# Contributing to Aletheia Nexus (溯光)
+# 为溯光（Aletheia Nexus）作出贡献
 
-Thank you for helping make research inputs more trustworthy. AN is early-stage software; small, reproducible reports are more useful than broad claims about publisher support.
+[English](CONTRIBUTING.en.md) · [项目介绍](README.md) · [行为准则](CODE_OF_CONDUCT.md) · [安全报告](SECURITY.md)
 
-## Before opening an issue
+欢迎研究者和开发者一起改进文献获取、材料阅读、信息整理与科研资料复用。具体、可复现的问题，以及对真实科研需求的清楚描述，比笼统的成功率或功能数量更有帮助。
 
-Search existing issues and the [user manual](docs/USER_MANUAL.md). State your operating system, Python and AN versions, whether the attempt used public HTTP, an official API, or a browser session, and the final AN status. For a PDF identity or role error, describe what AN classified and what the document actually is. Share a DOI only if it is appropriate to disclose.
+## 可以从哪里开始
 
-**Do not post** cookies, authorization headers, API keys, signed URLs, institution account details, login screenshots, private browsing traces, or copyrighted PDF files. Redact local usernames and profile paths from logs. If the issue might expose a security flaw, use [SECURITY.md](SECURITY.md) instead of a public bug report.
+- 报告使用中断点：你想完成什么、做到哪一步、实际得到什么。
+- 改进中文说明，并同步相应的独立英文文件。
+- 提供可合法分享的最小材料、来源定位或字段要求，帮助区分解析、模型理解和结果组织问题。
+- 修复通用问题，补充有意义的回归测试；不要将某篇论文的答案写进产品逻辑。
 
-## Development setup
+提交问题前，先查询已有 issue 和[使用手册](docs/USER_MANUAL.md)。请说明操作系统、Python 与软件版本、所用入口、输入类型、预期行为和实际状态。可附脱敏后的命令或最小复现，不必上传整个文库。
+
+不要在公开 issue、PR 或日志中提供 API 密钥、Cookie、授权头、签名下载地址、机构账号、登录截图、私人浏览记录或无再分发许可的论文。涉及漏洞或敏感信息时，按[安全报告方式](SECURITY.md)处理。
+
+## 本地开发
+
+使用 Python 3.11 或更新版本，在虚拟环境内安装需要的可选依赖：
 
 ```bash
-python -m venv .venv
-python -m pip install -e ".[dev,browser]"
+python -m pip install -e ".[dev,ui,mcp]"
 python -m pytest -q
 python -m ruff format --check src tests scripts
 python -m ruff check src tests scripts
 ```
 
-Browser integration tests use a local fixture server and real Chromium, not publisher accounts:
+UI 和 MCP 是可选入口，不应成为基础命令行和本地解析功能的强制依赖。浏览器二进制与 OCR 可执行程序按 `aletheia-nexus doctor` 和使用手册配置。
+
+真实浏览器回归使用测试专属配置和本地夹具，不需要机构账号。例如：
 
 ```bash
 python -m playwright install chromium
 AN_RUN_BROWSER_SMOKE=1 python -m pytest -q tests/acquire/access/test_browser_integration.py
 ```
 
-On PowerShell, set `$env:AN_RUN_BROWSER_SMOKE = "1"` before the last command. Live publisher attempts are not part of CI and must never require sharing credentials with maintainers.
+在 PowerShell 中，先运行 `$env:AN_RUN_BROWSER_SMOKE = "1"`，再执行不带前缀的测试命令。没有执行的可选测试应明确标为跳过。普通自动化测试应使用 Mock 或本地材料，不依赖付费模型 API、出版社登录或验证码。
 
-For pre-release validation, run:
+## 实现与验证
 
-```bash
-python scripts/verify_v07_rc.py --browser-smoke --visible-browser-smoke --report downloads/rc-report.json
-```
+1. 优先复用已有获取、解析、科研任务、来源、缓存和导出服务。CLI、UI 与 MCP 不应各自维护一套科研引擎。
+2. 用最小的通用机制解决实际问题。将出版社专属规则留在对应适配器，不为个别样本不断增加核心规则或新框架。
+3. 保留原 PDF、规范解析工件、原始模型响应、失败和修订历史。新增内容作为可追溯的派生结果；不要用静默覆盖修复历史。
+4. 对行为变化运行相关测试。低影响文档修改做链接与内容核对即可；正式发布集中执行工程、安装包、可选入口和兼容性检查，不以测试数量代替验证质量。
+5. 科学评测区分执行失败、错误答案、遗漏、关系归属和不确定性。冻结参考与分母不事后调整；开发样本改善需要未参与调参的新材料进一步验证。助手复核不能称作人工专家金标准。
 
-The browser gate covers generic publishers and CNKI. The visible gate also
-verifies ordinary launch, native downloads and reconnect using a fresh test-owned
-profile. On headless Linux run under `xvfb-run -a`. Add `--ocr-smoke` when Poppler,
-Tesseract and the OCR extra are installed. A skipped optional test is not a pass.
+修改公开契约或重要行为时，说明问题、兼容策略和取舍，遵循用户在当前任务中给出的授权。已明确授权的开发、推送或发布不需要反复申请同一项批准；范围扩大或出现新的不可逆影响时再核对。密钥和付费预算始终按实际授权处理。
 
-## What makes a good change
+## 文档与提交
 
-1. Open an issue or discussion for changes to public result semantics, trust criteria, or access-policy behavior before implementing them.
-2. Keep publisher-specific URL and page rules in `src/aletheia_nexus/acquire/access/publisher_adapters/`. Put publisher-neutral navigation, download capture, and verification in the shared engine and validation layers.
-3. Add a deterministic regression test for every bug. A fixture must not contain real authentication state or third-party PDF bytes without permission.
-4. Preserve bounded requests, URL safety checks, identity/role verification, and explicit non-success statuses. A new route is a candidate, never evidence of entitlement or a verified article.
-5. Run the relevant local suite before a PR. Ready PRs must pass the project's full Linux, Windows, Python compatibility, and browser gates; draft PRs may use the documented opt-in CI label when necessary.
+主要文档以中文文件为主，并维护对应的 `.en.md` 独立英文文件；不要用同一页面中的零散翻译代替完整对照。软件名同时保留“溯光”和“Aletheia Nexus”，命令、包名、Schema 与现有 URL 保持兼容。
 
-Write a PR description with the user-visible behavior, why the change is needed, tests run, and any remaining limitations. Keep documentation and the English/Chinese README capability labels aligned. Do not rewrite frozen release tags or mix historical benchmark numbers with current development results.
+README 面向整个项目：解释科研定位、用户能得到的资料和最短使用路径。版本细节、评测分数、失败和验收记录放在专门文档，不能让更新记录取代项目介绍。
 
-## First-time user feedback
+PR 应说明用户可见行为、原因、实际执行的验证和已知限制。未执行的检查不要写成通过；未上传的包或未完成的发布不要写成已经发布。除任务明确要求外，不重写发布历史、旧标签或用户工作。
 
-We particularly welcome reports from researchers who have never used AN before. Try the [quick start](README.en.md#quick-start) with one DOI you are allowed to access, then tell us where installation, status language, or handoff was confusing. The goal is to learn whether a stranger can reach a meaningful result without a maintainer guiding them—not to inflate a success-rate statistic.
+我们也欢迎首次使用者记录上手过程：是否能够在没有维护者指导的情况下，完成一次论文整理、核对来源并找到输出。请保留真实遇到的困难，不以演示顺利代替用户研究。
 
-By contributing code, you agree it will be distributed under the repository's [Apache-2.0 license](LICENSE).
+贡献代码意味着同意按本仓库的 [Apache-2.0 许可证](LICENSE)分发这些贡献。论文及其他第三方材料保留原有版权与使用条件。

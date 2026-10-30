@@ -1,15 +1,24 @@
-# Security Policy
+# 溯光（Aletheia Nexus）安全政策
 
-## Supported versions
+[English](SECURITY.en.md)
 
-Security fixes are considered for the latest public release and the current development branch. Older frozen tags are historical records, not maintained branches.
+## 支持范围
 
-## Reporting a vulnerability
+安全修复面向最新公开版本与当前开发分支。旧冻结标签用于保留历史，不代表仍在维护。
 
-Please do **not** publish an exploit, credential, private URL, institutional session, or affected user's data in a GitHub issue or pull request. Use the repository's **Security → Report a vulnerability** private reporting flow if it is available. If private reporting is not enabled, open a minimal public issue asking for a private contact channel **without including vulnerability details**; a maintainer will arrange a secure handoff.
+## 报告漏洞
 
-Useful private report details include affected version/commit, reproduction steps using synthetic data, expected versus actual behavior, and possible impact. We will acknowledge the report, assess severity and affected versions, coordinate a fix, and credit the reporter if they wish. We do not promise a fixed response or remediation deadline for this early-stage project.
+请勿在公开 Issue 或 PR 中发布攻击细节、凭据、私有链接、机构会话或受影响用户的数据。
+仓库启用私密报告时，请使用 **Security → Report a vulnerability**。若未启用，可先提交
+一条不含漏洞细节的简短 Issue，请求私密联系渠道，由维护者安排后续沟通。
 
-## Sensitive boundaries
+私密报告可包含受影响的版本或提交、自制数据上的复现步骤、预期与实际行为及可能影响。
+维护者会确认收到报告、评估严重程度与受影响版本、协调修复，并在报告者同意时致谢。
+项目处于早期阶段，不承诺固定的响应或修复期限。
 
-AN handles untrusted publisher pages, URLs, PDFs, metadata, and optional authenticated browser sessions. Relevant security issues include SSRF or local-network access, credential/cookie leakage into reports, unsafe file paths, unbounded downloads, PDF identity bypass, and cross-origin browser behavior. The project does not ask users to give maintainers their institutional credentials or article files. Never test against accounts, institutions, or systems you do not control or have authorization to use.
+## 敏感边界
+
+溯光会处理不可信网页、URL、PDF、书目信息，以及用户明确启用的已登录浏览器会话。
+相关问题包括 SSRF 或非预期的本地网络访问、凭据/Cookie 泄露、路径越界、无界下载、
+PDF 身份核验绕过，以及浏览器跨源行为。项目不要求用户向维护者提供机构密码或论文全文。
+仅在自己控制或已获授权的账户、机构与系统上验证问题。

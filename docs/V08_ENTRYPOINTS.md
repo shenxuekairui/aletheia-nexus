@@ -1,10 +1,13 @@
-# 溯光（Aletheia Nexus） v0.8 开发版：中文科研入口与本地 MCP
+# 溯光（Aletheia Nexus）v0.8.0：中文科研入口与本地 MCP
 
-本功能位于 `feat/v0.8-extraction`，尚未正式发布。两个入口共用
+[English](V08_ENTRYPOINTS.en.md) · 中文主文档
+
+本指南对应 v0.8.0；发行身份以 GitHub Releases 与 PyPI 项目页为准，源码或发布包以实际检出的提交、安装版本为准。两个入口共用
 `ResearchApplication → research-task/v1 → run_task → export_results`。
 规划只决定要整理什么，科研提取才读取论文；计划不是已核实的科学结论。
-代码 `8e3e82b` 的实际CLI、官方SDK协议与工程验收已完成；科研成绩和最终边界见
-[交付报告](V08_DELIVERY_REPORT.md)。下方命令适用于开发版，不表示已经发布正式版本。
+本页保留代码 `8e3e82b` 开发快照的实际 CLI、官方 SDK 协议与工程记录，不能作为最终整合源码的测试结果。
+当前工程验收见[整合验收](V08_RELEASE_ACCEPTANCE.md)，科研历史与边界见[交付报告](V08_DELIVERY_REPORT.md)及
+[最新 10 篇工作流对照](V08_TEN_PAPER_COMPARISON.md)。图形界面操作见[工作台手册](WORKBENCH_USER_GUIDE.md)。
 
 ## 安装和密钥
 
@@ -245,7 +248,7 @@ aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08" -
 
 公共获取工具覆盖公共主文；题名可先用`find_paper_candidates`查询候选，核对后另行授权获取。
 候选顺序不代表身份确认；机构会话仍复用原CLI的人机协作，不启用公网服务。
-本次用官方SDK2.3.0真实stdio客户端完成模拟网络的授权/恢复/解析测试；另实际下载并
+以下是 `8e3e82b` 开发快照的历史记录，不作为最终整合验收：当时用官方SDK2.3.0真实stdio客户端完成模拟网络的授权/恢复/解析测试；另实际下载并
 核验上述公共 DOI、准备12页解析成功，模型调用0。再以新服务进程、不可用HTTP代理恢复，
 有效文件复用、获取尝试0，原PDF/来源记录/断点哈希不变。真实桌面 AI 客户端中的手工会话仍另行验收。
 
@@ -355,7 +358,9 @@ aletheia-nexus research authorize "返回的authorization_request路径"
 工程通过不等于科研准确率提升。真实模型、客户端、失败、用量与局限见验收记录；
 真实SDK协议测试与桌面AI客户端手工会话测试分别说明，不互相替代。
 
-### 当前版本实际执行记录（2026-10-30）
+### 科研开发快照实际执行记录（2026-10-30，`8e3e82b`）
+
+本节保留该提交的原始执行、费用、失败及工程数字，未将其更新为最终整合版成绩。
 
 实际使用一份中文文件名的12页原始PDF，输入“研究对象、采用的方法、作者报告的主要结果”
 三个字段的中文目标，规划API调用1次。主智能体依照用户既有授权，在本机复核保存的计划、
@@ -372,7 +377,7 @@ aletheia-nexus research authorize "返回的authorization_request路径"
 Markdown/CSV/JSONL，同样0模型HTTP。原PDF和规范工件哈希不变。这是实际协议调用，
 没有声称在某个桌面AI宿主中完成手工对话，也没有把直接调用Python函数算作MCP验收。
 
-当前代码全量工程测试2763通过、0失败、119跳过；其中111个headless用例已有真实通过记录，
-对应源码和测试Git子树与当前相同，按哈希复用未重复运行。另8个为可见浏览器2、真实OCR2、
-Windows符号链接权限4，未执行。当前wheel构建、安装和SDK本地烟测通过；新私有环境显式
+该 `8e3e82b` 开发快照全量工程测试2763通过、0失败、119跳过；其中111个headless用例已有真实通过记录，
+对应源码和测试Git子树与该快照相同，按哈希复用未重复运行。另8个为可见浏览器2、真实OCR2、
+Windows符号链接权限4，未执行。该快照wheel构建、安装和SDK本地烟测通过；新私有环境显式
 复用已有依赖，不属于全新联网依赖安装。完整交付与科学结果见[最终交付报告](V08_DELIVERY_REPORT.md)。
