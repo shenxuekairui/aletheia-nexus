@@ -811,17 +811,10 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
         ):
             ui.label("设置与任务预设").classes("an-title")
             render_api_settings(self.ctx)
-            root = ui.input("文献库根目录", value=str(self.ctx.library.root)).classes(
-                "w-full"
-            )
-            ui.label(f"工作区：{self.ctx.workspace}").classes("an-muted text-xs")
-            if hasattr(self.ctx, "switch_root"):
+            if hasattr(self.ctx, "storage"):
+                from .ui_storage import storage_dialog
 
-                async def switch():
-                    self.ctx.switch_root(root.value)
-                    ui.navigate.to("/")
-
-                ui.button("切换文献库", icon="folder_open", on_click=guard(switch))
+                ui.button("数据存储管理", icon="storage", on_click=guard(lambda: storage_dialog(self.ctx))).props("outline")
             ui.label(
                 "下方默认值用于之后新建或重新打开的任务表单；已提交任务与已载入的历史计划保持原参数。"
                 "保存设置不会执行获取、解析或模型请求，也不会沿用付费授权。"
@@ -1232,6 +1225,9 @@ def build_ui(context):
 
     @ui.page("/")
     def page():
+        if context.storage.busy or context.storage.restart_required:
+            ui.label("数据存储位置正在切换或已保存，请等待完成后重新启动工作台。").classes("an-info m-8")
+            return
         # Roots can only be switched by an explicit local UI operation. New
         # clients get the current root; old capabilities remain individually scoped.
         files.roots = tuple(

@@ -88,12 +88,16 @@ class _WorkbenchApplication(ResearchApplication):
 
 
 class WorkbenchResearch:
-    def __init__(self, library, workspace: str | Path):
+    def __init__(self, library, workspace: str | Path, *, relocations=None):
         self.library = library
         self.workspace = Path(workspace).resolve() / "research-workspace"
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.app = _WorkbenchApplication(
-            [library.root], self.workspace, remote=True, network=False
+            [library.root],
+            self.workspace,
+            remote=True,
+            network=False,
+            relocations=relocations,
         )
         self.live = LiveResearchRuns(self.app)
         self.index_path = self.workspace / "document-index.json"
@@ -110,7 +114,9 @@ class WorkbenchResearch:
         value = read_json(self.index_path)
         if not isinstance(value, dict):
             raise ValueError("Invalid workbench document index")
-        return value
+        from aletheia_nexus.storage_paths import relocate_values
+
+        return relocate_values(value, self.app.relocations)
 
     def _remember(self, key: str, document: dict, *, options=None) -> None:
         with self._lock:
@@ -127,7 +133,13 @@ class WorkbenchResearch:
             write_json(self.index_path, index, overwrite=True)
 
     def _active_versions(self):
-        return read_json(self.active_path) if self.active_path.exists() else {}
+        from aletheia_nexus.storage_paths import relocate_values
+
+        return (
+            relocate_values(read_json(self.active_path), self.app.relocations)
+            if self.active_path.exists()
+            else {}
+        )
 
     def _activate(self, key, document):
         with self._lock:

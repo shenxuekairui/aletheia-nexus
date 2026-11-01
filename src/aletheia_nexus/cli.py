@@ -915,15 +915,20 @@ def library_main(argv: list[str] | None = None) -> int:
         prog="aletheia-nexus library",
         epilog="Edit labels: aletheia-nexus library tag PAPER.pdf --add LABEL --remove LABEL",
     )
-    parser.add_argument("root", type=Path, nargs="?", default=Path("downloads"))
+    parser.add_argument("root", type=Path, nargs="?")
     parser.add_argument("--folder", help="Filter a folder and its subfolders.")
     parser.add_argument("--tag", help="Filter by exact tag.")
     parser.add_argument("--query", help="Search titles, DOI, filenames and tags.")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     try:
+        from .storage_paths import PathPreferences
+
         catalog = scan_library(
-            args.root, folder=args.folder, tag=args.tag, query=args.query
+            args.root or PathPreferences().resolve().library,
+            folder=args.folder,
+            tag=args.tag,
+            query=args.query,
         )
     except (OSError, ValueError) as exc:
         parser.error(str(exc))

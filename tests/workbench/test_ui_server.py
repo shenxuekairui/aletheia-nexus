@@ -20,6 +20,8 @@ def test_local_server_renders_and_rejects_external_origin(tmp_path, stdio_encodi
         port = probe.getsockname()[1]
     log_path = tmp_path / "server.log"
     environment = dict(os.environ)
+    environment["USERPROFILE"] = str(tmp_path / "home")
+    environment["HOME"] = str(tmp_path / "home")
     # A real subprocess must take NiceGUI's production path, not its in-process
     # pytest/screen fixture path inherited from the test runner.
     environment.pop("PYTEST_CURRENT_TEST", None)

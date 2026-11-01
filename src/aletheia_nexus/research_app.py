@@ -124,6 +124,7 @@ class ResearchApplication:
         *,
         remote=False,
         network=False,
+        relocations=None,
     ):
         self.roots = tuple(Path(p).resolve(strict=True) for p in roots)
         if not self.roots or any(not p.is_dir() for p in self.roots):
@@ -133,13 +134,24 @@ class ResearchApplication:
         self.private = self.workspace / ".authorizations"
         self.remote = remote
         self.network = network
+        self.relocations = {
+            old: new
+            for old, new in (relocations or {}).items()
+            if not any(
+                root.is_relative_to(Path(old)) for root in (*self.roots, self.workspace)
+            )
+        }
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="an-research")
         self._jobs: dict = {}
         self._lock = RLock()
 
     def path(self, path: str | Path, *, write=False) -> Path:
+        from aletheia_nexus.storage_paths import relocate_path
+
         path = Path(path)
-        target = (path if path.is_absolute() else self.workspace / path).resolve()
+        target = relocate_path(
+            path if path.is_absolute() else self.workspace / path, self.relocations
+        ).resolve()
         if target.is_relative_to(self.private.resolve()):
             raise ProcessingError("authorization_directory_private")
         roots = (self.workspace,) if write else (*self.roots, self.workspace)

@@ -1,8 +1,8 @@
-# 溯光 (Aletheia Nexus) v0.8.1: Chinese research entry point and local MCP
+# 溯光 (Aletheia Nexus) v0.8.2: Chinese research entry point and local MCP
 
 [中文主文档](V08_ENTRYPOINTS.md) · English translation
 
-This guide covers v0.8.1. GitHub Releases and the PyPI project page establish release identity; use the actual checked-out commit or installed package version. Both entry points share
+This guide covers the v0.8.2 source. GitHub Releases and the PyPI project page establish release identity; use the actual checked-out commit or installed package version. Both entry points share
 `ResearchApplication → research-task/v1 → run_task → export_results`.
 Planning determines what to organize; scientific extraction reads the papers. A plan is not a verified scientific conclusion.
 This page retains actual CLI, official-SDK protocol, and engineering records from development snapshot `8e3e82b`; they are not test results for the final integrated source.
@@ -104,6 +104,23 @@ with the execution command above. The old fingerprint cannot authorize a changed
 retain their existing values. Omitting the argument does not automatically raise the input limit; new natural-language tasks also accept this explicit argument.
 
 ## MCP: local stdio
+
+UI, the `library` command's default root, and MCP share `~/.aletheia-nexus/storage-paths.json`.
+Explicit CLI arguments override saved locations, which override user-level defaults. Recommended PowerShell launch:
+
+```powershell
+aletheia-nexus ui --library "$env:USERPROFILE\AN-Library" --workspace "$env:USERPROFILE\AN-Workspace"
+```
+
+Without `--workspace`, use the saved location or `~/.aletheia-nexus/workbench`; the library defaults to its saved location or `~/.aletheia-nexus/library`.
+The JSON index defaults to `<library>/.an-workbench`; `--library-state-dir` selects it separately.
+Migrate through Settings → Data storage management, then restart. Visit `http://127.0.0.1:8080` after launch. Closing the service requires restarting it, not reinstalling.
+
+`aletheia-nexus mcp serve` uses these saved locations. `--library`, `--library-state-dir`, and `--workspace` provide temporary overrides without changing UI preferences.
+Omitting `--allow-dir` authorizes the configured library only. Providing it preserves the explicit directory boundary and does not additionally authorize the library.
+`get_library_catalog` reads the configured native JSON registry, tags and collections through the same LibraryService.
+UI research snapshots and results live in the workspace's `research-workspace` subdirectory; pass that directory to `list_research_runs` to discover them.
+Restart MCP services using changed locations, and do not let other processes write to these directories during copying.
 
 ```powershell
 aletheia-nexus mcp serve --allow-dir "F:\papers" --workspace "F:\results\an08"

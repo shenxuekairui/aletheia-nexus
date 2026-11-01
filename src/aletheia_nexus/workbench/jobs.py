@@ -301,7 +301,9 @@ class TaskContext:
 
 
 class TaskManager:
-    def __init__(self, state_dir: str | Path, max_workers=3):
+    def __init__(self, state_dir: str | Path, max_workers=3, *, relocations=None):
+        from aletheia_nexus.storage_paths import relocate_values
+
         self.directory = state_directory(state_dir, "tasks")
         if (self.directory / ".owner.lock").is_symlink():
             raise ValueError("任务归属锁不能使用符号链接")
@@ -317,11 +319,14 @@ class TaskManager:
             max_workers=max_workers, thread_name_prefix="an-workbench"
         )
         self._closed = False
+        self.storage_blocked = False
         for path in sorted(self.directory.glob("*.json")):
             try:
                 if path.is_symlink():
                     continue
                 receipt = json.loads(path.read_text(encoding="utf-8"))
+                if relocations:
+                    receipt = relocate_values(receipt, relocations)
                 if receipt.get("schema") != "aletheia-nexus/workbench-task/v1":
                     continue
                 if receipt["id"] + ".json" != path.name:
@@ -393,6 +398,8 @@ class TaskManager:
         self, kind, label, items, worker, *, parameters=None, resume_of=None
     ) -> dict:
         with self._condition:
+            if self.storage_blocked:
+                raise ValueError("存储位置正在切换，请完成后重新启动工作台")
             if self._closed:
                 raise RuntimeError("task manager is closed")
             if resume_of is not None and resume_of not in self._receipts:

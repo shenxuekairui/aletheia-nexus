@@ -300,6 +300,7 @@ def test_stdio_local_tools_and_permissions(tmp_path):
         ) as client:
             tools = await client.list_tools()
             assert {t.name for t in tools.tools} == {
+                "get_library_catalog",
                 "list_documents",
                 "update_document_tags",
                 "find_paper_candidates",

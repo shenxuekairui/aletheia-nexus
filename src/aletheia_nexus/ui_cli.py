@@ -19,6 +19,13 @@ class ContextLease:
         self._context, self._generation = context, context.generation
 
     def __getattr__(self, key):
+        storage = getattr(self._context, "storage", None)
+        if (
+            key not in {"storage", "lease"}
+            and storage
+            and (storage.busy or storage.restart_required)
+        ):
+            raise ValueError("正在迁移或存储位置已切换；请等待完成后重新启动工作台")
         if key in {
             "root",
             "library",
@@ -35,7 +42,10 @@ class ContextLease:
         return getattr(self._context, key)
 
 
-def create_context(root: Path, workspace: Path):
+def create_context(
+    root: Path, workspace: Path, library_state_dir=None, *, preferences=None
+):
+    from .storage_paths import PathPreferences, StoragePaths
     from .workbench.acquisition import AcquisitionService
     from .workbench.api_settings import ApiSettingsService, load_saved_api_credentials
     from .workbench.defaults import bootstrap_ui_defaults
@@ -44,9 +54,16 @@ def create_context(root: Path, workspace: Path):
     from .workbench.library import LibraryService
     from .workbench.research import WorkbenchResearch
     from .workbench.settings import SettingsStore
+    from .workbench.storage import StorageManager
     from .workbench.translation import TranslationService
 
     workspace = workspace.resolve()
+    paths = StoragePaths(
+        Path(root).resolve(),
+        Path(library_state_dir or Path(root) / ".an-workbench").resolve(),
+        workspace,
+    )
+    relocations = preferences.relocations_for(paths) if preferences else {}
     workspace.mkdir(parents=True, exist_ok=True)
     settings = SettingsStore(workspace)
     bootstrap_ui_defaults(settings)
@@ -54,12 +71,18 @@ def create_context(root: Path, workspace: Path):
     context = SimpleNamespace(
         workspace=workspace,
         settings=settings,
-        jobs=TaskManager(workspace),
+        jobs=TaskManager(
+            workspace,
+            relocations=relocations,
+        ),
         api_credentials=api_credentials,
     )
 
     def can_change_api_configuration():
-        return not any(job["status"] not in TERMINAL for job in context.jobs.list())
+        storage = getattr(context, "storage", None)
+        return not (storage and (storage.busy or storage.restart_required)) and not any(
+            job["status"] not in TERMINAL for job in context.jobs.list()
+        )
 
     context.can_change_api_configuration = can_change_api_configuration
     context.api_settings = ApiSettingsService(
@@ -72,15 +95,19 @@ def create_context(root: Path, workspace: Path):
     context.input_normalization = InputNormalizationService(workspace)
     context.lease = lambda: ContextLease(context)
 
-    def switch_root(value):
+    def switch_root(value, state_dir=None):
         target = Path(value).expanduser().resolve()
         if any(job["status"] not in TERMINAL for job in context.jobs.list()):
             raise ValueError("请等待后台任务结束后再切换文献库")
         target.mkdir(parents=True, exist_ok=True)
         library = LibraryService(
-            target, target / ".an-workbench", reference_roots=[workspace]
+            target, state_dir or target / ".an-workbench", reference_roots=[workspace]
         )
-        research = WorkbenchResearch(library, workspace)
+        research = WorkbenchResearch(
+            library,
+            workspace,
+            relocations=relocations,
+        )
         acquisition = AcquisitionService(
             target, workspace / "acquisition", library=library
         )
@@ -94,10 +121,15 @@ def create_context(root: Path, workspace: Path):
 
     context.switch_root = switch_root
     try:
-        switch_root(root)
+        switch_root(root, library_state_dir)
     except Exception:
         context.jobs.close(wait=True)
         raise
+    context.storage = StorageManager(
+        context,
+        preferences or PathPreferences(),
+        StoragePaths(context.root, context.library.state_dir, workspace),
+    )
     return context
 
 
@@ -114,13 +146,17 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--library",
         type=Path,
-        help="授权管理的文库根目录；默认使用已保存目录或当前目录下的 library",
+        help="文库根目录；优先已保存位置，否则为用户主目录/.aletheia-nexus/library",
     )
     parser.add_argument(
         "--workspace",
         type=Path,
-        default=Path.cwd() / ".aletheia-nexus" / "workbench",
-        help="任务、设置、模型缓存及科研快照目录",
+        help="任务、设置及科研成果目录；默认使用已保存位置或用户级 workbench",
+    )
+    parser.add_argument(
+        "--library-state-dir",
+        type=Path,
+        help="文库索引 JSON 目录；默认使用已保存位置或文库/.an-workbench",
     )
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
@@ -135,21 +171,40 @@ def main(argv=None) -> int:
             file=sys.stderr,
         )
         return 2
+    from .storage_paths import PathPreferences
     from .workbench.security import LoopbackGuard
-    from .workbench.settings import SettingsStore
     from .workbench.ui import build_ui
 
-    preferences = SettingsStore(args.workspace)
-    root = args.library or Path(
-        preferences.get("library_root", str(Path.cwd() / "library"))
-    )
-    context = create_context(root, args.workspace)
+    preferences = PathPreferences()
+    context = None
+    try:
+        paths = preferences.resolve(
+            library=args.library,
+            workspace=args.workspace,
+            library_state_dir=args.library_state_dir,
+        )
+        context = create_context(
+            paths.library,
+            paths.workspace,
+            paths.library_state_dir,
+            preferences=preferences,
+        )
+        preferences.save(paths)
+    except (OSError, ValueError, RuntimeError) as exc:
+        if context is not None:
+            context.jobs.close(wait=True)
+            context.research.close()
+        print(
+            f"无法打开数据目录：{exc}。请在可写目录中使用 --library / --workspace / --library-state-dir。",
+            file=sys.stderr,
+        )
+        return 2
     app.add_middleware(LoopbackGuard, port=args.port)
     app.on_shutdown(lambda: context.jobs.close(wait=True))
     app.on_shutdown(lambda: context.research.close())
     build_ui(context)
     print(
-        f"{DISPLAY_NAME}: http://127.0.0.1:{args.port}\n文库：{context.root}\n工作区：{context.workspace}"
+        f"{DISPLAY_NAME}: http://127.0.0.1:{args.port}\n文库：{context.root}\n索引：{context.library.state_dir}\n工作区：{context.workspace}"
     )
     ui.run(
         host="127.0.0.1",

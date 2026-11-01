@@ -59,14 +59,16 @@ All three entrypoints share core capabilities, provenance and results. Your mate
 
 Requires Python 3.11 or newer; a virtual environment is recommended. Install the release package and open the local workbench:
 
-```bash
+```powershell
 python -m pip install "aletheia-nexus[ui,mcp]>=0.8.1"
 aletheia-nexus --version
 aletheia-nexus doctor
-aletheia-nexus ui --library "./library"
+aletheia-nexus ui --library "$env:USERPROFILE\AN-Library" --workspace "$env:USERPROFILE\AN-Workspace"
 ```
 
-The browser opens at `http://127.0.0.1:8080`. Import your own PDF folder or acquire a public paper first. For CLI and local parsing only, use `python -m pip install aletheia-nexus`. To start from source, run `python -m pip install -e ".[ui,mcp]"` inside the cloned project directory.
+The PowerShell command opens `http://127.0.0.1:8080`. Run it again after stopping the service; no reinstall is needed. Omitting `--workspace` uses the saved location or `.aletheia-nexus/workbench` under your home directory, independently of the launch directory, without administrator privileges. The library also defaults to its saved or user-level location.
+
+The v0.8.2 source adds Settings → Data storage management for the library, JSON index, and workspace. Open or change each location, copy and verify existing data before switching, or start with an empty folder. Original data is retained; restart after switching. See [paths and migration](docs/WORKBENCH_USER_GUIDE.en.md#data-storage-management). Import your own PDF folder or acquire a public paper first. For CLI and local parsing only, use `python -m pip install aletheia-nexus`. To start from source, run `python -m pip install -e ".[ui,mcp]"` inside the cloned project directory.
 
 UI and MCP are optional dependencies. Configure browser binaries, Poppler or OCR engines according to environment diagnostics and the manual; installing the Playwright Python package does not provision every browser runtime. Check [PyPI](https://pypi.org/project/aletheia-nexus/) and [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases) for published versions and files. Source progress does not establish publication status.
 

@@ -59,14 +59,16 @@
 
 需要 Python 3.11 或更新版本，建议使用虚拟环境。安装发布包后打开本地工作台：
 
-```bash
+```powershell
 python -m pip install "aletheia-nexus[ui,mcp]>=0.8.1"
 aletheia-nexus --version
 aletheia-nexus doctor
-aletheia-nexus ui --library "./library"
+aletheia-nexus ui --library "$env:USERPROFILE\AN-Library" --workspace "$env:USERPROFILE\AN-Workspace"
 ```
 
-浏览器默认打开 `http://127.0.0.1:8080`。可以导入自己的 PDF 文件夹，也可以先获取一篇公开论文；仅需命令行与本地解析时，安装 `python -m pip install aletheia-nexus` 即可。若从源码开始，在克隆的项目目录内使用 `python -m pip install -e ".[ui,mcp]"`。
+浏览器默认打开 `http://127.0.0.1:8080`。关闭服务后再次运行启动命令即可，无需重新安装。省略 `--workspace` 时自动使用已保存位置或用户主目录下的 `.aletheia-nexus/workbench`，从 Windows System32、桌面或其他磁盘启动均可，无需管理员权限。文库省略时也使用已保存位置或用户级默认目录。
+
+v0.8.2 源码增加“设置 → 数据存储管理”：分别查看、打开和修改文献库、JSON 索引、工作区目录，选择“迁移现有数据并切换”或“使用新的空目录”。迁移复制并校验数据，保留原目录，完成后重启。[默认路径、升级与迁移说明](docs/WORKBENCH_USER_GUIDE.md#数据存储管理)。可以导入自己的 PDF 文件夹，也可以先获取一篇公开论文；仅需命令行与本地解析时，安装 `python -m pip install aletheia-nexus` 即可。若从源码开始，在克隆的项目目录内使用 `python -m pip install -e ".[ui,mcp]"`。
 
 UI 和 MCP 为可选依赖。浏览器二进制、Poppler 或 OCR 引擎按环境诊断和使用手册另行配置；安装 Playwright Python 包不会自动准备所有浏览器运行时。已发布安装包的版本与文件请核对 [PyPI](https://pypi.org/project/aletheia-nexus/)和 [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases)，不要将源码进展当作发行状态。
 

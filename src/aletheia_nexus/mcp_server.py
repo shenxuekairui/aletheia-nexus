@@ -68,6 +68,26 @@ def create_server(app: ResearchApplication):
         )
 
     @tool
+    def get_library_catalog(
+        query: str | None = None, tag: str | None = None
+    ) -> dict[str, Any]:
+        """Read the configured UI library, including collections and JSON index metadata.
+
+        Refreshes the native local registry; no network or model. The configured
+        library must be inside --allow-dir when that option is explicitly used.
+        """
+        if not hasattr(app, "library"):
+            raise ValueError("library is not configured")
+        app.path(app.library.root)
+        catalog = app.library.scan(query=query, tags=[tag] if tag else [])
+        return {
+            "catalog": catalog,
+            "collections": app.library.collections(),
+            "storage_paths": app.storage_paths,
+            "network_access": False,
+        }
+
+    @tool
     def update_document_tags(
         pdf: str, add: list[str] | None = None, remove: list[str] | None = None
     ) -> dict[str, Any]:
@@ -383,8 +403,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aletheia-nexus mcp")
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="本地stdio MCP服务（不监听网络端口）")
-    serve.add_argument("--allow-dir", type=Path, action="append", required=True)
-    serve.add_argument("--workspace", type=Path, required=True)
+    serve.add_argument(
+        "--allow-dir",
+        type=Path,
+        action="append",
+        help="允许读取的目录；省略时使用已配置文库",
+    )
+    serve.add_argument("--library", type=Path)
+    serve.add_argument("--library-state-dir", type=Path)
+    serve.add_argument("--workspace", type=Path)
     serve.add_argument(
         "--enable-remote",
         action="store_true",
@@ -399,12 +426,25 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
     app = None
     try:
+        from .storage_paths import PathPreferences
+        from .workbench.library import LibraryService
+
+        preferences = PathPreferences()
+        paths = preferences.resolve(
+            library=args.library,
+            workspace=args.workspace,
+            library_state_dir=args.library_state_dir,
+        )
+        paths.library.mkdir(parents=True, exist_ok=True)
         app = ResearchApplication(
-            args.allow_dir,
-            args.workspace,
+            args.allow_dir or [paths.library],
+            paths.workspace,
             remote=args.enable_remote,
             network=args.enable_acquisition,
+            relocations=preferences.relocations_for(paths),
         )
+        app.library = LibraryService(paths.library, paths.library_state_dir)
+        app.storage_paths = paths.strings()
         create_server(app).run(transport="stdio")
         return 0
     except (OSError, ValueError, RuntimeError) as exc:

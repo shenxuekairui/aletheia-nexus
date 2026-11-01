@@ -2,9 +2,17 @@
 
 [中文](USER_MANUAL.md) · Chinese is the primary document; this is its complete section-by-section English counterpart. Commands and example data are reproduced unchanged, including Chinese placeholders.
 
-This manual covers the **integrated v0.8.1 version**, including the graphical workbench, natural-language CLI, and local stdio MCP. Official release status is determined by [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases) and [PyPI](https://pypi.org/project/aletheia-nexus/); a version number in source does not establish that a package has been uploaded.
+This manual covers the **v0.8.2 source version**, including the graphical workbench, natural-language CLI, and local stdio MCP. Official release status is determined by [GitHub Releases](https://github.com/shenxuekairui/aletheia-nexus/releases) and [PyPI](https://pypi.org/project/aletheia-nexus/); a version number in source does not establish that a package has been uploaded.
 
 For everyday use, start with the [workbench manual](WORKBENCH_USER_GUIDE.en.md), [natural-language and MCP guide](V08_ENTRYPOINTS.en.md), and [v0.8 research-task guide](V08_USER_GUIDE.en.md). `research run/export/revise`, DeepSeek configuration, custom fields, original-page checking, result reuse, and revisions use the same research engine. New natural-language and workbench tasks default to reading sources before assembling results; saved tasks that omit the strategy retain the original direct-extraction behavior. Quality and release status are documented separately in the [scientific acceptance record](V08_ACCEPTANCE.md), [ten-paper comparison](V08_TEN_PAPER_COMPARISON.en.md), [integrated release checks](V08_RELEASE_ACCEPTANCE.en.md), and [v0.8 release notes](RELEASE_NOTES_v0.8.1.en.md). Passing engineering tests does not confirm scientific content.
+
+Recommended Windows PowerShell launch after installation (for source use `python -m pip install -e ".[ui,mcp]"`):
+
+```powershell
+aletheia-nexus ui --library "$env:USERPROFILE\AN-Library" --workspace "$env:USERPROFILE\AN-Workspace"
+```
+
+Visit `http://127.0.0.1:8080`. Restart the service after closing it; no reinstall is needed. Omitting locations uses saved preferences, then `.aletheia-nexus/library` and `.aletheia-nexus/workbench` under your home directory, independently of the launch directory and without administrator privileges. The index remains JSON under `<library>/.an-workbench`; `--library-state-dir` overrides it. Settings → Data storage management opens folders or switches them after verified copying or with an empty directory. Path preferences are independent of the workspace. On upgrade, first launch from the original directory or specify the old `--workspace`, then migrate using the UI. See [data storage management](WORKBENCH_USER_GUIDE.en.md#data-storage-management). MCP uses the same saved locations when path arguments are omitted.
 
 The following acquisition, verification, parsing, and local-library CLI instructions are retained from **v0.7.2** for researchers obtaining, verifying, organizing, and parsing papers. AN connects DOI/bibliographic input to local PDFs and source records, then to searchable, exportable structured content. It supports papers without DOIs, local registration, PDF supplements, cross-paper search, and result-based export. See the [0.7.2 research workflow](V072_RESEARCH_WORKFLOW.md) for routine operations and the [README](../README.en.md) for first use. The [v0.7.2 release notes](RELEASE_NOTES_v0.7.2.md) and section 10 preserve their historical context; they are not the current v0.8 release gates.
 

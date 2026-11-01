@@ -2,7 +2,7 @@
 
 [中文主文档](WORKBENCH_USER_GUIDE.md) · English translation
 
-This guide covers v0.8.1 (updated 2026-10-30). Python 3.11 or later is supported; Windows is the primary acceptance platform.
+This guide covers the v0.8.2 source (updated 2026-11-02). Python 3.11 or later is supported; Windows is the primary acceptance platform.
 GitHub Releases and the PyPI project page establish release identity; use the actual checked-out commit or installed package version. Engineering acceptance is documented in the [release acceptance record](V08_RELEASE_ACCEPTANCE.en.md).
 Scientific extraction still has limitations in chart relationships, omissions, and condition assignment. Passing UI engineering checks does not establish scientific accuracy.
 The latest ten-paper workflow comparison, historical reuse, source review, and statistical boundaries are documented in the [scientific comparison report](V08_TEN_PAPER_COMPARISON.en.md).
@@ -16,7 +16,7 @@ Run once from the project source directory:
 
 ```powershell
 python -m pip install -e ".[ui]"
-aletheia-nexus ui --library "D:\文献库"
+aletheia-nexus ui --library "$env:USERPROFILE\AN-Library" --workspace "$env:USERPROFILE\AN-Workspace"
 ```
 
 The local browser opens automatically at `http://127.0.0.1:8080` by default. Later, reuse the command or a launch shortcut you create yourself.
@@ -30,11 +30,36 @@ Original-page images also use the existing Poppler installation. Opening a compl
 
 Use `--port 8098` to avoid an existing service, and `--no-open` to prevent automatic browser opening.
 `--workspace` sets the directory for settings, tasks, caches, parse snapshots, and results. Its default is
-`.aletheia-nexus/workbench/` beneath the launch directory. Only one task-manager process may use a workspace at a time.
+the saved location or `.aletheia-nexus/workbench/` beneath your home directory. Only one task-manager process may use a workspace at a time. Restart the service after closing it; reinstalling is unnecessary.
 The workbench binds only to `127.0.0.1`; there is no public-network or multi-user mode.
 
-An existing AN library can be used directly as the root, without migration or downloading again. Change roots in Settings after active tasks finish.
-Refresh other open pages after switching, so operations do not accidentally target the new library.
+An existing AN library can be used directly as the root, without downloading again. Manage locations as described below.
+
+## Data storage management
+
+Open Settings → 数据存储管理 (Data storage management). Each entry shows its purpose, complete path, Change location, and Open folder.
+
+| Data | Default without saved preferences | Purpose |
+| --- | --- | --- |
+| Library | `~/.aletheia-nexus/library` | PDFs, SI, other literature files and per-paper tags |
+| Library index | `<library>/.an-workbench` | `library.json`, collections, classifications, tags, views and operation records; still JSON |
+| Workspace | `~/.aletheia-nexus/workbench` | Settings, tasks, parse snapshots, research results and runtime data |
+| Path preferences | `~/.aletheia-nexus/storage-paths.json` | Independent location pointers and relocation mappings |
+
+Home (`~`) examples: Windows `C:\Users\carey`, Linux `/home/carey`, macOS `/Users/carey`. Paths do not depend on the launch directory. Priority: explicit CLI argument, saved location, default. `--library-state-dir` selects a separate index directory.
+
+Choose a folder or enter an absolute path, including a new folder, then select:
+
+- **迁移现有数据并切换** (Copy existing data and switch): copy and verify every file, then save the new location; keep originals. An index nested in the library travels with it; an independent index stays independent.
+- **使用新的空目录** (Use a new empty directory): switch without copying or merging. Old data stays in place; an empty index or workspace does not display old records.
+
+Targets must be empty and must not overlap current data folders. Files are never overwritten. Wait for queued, running, paused or interaction-waiting tasks to finish. Failure keeps the previous location active; partial copies may remain in the target, so retry with another empty folder. Other processes must not modify the data during copying.
+
+After switching, this session stops writing. Stop the service and run `aletheia-nexus ui` again. Remove old explicit path arguments or update them: they still override saved choices. For example, move the library to `D:\AN-Library`, the index to `D:\AN-Index`, and the workspace to `D:\AN-Workspace`, restarting after each change. Historical scientific files retain their original bytes; saved relocation mappings resolve their locators to the new copies.
+
+For v0.8.1 upgrades, the first launch from the old directory recognizes `.aletheia-nexus/workbench/settings.json` and its saved library location. Alternatively specify the original `--workspace`. Existing `.an-workbench` indexes remain usable. A successful launch saves independent pointers, allowing later launches from any directory. Other old locations cannot be guessed: select them explicitly before migrating.
+
+On Linux/macOS use `aletheia-nexus ui --library "$HOME/AN-Library" --workspace "$HOME/AN-Workspace"`.
 
 When a model is first needed, open “DeepSeek API 配置” (DeepSeek API configuration) at the top of Settings, enter a new key and the official base URL,
 and click “保存 API 配置” (Save API configuration). By default the key is used only in the current process. Leaving it blank retains the current key, whose value is never displayed.

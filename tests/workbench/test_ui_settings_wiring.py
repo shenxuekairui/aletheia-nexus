@@ -61,6 +61,7 @@ def mounted(tmp_path, monkeypatch):
         settings=settings,
         api_settings=api,
         research=SimpleNamespace(parser_options=WorkbenchResearch.parser_options),
+        storage=SimpleNamespace(),
     )
     before = set(ui.context.client.elements)
     page.settings_dialog()
@@ -105,7 +106,7 @@ def test_api_card_is_above_library_controls_and_opening_never_calls_endpoint(mou
     library = next(
         element
         for element in elements
-        if getattr(element, "label", "") == "文献库根目录"
+        if getattr(element, "text", "") == "数据存储管理"
     )
     assert elements.index(heading) < elements.index(library)
     assert any(getattr(element, "text", "") == "保存 API 配置" for element in elements)
