@@ -99,4 +99,23 @@ references the [stop rule](C:/Users/carey/.codex/plugins/cache/openai-bundled/co
 No further desktop input or protection bypass was attempted. In-process widget tests cover both options, displayed path updates, open-folder callbacks and folder selection.
 Actual Windows processes/filesystems cover startup and migration; these are not described as human visual acceptance.
 
-Merge judgment: **the change meets code-merge conditions; merging is recommended**. This is supported by the full regression suite, widget interactions, non-administrator Windows startup and actual cross-volume migration. The visual-inspection limitation remains documented; a human UI inspection is recommended before publishing. Local delivery does not include pushing, merging or publishing.
+Merge judgment: **the change meets code-merge conditions; merging is recommended**. This is supported by the full regression suite, widget interactions, non-administrator Windows startup and actual cross-volume migration. The visual-inspection limitation remains documented; a human UI inspection is recommended before publishing. This follow-up authorizes pushing the development branch, without merging or publishing.
+
+## Pre-push review (2026-11-02)
+
+Code commit `e87fbdf` was reviewed again for path precedence, atomic switching, original retention, task blocking and allowed-directory boundaries. No new blocking issue was found, and runtime code was unchanged.
+Rerunning path, MCP storage, all workbench, CLI, MCP stdio and library tests produced **1173 passed, 18 skipped, zero failures, 196.75 seconds**.
+The [complete retest output](validation/v082-review-pytest.txt) is recorded separately from the earlier full suite; their pass counts are not added. Ruff and Git whitespace checks passed again.
+
+Actual in-app browser interactions now supplement the first run's unfinished browser functional checks:
+
+1. An isolated library was started from System32 as a normal user; Settings → Data storage management and its folder picker opened.
+2. Selecting the original directory was rejected visibly without switching, and retry remained available.
+3. The UI performed library C→D migration, a separate move of its nested index, and workspace C→D migration. The service was stopped and restarted after each step and automatically loaded the saved locations.
+4. All four copied library files matched their hashes. Original library, index and workspace folders were retained. All three final locations were on D.
+5. The browser's literature table still showed the paper and original tag; an independent check confirmed the collection was preserved.
+6. A local parsing task submitted from the migrated table completed in Task Center. Reopening the context confirmed its persisted receipt and verified the parsed source artifact.
+
+The [browser review record](validation/v082-browser-review.json) preserves these results. Only new test data was used, without paper transmission or paid model calls.
+Both screenshot interfaces reported capture failure. These checks establish actual browser interactions and visible DOM state, not human visual or screenshot acceptance.
+The push target is the public repository's `feat/v0.8.2-storage` development branch; main, tags and published packages are unchanged.

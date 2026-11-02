@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-02",
+  "code_commit": "e87fbdf",
+  "platform": "Windows",
+  "administrator": false,
+  "browser": "Codex in-app browser",
+  "ui_checks": [
+    "settings entry",
+    "three paths and folder picker",
+    "same-directory rejection",
+    "library C to D",
+    "independent JSON index move",
+    "workspace C to D",
+    "persisted paths after restarts",
+    "paper and tag visible",
+    "local parse completed in task center"
+  ],
+  "library_files_hash_verified_at_copy": 4,
+  "original_directories_retained": true,
+  "paper_count": 1,
+  "collections_preserved": true,
+  "task_status": "COMPLETED",
+  "parsed_source_verified": true,
+  "screenshots": "unavailable: browser capture API returned Unable to capture screenshot",
+  "human_visual_review": false
+}
