@@ -1,0 +1,8 @@
+{
+  "case": "040-Taylor_Francis",
+  "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11702953.1/KVIR_A_2440554_SM2176.jpg",
+  "http_status": 200,
+  "content_type": "binary/octet-stream",
+  "prefix_hex": "89504e470d0a1a0a0000000d4948445200000b6c000005f608060000004282ca0b00000c3f694343504943432050726f66696c65000048899557075853c9169e",
+  "note": "Bounded diagnostic after frozen first pass; not a saved successful attachment"
+}

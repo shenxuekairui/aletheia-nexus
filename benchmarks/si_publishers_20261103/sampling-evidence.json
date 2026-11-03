@@ -1,0 +1,255 @@
+{
+  "manifest_sha256": "a4fbd89422feeef92ed3c58b06d11a1f2c4e2eacd2ff74a0b8c90742c0011790",
+  "seed": "AN-SI-SCALE-20261103-v1",
+  "raw_query_results": [
+    {
+      "file": "ACS.json",
+      "sha256": "2c9f24b98281369c4446283baa201543cc97b1c19f9857a381c3b98eef2deb34",
+      "query": "(DOI:10.1021*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 37990,
+      "returned": 40
+    },
+    {
+      "file": "AIP.json",
+      "sha256": "11697d93c270852f9042f81aa6d876de1b0e2bc895dade8f90e5b545e8f24012",
+      "query": "(DOI:10.1063*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 42,
+      "returned": 40
+    },
+    {
+      "file": "APS.json",
+      "sha256": "f39e812a791b08c56aa636d5258b5e3169ec0b2d0c4b15c33e34307b599dc151",
+      "query": "(DOI:10.1103*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 34,
+      "returned": 34
+    },
+    {
+      "file": "Biologists.json",
+      "sha256": "8c15d181eee646ec25695e6041a0ae2388f3baa52546695f3d54ab085a444a83",
+      "query": "(DOI:10.1242*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 848,
+      "returned": 40
+    },
+    {
+      "file": "BMJ-control.json",
+      "sha256": "45ae6073c58f39369ceb826144f0bbf5b27545968990407cc3689745466d195b",
+      "query": "(DOI:10.1136*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 10256,
+      "returned": 40
+    },
+    {
+      "file": "BMJ.json",
+      "sha256": "7375a5c780d5431df536f9d53dbc08aa1d2520d8f6f7eebe538363913ab0940f",
+      "query": "(DOI:10.1136*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 26340,
+      "returned": 40
+    },
+    {
+      "file": "Cambridge.json",
+      "sha256": "61a0ad3d44bab54d09a0924c95bb32242f8e4ec7712b258100301bdd7de9937a",
+      "query": "(DOI:10.1017*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 4210,
+      "returned": 40
+    },
+    {
+      "file": "Copernicus.json",
+      "sha256": "4da28c5e47c530e36df2750d13ca10f05d1e4f0bb65d63b230e4d4bb4b424a3f",
+      "query": "(DOI:10.5194*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 182,
+      "returned": 40
+    },
+    {
+      "file": "eLife.json",
+      "sha256": "8c8d9d91a0b083983e0850d37f454ab8d2a0eb49aa2d6d23fee16c5fa28d51ed",
+      "query": "(DOI:10.7554*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 6779,
+      "returned": 40
+    },
+    {
+      "file": "Elsevier-control.json",
+      "sha256": "d15ba4ef6e95084968078bc3ea7916172772f55220e60b337fb6f61fc5d6442f",
+      "query": "(DOI:10.1016*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 164459,
+      "returned": 40
+    },
+    {
+      "file": "Elsevier.json",
+      "sha256": "8944265cd5ad166ff6bcd426c62beec227d4124a9696c94f75183c75c78db0d0",
+      "query": "(DOI:10.1016*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 114703,
+      "returned": 40
+    },
+    {
+      "file": "Frontiers-control.json",
+      "sha256": "fcdf3d25ff52569f69369969a2c062f8fbc66cc29f1a6d44855d7bfbd7a9fcb9",
+      "query": "(DOI:10.3389*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 170183,
+      "returned": 40
+    },
+    {
+      "file": "Frontiers.json",
+      "sha256": "ff4c8f0efb176c9576ae74ccd01fd19b1e62a14053f535e8d9d608fbb21d28ee",
+      "query": "(DOI:10.3389*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 142300,
+      "returned": 40
+    },
+    {
+      "file": "IEEE.json",
+      "sha256": "95d36f775af25f344930830fb066b3c13d3bab7494665c7e194d0a2cea7e4570",
+      "query": "(DOI:10.1109*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 264,
+      "returned": 40
+    },
+    {
+      "file": "IOP.json",
+      "sha256": "81d2105e3347e26c0bf8e5dfffb9ecd4a28c81ad4ada5c0b7a525c37eee65af7",
+      "query": "(DOI:10.1088*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 79,
+      "returned": 40
+    },
+    {
+      "file": "Karger.json",
+      "sha256": "7a67fdc08d4cbedf2cff0b0e4231abac5ce0e26bf32dd58ae186d0bd7e4a6c18",
+      "query": "(DOI:10.1159*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 1737,
+      "returned": 40
+    },
+    {
+      "file": "MDPI-control.json",
+      "sha256": "baae7fae732e6568ba54b578d13270272cf8ac670c7f0e5ea4ee1a13b7298fcc",
+      "query": "(DOI:10.3390*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 395007,
+      "returned": 40
+    },
+    {
+      "file": "MDPI.json",
+      "sha256": "42c68634097d5a1b667c9d3372f8c1046d40c1eb640c6461f0bad498e6bf52f2",
+      "query": "(DOI:10.3390*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 199348,
+      "returned": 40
+    },
+    {
+      "file": "Nature-control.json",
+      "sha256": "ad2c1917238ff22c92dbf1059bf0985a7ca73471f580e1206716404f92dcf4e0",
+      "query": "(DOI:10.1038*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 58089,
+      "returned": 40
+    },
+    {
+      "file": "Nature.json",
+      "sha256": "653d41cead7032d3ae79a81b82220f9e3965e7c6bc20fe2b3004feb9b1f247e5",
+      "query": "(DOI:10.1038*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 134924,
+      "returned": 40
+    },
+    {
+      "file": "OUP.json",
+      "sha256": "941a4f723791df353673180d9e2be17d51c5f0ab1a2252cfe6f1f4a5d555e7f1",
+      "query": "(DOI:10.1093*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 46966,
+      "returned": 40
+    },
+    {
+      "file": "PeerJ.json",
+      "sha256": "33273edf1373a4c73e6646e0a3681f0319683e46ddd959a8657becfeb5952b33",
+      "query": "(DOI:10.7717*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 8908,
+      "returned": 40
+    },
+    {
+      "file": "PLOS-control.json",
+      "sha256": "423af33dda04e2ef46610cb50303e35b47f4367357e57884c8ab55db151cea48",
+      "query": "(DOI:10.1371*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 13883,
+      "returned": 40
+    },
+    {
+      "file": "PLOS.json",
+      "sha256": "62125f69e670bb520f11c0247cc3c028b64fbb3203403d08cfee8e9b7610c85d",
+      "query": "(DOI:10.1371*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 68482,
+      "returned": 40
+    },
+    {
+      "file": "PNAS.json",
+      "sha256": "b579168996881ae7d0fa7edea12e2e107e01cc14f6c80107794263436eed9d2d",
+      "query": "(DOI:10.1073*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 10758,
+      "returned": 40
+    },
+    {
+      "file": "Royal_Society.json",
+      "sha256": "ef8147d6c5aa25609823ed499eadfb7a2de8527d937948c8221a81cb19220fb6",
+      "query": "(DOI:10.1098*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 1230,
+      "returned": 40
+    },
+    {
+      "file": "RSC.json",
+      "sha256": "c36d581d8e9a755ac284560ac87801b755859fdab833c8fb8403ffd62976f73e",
+      "query": "(DOI:10.1039*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 16583,
+      "returned": 40
+    },
+    {
+      "file": "SAGE.json",
+      "sha256": "0268c57a259c0bb2a0b36184fe5be1e142c4086e27f90cdf91bb766e6f30b866",
+      "query": "(DOI:10.1177*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 18476,
+      "returned": 40
+    },
+    {
+      "file": "Science.json",
+      "sha256": "49cf047fa880801f0bbc8cb0be09e1a18cd3041ec66eb7227650434308e2ebfb",
+      "query": "(DOI:10.1126*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 7517,
+      "returned": 40
+    },
+    {
+      "file": "Springer_BMC-control.json",
+      "sha256": "500a9b81ba33a49743b3b7cde141220972a862cd2235c46de4c4dfe2f2b4d210",
+      "query": "(DOI:10.1007* OR DOI:10.1186*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 211053,
+      "returned": 40
+    },
+    {
+      "file": "Springer_BMC.json",
+      "sha256": "12d3b8fa647272ff7da635e376aec7245a393857b24b5a285aea250f11dcf2e9",
+      "query": "(DOI:10.1007* OR DOI:10.1186*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 172990,
+      "returned": 40
+    },
+    {
+      "file": "Taylor_Francis.json",
+      "sha256": "cc3d84d89798364d6bf675105a67774e184e53f077bf205f4bd45563889c6253",
+      "query": "(DOI:10.1080*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 11183,
+      "returned": 40
+    },
+    {
+      "file": "Wiley-control.json",
+      "sha256": "8f4d64196587abefdda6be71f044a69e0bd9dd240dcd4215330f15fdf3a0fc68",
+      "query": "(DOI:10.1002* OR DOI:10.1111*) AND HAS_SUPPL:N AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 77322,
+      "returned": 40
+    },
+    {
+      "file": "Wiley.json",
+      "sha256": "743e1bb3a4ecce08c7dc556241be596170a78fd70fe350966c7833c72055c6af",
+      "query": "(DOI:10.1002* OR DOI:10.1111*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "hits": 82142,
+      "returned": 40
+    }
+  ],
+  "raw_local_root": "F:\\AI4S\\outputs\\AN_SI_SCALE_20261103\\sampling",
+  "executed_runner_sha256": "b6bfa7b7288b36c84231a9365abd81599eee10976bfc2e8594c153bc0286c628",
+  "execution": {
+    "source_commit": "ada8b63a5fe173fba5eb2438cdf9d0a41c877e81",
+    "script_sha256": "b6bfa7b7288b36c84231a9365abd81599eee10976bfc2e8594c153bc0286c628",
+    "manifest_sha256": "a4fbd89422feeef92ed3c58b06d11a1f2c4e2eacd2ff74a0b8c90742c0011790",
+    "browser": false,
+    "model_calls": 0,
+    "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+    "started_utc": "2026-11-03T09:51:43Z"
+  }
+}

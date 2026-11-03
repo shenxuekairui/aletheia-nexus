@@ -6,6 +6,8 @@
 
 # Frozen JSON fixtures remain byte-identical while staying reviewable in diffs.
 benchmarks/v07_fixtures/*.json -text
+# SI inputs were frozen with Windows CRLF; preserve their recorded byte hashes.
+benchmarks/si_publishers_20261103/*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 
 # Deterministic line-oriented AI exports use LF on every platform.
 *.jsonl text eol=lf

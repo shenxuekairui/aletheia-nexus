@@ -1,0 +1,852 @@
+{
+  "selection": {
+    "limits_100MiB": [
+      "030-Wiley",
+      "054-ACS",
+      "062-PNAS",
+      "073-eLife",
+      "080-ACS",
+      "086-PLOS",
+      "088-PNAS"
+    ],
+    "reuse_cases": [
+      "021-eLife",
+      "120-PLOS",
+      "056-Wiley",
+      "020-APS",
+      "067-SAGE",
+      "055-RSC",
+      "038-OUP"
+    ],
+    "reuse_format_targets": [
+      ".cif",
+      ".doc",
+      ".docx",
+      ".gif",
+      ".jpeg",
+      ".mp4",
+      ".pdf",
+      ".pptx",
+      ".xls",
+      ".xlsx",
+      ".zip"
+    ],
+    "selection_scope": "Post-hoc diagnostic/regression subset; not a new holdout and not merged into primary scores"
+  },
+  "cases": [
+    {
+      "id": "030-Wiley",
+      "mode": "100MiB",
+      "status": "PARTIAL",
+      "items": [
+        {
+          "suffix": ".docx",
+          "size_bytes": 8219920,
+          "sha256": "e9102711358dc875455583d7788bd3cc8dc376a64bd7249130f470e37ad7944d",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 8284459,
+          "sha256": "89ad19a97479a5f5278ece0b6baf70bd67c5573f8c72f4ed77258c9a87dc3c14",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 9048196,
+          "sha256": "20374a32dce7f53f9c001a0781f850316ee4334e4c563ecf6a150fbcc0844a68",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 3520795,
+          "sha256": "11c0019eedb571c9e243c7212d1ac179e3e97f156eded233c357054f4eaa29fd",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 22781926,
+          "sha256": "ab0f04e1c579742cd2db2c93ade4956bf6c732889de4f337c987c1667da789a5",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 25112132,
+          "sha256": "14e0abef63822fdef54a63966e401f012525313192c36c26162e134bec7b496f",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 7927920,
+          "sha256": "58c1ec048f8aa6feb04b2a74853bf5cef51130624fffba30cb51fa63bf523d7a",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [
+        "官方 PMC 补充材料节点缺少明确文件链接"
+      ],
+      "source_unchanged": true,
+      "wall_seconds": 26.65
+    },
+    {
+      "id": "054-ACS",
+      "mode": "100MiB",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".mp4",
+          "size_bytes": 26057340,
+          "sha256": "aee6663ca84e53dfd711dc1fee4adc0ede11a3b8a0b639695f083c267ce500b3",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".pdf",
+          "size_bytes": 1162833,
+          "sha256": "4b5f17c87284807f318f9b34791550d0fad7c7326be9405925e2d7ea13f1bfc4",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 28.08
+    },
+    {
+      "id": "062-PNAS",
+      "mode": "100MiB",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".pdf",
+          "size_bytes": 14386143,
+          "sha256": "f9c0a830602880043f1b85cfd8561d759fc9e4d0489f7f350662d0be0c793fb6",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 23705092,
+          "sha256": "df516a404daec5124cfbbc9632141e18a9021a037bcb29853d86928bfc6e4d2b",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 27071895,
+          "sha256": "d7e972b6125c4ea81d632dc80bbe1726e3e5b4cf23ba34e8c451535f74dd3241",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 17266458,
+          "sha256": "4b41d45903ad98a8807c409c7296082cce0e2ee7d30a47c7043331c99b12f3c7",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 18.72
+    },
+    {
+      "id": "073-eLife",
+      "mode": "100MiB",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".zip",
+          "size_bytes": 14464526,
+          "sha256": "4b5569c58dcb30068f468a8b2fc33417d54c2a36756467e65b72dc6953ea40ab",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 300999,
+          "sha256": "6d564cc316038efb3ed8ac443d4fed96c81cca32c44cf2f65e0a60808d5a9849",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 50432,
+          "sha256": "1cd6fda61ea758586177bfc9fa32c659e2809a9b0709bc77caa58c304f201cf2",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 1401959,
+          "sha256": "11066bf3ae3cb211858493272021b675192074a73a638998906e721963d9ffbd",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 9719280,
+          "sha256": "6c08d28b6411c30d8be1a596307c3c3d7555f3926c639aed3a1bfb644241a8e5",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 27903,
+          "sha256": "cb1c29bd044c87d771f886c3051de9300a42266ef7bc4a067ff02ba4e5458dc7",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 34291,
+          "sha256": "ef4d2e801ed6e3e61b611dd76d68f8a53a5c78685754d8725da92db86da81c55",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xls",
+          "size_bytes": 2388992,
+          "sha256": "732255ee890c116f9eaeda1274f2aba867297f8856bd76ac740b492e04e81a36",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 12348,
+          "sha256": "29843cf74e646212b8d9ab4a35ce2ef41c1c8e58b655ca3c2ccd8271bdbacaab",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 85634,
+          "sha256": "9b4913313267de35a1012a64075592af9494b9ade70f7efff008a5bfc29d196b",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 63007,
+          "sha256": "662f06a8b17d9c3ec244eda613ade44431139dbc0f70660716002521bbf6b8ba",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 3972,
+          "sha256": "f26c83f1d0b5c535ffeaa8bfbb0baeb5ced17c353e2994cde81856dd096f68ad",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 44336336,
+          "sha256": "68f0e6780920c6c626272e163fb66dbc55f06f9bbb3d8c57e83b10d89a9dd34e",
+          "role": "SOURCE_DATA",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 12938,
+          "sha256": "458321040c758170bb2dc0a1cd3c7c979f218bc468916363afb00e4ca42b9ae3",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".docx",
+          "size_bytes": 29863,
+          "sha256": "8517e437ffc86d0713658cb29a9bed9aa366c563e32e5858c923455e0e0e8aa0",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".pdf",
+          "size_bytes": 535536,
+          "sha256": "38291a1ee6ad2e923ed56494202ceb7c02800d007f5bb209f2d9e19a2fd94bc1",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 38.64
+    },
+    {
+      "id": "080-ACS",
+      "mode": "100MiB",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".pdf",
+          "size_bytes": 32058310,
+          "sha256": "b7209752d1fe71ab34b2031a10c7fb702c2056cbd7718bc715e13facb92e47bb",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mov",
+          "size_bytes": 35502494,
+          "sha256": "c2257b4d4f09f3ba1e513748ec9d8ba1b7e505385f9be7ead7dce9210c303d6b",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mov",
+          "size_bytes": 56651036,
+          "sha256": "9aacf4a7be6be97259c7de055282e783434253d3353234e62dba600b0a892880",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 18.68
+    },
+    {
+      "id": "086-PLOS",
+      "mode": "100MiB",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".tif",
+          "size_bytes": 71182492,
+          "sha256": "141b3866b2c2abee9ca20e9eb9113b2e32c965ad1d28002006520c1838a2c61c",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 933463,
+          "sha256": "d70fd15792e811a980b6ea126cc8d23d337e478e3f4dc2a31f6a60438df0fdde",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 281384,
+          "sha256": "95b3f15c40cb56fa0c076f542ca6e9a83253125e2086b403e8f7a0eedd4a4451",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 86850,
+          "sha256": "43249f09a9e6f40a36be7888970891d917454ad04a0535a43bfb56b8ecd32e12",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 14907,
+          "sha256": "bb60c215e0fe5882a2af308a1e8a19943b33ef868d9ef76aac7ee762da6466d1",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 17.76
+    },
+    {
+      "id": "088-PNAS",
+      "mode": "100MiB",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".pdf",
+          "size_bytes": 18113895,
+          "sha256": "b0f17a7ca705aa55d03b2d6ab4ed62a65daf6f74213c138bf65a9fe9376d4672",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 5561117,
+          "sha256": "61b4e89e5597189a646c74d083ad80a0b53331c2cff6becf1d662109e3ad40a2",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 37649,
+          "sha256": "a8388f3d81f69cfd730be08d3695b8a67a3684e475ff5573f2d178b4a4561e90",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 11.96
+    },
+    {
+      "id": "021-eLife",
+      "mode": "reuse",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 10523,
+          "sha256": "bb460e4c748cdbb79290c945eb01cb4afc5bd54bc7203bda36205c2d1b500849",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 12329,
+          "sha256": "507048aac2177ab35d76d58be5aef690abbb2971551c3d2452b289f907fb8b93",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 10393,
+          "sha256": "882026a65d6f414218b4024783b2e210eef8c3097ffb4b18831a6f759557beb0",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 3397240,
+          "sha256": "5a79b067e669af5e5824b1d54c0cb38c61f99f29ec6f470f3c4d99b2c3b66971",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".zip",
+          "size_bytes": 726046,
+          "sha256": "287c68378999fd5feaf7cc3257d7335ecfef6e6b9dff785a43453d3d093b74f0",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 10374,
+          "sha256": "50adec1fb397893cb2ca93951052466c92f70b52862038c209a7d755ef6fcaff",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 11846,
+          "sha256": "03097d830139a77b590568af45208d61b2150e6149cce3bf47b603a959832f05",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 11604,
+          "sha256": "0bc2f41bf39ef10bc2b52bedc6e86f5945d6791eb0d67eade94918a65770db18",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 13582,
+          "sha256": "168d33e7e0d4a1bb973ae9c3e6747df3488deb23247c3461f72c48e0da6df642",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 11089,
+          "sha256": "c7a76c08dc59fee00b28eef5d01bffd1d6dbd6ec65f1f5ba432d31d87de360bc",
+          "role": "SOURCE_DATA",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xlsx",
+          "size_bytes": 215169,
+          "sha256": "df34a0722c280f8701f398b51f6f70136fef73a4cd92919453103d5077d97ace",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".pdf",
+          "size_bytes": 385863,
+          "sha256": "0996d904095f64db18636ab86208b32c62d870e6a6eab172fb3b6566a10db1db",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 3.39
+    },
+    {
+      "id": "120-PLOS",
+      "mode": "reuse",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".xls",
+          "size_bytes": 25600,
+          "sha256": "c65cbecaeed29b15484029c999998117473c2188648d58f0dfe26b19287e013d",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".doc",
+          "size_bytes": 34304,
+          "sha256": "e4897d274f669b8577e5606dcfd314491cdb865fa6893b7f891dd54b988be794",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xls",
+          "size_bytes": 3004416,
+          "sha256": "be36c71e6f65293f83ee79dbf32edbeeacbd45d3df92b89c78cac08fc78d9071",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xls",
+          "size_bytes": 43520,
+          "sha256": "62b27c7d4ed12d69d267bf0f50e7c5caed196b0dd04a6f650cff574b020d21af",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xls",
+          "size_bytes": 69632,
+          "sha256": "6952bdb55f123f267500cc59923cd43d694f7b1b9d7bd4f4ba1680a7a5b49998",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xls",
+          "size_bytes": 2151424,
+          "sha256": "af03b50f1a894a063d6785fdb194005be51151b816c066fcbde068dbb80f16de",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xls",
+          "size_bytes": 38400,
+          "sha256": "b3c53b4e85de94605a780d3d9bd17b64e697f9c1a9ae95280b316ff5c3abafef",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".xls",
+          "size_bytes": 41472,
+          "sha256": "35e14be9c53f7642fae9a423f3f45dcffa02bc5d7f1c56f24c99df3ab8dd6ab4",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".doc",
+          "size_bytes": 45568,
+          "sha256": "e1e2621975bae25d92e3abb6a0f2fe95b4822160484be18454e6fd0b1d85e677",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".doc",
+          "size_bytes": 31744,
+          "sha256": "8936c30cc020da5a6add4310c470398b3ad31e92828f5ebe6ec371230cbf747c",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".doc",
+          "size_bytes": 35840,
+          "sha256": "3af5eb37e125428029e41c84c9d35e923967dd762c6329eb31ed9cc96c236f5e",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".doc",
+          "size_bytes": 30720,
+          "sha256": "74be4476ddfb3f6016f490fa509f2c988b2bcb04f9090301f1bb35b9b41d18e4",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 2.86
+    },
+    {
+      "id": "056-Wiley",
+      "mode": "reuse",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".gif",
+          "size_bytes": 87799,
+          "sha256": "1698c83388ea362a57a74f8045ed9c1c29dc2b6a37761e1b30b12d21e05ba5c3",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".gif",
+          "size_bytes": 99160,
+          "sha256": "f89c15787874a063d7c8ab7bbf67cf4fcecea1f05a9c518dddd6338c7773e2de",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".gif",
+          "size_bytes": 94078,
+          "sha256": "68963c7081f12e94d40fb7fafa0a94b82c2dff53081a92709ed92ef7735a1988",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".docx",
+          "size_bytes": 1895980,
+          "sha256": "d08b1b8cb4d24c9d3d6ca25ea8e54446c1bd9717d48decd7b141c224753213ad",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 2.85
+    },
+    {
+      "id": "020-APS",
+      "mode": "reuse",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".pdf",
+          "size_bytes": 680865,
+          "sha256": "5d55db8cb0368d12159673df5b51ca2122fba5dc03be879c1c99b21bb13cd275",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 16359528,
+          "sha256": "1683dd232928b415daae40a9a76a71dfcb856ec587f84ca8c85b782ad340fffa",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 4857125,
+          "sha256": "b617a5d890acd6b4be4b480f3c74214388444c3b4b7a7b7468c53d4f921fb2a2",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 4768801,
+          "sha256": "30b19432fadb02a8b2d6b31383748550dbe21c9b4a75758fc1af3cc9116a5c25",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 3248040,
+          "sha256": "8f2143f2e7fca823ae638ea68031f4142290fae7efd46928620360647de7b9ae",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 5495761,
+          "sha256": "802798fb0a708a0f8727ca41c7710c3cb1b7449f861dfd89f58c0277a366c59e",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 4875366,
+          "sha256": "2b151a67f90477ba55a9792fb8dedd1d0ee256dffc3d6a19d3d08e144cbb4d03",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 4248182,
+          "sha256": "4410788e11fe520d322fa99b41620bc6a4e6b3ca4ce94a3a9d4c1ea2d49d7723",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 16775775,
+          "sha256": "5cb51e404a344958ca53840957d4f75fb6da3c7b26809218b93b2c37a78eb895",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 5288384,
+          "sha256": "7e02b957ffbf0853f7aac7da19eb77bd4aca77902915d5d68d7460fe5ff171ab",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".mp4",
+          "size_bytes": 10476044,
+          "sha256": "f115f65bd78a5fb424bda36fecc4334e88bfe2ea7a96f591cc3c136dfa9dda04",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 3.12
+    },
+    {
+      "id": "067-SAGE",
+      "mode": "reuse",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".docx",
+          "size_bytes": 84104,
+          "sha256": "70a91498c23bed5e9da4e15bc4ee6df9fd3f66dc02f72a289560ac1c5482df22",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".pptx",
+          "size_bytes": 1167030,
+          "sha256": "2156723ddb6a5ab897537a474b5be4c8660d457c43c2fde04e54d4c4bdc3e51b",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 3.0
+    },
+    {
+      "id": "055-RSC",
+      "mode": "reuse",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".pdf",
+          "size_bytes": 1694569,
+          "sha256": "ca8faf792cdb194cbb56524a80bcbf68999a5095cae0332352475007de8eb891",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        },
+        {
+          "suffix": ".cif",
+          "size_bytes": 202234,
+          "sha256": "74ab7d37e16e344c3ef3e436729db921778ceb6cc81bf05a8f72b664793b6629",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 2.73
+    },
+    {
+      "id": "038-OUP",
+      "mode": "reuse",
+      "status": "COMPLETED",
+      "items": [
+        {
+          "suffix": ".jpeg",
+          "size_bytes": 129546,
+          "sha256": "d516ab5e0aa3bb4084810d7394e5b6fad020124c6a90ff006def75df7eff4d6b",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "checks_ok": true
+        }
+      ],
+      "failed_errors": [],
+      "source_unchanged": true,
+      "wall_seconds": 2.35
+    }
+  ]
+}

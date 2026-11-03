@@ -2,6 +2,8 @@
 
 [中文](SI_PUBLISHER_COVERAGE.md)
 
+The subsequent [120-paper benchmark](SI_SCALE_BENCHMARK_20261103.en.md) found generic-context misassociation and page/file confusion; merge is currently not recommended. This document retains the earlier small-cohort observations and assessment without extending them to broader acceptance.
+
 2026-11-03, developed from `8c1c9ba` on `feat/si-publisher-coverage`; source version remains development 0.8.2. Generic discovery, difficult delivery adapters and main-acquisition integration extend the existing PMC, ACS Figshare and authorized-browser capabilities. **Generic support is not a guarantee that every publisher or article will deliver all SI automatically.**
 
 ## Implementation
