@@ -62,7 +62,7 @@ ____________ test_current_backend_literal_errors_are_all_localized ____________
 tests\workbench\test_messages.py:154: in test_current_backend_literal_errors_are_all_localized
     assert missing == []
 E   AssertionError: assert [('supplement...issing'), ...] == []
-E     
+E
 E     Left contains 7 more items, first extra item: ('supplement_figshare.py', 'figshare_invalid_search_response')
 E     Use -v to get more diff
 =========================== short test summary info ===========================
