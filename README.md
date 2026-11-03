@@ -33,6 +33,8 @@
 
 获取正文时可同时收集多份 SI，包括 PDF、表格、Word 和压缩包等；成功附件保留来源，失败或截断会单独提示。通用页面规则结合出版社适配，实际覆盖受来源访问条件影响。操作见[工作台手册](docs/WORKBENCH_USER_GUIDE.md)，实现与实测见[SI 获取能力](docs/SI_PUBLISHER_COVERAGE.md)。
 
+v0.8.2 源码还支持在“获取论文 → 单独获取 SI（无需正文）”输入 DOI，或运行 `aletheia-nexus si acquire DOI --library "你的文库目录"`。公开 SI 可独立于正文保存，之后按 DOI 关联已入库正文；非 OA 正文不代表 SI 也需要订阅。见[独立 SI 使用说明](docs/WORKBENCH_USER_GUIDE.md#无需正文独立获取-si)。
+
 材料可以沿一条连续的工作流积累：
 
 ```text

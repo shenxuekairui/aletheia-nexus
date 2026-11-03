@@ -9,6 +9,9 @@ benchmarks/v07_fixtures/*.json -text
 # SI inputs were frozen with Windows CRLF; preserve their recorded byte hashes.
 benchmarks/si_publishers_20261103/*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 benchmarks/si_closed_20261103/*.json -text
+benchmarks/si_independent_20261104/*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# Preserve the captured failure output, including pytest's indented blank lines.
+docs/validation/si-independent-pytest-initial.txt -text -whitespace
 
 # Deterministic line-oriented AI exports use LF on every platform.
 *.jsonl text eol=lf

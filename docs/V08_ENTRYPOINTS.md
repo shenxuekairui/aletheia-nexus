@@ -230,6 +230,20 @@ Windows 可以用附带脚本读取用户变量，避免把 Key 写进 JSON：
 必要时回到整页或扩大选区。此接口只提供可追溯的源区域读取，AN当前科研请求契约仍只
 自动补页，尚未默认启用模型自主选区、图像纠错或新的多轮提取策略。
 
+### 独立获取公开 SI（无需正文）
+
+CLI 可直接运行 `aletheia-nexus si acquire DOI --library "你的文库目录"`，多篇 DOI 以空格分隔；`si list --pending-only` 查看未关联附件，`si attach --main-pdf "真实正文.pdf"` 关联同 DOI 的已入库正文。路径优先级仍是显式参数、用户保存位置、用户级默认值。完整参数和关联步骤见[工作台手册](WORKBENCH_USER_GUIDE.md#无需正文独立获取-si)。
+
+MCP 使用现有 `acquire_documents` 的新参数：
+
+```json
+{"papers":[{"doi":"10.1063/5.0334034"}],"si_only":true}
+```
+
+仍须启动 `--enable-acquisition`，先取得获取计划并按下节的本地授权命令批准，再携带一次性 `authorization` 调用；不需要 `--enable-remote` 或模型密钥。批准绑定 `si_only` 和其固定限制，不能复用正文获取的批准。每批最多 10 篇、每篇 20 份、每文件 100 MiB、网络超时 30 秒，审稿材料默认排除；不下载正文、不打开浏览器、不使用机构凭据、不调用模型。
+
+结果通过原有 `job_id`、`get_run_status` 读取，文件仅写入当前工作区 `jobs/<job_id>/downloads`，不会扩大到全局文库的写权限。附件为 `DOI_ONLY`，`main_status=NOT_REQUESTED`，不生成虚构正文或可解析 ARTICLE 身份。此模式不接受正文 `resume_job_id` 检查点；需要再次尝试时新建明确范围的计划及批准。以后可用 CLI/UI 将这些独立附件所在目录作为文库，并关联真实正文；独立原件和来源记录继续保留。
+
 ### 经批准获取公共全文
 
 默认不启用获取。需要此能力时启动：

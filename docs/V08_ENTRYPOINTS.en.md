@@ -229,6 +229,20 @@ A selection may omit legends, shared headers, axes, or footnotes. Valid coordina
 Read the whole page or enlarge the selection when needed. This interface supplies traceable region reading only. AN's current research request contract still
 automatically supplements pages, without default autonomous model region selection, image correction, or a new multiround extraction strategy.
 
+### Independent public SI without a main PDF
+
+The CLI supports `aletheia-nexus si acquire DOI --library "your-library-directory"`, multiple space-separated DOIs, `si list --pending-only`, and `si attach --main-pdf "real-main-paper.pdf"`. Explicit paths override saved preferences and user-level defaults. See [workbench instructions](WORKBENCH_USER_GUIDE.en.md#independent-si-without-the-main-text) for limits and linking.
+
+MCP adds a mode to the existing `acquire_documents` tool:
+
+```json
+{"papers":[{"doi":"10.1063/5.0334034"}],"si_only":true}
+```
+
+The server still requires `--enable-acquisition`. Obtain the plan, review/approve it with the local authorization command below, and pass its single-use `authorization`. No `--enable-remote` or model key is needed. The grant binds `si_only` and its limits; a main-text grant cannot authorize this mode. Limits are 10 papers per call, 20 files per paper, 100 MiB per file and a 30-second network timeout. Peer review is excluded by default. No main PDF, browser, institutional credentials or AI calls are used.
+
+Read results through the existing `job_id` and `get_run_status`. Files are confined to the current workspace's `jobs/<job_id>/downloads`, without expanding global library write access. Attachments are `DOI_ONLY`, with `main_status=NOT_REQUESTED`; no ARTICLE/parser identity or fabricated main text is created. Main-text `resume_job_id` checkpoints are not accepted for this mode; another attempt needs a fresh scoped plan/grant. Later, CLI/UI can use that attachment directory as a library and link a real main paper, retaining independent originals/receipts.
+
 ### Authorized public full-text acquisition
 
 Acquisition is disabled by default. Start with this capability enabled when needed:

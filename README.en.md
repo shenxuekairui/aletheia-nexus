@@ -33,6 +33,8 @@ Today, much of this context is scattered across browser tabs, download folders, 
 
 Main-text acquisition can also collect multiple SI files, including PDFs, spreadsheets, Word documents and archives. Saved attachments retain provenance; failures and truncation remain explicit. Generic page rules and publisher adapters depend on source access conditions. See the [workbench guide](docs/WORKBENCH_USER_GUIDE.en.md) and [SI implementation and observations](docs/SI_PUBLISHER_COVERAGE.en.md).
 
+The v0.8.2 source also lets you enter DOIs under “获取论文 → 单独获取 SI（无需正文）” (Acquire SI without the main text), or run `aletheia-nexus si acquire DOI --library "your-library-directory"`. Public SI is saved independently and can later be linked to an imported main paper by DOI. A subscription main text does not imply subscription-only SI. See [independent SI instructions](docs/WORKBENCH_USER_GUIDE.en.md#independent-si-without-the-main-text).
+
 Materials can accumulate through one continuous workflow:
 
 ```text

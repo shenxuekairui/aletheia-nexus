@@ -1,0 +1,2551 @@
+{
+  "schema": "aletheia-nexus/si-independent-audit/v1",
+  "source_commit": "c7617eb5809d97552998f0a974ece4afba391ac9",
+  "manifest_sha256": "7a9bc9c512901cd6a1b669e2e64fefd8462688465484d55e097e376374d1f8c9",
+  "baseline_manifest_sha256": "6b479b1f1c724ae9da929a6c3876256b57ce9fe94fe60e256a42e6d53bd53ef1",
+  "scope": "DOI-only product CLI, public native HTTP, no main PDF, browser, institutional credentials or model calls. Metadata-closed is not an SI-existence gold standard.",
+  "groups": {
+    "exposed_Royal_gap_OA_control": {
+      "n": 4,
+      "statuses": {
+        "PARTIAL": 1,
+        "COMPLETED": 3
+      },
+      "papers_with_SI": 4,
+      "delivered_files": 4,
+      "new_over_old_probe": []
+    },
+    "historical_difficult_not_nonOA_gold": {
+      "n": 5,
+      "statuses": {
+        "FAILED": 5
+      },
+      "papers_with_SI": 0,
+      "delivered_files": 0,
+      "new_over_old_probe": []
+    },
+    "known_OA_regression_control": {
+      "n": 4,
+      "statuses": {
+        "COMPLETED": 4
+      },
+      "papers_with_SI": 4,
+      "delivered_files": 20,
+      "new_over_old_probe": [
+        "C02-Wiley",
+        "C03-Taylor_Francis",
+        "C04-eLife"
+      ]
+    },
+    "metadata_closed": {
+      "n": 54,
+      "statuses": {
+        "FAILED": 48,
+        "COMPLETED": 6
+      },
+      "papers_with_SI": 6,
+      "delivered_files": 7,
+      "new_over_old_probe": [
+        "043-AIP",
+        "044-AIP"
+      ]
+    }
+  },
+  "file_count": 31,
+  "roles": {
+    "SUPPLEMENT": 20,
+    "SOURCE_DATA": 11
+  },
+  "formats": {
+    ".pdf": 8,
+    ".docx": 6,
+    ".zip": 9,
+    ".png": 1,
+    ".xlsx": 5,
+    ".xls": 1,
+    ".csv": 1
+  },
+  "integrity": "All saved file SHA-256, parent DOI, receipt identity and format gates passed; available publisher MD5/size checked. No ARTICLE, acquisition sidecar or leftover partial file.",
+  "cases": [
+    {
+      "id": "001-Elsevier",
+      "doi": "10.1016/j.quaint.2026.110243",
+      "cohort": "metadata_closed",
+      "publisher": "Elsevier",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "IDENTITY_NOT_CONFIRMED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S1040618226001291"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "METADATA_UNAVAILABLE",
+          "error": "RateLimitError"
+        },
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S1040618226001291",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.03
+    },
+    {
+      "id": "002-Elsevier",
+      "doi": "10.1016/j.jpedsurg.2026.163036",
+      "cohort": "metadata_closed",
+      "publisher": "Elsevier",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "IDENTITY_NOT_CONFIRMED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S0022346826001193"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S0022346826001193",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.42
+    },
+    {
+      "id": "003-Elsevier",
+      "doi": "10.1016/j.palaeo.2026.113762",
+      "cohort": "metadata_closed",
+      "publisher": "Elsevier",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "IDENTITY_NOT_CONFIRMED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S0031018226002257"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S0031018226002257",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.32
+    },
+    {
+      "id": "004-ACS",
+      "doi": "10.1021/acs.biomac.6c00423",
+      "cohort": "metadata_closed",
+      "publisher": "ACS",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1021/acs.biomac.6c00423"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "transport": "http",
+          "source": "official_ACS_Figshare",
+          "discovered": 0
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 4.92
+    },
+    {
+      "id": "005-ACS",
+      "doi": "10.1021/acsami.6c06732",
+      "cohort": "metadata_closed",
+      "publisher": "ACS",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "FILES_DELIVERED",
+      "old_probe_SI_delivered": true,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".pdf"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_ACS_Figshare",
+          "discovered": 1
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 29.61
+    },
+    {
+      "id": "006-ACS",
+      "doi": "10.1021/acs.jpclett.6c01699",
+      "cohort": "metadata_closed",
+      "publisher": "ACS",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "FILES_DELIVERED",
+      "old_probe_SI_delivered": true,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".pdf"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_ACS_Figshare",
+          "discovered": 1
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 9.61
+    },
+    {
+      "id": "007-RSC",
+      "doi": "10.1039/d5cy00986c",
+      "cohort": "metadata_closed",
+      "publisher": "RSC",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1039/d5cy00986c"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 27.12
+    },
+    {
+      "id": "008-RSC",
+      "doi": "10.1039/d5nj04144a",
+      "cohort": "metadata_closed",
+      "publisher": "RSC",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1039/d5nj04144a"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.17
+    },
+    {
+      "id": "009-RSC",
+      "doi": "10.1039/d6tc00900j",
+      "cohort": "metadata_closed",
+      "publisher": "RSC",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1039/d6tc00900j"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 10.54
+    },
+    {
+      "id": "010-Wiley",
+      "doi": "10.1002/pds.70428",
+      "cohort": "metadata_closed",
+      "publisher": "Wiley",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1002/pds.70428"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 10.27
+    },
+    {
+      "id": "011-Wiley",
+      "doi": "10.1002/cpe.70821",
+      "cohort": "metadata_closed",
+      "publisher": "Wiley",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1002/cpe.70821"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.68
+    },
+    {
+      "id": "012-Wiley",
+      "doi": "10.1002/ange.7910152",
+      "cohort": "metadata_closed",
+      "publisher": "Wiley",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1002/ange.7910152"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.5
+    },
+    {
+      "id": "013-Springer",
+      "doi": "10.1007/s11056-026-10197-y",
+      "cohort": "metadata_closed",
+      "publisher": "Springer",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "FILES_DELIVERED",
+      "old_probe_SI_delivered": true,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".docx"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "page": "https://link.springer.com/article/10.1007/s11056-026-10197-y",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 43.12
+    },
+    {
+      "id": "014-Springer",
+      "doi": "10.1007/s11009-026-10299-2",
+      "cohort": "metadata_closed",
+      "publisher": "Springer",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "NOT_FOUND",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://link.springer.com/article/10.1007/s11009-026-10299-2",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 9.41
+    },
+    {
+      "id": "015-Springer",
+      "doi": "10.1007/s43450-026-00780-x",
+      "cohort": "metadata_closed",
+      "publisher": "Springer",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "FILES_DELIVERED",
+      "old_probe_SI_delivered": true,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".pdf"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "page": "https://link.springer.com/article/10.1007/s43450-026-00780-x",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 11.25
+    },
+    {
+      "id": "016-Nature",
+      "doi": "10.1038/d41586-026-01813-0",
+      "cohort": "metadata_closed",
+      "publisher": "Nature",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "INTERACTION_REQUIRED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://www.nature.com/articles/d41586-026-01813-0"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://www.nature.com/articles/d41586-026-01813-0",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 9.79
+    },
+    {
+      "id": "017-Nature",
+      "doi": "10.1038/s41577-026-01332-z",
+      "cohort": "metadata_closed",
+      "publisher": "Nature",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "INTERACTION_REQUIRED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://www.nature.com/articles/s41577-026-01332-z"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://www.nature.com/articles/s41577-026-01332-z",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 9.53
+    },
+    {
+      "id": "018-Nature",
+      "doi": "10.1038/s41390-026-05257-0",
+      "cohort": "metadata_closed",
+      "publisher": "Nature",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "INTERACTION_REQUIRED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://www.nature.com/articles/s41390-026-05257-0"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://www.nature.com/articles/s41390-026-05257-0",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 8.94
+    },
+    {
+      "id": "019-Science",
+      "doi": "10.1126/scisignal.aeb3656",
+      "cohort": "metadata_closed",
+      "publisher": "Science",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1126/scisignal.aeb3656"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.81
+    },
+    {
+      "id": "020-Science",
+      "doi": "10.1126/sciimmunol.adz4302",
+      "cohort": "metadata_closed",
+      "publisher": "Science",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1126/sciimmunol.adz4302"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.92
+    },
+    {
+      "id": "021-OUP",
+      "doi": "10.1093/sxmrev/qeag051",
+      "cohort": "metadata_closed",
+      "publisher": "OUP",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1093/sxmrev/qeag051"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.9
+    },
+    {
+      "id": "022-OUP",
+      "doi": "10.1093/milmed/usag293",
+      "cohort": "metadata_closed",
+      "publisher": "OUP",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1093/milmed/usag293"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.6
+    },
+    {
+      "id": "023-OUP",
+      "doi": "10.1093/cid/ciag382",
+      "cohort": "metadata_closed",
+      "publisher": "OUP",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1093/cid/ciag382"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.38
+    },
+    {
+      "id": "024-Cambridge",
+      "doi": "10.1017/jfm.2026.11746",
+      "cohort": "metadata_closed",
+      "publisher": "Cambridge",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "NOT_FOUND",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/abs/deformation-and-motion-of-a-thin-sessile-drop-in-shear-flow/B0CC3CC3E844C0AD025720B4A78E1351",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 10.41
+    },
+    {
+      "id": "025-Cambridge",
+      "doi": "10.1017/s1752196326101357",
+      "cohort": "metadata_closed",
+      "publisher": "Cambridge",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "NOT_FOUND",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://www.cambridge.org/core/journals/journal-of-the-society-for-american-music/article/abs/diccionario-de-la-zarzuela-website-2026-httpsdiccionariodelazarzuelaesdz/BEB3E9A3FB33078FD05838EFCD2AC2B8",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 9.85
+    },
+    {
+      "id": "026-Cambridge",
+      "doi": "10.1017/s1047951126113729",
+      "cohort": "metadata_closed",
+      "publisher": "Cambridge",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "NOT_FOUND",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://www.cambridge.org/core/journals/cardiology-in-the-young/article/abs/dexrazoxane-in-children-receiving-anthracyclines-efficacy-safety-and-regionspecific-considerations-for-latin-america/038FE63BDA42255087A91A2B8DD6ADBF",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 9.17
+    },
+    {
+      "id": "027-Taylor_Francis",
+      "doi": "10.1080/03461238.2026.2694073",
+      "cohort": "metadata_closed",
+      "publisher": "Taylor_Francis",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1080/03461238.2026.2694073"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "transport": "http",
+          "source": "official_Taylor_Francis_Figshare",
+          "discovered": 0
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.83
+    },
+    {
+      "id": "028-Taylor_Francis",
+      "doi": "10.1080/13611267.2026.2690259",
+      "cohort": "metadata_closed",
+      "publisher": "Taylor_Francis",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1080/13611267.2026.2690259"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "transport": "http",
+          "source": "official_Taylor_Francis_Figshare",
+          "discovered": 0
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.61
+    },
+    {
+      "id": "029-Taylor_Francis",
+      "doi": "10.1080/08964289.2026.2658525",
+      "cohort": "metadata_closed",
+      "publisher": "Taylor_Francis",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1080/08964289.2026.2658525"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "METADATA_UNAVAILABLE",
+          "error": "RateLimitError"
+        },
+        {
+          "status": "NOT_FOUND",
+          "transport": "http",
+          "source": "official_Taylor_Francis_Figshare",
+          "discovered": 0
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.13
+    },
+    {
+      "id": "030-SAGE",
+      "doi": "10.1177/13872877261464208",
+      "cohort": "metadata_closed",
+      "publisher": "SAGE",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1177/13872877261464208"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.97
+    },
+    {
+      "id": "031-SAGE",
+      "doi": "10.1177/17557380261446499a",
+      "cohort": "metadata_closed",
+      "publisher": "SAGE",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1177/17557380261446499a"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.91
+    },
+    {
+      "id": "032-SAGE",
+      "doi": "10.1177/00031348261461283",
+      "cohort": "metadata_closed",
+      "publisher": "SAGE",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1177/00031348261461283"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.72
+    },
+    {
+      "id": "033-BMJ",
+      "doi": "10.1136/bmjinnov-2025-001499",
+      "cohort": "metadata_closed",
+      "publisher": "BMJ",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1136/bmjinnov-2025-001499"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "METADATA_UNAVAILABLE",
+          "error": "RateLimitError"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 15.6
+    },
+    {
+      "id": "034-BMJ",
+      "doi": "10.1136/bmj-2026-053267",
+      "cohort": "metadata_closed",
+      "publisher": "BMJ",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1136/bmj-2026-053267"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.06
+    },
+    {
+      "id": "035-BMJ",
+      "doi": "10.1136/thorax-2025-224563",
+      "cohort": "metadata_closed",
+      "publisher": "BMJ",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1136/thorax-2025-224563"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.15
+    },
+    {
+      "id": "036-IEEE",
+      "doi": "10.1109/jiot.2026.3678432",
+      "cohort": "metadata_closed",
+      "publisher": "IEEE",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "INTERACTION_REQUIRED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://ieeexplore.ieee.org/document/11456980/"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://ieeexplore.ieee.org/document/11456980/",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.78
+    },
+    {
+      "id": "037-IEEE",
+      "doi": "10.1109/jlt.2026.3687969",
+      "cohort": "metadata_closed",
+      "publisher": "IEEE",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "INTERACTION_REQUIRED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://ieeexplore.ieee.org/document/11495369/"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://ieeexplore.ieee.org/document/11495369/",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.29
+    },
+    {
+      "id": "038-IEEE",
+      "doi": "10.1109/jsen.2026.3689846",
+      "cohort": "metadata_closed",
+      "publisher": "IEEE",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "INTERACTION_REQUIRED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://ieeexplore.ieee.org/document/11513684/"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://ieeexplore.ieee.org/document/11513684/",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.2
+    },
+    {
+      "id": "039-IOP",
+      "doi": "10.1088/2631-8695/ae72f5",
+      "cohort": "metadata_closed",
+      "publisher": "IOP",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "IDENTITY_NOT_CONFIRMED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://validate.perfdrive.com/fb803c746e9148689b3984a31fccd902/?ssa=%5Bredacted%5D&ssb=%5Bredacted%5D&ssc=%5Bredacted%5D&ssi=%5Bredacted%5D&ssk=%5Bredacted%5D&ssm=%5Bredacted%5D&ssn=%5Bredacted%5D&sso=%5Bredacted%5D&ssp=%5Bredacted%5D&ssq=%5Bredacted%5D&ssr=%5Bredacted%5D&sst=%5Bredacted%5D&ssu=%5Bredacted%5D&ssv=%5Bredacted%5D&ssw=%5Bredacted%5D&ssx=%5Bredacted%5D"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://validate.perfdrive.com/fb803c746e9148689b3984a31fccd902/?ssa=%5Bredacted%5D&ssb=%5Bredacted%5D&ssc=%5Bredacted%5D&ssi=%5Bredacted%5D&ssk=%5Bredacted%5D&ssm=%5Bredacted%5D&ssn=%5Bredacted%5D&sso=%5Bredacted%5D&ssp=%5Bredacted%5D&ssq=%5Bredacted%5D&ssr=%5Bredacted%5D&sst=%5Bredacted%5D&ssu=%5Bredacted%5D&ssv=%5Bredacted%5D&ssw=%5Bredacted%5D&ssx=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.5
+    },
+    {
+      "id": "040-IOP",
+      "doi": "10.1088/1402-4896/ae7fb8",
+      "cohort": "metadata_closed",
+      "publisher": "IOP",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "IDENTITY_NOT_CONFIRMED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://validate.perfdrive.com/fb803c746e9148689b3984a31fccd902/?ssa=%5Bredacted%5D&ssb=%5Bredacted%5D&ssc=%5Bredacted%5D&ssi=%5Bredacted%5D&ssk=%5Bredacted%5D&ssm=%5Bredacted%5D&ssn=%5Bredacted%5D&sso=%5Bredacted%5D&ssp=%5Bredacted%5D&ssq=%5Bredacted%5D&ssr=%5Bredacted%5D&sst=%5Bredacted%5D&ssu=%5Bredacted%5D&ssv=%5Bredacted%5D&ssw=%5Bredacted%5D&ssx=%5Bredacted%5D"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://validate.perfdrive.com/fb803c746e9148689b3984a31fccd902/?ssa=%5Bredacted%5D&ssb=%5Bredacted%5D&ssc=%5Bredacted%5D&ssi=%5Bredacted%5D&ssk=%5Bredacted%5D&ssm=%5Bredacted%5D&ssn=%5Bredacted%5D&sso=%5Bredacted%5D&ssp=%5Bredacted%5D&ssq=%5Bredacted%5D&ssr=%5Bredacted%5D&sst=%5Bredacted%5D&ssu=%5Bredacted%5D&ssv=%5Bredacted%5D&ssw=%5Bredacted%5D&ssx=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.39
+    },
+    {
+      "id": "041-IOP",
+      "doi": "10.1088/1361-6528/ae7807",
+      "cohort": "metadata_closed",
+      "publisher": "IOP",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "IDENTITY_NOT_CONFIRMED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://validate.perfdrive.com/fb803c746e9148689b3984a31fccd902/?ssa=%5Bredacted%5D&ssb=%5Bredacted%5D&ssc=%5Bredacted%5D&ssi=%5Bredacted%5D&ssk=%5Bredacted%5D&ssm=%5Bredacted%5D&ssn=%5Bredacted%5D&sso=%5Bredacted%5D&ssp=%5Bredacted%5D&ssq=%5Bredacted%5D&ssr=%5Bredacted%5D&sst=%5Bredacted%5D&ssu=%5Bredacted%5D&ssv=%5Bredacted%5D&ssw=%5Bredacted%5D&ssx=%5Bredacted%5D"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "INTERACTION_REQUIRED",
+          "page": "https://validate.perfdrive.com/fb803c746e9148689b3984a31fccd902/?ssa=%5Bredacted%5D&ssb=%5Bredacted%5D&ssc=%5Bredacted%5D&ssi=%5Bredacted%5D&ssk=%5Bredacted%5D&ssm=%5Bredacted%5D&ssn=%5Bredacted%5D&sso=%5Bredacted%5D&ssp=%5Bredacted%5D&ssq=%5Bredacted%5D&ssr=%5Bredacted%5D&sst=%5Bredacted%5D&ssu=%5Bredacted%5D&ssv=%5Bredacted%5D&ssw=%5Bredacted%5D&ssx=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.55
+    },
+    {
+      "id": "042-AIP",
+      "doi": "10.1063/5.0336439",
+      "cohort": "metadata_closed",
+      "publisher": "AIP",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1063/5.0336439"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "transport": "http",
+          "source": "official_AIP_Figshare",
+          "discovered": 0
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 8.1
+    },
+    {
+      "id": "043-AIP",
+      "doi": "10.1063/5.0326264",
+      "cohort": "metadata_closed",
+      "publisher": "AIP",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".docx"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_AIP_Figshare",
+          "discovered": 1
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 12.38
+    },
+    {
+      "id": "044-AIP",
+      "doi": "10.1063/5.0334034",
+      "cohort": "metadata_closed",
+      "publisher": "AIP",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 2,
+      "SI_files": 2,
+      "suffixes": [
+        ".pdf",
+        ".zip"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_AIP_Figshare",
+          "discovered": 2
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 17.73
+    },
+    {
+      "id": "045-APS",
+      "doi": "10.1103/ww2r-ftt2",
+      "cohort": "metadata_closed",
+      "publisher": "APS",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1103/ww2r-ftt2"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.31
+    },
+    {
+      "id": "046-APS",
+      "doi": "10.1103/x86t-n64x",
+      "cohort": "metadata_closed",
+      "publisher": "APS",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1103/x86t-n64x"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.1
+    },
+    {
+      "id": "047-APS",
+      "doi": "10.1103/tgtq-nrrt",
+      "cohort": "metadata_closed",
+      "publisher": "APS",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1103/tgtq-nrrt"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.72
+    },
+    {
+      "id": "048-Karger",
+      "doi": "10.1159/000553376",
+      "cohort": "metadata_closed",
+      "publisher": "Karger",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1159/000553376"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.8
+    },
+    {
+      "id": "049-Karger",
+      "doi": "10.1159/000553250",
+      "cohort": "metadata_closed",
+      "publisher": "Karger",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1159/000553250"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 5.72
+    },
+    {
+      "id": "050-Karger",
+      "doi": "10.1159/000553217",
+      "cohort": "metadata_closed",
+      "publisher": "Karger",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1159/000553217"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.19
+    },
+    {
+      "id": "051-Biologists",
+      "doi": "10.1242/jcs.264795",
+      "cohort": "metadata_closed",
+      "publisher": "Biologists",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1242/jcs.264795"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.81
+    },
+    {
+      "id": "052-Biologists",
+      "doi": "10.1242/jeb.252895",
+      "cohort": "metadata_closed",
+      "publisher": "Biologists",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1242/jeb.252895"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.61
+    },
+    {
+      "id": "053-Biologists",
+      "doi": "10.1242/dev.205368",
+      "cohort": "metadata_closed",
+      "publisher": "Biologists",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1242/dev.205368"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.53
+    },
+    {
+      "id": "054-PNAS",
+      "doi": "10.1073/iti2626123",
+      "cohort": "metadata_closed",
+      "publisher": "PNAS",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "NOT_ATTEMPTED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1073/iti2626123"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.09
+    },
+    {
+      "id": "C01-ACS",
+      "doi": "10.1021/acsomega.4c08274",
+      "cohort": "known_OA_regression_control",
+      "publisher": "ACS",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "COMPLETED",
+      "old_probe_status": "FILES_DELIVERED",
+      "old_probe_SI_delivered": true,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".pdf"
+      ],
+      "errors": [],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.88
+    },
+    {
+      "id": "C02-Wiley",
+      "doi": "10.1111/acer.15490",
+      "cohort": "known_OA_regression_control",
+      "publisher": "Wiley",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "COMPLETED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".docx"
+      ],
+      "errors": [],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 10.48
+    },
+    {
+      "id": "C03-Taylor_Francis",
+      "doi": "10.1080/21505594.2024.2440554",
+      "cohort": "known_OA_regression_control",
+      "publisher": "Taylor_Francis",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "COMPLETED",
+      "old_probe_status": "PROBE_FAILED",
+      "old_probe_SI_delivered": false,
+      "files": 2,
+      "SI_files": 2,
+      "suffixes": [
+        ".docx",
+        ".png"
+      ],
+      "errors": [],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 13.31
+    },
+    {
+      "id": "C04-eLife",
+      "doi": "10.7554/elife.93646",
+      "cohort": "known_OA_regression_control",
+      "publisher": "eLife",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": "COMPLETED",
+      "old_probe_status": "PARTIAL_DELIVERY",
+      "old_probe_SI_delivered": false,
+      "files": 16,
+      "SI_files": 5,
+      "suffixes": [
+        ".docx",
+        ".pdf",
+        ".xls",
+        ".xlsx",
+        ".zip"
+      ],
+      "errors": [],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 65.8
+    },
+    {
+      "id": "H113-Wiley",
+      "doi": "10.1002/cctc.202201687",
+      "cohort": "historical_difficult_not_nonOA_gold",
+      "publisher": "Wiley",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1002/cctc.202201687"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 6.32
+    },
+    {
+      "id": "H114-RSC",
+      "doi": "10.1039/d4cc01176g",
+      "cohort": "historical_difficult_not_nonOA_gold",
+      "publisher": "RSC",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1039/d4cc01176g"
+        }
+      ],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 11.27
+    },
+    {
+      "id": "H115-Springer",
+      "doi": "10.1007/s11814-019-0365-0",
+      "cohort": "historical_difficult_not_nonOA_gold",
+      "publisher": "Springer",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://link.springer.com/article/10.1007/s11814-019-0365-0",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 15.58
+    },
+    {
+      "id": "H116-MDPI",
+      "doi": "10.3390/nano13050931",
+      "cohort": "historical_difficult_not_nonOA_gold",
+      "publisher": "MDPI",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://www.mdpi.com/2079-4991/13/5/931"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://www.mdpi.com/2079-4991/13/5/931",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 14.05
+    },
+    {
+      "id": "H117-Elsevier",
+      "doi": "10.1016/j.elecom.2022.107204",
+      "cohort": "historical_difficult_not_nonOA_gold",
+      "publisher": "Elsevier",
+      "status": "FAILED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 0,
+      "SI_files": 0,
+      "suffixes": [],
+      "errors": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S1388248122000066"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S1388248122000066",
+          "transport": "http"
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 7.25
+    },
+    {
+      "id": "R023-Royal_Society",
+      "doi": "10.1098/rspb.2022.1062",
+      "cohort": "exposed_Royal_gap_OA_control",
+      "publisher": "Royal_Society",
+      "status": "PARTIAL",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".pdf"
+      ],
+      "errors": [
+        {
+          "status": "PARTIAL",
+          "error": "figshare_file_exceeds_byte_limit"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_Royal_Society_Figshare",
+          "discovered": 1
+        },
+        {
+          "status": "PEER_REVIEW_EXCLUDED",
+          "count": 1
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 19.97
+    },
+    {
+      "id": "R049-Royal_Society",
+      "doi": "10.1098/rsos.220178",
+      "cohort": "exposed_Royal_gap_OA_control",
+      "publisher": "Royal_Society",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".docx"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_Royal_Society_Figshare",
+          "discovered": 1
+        },
+        {
+          "status": "PEER_REVIEW_EXCLUDED",
+          "count": 1
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 16.89
+    },
+    {
+      "id": "R075-Royal_Society",
+      "doi": "10.1098/rsbl.2023.0328",
+      "cohort": "exposed_Royal_gap_OA_control",
+      "publisher": "Royal_Society",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".csv"
+      ],
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_Royal_Society_Figshare",
+          "discovered": 1
+        },
+        {
+          "status": "PEER_REVIEW_EXCLUDED",
+          "count": 1
+        }
+      ],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 36.42
+    },
+    {
+      "id": "R101-Royal_Society",
+      "doi": "10.1098/rspa.2024.0224",
+      "cohort": "exposed_Royal_gap_OA_control",
+      "publisher": "Royal_Society",
+      "status": "COMPLETED",
+      "process": "FINISHED",
+      "main_status": "NOT_REQUESTED",
+      "old_product_SI": null,
+      "old_probe_status": null,
+      "old_probe_SI_delivered": null,
+      "files": 1,
+      "SI_files": 1,
+      "suffixes": [
+        ".pdf"
+      ],
+      "errors": [],
+      "diagnostics": [],
+      "file_errors": [],
+      "cwd": "C:\\WINDOWS\\System32",
+      "wall_seconds": 10.44
+    }
+  ],
+  "files": [
+    {
+      "case_id": "005-ACS",
+      "id": "si_8dc2c6c3d55afbfdf7e49583",
+      "doi": "10.1021/acsami.6c06732",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 2329969,
+      "sha256": "a31291db3776c06716682990debe20045e7e39509b1324794e88c872a6f14165",
+      "md5": "0305fbf0e7fa0cc2aca1f371079d6296",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "06be9eaede524a4ccfba1aed0e27a8a717fd87c00d41cf47b65fa08b2a1c6148",
+      "association_basis": "official_ACS_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/66111210",
+      "validation": {
+        "type": "pdf",
+        "page_count": 16,
+        "parseable": true
+      }
+    },
+    {
+      "case_id": "006-ACS",
+      "id": "si_b6559ac42afcb59690c80729",
+      "doi": "10.1021/acs.jpclett.6c01699",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 3567613,
+      "sha256": "669a1ad6de1f9ab44089507ab5fedaaab75803cfe27519f19d728a883dcbb655",
+      "md5": "00fb405d2170770628e7678c03000246",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "0dbfff629840924f5d8562717565310347abe2c1162943587782887b47103ca2",
+      "association_basis": "official_ACS_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/66107465",
+      "validation": {
+        "type": "pdf",
+        "page_count": 17,
+        "parseable": true
+      }
+    },
+    {
+      "case_id": "013-Springer",
+      "id": "si_51f5e6cc2c76a2fe2c0b0d91",
+      "doi": "10.1007/s11056-026-10197-y",
+      "role": "SUPPLEMENT",
+      "suffix": ".docx",
+      "size_bytes": 15210079,
+      "sha256": "6b0780ac414de99db211e7bc040c5550cc6e06821da1182c8a2f85e75eaf6dee",
+      "md5": "2d1a025443b8800bb9808b68b5125bb6",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "c740472de173e25619b45f19cc1954f0a113b849d8bd75b2d17fdd3f2da36647",
+      "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+      "source_url": "https://static-content.springer.com/esm/art%3A10.1007%2Fs11056-026-10197-y/MediaObjects/11056_2026_10197_MOESM1_ESM.docx",
+      "validation": {
+        "type": "docx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "015-Springer",
+      "id": "si_d46a27e830aaac375691ede6",
+      "doi": "10.1007/s43450-026-00780-x",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 396492,
+      "sha256": "5f7f130abcf7d98063146dc2cd37326e09437c1c6109d6105ff1922a898edf74",
+      "md5": "c74ed24cc7f2f8d0c274fa2a2464bce0",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "ae2eddc58be3d1d65043bd7081fa713d8b7b5a90a9d5bb0d567a91729dd46629",
+      "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+      "source_url": "https://static-content.springer.com/esm/art%3A10.1007%2Fs43450-026-00780-x/MediaObjects/43450_2026_780_MOESM1_ESM.pdf",
+      "validation": {
+        "type": "pdf",
+        "page_count": 5,
+        "parseable": true
+      }
+    },
+    {
+      "case_id": "043-AIP",
+      "id": "si_e2a97dac93c6b712c991ce6a",
+      "doi": "10.1063/5.0326264",
+      "role": "SUPPLEMENT",
+      "suffix": ".docx",
+      "size_bytes": 3012524,
+      "sha256": "f33f836701ba7adb7fa49f8c1870dfe200dd7f4c8d0d6064bf851a550c6c8a21",
+      "md5": "d97129deade2e40b57d449a78cdf6e20",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "862a38dcbcd2f06a9cf07ac7237a5705e3aa5fcc22a200059e4dcf72032f5e8f",
+      "association_basis": "official_publisher_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/65022666",
+      "validation": {
+        "type": "docx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "044-AIP",
+      "id": "si_9b5ef446ffa253a3430ac6f0",
+      "doi": "10.1063/5.0334034",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 495673,
+      "sha256": "8619b488035ba74238c183eedc0c98e732ed1c1b19e4d4e9a90e2b1bf826c4a8",
+      "md5": "2e84883ff66fe95790a2cc3210bec8b7",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "65d166d57c92079506db539e8eb4a0a7b2058f73e6492c8ad62e33515794648c",
+      "association_basis": "official_publisher_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/64670268",
+      "validation": {
+        "type": "pdf",
+        "page_count": 8,
+        "parseable": true
+      }
+    },
+    {
+      "case_id": "044-AIP",
+      "id": "si_b1bf1ecea1d3d8d9596888f0",
+      "doi": "10.1063/5.0334034",
+      "role": "SUPPLEMENT",
+      "suffix": ".zip",
+      "size_bytes": 103861,
+      "sha256": "54b914469367a96b109496a06593e71710008a739625446b35f32b733813dbd2",
+      "md5": "c987139582cb99e6bfc9970f725d7649",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "5cce792d7ecf1a6d4176e559c5a89564f57460b3a718cf2f9cf15b73a69f9179",
+      "association_basis": "official_publisher_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/64670271",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C01-ACS",
+      "id": "si_cfd89a177b2fc7bff56870fa",
+      "doi": "10.1021/acsomega.4c08274",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 113880,
+      "sha256": "1f7e4f306bbb2c233bda6ecfd144483694b74508323f1b56889188d3e2809004",
+      "md5": "5679337514b5e995e9567424076a917b",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "cb27376ffc8abc181a8aa348bab6896bc515da1903cfcdecba08d6ca0d863373",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11739972.1/ao4c08274_si_001.pdf?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "pdf",
+        "page_count": 2,
+        "parseable": true
+      }
+    },
+    {
+      "case_id": "C02-Wiley",
+      "id": "si_ea92d4fed4af5cc7028f4c1e",
+      "doi": "10.1111/acer.15490",
+      "role": "SUPPLEMENT",
+      "suffix": ".docx",
+      "size_bytes": 47006,
+      "sha256": "b3d6841f88a03ced14a1b63cf180737d09848cfb39c35ca5f1e6559f41cef02b",
+      "md5": "0e74afc6e735832480d6d41f37416e3c",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "9366f3b7d2ed37412afe40f56a6840850ff6fe811a211b22042785f6dee76ea4",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11740165.2/NIHMS2046162-supplement-Supplementary_Material.docx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "docx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C03-Taylor_Francis",
+      "id": "si_5a7e3110c0dd324c288b8403",
+      "doi": "10.1080/21505594.2024.2440554",
+      "role": "SUPPLEMENT",
+      "suffix": ".docx",
+      "size_bytes": 17332,
+      "sha256": "793e3053f85771aa345456f2ba30cf7343fa56b5fb25a84ddebc28927776604b",
+      "md5": "7268f86254806277959f0054f0fc363b",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "05dab4184e79e34c145311462d32fde338322708a414909ba4a0ad8199fd43a5",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11702953.1/KVIR_A_2440554_SM2175.docx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "docx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C03-Taylor_Francis",
+      "id": "si_7bd4ca00f4a54725e33212ae",
+      "doi": "10.1080/21505594.2024.2440554",
+      "role": "SUPPLEMENT",
+      "suffix": ".png",
+      "size_bytes": 2807393,
+      "sha256": "7039a500e947e440965453980d7ce6c5daf5ac9ab595b23c165c0c34f4fa3e3a",
+      "md5": "15ee215e6fba9b48c4658b5acfe26ba7",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "33e74bee8877475e102249b12f1dfe1767eb01c8d048ff78502f02d01b0456f5",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11702953.1/KVIR_A_2440554_SM2176.jpg?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "png",
+        "parseable": false,
+        "opened": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_056a881c14cbaf807f59b8f8",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".zip",
+      "size_bytes": 9719280,
+      "sha256": "6c08d28b6411c30d8be1a596307c3c3d7555f3926c639aed3a1bfb644241a8e5",
+      "md5": "aecce3189465996b86abb14098655994",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "45da858c747534095d0c82047c63e5cecb576075b1ccf4c4eccd6d25bbd96b64",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig4-data1.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_06281f3882d1e0a47e42676a",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".xlsx",
+      "size_bytes": 50432,
+      "sha256": "1cd6fda61ea758586177bfc9fa32c659e2809a9b0709bc77caa58c304f201cf2",
+      "md5": "513399b7b7d330d0487dca3555c6f90d",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "a4d48c7549e3c089d6757c045438359141d90017c4cf3523fb5eb7ce558718f3",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig3-data1.xlsx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "xlsx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_0ac6604430d3ff157974cd0c",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".zip",
+      "size_bytes": 44336336,
+      "sha256": "68f0e6780920c6c626272e163fb66dbc55f06f9bbb3d8c57e83b10d89a9dd34e",
+      "md5": "6bb9b7a450f737573a188dbd7f9f8a67",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "cc9e49781a84725e0574d6c914ea3cf1c5a6581d19c954376ba3be633c29b131",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig6-figsupp2-data1.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_10c1e16a5b713547bb90d42f",
+      "doi": "10.7554/elife.93646",
+      "role": "SUPPLEMENT",
+      "suffix": ".docx",
+      "size_bytes": 29863,
+      "sha256": "8517e437ffc86d0713658cb29a9bed9aa366c563e32e5858c923455e0e0e8aa0",
+      "md5": "0f2c33b9647fd95401f8ee4d5ebe9e55",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "e13eacbff43887edeef848e16f6c8505faedeb862784fa4e8c0d470b5a20ac61",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-supp1.docx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "docx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_2599bcaa35f4da9bf3fa144b",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".zip",
+      "size_bytes": 1401959,
+      "sha256": "11066bf3ae3cb211858493272021b675192074a73a638998906e721963d9ffbd",
+      "md5": "3f1ae8238842e4dea6ca99099c06ff47",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "b252bb7dfdd9eabda15ecf07fa7595a3042967db9b6785a3c5c28057fe57f203",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig3-data2.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_291a4143a92d74869e90a83a",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".zip",
+      "size_bytes": 14464526,
+      "sha256": "4b5569c58dcb30068f468a8b2fc33417d54c2a36756467e65b72dc6953ea40ab",
+      "md5": "c0eda2e04fdd7d00c2f8c48e25630165",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "6f62a64cdd36e8f4682ef6d4aef6adec44f4b9fe88d71eacb09886ec01f477c4",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig1-data1.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_2af85d8ab04eb4eced0c8f9c",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".xlsx",
+      "size_bytes": 85634,
+      "sha256": "9b4913313267de35a1012a64075592af9494b9ade70f7efff008a5bfc29d196b",
+      "md5": "c972291f329972af5adf11129ae2fd7d",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "c283d8a87a73ade0313e72bbab6874d80c1bf83666e1974f5ce7ba029060d06e",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig6-figsupp1-data1.xlsx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "xlsx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_5600f215a7e52674ef53fcee",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".zip",
+      "size_bytes": 300999,
+      "sha256": "6d564cc316038efb3ed8ac443d4fed96c81cca32c44cf2f65e0a60808d5a9849",
+      "md5": "3b12472074dc7fbbeb3e0854f122f9ac",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "e76bffda5b62a5486908a5ab17c685c91e3649430d45aee9fe5781fb11ef4e8e",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig1-data2.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_57e9b4c3cec3165fee16c220",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".xls",
+      "size_bytes": 2388992,
+      "sha256": "732255ee890c116f9eaeda1274f2aba867297f8856bd76ac740b492e04e81a36",
+      "md5": "1afb5483b4edea135f0047a41ca4a483",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "74a49830bf59b84b1b49204016911ae7d828599aeba05e6f31f31cb2df254141",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig6-data1.xls?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "xls",
+        "parseable": false,
+        "opened": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_9e1ade5d4b81d175fa4cb330",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".xlsx",
+      "size_bytes": 63007,
+      "sha256": "662f06a8b17d9c3ec244eda613ade44431139dbc0f70660716002521bbf6b8ba",
+      "md5": "a7e23910aea9bcb4cf58cc771aa9a32c",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "29ddf68c815559bdf14ecb95e753cdc4859a019d81eb945896eca36ccb4f2f87",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig6-figsupp1-data2.xlsx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "xlsx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_ab322be2a425d85e5dcd7781",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".xlsx",
+      "size_bytes": 34291,
+      "sha256": "ef4d2e801ed6e3e61b611dd76d68f8a53a5c78685754d8725da92db86da81c55",
+      "md5": "014a10b625c38996af3133bb730b859e",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "c7e0144c63073a50f9dc91f9a611db9671146d502098bd6c24f81e4600abdba1",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig5-data2.xlsx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "xlsx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_b58a2d607fdd99cd29c78fe8",
+      "doi": "10.7554/elife.93646",
+      "role": "SUPPLEMENT",
+      "suffix": ".zip",
+      "size_bytes": 3972,
+      "sha256": "f26c83f1d0b5c535ffeaa8bfbb0baeb5ced17c353e2994cde81856dd096f68ad",
+      "md5": "47d73de76f6a65aeace5618ccd6149c9",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "a87079b5eed1080a4710600a78dac97d26a84ad8e32c66488e63ae6f50e89b1f",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig6-figsupp2-code1.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_caf74b6bfa8ad8af2bad780c",
+      "doi": "10.7554/elife.93646",
+      "role": "SOURCE_DATA",
+      "suffix": ".xlsx",
+      "size_bytes": 27903,
+      "sha256": "cb1c29bd044c87d771f886c3051de9300a42266ef7bc4a067ff02ba4e5458dc7",
+      "md5": "f71b791495c24803322433501c5be30c",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "cf94144ab1f698cf5a972a19a2c3acb93f644ec6603aca3c38b76ab0f66cad84",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig5-data1.xlsx?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "xlsx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_cbf05d412ad34c94308b67fa",
+      "doi": "10.7554/elife.93646",
+      "role": "SUPPLEMENT",
+      "suffix": ".zip",
+      "size_bytes": 12938,
+      "sha256": "458321040c758170bb2dc0a1cd3c7c979f218bc468916363afb00e4ca42b9ae3",
+      "md5": "2e8a1a7b4cb468e8c83ec5206b0ed82b",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "4b2e75d1938a6a2ece611d8ee681e9b2f6adff9631a473e01940ff59c2e98279",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig7-code1.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_f5a3b0d890540e17de357554",
+      "doi": "10.7554/elife.93646",
+      "role": "SUPPLEMENT",
+      "suffix": ".zip",
+      "size_bytes": 12348,
+      "sha256": "29843cf74e646212b8d9ab4a35ce2ef41c1c8e58b655ca3c2ccd8271bdbacaab",
+      "md5": "bbc47177dbd4815a2cfb3889d31db993",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "1b24cbaceac444a1daf8d42da08fee8b42d497f575cd7923105aff6538ffbe5a",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-fig6-figsupp1-code1.zip?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "zip",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "C04-eLife",
+      "id": "si_fc88c0b14b50b797845d754a",
+      "doi": "10.7554/elife.93646",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 535536,
+      "sha256": "38291a1ee6ad2e923ed56494202ceb7c02800d007f5bb209f2d9e19a2fd94bc1",
+      "md5": "869050912bf89649306ef0c708d7bc6e",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "8db240ffc12c8081545d69f11e930544ce9025a9ca62dfd7df0ff49bbae6f83f",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC11668525.1/elife-93646-mdarchecklist1.pdf?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "pdf",
+        "page_count": 6,
+        "parseable": true
+      }
+    },
+    {
+      "case_id": "R023-Royal_Society",
+      "id": "si_4111254b50119669ff10e0a7",
+      "doi": "10.1098/rspb.2022.1062",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 1051964,
+      "sha256": "2579c9fe4c894efc010a927f63c2a370ee7e3dbc420505f2fbafebb43b168c52",
+      "md5": "fd18f8afd153f84ac53efd1d5d047dd4",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "77c6f4dc344b66f1aa33b7fb355a3338fb83e49efbef3638642407e2bbb1f626",
+      "association_basis": "official_publisher_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/38988883",
+      "validation": {
+        "type": "pdf",
+        "page_count": 11,
+        "parseable": true
+      }
+    },
+    {
+      "case_id": "R049-Royal_Society",
+      "id": "si_92a925b0ca3c27fdd1c8dfe5",
+      "doi": "10.1098/rsos.220178",
+      "role": "SUPPLEMENT",
+      "suffix": ".docx",
+      "size_bytes": 38009,
+      "sha256": "c926ea65583c06861107fed184db20a6e1d93a3ab42de990cfd8fcd402e27280",
+      "md5": "b59b20c47b815fd0de10373c1a7122f8",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "39c8ba0bc5f3e2b91415e18395f4a63b9062e9308985e46df754cdd7509e77fe",
+      "association_basis": "official_publisher_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/36709474",
+      "validation": {
+        "type": "docx",
+        "parseable": false,
+        "archive_extracted": false
+      }
+    },
+    {
+      "case_id": "R075-Royal_Society",
+      "id": "si_714089258d999e24bd3b6dfa",
+      "doi": "10.1098/rsbl.2023.0328",
+      "role": "SUPPLEMENT",
+      "suffix": ".csv",
+      "size_bytes": 12022,
+      "sha256": "725670f3ae30c52fb82aa851d1dd155120776c45bbb3e86c8cb83dda2ea845b0",
+      "md5": "ecac055bd6b87f21a4fbb9d341fd1f16",
+      "manifest_md5_checked": true,
+      "source_record_sha256": "c044388214907571b6328f1118e1ae83954f11f78b8c25dc528d56c1c14a14ba",
+      "association_basis": "official_publisher_Figshare_parent_DOI_title_and_file_manifest",
+      "source_url": "https://ndownloader.figshare.com/files/43127038",
+      "validation": {
+        "type": "csv",
+        "parseable": false,
+        "opened": false
+      }
+    },
+    {
+      "case_id": "R101-Royal_Society",
+      "id": "si_077d515a474ac7c47314c263",
+      "doi": "10.1098/rspa.2024.0224",
+      "role": "SUPPLEMENT",
+      "suffix": ".pdf",
+      "size_bytes": 334595,
+      "sha256": "ed22b030c29aefa7e9716e26312294220d493207551f1f91187a95d2c1c1b265",
+      "md5": "95db282b4afb87f90fecec690915fe90",
+      "manifest_md5_checked": false,
+      "source_record_sha256": "383574262d03870a6d893483304ae5fa73756401479d8c83ba808b7bba219a3d",
+      "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+      "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC7619384.1/EMS217247-supplement-Appendix.pdf?md5=%5Bredacted%5D",
+      "validation": {
+        "type": "pdf",
+        "page_count": 7,
+        "parseable": true
+      }
+    }
+  ],
+  "raw_root": "F:\\AI4S\\outputs\\AN_SI_INDEPENDENT_20261104\\final\\corpus"
+}

@@ -100,6 +100,30 @@ and “恢复” (recovery). Ordinary operations, parameter names, units, states
 For first use, import one paper, open its original, add a tag, parse, and search before creating a research plan.
 Local plan creation does not call a model. Title translation, model planning, and research execution separately confirm actual outgoing content and cost.
 
+## Independent SI without the main text
+
+This section describes v0.8.2 source functionality; older released packages may not expose these commands or controls.
+
+Under “获取论文” click “单独获取 SI（无需正文）”; the library also has “独立 SI 获取与正文关联”. Enter one DOI per line, adjust the file count and per-file MiB cap, and start acquisition. It runs in the task center. Click “刷新已保存附件” after completion, then select and open a saved file.
+
+This entry uses public native routes only: applicable PMC metadata/XML, official ACS/AIP/Royal Society/Taylor & Francis Figshare manifests, and explicit links on official article pages. It does not download the main text, open an institutional browser or call AI. Access failures and identity conflicts remain explicit; they do not prove absence of SI. Peer-review files are excluded by default and retain their own role when explicitly included. Source data and reporting summaries also remain distinct.
+
+Files live under `<library>/SI/independent/`, with DOI-linked provenance, known title, declared/detected format and hashes. They initially show “尚未关联正文” (not linked to a main paper). A standalone SI PDF is not registered as an ARTICLE or sent to article parsing. Records survive restarts and library-folder migration.
+
+After importing a real main paper, select an attachment and “关联已有正文” to link it to the same-DOI paper. Successful normal main-text acquisition also attempts to link cached independent attachments. DOI, available title constraints and hashes are checked again; independent originals/receipts remain intact and a normal linked copy is created. Only linked PDF SI enters existing SI parsing; archives are not extracted or executed. Association evidence is not human verification of scientific content.
+
+The CLI shares this service and saved path preferences:
+
+```powershell
+aletheia-nexus si acquire 10.1063/5.0334034 --library "$env:USERPROFILE\AN-Library"
+aletheia-nexus si list --pending-only --library "$env:USERPROFILE\AN-Library"
+aletheia-nexus si attach --main-pdf "C:\Users\your-name\AN-Library\real-main-paper.pdf" --library "$env:USERPROFILE\AN-Library"
+```
+
+`acquire` accepts multiple DOIs. `--title` constrains a single DOI only. Defaults are 20 files per paper and 100 MiB per file; use `--max-files`, `--max-bytes`, `--timeout` and optionally `--include-peer-review`. Repeat `--attachment-id` on `attach` to select files, or omit it to link all matching DOI entries. All three commands accept `--library-state-dir` and do not rewrite saved path preferences. Repeat acquisition checks current manifests and local hashes before reuse. Partial failures or caps preserve successfully saved files.
+
+Existing main-text/SI acquisition still requires a real verified main text. A failed normal main-text job does not automatically become an independent SI job. See [independent SI observations](SI_INDEPENDENT_20261104.en.md).
+
 ## Acquiring papers
 
 1. Paste DOIs or Chinese/English titles on “获取论文” (Acquire papers), or select a TXT/CSV/JSON list. A whole classified/grouped list can be pasted at once, then processed using “手动整理并预览” (Organize manually and preview).

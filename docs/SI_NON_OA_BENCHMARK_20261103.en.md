@@ -2,6 +2,8 @@
 
 [中文](SI_NON_OA_BENCHMARK_20261103.md)
 
+Independent SI is now available through CLI/UI/MCP and this frozen corpus has been retested. See [independent SI acceptance, 2026-11-04](SI_INDEPENDENT_20261104.en.md) for the new official-hosting routes and actual failure-to-success cases. The baseline below remains unchanged; diagnostic delivery is not retrospectively counted as product success.
+
 Earlier cross-publisher tests selected OA/PMC candidates to obtain main texts and XML references, introducing substantial selection bias. They cannot establish non-OA or universal SI coverage. This independent round tested **54 metadata-closed papers across 19 publisher/brand strata**, plus four known OA regression controls, with real network requests and no login, browser, paid API or model calls. Product source remains `6c7d587` (identical product code to `a65cc4b`); acquisition logic was not changed for these tests.
 
 **Main-text and SI access must be measured separately.** Four papers lacked an acquired main text but anonymous native HTTP delivered their SI. The current integrated product workflow requires main verification first, so those papers succeeded only in the independent probe, not the normal workflow. No fake main PDF or product-success claim was introduced.

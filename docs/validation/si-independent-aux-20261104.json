@@ -1,0 +1,35 @@
+{
+  "source_commit": "c7617eb5809d97552998f0a974ece4afba391ac9",
+  "wheel_sha256": "2488054bd2522615688b37d5ed67f7098e32029d1884b58000b021845a62faa8",
+  "source_files_matched": 231,
+  "installed_cli": {
+    "status": "COMPLETED",
+    "papers": 2,
+    "files": 3,
+    "cwd": "C:\\Windows\\System32"
+  },
+  "royal_large": {
+    "status": "COMPLETED",
+    "max_bytes": 268435456,
+    "files": [
+      {
+        "suffix": ".pdf",
+        "size_bytes": 1051964,
+        "sha256": "2579c9fe4c894efc010a927f63c2a370ee7e3dbc420505f2fbafebb43b168c52"
+      },
+      {
+        "suffix": ".zip",
+        "size_bytes": 193367083,
+        "sha256": "94eeccc5739ef75136d4062412abfcf73a19b608e885cc50774656188af86a25"
+      }
+    ]
+  },
+  "ui_binding": {
+    "original_main_and_sidecar_unchanged": true,
+    "independent_receipt_unchanged": true,
+    "linked_role": "SUPPLEMENT",
+    "linked_identity_basis": "local_declared"
+  },
+  "mcp_stdio": "Installed SDK: si_only schema, AUTHORIZATION_REQUIRED preview and no files without a grant verified; granted service covered by automated tests.",
+  "raw_root": "F:\\AI4S\\outputs\\AN_SI_INDEPENDENT_20261104\\final"
+}

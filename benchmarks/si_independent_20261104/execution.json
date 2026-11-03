@@ -1,0 +1,12 @@
+{
+  "source_commit": "c7617eb5809d97552998f0a974ece4afba391ac9",
+  "checkout_commit": "c7617eb5809d97552998f0a974ece4afba391ac9",
+  "manifest_sha256": "7a9bc9c512901cd6a1b669e2e64fefd8462688465484d55e097e376374d1f8c9",
+  "script_sha256": "f456bd59745638bda4ca0a8f426195254dc0fd4c9505fc9407a3c66c86cf4834",
+  "integrated_worker_sha256": "958abc9bf999c6d2f0a976a339d4d909f4188502873fdad90474dc2984bc53d4",
+  "browser": false,
+  "model_calls": 0,
+  "credentials": false,
+  "python": "3.14.3 (tags/v3.14.3:323c59a, Feb  3 2026, 16:04:56) [MSC v.1944 64 bit (AMD64)]",
+  "started_utc": "2026-11-03T16:17:32Z"
+}
