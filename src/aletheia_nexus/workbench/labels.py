@@ -270,6 +270,7 @@ STATUS_LABELS = {
     "SUPPLEMENT_PAGE_FAILED": "补充材料目录页读取失败",
     "UNHANDLED_ATTACHMENT": "附件尚未取得",
     "EXCLUDED_ATTACHMENT": "未纳入本次下载的附件链接",
+    "EMPTY_SUPPLEMENT_PLACEHOLDER": "空占位节点，同组实际附件已核对",
     "NO_MATCH": "没有可靠匹配",
     "AMBIGUOUS": "需要确认候选",
     "RESOLVED": "身份已解析",

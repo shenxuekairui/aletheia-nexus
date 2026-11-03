@@ -65,6 +65,10 @@ _SUFFIXES = {
     ".odp",
     ".gif",
     ".gz",
+    ".mpg",
+    ".mpeg",
+    ".rar",
+    ".py",
 }
 _OFFICIAL_GROUPS = (
     (
@@ -234,6 +238,31 @@ def _attachment_details(link, url, *, page_url, doi, section_role):
             else section_role
         )
     if role is None:
+        return None, None
+    # Site-wide review/help pages are not file evidence. Explicit file suffixes,
+    # typed/download links, metadata and actual download endpoints still qualify.
+    from .supplement_formats import MIME_SUFFIXES
+
+    file_hint = (
+        suffix in _SUFFIXES
+        or (link.type_attr or "").split(";", 1)[0].strip().lower() in MIME_SUFFIXES
+        or link.download
+        or link.tag in {"jsonld", "meta", "button"}
+        or bool(set(link.rel) & {"supplement", "supplementary", "supplemental"})
+        or bool(
+            re.search(
+                r"(?:^|[/_-])(?:download|file|files|media|attachment)(?:[/_.?-]|$)",
+                parts.path,
+                re.I,
+            )
+        )
+    )
+    if not file_hint and (
+        role == "PEER_REVIEW"
+        or re.search(
+            r"\b(?:how to|publishing|guidelines?|faqs?|policies)\b", label, re.I
+        )
+    ):
         return None, None
     # Explicit supplementary landing pages are followed once with a fresh DOI
     # gate. Extensionless binary endpoints are validated from delivered bytes.
@@ -425,7 +454,17 @@ def _validate_attachment(path: Path, suffix: str) -> dict:
                 ):
                     raise ValueError("invalid_office_attachment")
         return {"type": suffix[1:], "parseable": False, "archive_extracted": False}
-    if suffix in {".txt", ".csv", ".tsv", ".json", ".xml", ".cif", ".mol", ".sdf"}:
+    if suffix in {
+        ".txt",
+        ".csv",
+        ".tsv",
+        ".json",
+        ".xml",
+        ".cif",
+        ".mol",
+        ".sdf",
+        ".py",
+    }:
         # Check text plausibility without promising a domain-specific parser.
         if b"\x00" in prefix:
             raise ValueError("binary_content_in_text_attachment")
@@ -448,6 +487,14 @@ def _validate_attachment(path: Path, suffix: str) -> dict:
     ):
         raise ValueError("invalid_image_attachment")
     elif suffix == ".gz" and not prefix.startswith(b"\x1f\x8b"):
+        raise ValueError("invalid_compressed_attachment")
+    elif suffix in {".mpg", ".mpeg"} and not prefix.startswith(
+        (b"\x00\x00\x01\xba", b"\x00\x00\x01\xb3")
+    ):
+        raise ValueError("invalid_media_attachment")
+    elif suffix == ".rar" and not prefix.startswith(
+        (b"rar!\x1a\x07\x00", b"rar!\x1a\x07\x01\x00")
+    ):
         raise ValueError("invalid_compressed_attachment")
     return {"type": suffix[1:], "parseable": False, "opened": False}
 
@@ -1014,6 +1061,14 @@ def _acquire_supplements(
                     getattr(resource, "content_type", None),
                 )
                 validation = _validate_attachment(temporary, extension)
+                validation.update(
+                    declared_extension=attachment["extension"],
+                    detected_extension=extension,
+                    extension_corrected=bool(
+                        attachment["extension"] and attachment["extension"] != extension
+                    ),
+                    executed=False,
+                )
                 attachment["extension"] = extension
                 return resource, validation
 

@@ -1,3 +1,5 @@
+import pytest
+
 from aletheia_nexus.acquire.discovery.exceptions import (
     DiscoveryNetworkError,
     DiscoveryParseError,
@@ -95,6 +97,50 @@ def test_pmc_cloud_recognizes_legacy_numeric_pmc_url(monkeypatch):
 
     assert seen == ["PMC10909753"]
     assert result.providers[-1].status == ProviderDiscoveryStatus.NO_CANDIDATES
+
+
+@pytest.mark.parametrize(
+    "url,ids",
+    [
+        (
+            "https://pmc.ncbi.nlm.nih.gov/articles/instance/10909753/bin/supp.pdf",
+            ("PMC10909753",),
+        ),
+        (
+            "https://www.ncbi.nlm.nih.gov/pmc/articles/instance/10909753/bin/file.pdf",
+            ("PMC10909753",),
+        ),
+        ("https://pmc.ncbi.nlm.nih.gov/articles/instance/not-a-number/bin/a.pdf", ()),
+        ("https://evil.example/articles/instance/10909753/bin/a.pdf", ()),
+        (
+            "https://pmc.ncbi.nlm.nih.gov.evil.example/articles/instance/10909753/bin/a.pdf",
+            (),
+        ),
+    ],
+)
+def test_legacy_instance_url_only_derives_ids_on_official_hosts(url, ids):
+    assert pmc_cloud._pmc_ids(_discovery(url).candidates) == ids
+
+
+def test_legacy_instance_main_candidate_still_requires_matching_metadata_doi(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        pmc_cloud, "_version_prefixes", lambda *a, **k: ("PMC10909753.1",)
+    )
+    monkeypatch.setattr(
+        pmc_cloud, "get_json", lambda *a, **k: _open_metadata(doi="10.1000/other")
+    )
+    result = pmc_cloud.augment_with_pmc_cloud(
+        _discovery(
+            "https://pmc.ncbi.nlm.nih.gov/articles/instance/10909753/bin/si.pdf"
+        ),
+        timeout=2,
+    )
+    assert result.providers[-1].status == ProviderDiscoveryStatus.PARSE_ERROR
+    assert not any(
+        DiscoveryProvider.PMC_CLOUD in c.provenance for c in result.candidates
+    )
 
 
 def test_pmc_cloud_rejects_metadata_for_different_doi(monkeypatch):

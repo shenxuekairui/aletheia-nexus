@@ -361,7 +361,11 @@ _add(
     "图片内容与扩展名不符或文件不完整。请检查原始图片后重新选择。",
 )
 _add(
-    ("invalid_rtf_attachment", "invalid_compressed_attachment"),
+    (
+        "invalid_rtf_attachment",
+        "invalid_compressed_attachment",
+        "invalid_media_attachment",
+    ),
     "附件内容与声明的文件格式不符。请核对官方原文件和下载完整性；系统未打开或解压它。",
 )
 _add(

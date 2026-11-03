@@ -16,6 +16,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import parse_qs, unquote, urlsplit, urlunsplit
 from xml.etree import ElementTree
 
+from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
 from aletheia_nexus.acquire.fulltext.transport import retrieve_to_temp
 from aletheia_nexus.core.identifiers.doi import normalize_doi
 from aletheia_nexus.core.urls import redact_url_for_record
@@ -31,6 +32,7 @@ _MAX_DISCOVERED_FILES = 64
 def _title(value):
     if not isinstance(value, str):
         return ""
+    value = parse_html(value).visible_text
     return "".join(
         c for c in unicodedata.normalize("NFKC", value).casefold() if c.isalnum()
     )
@@ -200,6 +202,7 @@ def discover_pmc_attachments(
         return {"status": "NOT_SUPPORTED", "items": [], "errors": []}
     page = f"{_BUCKET}/metadata/{prefix}.json"
     provenance = {"source": "official_pmc_cloud", "version_prefix": prefix}
+    failed_checks = []
     try:
         doi = normalize_doi(doi)
         target = source_record.get("target") or {}
@@ -228,20 +231,25 @@ def discover_pmc_attachments(
             if not isinstance(metadata, dict):
                 raise ValueError("官方 PMC 官方元数据必须是单个对象")
             # Verify parent metadata before retrieving any linked XML.
-            if (
-                normalize_doi(metadata.get("doi")) != doi
-                or metadata.get("pmcid") != prefix.split(".")[0]
-                or type(metadata.get("version")) is not int
-                or metadata["version"] != int(prefix.split(".")[1])
-                or metadata.get("is_pmc_openaccess") is not True
-                or metadata.get("is_retracted") is not False
-                or not _title(metadata.get("title"))
-                or (
-                    expected_title
-                    and _title(metadata.get("title")) != _title(expected_title)
-                )
-            ):
+            checks = {
+                "doi": normalize_doi(metadata.get("doi")) == doi,
+                "pmcid": metadata.get("pmcid") == prefix.split(".")[0],
+                "version": type(metadata.get("version")) is int
+                and metadata["version"] == int(prefix.split(".")[1]),
+                "open_access": metadata.get("is_pmc_openaccess") is True,
+                "not_retracted": metadata.get("is_retracted") is False,
+                "title": bool(_title(metadata.get("title")))
+                and (
+                    not expected_title
+                    or _title(metadata.get("title")) == _title(expected_title)
+                ),
+            }
+            failed_checks = [key for key, passed in checks.items() if not passed]
+            provenance["parent_checks"] = checks
+            if any(key != "title" for key in failed_checks):
                 raise ValueError("官方 PMC 元数据身份、版本或开放获取状态与正文不一致")
+            if "title" in failed_checks:
+                raise ValueError("官方 PMC 父文题名未能与正文及元数据一致匹配")
             name, xml_url, xml_md5 = _object(metadata.get("xml_url"), prefix)
             if name != prefix + ".xml":
                 raise ValueError("官方 PMC 元数据的文档地址与正文版本不一致")
@@ -277,6 +285,7 @@ def discover_pmc_attachments(
         from .supplements import _SUFFIXES, attachment_role
 
         items, errors, seen = [], [], set()
+        empty_placeholders, resolved_contexts, diagnostics = [], set(), []
         scanned, scanned_nodes, truncated = 0, 0, False
         for node, context in _supplement_nodes(article):
             if scanned_nodes >= _MAX_DISCOVERY_CANDIDATES:
@@ -358,11 +367,37 @@ def discover_pmc_attachments(
                             "evidence": {**provenance, "relative_file": href},
                         }
                     )
+                    if items[-1]["role"] in {"SUPPLEMENT", "SOURCE_DATA"}:
+                        resolved_contexts.add(context)
                 except (OSError, ValueError, RuntimeError) as exc:
                     errors.append({"status": "FAILED", "error": str(exc), "page": page})
             if truncated:
                 break
             if not has_link:
+                if (
+                    node.get("content-type") == "local-data"
+                    and not len(node)
+                    and not "".join(node.itertext()).strip()
+                ):
+                    empty_placeholders.append((context, node.get("id")))
+                else:
+                    errors.append(
+                        {
+                            "status": "FAILED",
+                            "error": "官方 PMC 补充材料节点缺少明确文件链接",
+                            "page": page,
+                        }
+                    )
+        for context, identifier in empty_placeholders:
+            if context in resolved_contexts:
+                diagnostics.append(
+                    {
+                        "status": "EMPTY_SUPPLEMENT_PLACEHOLDER",
+                        "node_id": identifier,
+                        "page": page,
+                    }
+                )
+            else:
                 errors.append(
                     {
                         "status": "FAILED",
@@ -387,6 +422,7 @@ def discover_pmc_attachments(
             "page_url": page,
             "parent_identity": _BASIS,
             "provenance": provenance,
+            "diagnostics": diagnostics,
         }
     except (
         OSError,
@@ -398,7 +434,14 @@ def discover_pmc_attachments(
         return {
             "status": "FAILED",
             "items": [],
-            "errors": [{"status": "FAILED", "error": str(exc), "page": page}],
+            "errors": [
+                {
+                    "status": "FAILED",
+                    "error": str(exc),
+                    "page": page,
+                    "checks_failed": failed_checks,
+                }
+            ],
             "page_url": page,
             "provenance": provenance,
         }

@@ -66,6 +66,13 @@ def _pmc_ids(candidates: tuple[FullTextCandidate, ...]) -> tuple[str, ...]:
         if match is None:
             match = re.search(r"/pmc/articles/(\d+)(?:/|$)", parts.path, re.I)
         if match is None:
+            # Official legacy file URLs also expose the parent PMCID through
+            # /articles/instance/<id>/bin/. Metadata DOI and the retrieved main
+            # PDF still undergo the existing independent identity checks.
+            match = re.search(
+                r"/(?:pmc/)?articles/instance/([1-9]\d*)(?:/|$)", parts.path, re.I
+            )
+        if match is None:
             continue
         pmcid = f"PMC{match.group(1)}"
         if pmcid not in found:

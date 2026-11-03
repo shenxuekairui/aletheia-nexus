@@ -91,6 +91,7 @@ class SupplementMarkup(HTMLParser):
             "text": [],
             "label": label,
             "type": values.get("type"),
+            "download": "download" in values,
             "rel": tuple((values.get("rel") or "").lower().split()),
             "role": container or section or None,
         }
@@ -135,6 +136,7 @@ class SupplementMarkup(HTMLParser):
                     type_attr=e["type"],
                     title_attr=e["label"],
                     rel=e["rel"],
+                    download=e["download"],
                 ),
                 e["role"],
             )

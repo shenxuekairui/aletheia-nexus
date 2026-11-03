@@ -32,6 +32,10 @@ MIME_SUFFIXES = {
     "application/vnd.oasis.opendocument.text": ".odt",
     "application/vnd.oasis.opendocument.spreadsheet": ".ods",
     "application/vnd.oasis.opendocument.presentation": ".odp",
+    "video/mpeg": ".mpg",
+    "application/vnd.rar": ".rar",
+    "application/x-rar-compressed": ".rar",
+    "text/x-python": ".py",
 }
 
 
@@ -49,8 +53,11 @@ def response_filename_suffix(value):
 
 
 def resolve_extension(path, declared, content_type=None):
-    if declared:
-        return declared
+    """Prefer strong content signatures; retain declarations without strong evidence.
+
+    An invalid OOXML file must not be downgraded into an accepted generic ZIP.
+    Pure filename/MIME guesses never override a declared format.
+    """
     path = Path(path)
     with path.open("rb") as handle:
         prefix = handle.read(1024)
@@ -79,19 +86,25 @@ def resolve_extension(path, declared, content_type=None):
                             return MIME_SUFFIXES[mime]
         except BadZipFile:
             pass
-        return ".zip"
+        return declared or ".zip"
     if prefix.startswith(b"\x89PNG\r\n\x1a\n"):
         return ".png"
     if prefix.startswith(b"\xff\xd8\xff"):
-        return ".jpg"
+        return declared if declared in {".jpg", ".jpeg"} else ".jpg"
     if prefix.startswith((b"II*\x00", b"MM\x00*")):
-        return ".tiff"
+        return declared if declared in {".tif", ".tiff"} else ".tiff"
     if prefix.startswith(b"{\\rtf"):
         return ".rtf"
     if prefix.startswith((b"GIF87a", b"GIF89a")):
         return ".gif"
     if prefix.startswith(b"\x1f\x8b"):
         return ".gz"
+    if prefix.startswith((b"Rar!\x1a\x07\x00", b"Rar!\x1a\x07\x01\x00")):
+        return ".rar"
+    if prefix.startswith((b"\x00\x00\x01\xba", b"\x00\x00\x01\xb3")):
+        return declared if declared in {".mpg", ".mpeg"} else ".mpg"
+    if declared:
+        return declared
     mime = (content_type or "").split(";", 1)[0].strip().lower()
     if mime in MIME_SUFFIXES:
         return MIME_SUFFIXES[mime]

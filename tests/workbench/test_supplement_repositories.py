@@ -341,6 +341,79 @@ def test_source_title_cannot_be_overridden_by_the_callers_other_title(official):
 
 
 @pytest.mark.parametrize(
+    "marked,plain",
+    [
+        ("Hyperpolarized <sup>13</sup>C cardiac MRI", "Hyperpolarized 13C cardiac MRI"),
+        ("Binding in <i>Corynebacterium</i>", "Binding in Corynebacterium"),
+        ("ABCD<sup>2</sup> score", "ABCD2 score"),
+        ("Modulation by Zn<sup>2+</sup>", "Modulation by Zn2+"),
+        ("<em>Apseudopsis</em> species", "Apseudopsis species"),
+        ("Alpha &amp; beta", "Alpha & beta"),
+        ("H<sub>2</sub>O response", "H₂O response"),
+    ],
+)
+def test_markup_title_is_compared_as_text_without_rewriting_source(
+    official, marked, plain
+):
+    source, state = official
+    source["target"]["expected_title"] = marked
+    state["metadata"]["title"] = plain
+    state["xml"] = jats(title=marked)
+    before = deepcopy(source)
+    result = module.discover_pmc_attachments(source, doi=DOI, title=plain)
+    assert result["status"] == "DISCOVERED" and not result["errors"]
+    assert result["provenance"]["parent_checks"]["title"]
+    assert source == before
+
+
+@pytest.mark.parametrize(
+    "field,value,failed",
+    [
+        ("title", "Different result", "title"),
+        ("doi", "10.1000/other", "doi"),
+        ("pmcid", "PMC999", "pmcid"),
+        ("version", 2, "version"),
+        ("is_pmc_openaccess", False, "open_access"),
+        ("is_retracted", True, "not_retracted"),
+    ],
+)
+def test_metadata_failure_reports_the_actual_failed_condition(
+    official, field, value, failed
+):
+    source, state = official
+    state["metadata"][field] = value
+    result = discover(source)
+    assert result["status"] == "FAILED" and result["errors"][0]["checks_failed"] == [
+        failed
+    ]
+    assert len(state["calls"]) == 1
+
+
+@pytest.mark.parametrize(
+    "kind", ["empty_local", "caption_no_link", "only_placeholder", "other_context"]
+)
+def test_empty_placeholder_requires_an_explicit_resolved_sibling_in_same_context(
+    official, kind
+):
+    source, state = official
+    placeholder = '<supplementary-material content-type="local-data" id="placeholder"/>'
+    if kind == "caption_no_link":
+        placeholder = '<supplementary-material content-type="local-data"><caption>Unknown additional file</caption></supplementary-material>'
+    if kind == "other_context":
+        placeholder = "<sec><title>Another group</title>" + placeholder + "</sec>"
+    state["xml"] = jats([] if kind == "only_placeholder" else ["si.pdf"]).replace(
+        b"<back>", b"<back>" + placeholder.encode()
+    )
+    result = discover(source)
+    assert bool(result["errors"]) == (kind != "empty_local")
+    if kind == "empty_local":
+        assert len(result["items"]) == 1
+        assert result["diagnostics"][0]["status"] == "EMPTY_SUPPLEMENT_PLACEHOLDER"
+    if kind == "only_placeholder":
+        assert result["status"] == "FAILED" and not result["items"]
+
+
+@pytest.mark.parametrize(
     "final",
     [
         "https://other.example/metadata.json",
