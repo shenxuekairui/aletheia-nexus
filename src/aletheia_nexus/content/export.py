@@ -355,7 +355,9 @@ def write_ai_export(path: str | Path, payload: str, *, overwrite: bool = False) 
                 "source PDF, or acquisition sidecar"
             )
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{uuid4().hex}.part")
+    # Repeating a long destination name can exceed Windows MAX_PATH even when
+    # the final path is valid. A same-directory UUID still permits atomic replace.
+    temporary = target.with_name(f".{uuid4().hex}.part")
     try:
         # Serializers already choose line endings (CSV uses CRLF). Translating
         # them again on Windows corrupts row separators and embedded field text.

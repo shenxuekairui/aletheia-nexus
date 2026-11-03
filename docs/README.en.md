@@ -13,6 +13,7 @@ Primary documents are Chinese with independent English counterparts. Commands, f
 | Graphical interface and library management | [工作台手册](WORKBENCH_USER_GUIDE.md) | [Workbench manual](WORKBENCH_USER_GUIDE.en.md) |
 | Custom fields, task materials and research results | [科研指南](V08_USER_GUIDE.md) | [Research guide](V08_USER_GUIDE.en.md) |
 | Natural-language entry and external AI tools | [CLI / MCP](V08_ENTRYPOINTS.md) | [CLI / MCP](V08_ENTRYPOINTS.en.md) |
+| Windows paths, task budgets, downloads and visual reports | [问题与修复](WORKBENCH_TROUBLESHOOTING_20261103.md) | [Incident report](WORKBENCH_TROUBLESHOOTING_20261103.en.md) |
 
 ## Versions and observed evidence
 

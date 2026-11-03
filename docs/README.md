@@ -14,6 +14,7 @@
 | 图形界面与文库管理 | [工作台手册](WORKBENCH_USER_GUIDE.md) | [Workbench manual](WORKBENCH_USER_GUIDE.en.md) |
 | 自定义字段、任务材料和科研结果 | [科研指南](V08_USER_GUIDE.md) | [Research guide](V08_USER_GUIDE.en.md) |
 | 自然语言入口与外部AI接入 | [CLI / MCP](V08_ENTRYPOINTS.md) | [CLI / MCP](V08_ENTRYPOINTS.en.md) |
+| Windows 路径、任务预算、下载与可视报告问题复盘 | [问题与修复](WORKBENCH_TROUBLESHOOTING_20261103.md) | [Incident report](WORKBENCH_TROUBLESHOOTING_20261103.en.md) |
 
 ## 版本与实际证据
 

@@ -130,7 +130,10 @@ class WorkbenchUI(HomePages, LibraryPage, AcquisitionPage, ResearchPages):
                 if directory:
                     path = Path(directory) / path
             if path.is_file():
-                ui.link(path.name, self.files.register(path), new_tab=True)
+                ui.link(
+                    "下载 " + path.name,
+                    self.files.register(path) + "?download=true",
+                ).props("download")
 
     def show_pdf(self, document, *, page=1, title=None, container=None):
         from nicegui import ui
@@ -1192,13 +1195,15 @@ def build_ui(context):
     files = FileRegistry([context.library.root, context.workspace])
 
     @app.get("/an-file/{token}")
-    def read_selected_file(token: str):
+    def read_selected_file(token: str, download: bool = False):
         try:
             path = files.resolve(token)
         except (KeyError, ValueError, FileNotFoundError):
             raise HTTPException(404, "Selected file is unavailable") from None
         response = FileResponse(
-            path, filename=path.name, content_disposition_type="inline"
+            path,
+            filename=path.name,
+            content_disposition_type="attachment" if download else "inline",
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Cache-Control"] = "no-store"

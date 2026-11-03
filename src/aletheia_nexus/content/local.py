@@ -93,7 +93,7 @@ def register_local_pdf(
             )
         if pdf.is_file():
             return pdf
-    temporary = destination / f".{source.name}.{uuid4().hex}.part"
+    temporary = destination / f".{uuid4().hex}.part"
     try:
         if not pdf.exists():
             shutil.copyfile(source, temporary)

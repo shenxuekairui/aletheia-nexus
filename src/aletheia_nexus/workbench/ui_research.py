@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from copy import deepcopy
+from pathlib import Path
 
 from .labels import CHOICES, GRID_LOCALE, value_label
 from .messages import user_message
@@ -1827,11 +1828,12 @@ class ResearchPages:
                     export_area = ui.column().classes("w-full")
                     formats = ui.select(
                         {
+                            "html": "完整可视报告（HTML，可打印 PDF）",
                             "markdown": "可读研究报告（Markdown）",
                             "csv": "结构化数据表（CSV）",
                             "jsonl": "逐行原生数据（JSONL）",
                         },
-                        value=["markdown", "csv", "jsonl"],
+                        value=["html", "markdown", "csv", "jsonl"],
                         multiple=True,
                         label="导出格式",
                     ).props("use-chips")
@@ -1842,6 +1844,13 @@ class ResearchPages:
                         )
                         export_area.clear()
                         with export_area:
+                            visual = Path(report["directory"]) / "report.html"
+                            if visual.is_file():
+                                ui.link(
+                                    "打开完整可视报告（可打印 / 保存 PDF）",
+                                    self.files.register(visual),
+                                    new_tab=True,
+                                ).classes("text-lg font-semibold")
                             self.output_links(report)
                             for warning in report.get("warnings", []):
                                 ui.label(warning).classes("an-info w-full")
