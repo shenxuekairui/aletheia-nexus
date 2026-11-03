@@ -1,0 +1,1716 @@
+{
+  "schema": "aletheia-nexus/si-closed-corpus/v1",
+  "seed": "AN-SI-CLOSED-20261103-v1",
+  "created_utc": "2026-11-03T14:38:43.597506+00:00",
+  "source_commit": "6c7d5879fe36120cf8d6f44a554c0c4f6b87c80c",
+  "measurement_scope": "native_only",
+  "groups": [
+    [
+      "Elsevier",
+      "10.1016"
+    ],
+    [
+      "ACS",
+      "10.1021"
+    ],
+    [
+      "RSC",
+      "10.1039"
+    ],
+    [
+      "Wiley",
+      "10.1002"
+    ],
+    [
+      "Springer",
+      "10.1007"
+    ],
+    [
+      "Nature",
+      "10.1038"
+    ],
+    [
+      "Science",
+      "10.1126"
+    ],
+    [
+      "OUP",
+      "10.1093"
+    ],
+    [
+      "Cambridge",
+      "10.1017"
+    ],
+    [
+      "Taylor_Francis",
+      "10.1080"
+    ],
+    [
+      "SAGE",
+      "10.1177"
+    ],
+    [
+      "BMJ",
+      "10.1136"
+    ],
+    [
+      "IEEE",
+      "10.1109"
+    ],
+    [
+      "IOP",
+      "10.1088"
+    ],
+    [
+      "AIP",
+      "10.1063"
+    ],
+    [
+      "APS",
+      "10.1103"
+    ],
+    [
+      "Royal_Society",
+      "10.1098"
+    ],
+    [
+      "Karger",
+      "10.1159"
+    ],
+    [
+      "Biologists",
+      "10.1242"
+    ],
+    [
+      "PNAS",
+      "10.1073"
+    ]
+  ],
+  "sampling_protocol": "First 40 Crossref journal articles per DOI prefix, published 2021-01-01 through 2026-06-30, published-descending; exclude correction/retraction/obituary titles; unambiguous OpenAlex DOI match with type article/review and is_oa=false plus oa_status=closed; SHA-256 seeded order, distinct journals preferred; take up to three without article/SI outcome filtering. Metadata classification is not an entitlement audit or SI-positive gold.",
+  "independent_probe": "Public SI discovery/delivery without a main PDF; no fabricated parent, registration or pipeline-success claim. Existing native discovery and validation helpers only. Authorized routes not tested.",
+  "limits": {
+    "request_timeout_seconds": 20,
+    "case_timeout_seconds": 420,
+    "main_timeout_seconds": 200,
+    "probe_timeout_seconds": 200,
+    "max_si_files": 20,
+    "si_max_bytes": 104857600,
+    "workers": 4,
+    "disk_budget_bytes": 5368709120
+  },
+  "cases": [
+    {
+      "doi": "10.1016/j.quaint.2026.110243",
+      "title": "From dead ice to a small lake: formation and evolution of Lake Shnitkino during deglaciation of the last Scandinavian ice sheet and postglacial time (NW Russia)",
+      "publisher_stratum": "Elsevier",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Quaternary International",
+      "crossref_publisher": "Elsevier BV",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7146936871",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Elsevier-crossref.json",
+      "selection_key": "0399cedf8e81b55067537cb74b98f266cf487b32c5358bb21fc90e960181a0cc",
+      "id": "001-Elsevier"
+    },
+    {
+      "doi": "10.1016/j.jpedsurg.2026.163036",
+      "title": "Skip segment Hirschsprung Disease: Unicentric experience with four cases and systematic literature review",
+      "publisher_stratum": "Elsevier",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of Pediatric Surgery",
+      "crossref_publisher": "Elsevier BV",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7131067011",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Elsevier-crossref.json",
+      "selection_key": "0d5f2648bea27889edfb493f252c413906565812f7c73ac783a3031616e1d43a",
+      "id": "002-Elsevier"
+    },
+    {
+      "doi": "10.1016/j.palaeo.2026.113762",
+      "title": "Late Paleozoic stratigraphic hiatuses and carbon isotope chemostratigraphy in the northwestern Sichuan Basin: Implications for the Tectono-sedimentary evolution of the Eastern Tethyan",
+      "publisher_stratum": "Elsevier",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Palaeogeography, Palaeoclimatology, Palaeoecology",
+      "crossref_publisher": "Elsevier BV",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7142389040",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Elsevier-crossref.json",
+      "selection_key": "10e176a0864d10f2352bba6de5e3154f29a1671e355bd0abdf6ea30e8b37dc8a",
+      "id": "003-Elsevier"
+    },
+    {
+      "doi": "10.1021/acs.biomac.6c00423",
+      "title": "Preparation of Permeable Polymersomes for Biomedical Applications",
+      "publisher_stratum": "ACS",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Biomacromolecules",
+      "crossref_publisher": "American Chemical Society (ACS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166832281",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/ACS-crossref.json",
+      "selection_key": "117e36ba1fdea41150c23bf3dc642e41e5e71bb48a9f874f578f693140905698",
+      "id": "004-ACS"
+    },
+    {
+      "doi": "10.1021/acsami.6c06732",
+      "title": "Adsorption-Induced Ferroelectric Symmetry Breaking in Two-Dimensional CuInP 2 S 6",
+      "publisher_stratum": "ACS",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "ACS Applied Materials &amp; Interfaces",
+      "crossref_publisher": "American Chemical Society (ACS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166653441",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/ACS-crossref.json",
+      "selection_key": "189fbf1fccedfe16eb4e71df170a9cff25bc253f9aa03a56166af994efbeeaa7",
+      "id": "005-ACS"
+    },
+    {
+      "doi": "10.1021/acs.jpclett.6c01699",
+      "title": "Mechanisms of White-Light Emission and Pressure-Modulated Dual Emission in Weak Donor–Acceptor Systems: A Theoretical Perspective",
+      "publisher_stratum": "ACS",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "The Journal of Physical Chemistry Letters",
+      "crossref_publisher": "American Chemical Society (ACS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166741206",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/ACS-crossref.json",
+      "selection_key": "2a2f893a0fdf3c144e8696c18fd184c287a47b7e4321ecccb6bbfe9b75ada03c",
+      "id": "006-ACS"
+    },
+    {
+      "doi": "10.1039/d5cy00986c",
+      "title": "Solvoselective effect of Cu–B 2 O 3 /porous boron nitride on catalytic conversion of arylboric acids to phenols and biphenyls",
+      "publisher_stratum": "RSC",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Catalysis Science &amp; Technology",
+      "crossref_publisher": "Royal Society of Chemistry (RSC)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W4417184796",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/RSC-crossref.json",
+      "selection_key": "054613c3dfc17442ddac37ffab2eec8c92d0892b6776cb904a1dd2807e1558a9",
+      "id": "007-RSC"
+    },
+    {
+      "doi": "10.1039/d5nj04144a",
+      "title": "Synthesis, structure and ROP capability of a tetra(amidine)bis(zirconium) calix[8]arene complex",
+      "publisher_stratum": "RSC",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "New Journal of Chemistry",
+      "crossref_publisher": "Royal Society of Chemistry (RSC)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7116754506",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/RSC-crossref.json",
+      "selection_key": "08aa0392bdd184bfbeabff47fbc4bc00403fba3d4ddd95c74850e7af3998bdf7",
+      "id": "008-RSC"
+    },
+    {
+      "doi": "10.1039/d6tc00900j",
+      "title": "Interfacial engineering of nitrogen-doped silicon carbide for reliable hybrid bonding in advanced semiconductor integration",
+      "publisher_stratum": "RSC",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of Materials Chemistry C",
+      "crossref_publisher": "Royal Society of Chemistry (RSC)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7165184091",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/RSC-crossref.json",
+      "selection_key": "0ffe10094dc04dbd2f55f9f265f79e55efb06b718d909017a2f979cd50e50482",
+      "id": "009-RSC"
+    },
+    {
+      "doi": "10.1002/pds.70428",
+      "title": "Association Between EGFR ‐ TKI –Associated Skin Rash and Recorded Mortality in Non‐Small Cell Lung Cancer: A Real‐World Analysis Accounting for Immortal Time Bias",
+      "publisher_stratum": "Wiley",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Pharmacoepidemiology and Drug Safety",
+      "crossref_publisher": "Wiley",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166835703",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Wiley-crossref.json",
+      "selection_key": "02533c9688bf4ed4f010e435d711ad6fc608c3e4340a1bb011124aa375cb185a",
+      "id": "010-Wiley"
+    },
+    {
+      "doi": "10.1002/cpe.70821",
+      "title": "Edge‐guided Dual Alignment Framework for Semi‐Supervised Scene Change Detection",
+      "publisher_stratum": "Wiley",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Concurrency and Computation: Practice and Experience",
+      "crossref_publisher": "Wiley",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166847490",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Wiley-crossref.json",
+      "selection_key": "04f650ad2a15d3d57278973c164ed0f1c49b00b7bccd7c186b3e6eb47f8c7ec6",
+      "id": "011-Wiley"
+    },
+    {
+      "doi": "10.1002/ange.7910152",
+      "title": "A Deep‐Red Emissive Cage‐in‐Rings Complex for Lysosome Imaging",
+      "publisher_stratum": "Wiley",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Angewandte Chemie",
+      "crossref_publisher": "Wiley",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166727796",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Wiley-crossref.json",
+      "selection_key": "252ac787f7c8fcf78b211604d82b9962d5d7fc37215c8385d42735a52dedf0c8",
+      "id": "012-Wiley"
+    },
+    {
+      "doi": "10.1007/s11056-026-10197-y",
+      "title": "Global warming and environmental heterogeneity drive species richness pattern of Picea in China",
+      "publisher_stratum": "Springer",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "New Forests",
+      "crossref_publisher": "Springer Science and Business Media LLC",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166665832",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Springer-crossref.json",
+      "selection_key": "01ef9933b6e056f84ce90446e0f6888532d91e9b2a2ca7b56cbb85a539aaf1c9",
+      "id": "013-Springer"
+    },
+    {
+      "doi": "10.1007/s11009-026-10299-2",
+      "title": "Computable Perturbation Bounds for Augmented Truncations of Ergodic Continuous-Time Markov Chains",
+      "publisher_stratum": "Springer",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Methodology and Computing in Applied Probability",
+      "crossref_publisher": "Springer Science and Business Media LLC",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166702356",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Springer-crossref.json",
+      "selection_key": "0ec063dda853474182a479797a3aa3ad9d29d7ef636dd1c03ba663fd2f8c3352",
+      "id": "014-Springer"
+    },
+    {
+      "doi": "10.1007/s43450-026-00780-x",
+      "title": "Analytical Approaches for Extraction and Quantitation of Hydroxycitric Acid: Comprehensive Insights and Methodological Advances",
+      "publisher_stratum": "Springer",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Revista Brasileira de Farmacognosia",
+      "crossref_publisher": "Springer Science and Business Media LLC",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166701496",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Springer-crossref.json",
+      "selection_key": "241f037a74d9656b5a5266701481930590da4edf2f887f3837929f84ab823600",
+      "id": "015-Springer"
+    },
+    {
+      "doi": "10.1038/d41586-026-01813-0",
+      "title": "Early television set impresses Nature editors — but will it catch on?",
+      "publisher_stratum": "Nature",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Nature",
+      "crossref_publisher": "Springer Science and Business Media LLC",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166678219",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Nature-crossref.json",
+      "selection_key": "22292d51c0e1293ce3ef5cefa2e4d445e0cf00e70b174e49b5eb12750fb64a4b",
+      "id": "016-Nature"
+    },
+    {
+      "doi": "10.1038/s41577-026-01332-z",
+      "title": "Vaginal NK cells limit epithelial barrier disruption during infection",
+      "publisher_stratum": "Nature",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Nature Reviews Immunology",
+      "crossref_publisher": "Springer Science and Business Media LLC",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166694074",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Nature-crossref.json",
+      "selection_key": "29828c688bfc284cd93a12fad42bf698c2c7c6229d92dc585d2107d56ceac06b",
+      "id": "017-Nature"
+    },
+    {
+      "doi": "10.1038/s41390-026-05257-0",
+      "title": "Born under pressure: cardiac adaptation in congenital diaphragmatic hernia",
+      "publisher_stratum": "Nature",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Pediatric Research",
+      "crossref_publisher": "Springer Science and Business Media LLC",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166723782",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Nature-crossref.json",
+      "selection_key": "548d6e37b142062ab2d78f0ca76da9fe8d88ba6d63d02e28f10eb3d700a954cd",
+      "id": "018-Nature"
+    },
+    {
+      "doi": "10.1126/scisignal.aeb3656",
+      "title": "ZNRF3 and RNF43 are active monomeric E3 ubiquitin ligases that self-associate",
+      "publisher_stratum": "Science",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Science Signaling",
+      "crossref_publisher": "American Association for the Advancement of Science (AAAS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166723809",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Science-crossref.json",
+      "selection_key": "172cde00ba63dd57e7af03f46eeaab89e5f30ffb0a24982129b53ca2a0c4e2fa",
+      "id": "019-Science"
+    },
+    {
+      "doi": "10.1126/sciimmunol.adz4302",
+      "title": "T reg cells promote immunotherapy-induced immune evasion by restraining CD4 T cell control of MHC-I–deficient metastatic pancreatic cancer",
+      "publisher_stratum": "Science",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Science Immunology",
+      "crossref_publisher": "American Association for the Advancement of Science (AAAS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            26
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166053494",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Science-crossref.json",
+      "selection_key": "778958a5b19fcb2e20b75c04fb533dd8470c6092db675d3134761816cf080354",
+      "id": "020-Science"
+    },
+    {
+      "doi": "10.1093/sxmrev/qeag051",
+      "title": "Molecular mechanisms of icariin in the treatment of erectile dysfunction",
+      "publisher_stratum": "OUP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Sexual Medicine Reviews",
+      "crossref_publisher": "Oxford University Press (OUP)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7169807476",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/OUP-crossref.json",
+      "selection_key": "0821f14fdbfd8c94c536a425fd94714f0879feeeb97f9a8958d5e3872e36d437",
+      "id": "021-OUP"
+    },
+    {
+      "doi": "10.1093/milmed/usag293",
+      "title": "Contraceptive Access for Active Duty Service Women: Evaluation of Women and Infant Community Care Clinics in the Military Health System",
+      "publisher_stratum": "OUP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Military Medicine",
+      "crossref_publisher": "Oxford University Press (OUP)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166810200",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/OUP-crossref.json",
+      "selection_key": "146008a29d52fe335bac6df8f7a25bf558404014c9094252d798cc09a18837e5",
+      "id": "022-OUP"
+    },
+    {
+      "doi": "10.1093/cid/ciag382",
+      "title": "Sepsis Diagnostic Excellence and Its Association With Mortality in Adults With Potential Infection",
+      "publisher_stratum": "OUP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Clinical Infectious Diseases",
+      "crossref_publisher": "Oxford University Press (OUP)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166675372",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/OUP-crossref.json",
+      "selection_key": "20a8df854045fd373454911cc73fc79e87a8cd67999860577c1cfb86d2a32e8e",
+      "id": "023-OUP"
+    },
+    {
+      "doi": "10.1017/jfm.2026.11746",
+      "title": "Deformation and motion of a thin sessile drop in shear flow",
+      "publisher_stratum": "Cambridge",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of Fluid Mechanics",
+      "crossref_publisher": "Cambridge University Press (CUP)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166728049",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Cambridge-crossref.json",
+      "selection_key": "067d6344226a84c26b32a2a8d432574e7569f6e5a540fd0449f5c62e360ceaeb",
+      "id": "024-Cambridge"
+    },
+    {
+      "doi": "10.1017/s1752196326101357",
+      "title": "Diccionario de la Zarzuela. Website. 2026. https://diccionariodelazarzuela.es/dz",
+      "publisher_stratum": "Cambridge",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of the Society for American Music",
+      "crossref_publisher": "Cambridge University Press (CUP)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166737763",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Cambridge-crossref.json",
+      "selection_key": "bc268cfdb55c0e9487b250266ec0bd95ed575ac56667c36d606107d2b1327a68",
+      "id": "025-Cambridge"
+    },
+    {
+      "doi": "10.1017/s1047951126113729",
+      "title": "Dexrazoxane in children receiving anthracyclines: efficacy, safety, and region-specific considerations for Latin America",
+      "publisher_stratum": "Cambridge",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Cardiology in the Young",
+      "crossref_publisher": "Cambridge University Press (CUP)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166729391",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Cambridge-crossref.json",
+      "selection_key": "fa30c508a368d42d935004844eaec5b6ef70f0945858ac11eb42195c1cc273ec",
+      "id": "026-Cambridge"
+    },
+    {
+      "doi": "10.1080/03461238.2026.2694073",
+      "title": "Optimal investment strategies and intergenerational risk sharing under dual constraints for target benefit pension plan",
+      "publisher_stratum": "Taylor_Francis",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Scandinavian Actuarial Journal",
+      "crossref_publisher": "Informa UK Limited",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166739468",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Taylor_Francis-crossref.json",
+      "selection_key": "061446440c6c9b40fc37a4c408cdef097445ec2af0719e2f8942913df52f2cd9",
+      "id": "027-Taylor_Francis"
+    },
+    {
+      "doi": "10.1080/13611267.2026.2690259",
+      "title": "Dual enrollment as a mentoring-informed pathway to teaching: high school students’ perceptions and career aspirations",
+      "publisher_stratum": "Taylor_Francis",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Mentoring &amp; Tutoring: Partnership in Learning",
+      "crossref_publisher": "Informa UK Limited",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166682952",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Taylor_Francis-crossref.json",
+      "selection_key": "0e3b8574951b33a13dd48662c31f6756ff5eda18d957a90a4f0191e558115ea3",
+      "id": "028-Taylor_Francis"
+    },
+    {
+      "doi": "10.1080/08964289.2026.2658525",
+      "title": "Consequences of Delaying School Start Time on Mental Health Among Adolescents: The START Study",
+      "publisher_stratum": "Taylor_Francis",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Behavioral Medicine",
+      "crossref_publisher": "Informa UK Limited",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166836986",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Taylor_Francis-crossref.json",
+      "selection_key": "142b8f2b0190cfa13cdcfa8eec60809db1d00806c6e3412c92b2e178f088e134",
+      "id": "029-Taylor_Francis"
+    },
+    {
+      "doi": "10.1177/13872877261464208",
+      "title": "Compartment-specific analysis reveals disrupted astrocytic calcium transients in anesthetized Alzheimer's disease mice",
+      "publisher_stratum": "SAGE",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of Alzheimer’s Disease",
+      "crossref_publisher": "SAGE Publications",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166657628",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/SAGE-crossref.json",
+      "selection_key": "176ae2de577318aa5eefebaeda5e5bdfb6fbdf987431942f4e224d57a72ba342",
+      "id": "030-SAGE"
+    },
+    {
+      "doi": "10.1177/17557380261446499a",
+      "title": "AKT answer relating to diagnosing bruising",
+      "publisher_stratum": "SAGE",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "InnovAiT: Education and inspiration for general practice",
+      "crossref_publisher": "SAGE Publications",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166746287",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/SAGE-crossref.json",
+      "selection_key": "1e48b2227f38210347b0bc6e70d61f2a87f50c805fa9a621e989023c7c3e6616",
+      "id": "031-SAGE"
+    },
+    {
+      "doi": "10.1177/00031348261461283",
+      "title": "Musculoskeletal Pain in Surgeons on Operating Days",
+      "publisher_stratum": "SAGE",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "The American Surgeon™",
+      "crossref_publisher": "SAGE Publications",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166721221",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/SAGE-crossref.json",
+      "selection_key": "28d23ca174be09435371d1dced1bd0797074285c7dd2976b340b9c57c25ffc02",
+      "id": "032-SAGE"
+    },
+    {
+      "doi": "10.1136/bmjinnov-2025-001499",
+      "title": "Piloting conversational AI in digital urgent care: implementation and insights from NHS 111 Wales online",
+      "publisher_stratum": "BMJ",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "BMJ Innovations",
+      "crossref_publisher": "BMJ",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166740097",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/BMJ-crossref.json",
+      "selection_key": "082ec2f7864b8ed6a74db0399ac579e7c515a723db753997fb88a624be28f296",
+      "id": "033-BMJ"
+    },
+    {
+      "doi": "10.1136/bmj-2026-053267",
+      "title": "Richard Lehman: GP and BMJ columnist whose witty weekly journal review was a hit with readers",
+      "publisher_stratum": "BMJ",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "BMJ",
+      "crossref_publisher": "BMJ",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            29
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166547640",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/BMJ-crossref.json",
+      "selection_key": "32407c1ddeaf87caab053a7ed464324e0fa52f44fbbe5fe25cd2af8f288167e4",
+      "id": "034-BMJ"
+    },
+    {
+      "doi": "10.1136/thorax-2025-224563",
+      "title": "Comparative performance of endobronchial ultrasound-guided sampling techniques in patients with mediastinal lesions: a network meta-analysis",
+      "publisher_stratum": "BMJ",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Thorax",
+      "crossref_publisher": "BMJ",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166642526",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/BMJ-crossref.json",
+      "selection_key": "6a2f9bdd84c7b550cccf6922fc7e4e6592991f299aabef567786808e183fa985",
+      "id": "035-BMJ"
+    },
+    {
+      "doi": "10.1109/jiot.2026.3678432",
+      "title": "Knowledge Distillation Transformer for XL-MIMO Channel Estimation",
+      "publisher_stratum": "IEEE",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "IEEE Internet of Things Journal",
+      "crossref_publisher": "Institute of Electrical and Electronics Engineers (IEEE)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            15
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7141766705",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/IEEE-crossref.json",
+      "selection_key": "071323d39a83bb743329fe960a374c32cc69a8ed331dfe237e9aa04c476f3d31",
+      "id": "036-IEEE"
+    },
+    {
+      "doi": "10.1109/jlt.2026.3687969",
+      "title": "Optical Sampling Enabled Nonlinear Fourier Transform for Ultrafast Fiber Laser Characterization",
+      "publisher_stratum": "IEEE",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of Lightwave Technology",
+      "crossref_publisher": "Institute of Electrical and Electronics Engineers (IEEE)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            15
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7156074481",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/IEEE-crossref.json",
+      "selection_key": "11aecfe75121605d842d841e06d3d3b75cc36a0cffa2d668707dd7e0846e384d",
+      "id": "037-IEEE"
+    },
+    {
+      "doi": "10.1109/jsen.2026.3689846",
+      "title": "Design and Validation of an Anti-High-Overload Silicon-Based MEMS Inertial Switch With a Double-Stop Mechanism",
+      "publisher_stratum": "IEEE",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "IEEE Sensors Journal",
+      "crossref_publisher": "Institute of Electrical and Electronics Engineers (IEEE)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            15
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7160619124",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/IEEE-crossref.json",
+      "selection_key": "1cf290e9c06f3431a790cb7b55b541fdeb37e0296b83b4ef4e364855b16b1ee6",
+      "id": "038-IEEE"
+    },
+    {
+      "doi": "10.1088/2631-8695/ae72f5",
+      "title": "Numerical and experimental study of centrifugal casting for alloy layers in large diameter steam turbine thrust bearings",
+      "publisher_stratum": "IOP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Engineering Research Express",
+      "crossref_publisher": "IOP Publishing",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7162418635",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/IOP-crossref.json",
+      "selection_key": "0a941c5d9561cb3198944e61777e56108ea4d48edbe58bfacea44f2569e9b175",
+      "id": "039-IOP"
+    },
+    {
+      "doi": "10.1088/1402-4896/ae7fb8",
+      "title": "Magnetostatic control of the zero-frequency TE sector in ferromagnetic cavities",
+      "publisher_stratum": "IOP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Physica Scripta",
+      "crossref_publisher": "IOP Publishing",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7165413302",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/IOP-crossref.json",
+      "selection_key": "453ff8ea0027c809955846bf6a90d210cd2388c562dfa1bd656e2d530f4e464f",
+      "id": "040-IOP"
+    },
+    {
+      "doi": "10.1088/1361-6528/ae7807",
+      "title": "Plasmon-mediated scanning tunneling microscopy induced luminescence in CdSe/ZnCdS quantum dots",
+      "publisher_stratum": "IOP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Nanotechnology",
+      "crossref_publisher": "IOP Publishing",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7163645612",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/IOP-crossref.json",
+      "selection_key": "4e3d2f55e841db6ce5cc6fa81098a27b8af9b73614c6a3c53646ad2300054355",
+      "id": "041-IOP"
+    },
+    {
+      "doi": "10.1063/5.0336439",
+      "title": "Verification of 100 nm resolution in a superconducting nanostrip single-photon detector for hard x-ray image reconstruction",
+      "publisher_stratum": "AIP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Applied Physics Letters",
+      "crossref_publisher": "AIP Publishing",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            29
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166826724",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/AIP-crossref.json",
+      "selection_key": "0d1920d9f80aeabc8ffdf0c502abc5abc3fcc80325601b623b1683ed08232c51",
+      "id": "042-AIP"
+    },
+    {
+      "doi": "10.1063/5.0326264",
+      "title": "Polarization-sensitive metasurfaces for tunable structural colors with HSB control",
+      "publisher_stratum": "AIP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Applied Physics Letters",
+      "crossref_publisher": "AIP Publishing",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            29
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166682444",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/AIP-crossref.json",
+      "selection_key": "19739d7b2f1f1af2fab1ffe43c2061224eba5e6272b1804f5129398260b84f2e",
+      "id": "043-AIP"
+    },
+    {
+      "doi": "10.1063/5.0334034",
+      "title": "A tunable coincidence counter based on superconducting nanowire cryotrons",
+      "publisher_stratum": "AIP",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Applied Physics Letters",
+      "crossref_publisher": "AIP Publishing",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            29
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166588089",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/AIP-crossref.json",
+      "selection_key": "450863eef7f8bc927f61b7ff4b7981f1c3ee4a5f58edc6aaa1829db8adbe8aa3",
+      "id": "044-AIP"
+    },
+    {
+      "doi": "10.1103/ww2r-ftt2",
+      "title": "Dynamical properties and statistical analysis in integrable turbulence: A study based on a coupled nonlinear Schrödinger system with the four-wave mixing effect",
+      "publisher_stratum": "APS",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Physical Review A",
+      "crossref_publisher": "American Physical Society (APS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7163340227",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/APS-crossref.json",
+      "selection_key": "04f9cc89864f2c68c01dc72324f4e6875fe24b726d22c9337a332548126f15d0",
+      "id": "045-APS"
+    },
+    {
+      "doi": "10.1103/x86t-n64x",
+      "title": "Statistical structure of charge disorder in Si / Si - Ge quantum dots",
+      "publisher_stratum": "APS",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Physical Review Applied",
+      "crossref_publisher": "American Physical Society (APS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7155504782",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/APS-crossref.json",
+      "selection_key": "0e3b71de3e4d0270d3777b0a6336bcf825e7796277cc7daf4e8ab4876b94b872",
+      "id": "046-APS"
+    },
+    {
+      "doi": "10.1103/tgtq-nrrt",
+      "title": "Embedding Independent Length Scale of Flat Bands",
+      "publisher_stratum": "APS",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Physical Review Letters",
+      "crossref_publisher": "American Physical Society (APS)",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7163174933",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/APS-crossref.json",
+      "selection_key": "4aa12c53531aee88498b3b618ebe2589e1dadc694ed70114c6da0e36e932284a",
+      "id": "047-APS"
+    },
+    {
+      "doi": "10.1159/000553376",
+      "title": "Functional Impact of a Novel Intronic TG Variant in Congenital Goiter and Thyroid Dyshormonogenesis",
+      "publisher_stratum": "Karger",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Hormone Research in Paediatrics",
+      "crossref_publisher": "S. Karger AG",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166637434",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Karger-crossref.json",
+      "selection_key": "2d73b6965249dceed3ba709768fc6d63c6761b5631bd0da0225aca39cb482d9e",
+      "id": "048-Karger"
+    },
+    {
+      "doi": "10.1159/000553250",
+      "title": "The Solomon Technique and Extreme Preterm Birth after Laser Surgery for Twin-Twin Transfusion Syndrome",
+      "publisher_stratum": "Karger",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Fetal Diagnosis and Therapy",
+      "crossref_publisher": "S. Karger AG",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166743138",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Karger-crossref.json",
+      "selection_key": "2dd592d9621f0e7ce54d5b4729c0b2377520407771a1d946614ac4ab9c960a7c",
+      "id": "049-Karger"
+    },
+    {
+      "doi": "10.1159/000553217",
+      "title": "Cytological Features of CIC-Rearranged Sarcoma: A Report of 5 New Cases and Review of the Literature",
+      "publisher_stratum": "Karger",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Acta Cytologica",
+      "crossref_publisher": "S. Karger AG",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166741932",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Karger-crossref.json",
+      "selection_key": "3e97e1d4a1232eb7bd380b80342734d4034070ac8d1e9775675b263a09b3de04",
+      "id": "050-Karger"
+    },
+    {
+      "doi": "10.1242/jcs.264795",
+      "title": "Split GFP-based fluorescent biosensors detect ER–Golgi membrane contact dynamics",
+      "publisher_stratum": "Biologists",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of Cell Science",
+      "crossref_publisher": "The Company of Biologists",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7163947230",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Biologists-crossref.json",
+      "selection_key": "0523303b99d54c3c121e6908a5206eebbc7b6ad8c8f42c467a287932204ec432",
+      "id": "051-Biologists"
+    },
+    {
+      "doi": "10.1242/jeb.252895",
+      "title": "ECR Spotlight – Willamina MacDonald",
+      "publisher_stratum": "Biologists",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Journal of Experimental Biology",
+      "crossref_publisher": "The Company of Biologists",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            15
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7164814807",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Biologists-crossref.json",
+      "selection_key": "166f574b874e90dd0ce74a9903e9d13a4aafd0cde97cd5afd310c7ad2c132c20",
+      "id": "052-Biologists"
+    },
+    {
+      "doi": "10.1242/dev.205368",
+      "title": "Collagen remodeling supports Hydra vulgaris head regeneration and stem cell invasion",
+      "publisher_stratum": "Biologists",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Development",
+      "crossref_publisher": "The Company of Biologists",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            29
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7164809693",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/Biologists-crossref.json",
+      "selection_key": "29586c41e0362f5ba5f6571f98dd233f74ac2d70c912a063a626caf0ab71d3e4",
+      "id": "053-Biologists"
+    },
+    {
+      "doi": "10.1073/iti2626123",
+      "title": "In This Issue",
+      "publisher_stratum": "PNAS",
+      "cohort": "metadata_closed",
+      "pmcid": null,
+      "journal": "Proceedings of the National Academy of Sciences",
+      "crossref_publisher": "National Academy of Sciences",
+      "crossref_published": {
+        "date-parts": [
+          [
+            2026,
+            6,
+            30
+          ]
+        ]
+      },
+      "openalex_id": "https://openalex.org/W7166751864",
+      "open_access_snapshot": {
+        "is_oa": false,
+        "oa_status": "closed",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      },
+      "primary_location_is_oa": false,
+      "sampling_raw": "sampling/PNAS-crossref.json",
+      "selection_key": "127420d0b20addc7c9d61ebf49a4ae9a621684bbd0051c5355d4a2af838b96d5",
+      "id": "054-PNAS"
+    },
+    {
+      "publisher_stratum": "ACS",
+      "cohort": "known_OA_regression_control",
+      "doi": "10.1021/acsomega.4c08274",
+      "pmcid": "PMC11739972",
+      "title": "ITZO-Based Self-Aligned Top Gate Thin-Film Transistor with Minimum Parasitic Capacitance for Long-Retention 2T0C DRAM.",
+      "journal": "ACS omega",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1021*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\ACS.json",
+      "id": "C01-ACS"
+    },
+    {
+      "publisher_stratum": "Wiley",
+      "cohort": "known_OA_regression_control",
+      "doi": "10.1111/acer.15490",
+      "pmcid": "PMC11740165",
+      "title": "Examining social attention as a predictor of problem drinking behavior: A longitudinal study using eye-tracking.",
+      "journal": "Alcohol, clinical & experimental research",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1002* OR DOI:10.1111*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Wiley.json",
+      "id": "C02-Wiley"
+    },
+    {
+      "publisher_stratum": "Taylor_Francis",
+      "cohort": "known_OA_regression_control",
+      "doi": "10.1080/21505594.2024.2440554",
+      "pmcid": "PMC11702953",
+      "title": "Human macrophage response to the emerging enteric pathogen Aeromonas veronii: Inflammation, apoptosis, and downregulation of histones.",
+      "journal": "Virulence",
+      "first_publication_date": "2024-12-28",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1080*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Taylor_Francis.json",
+      "id": "C03-Taylor_Francis"
+    },
+    {
+      "publisher_stratum": "eLife",
+      "cohort": "known_OA_regression_control",
+      "doi": "10.7554/elife.93646",
+      "pmcid": "PMC11668525",
+      "title": "CaBP1 and 2 enable sustained CaV1.3 calcium currents and synaptic transmission in inner hair cells.",
+      "journal": "eLife",
+      "first_publication_date": "2024-12-24",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.7554*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\eLife.json",
+      "id": "C04-eLife"
+    }
+  ]
+}

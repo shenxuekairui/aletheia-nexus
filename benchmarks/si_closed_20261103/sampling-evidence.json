@@ -1,0 +1,1852 @@
+{
+  "manifest_sha256": "6b479b1f1c724ae9da929a6c3876256b57ce9fe94fe60e256a42e6d53bd53ef1",
+  "sampler_sha256": "eb1f3905a6067c7a756e41e59e4ed670a6ecf6d843c5c4828436a3a8a685b512",
+  "before_article_or_SI_delivery": true,
+  "groups": [
+    {
+      "publisher_stratum": "Elsevier",
+      "prefix": "10.1016",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "534f459c46446fd3578e1610c1c22a8a44d01ca3261710d3628c331c6ead5ad3",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 23,
+      "selected_dois": [
+        "10.1016/j.quaint.2026.110243",
+        "10.1016/j.jpedsurg.2026.163036",
+        "10.1016/j.palaeo.2026.113762"
+      ],
+      "openalex": [
+        {
+          "file": "Elsevier-openalex-0.json",
+          "sha256": "0d758c70647ef48284e4e9d0f79018c108503fe84385a5db2c74aff0f1f5617a",
+          "queried_dois": [
+            "10.1016/j.addicn.2026.100250",
+            "10.1016/j.addma.2026.105256",
+            "10.1016/j.afres.2026.102140",
+            "10.1016/j.bej.2026.110140",
+            "10.1016/j.biortech.2026.134387",
+            "10.1016/j.burns.2026.107970",
+            "10.1016/j.carres.2026.109881",
+            "10.1016/j.chiabu.2026.108076",
+            "10.1016/j.cnsns.2026.109656",
+            "10.1016/j.dib.2026.112704",
+            "10.1016/j.ecolind.2026.114938",
+            "10.1016/j.ecolmodel.2026.111569",
+            "10.1016/j.endinu.2025.501741",
+            "10.1016/j.est.2026.121919",
+            "10.1016/j.healun.2026.05.036",
+            "10.1016/j.hlc.2026.03.018",
+            "10.1016/j.hlc.2026.03.040",
+            "10.1016/j.ijbiomac.2026.152401",
+            "10.1016/j.ijbiomac.2026.152771",
+            "10.1016/j.jacadv.2026.102830"
+          ]
+        },
+        {
+          "file": "Elsevier-openalex-1.json",
+          "sha256": "b4b12b3df3e46602f767bf59339bb78a74966d3744db25a73c8eb8dfbe2c998b",
+          "queried_dois": [
+            "10.1016/j.jbmt.2025.11.014",
+            "10.1016/j.jiec.2025.11.005",
+            "10.1016/j.jlumin.2026.121903",
+            "10.1016/j.jpedsurg.2026.163036",
+            "10.1016/j.jsv.2026.119725",
+            "10.1016/j.laa.2026.06.007",
+            "10.1016/j.lanwpc.2026.101895",
+            "10.1016/j.lrp.2026.102640",
+            "10.1016/j.matdes.2026.116120",
+            "10.1016/j.molstruc.2026.145645",
+            "10.1016/j.neucom.2026.133332",
+            "10.1016/j.nexres.2026.101598",
+            "10.1016/j.optlastec.2026.114930",
+            "10.1016/j.palaeo.2026.113762",
+            "10.1016/j.precisioneng.2026.03.010",
+            "10.1016/j.quaint.2026.110243",
+            "10.1016/j.taap.2026.117786",
+            "10.1016/j.tws.2026.114787",
+            "10.1016/s0191-8869(26)00095-4",
+            "10.1016/s0223-5234(26)00277-1"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Elsevier-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Elsevier-crossref.json",
+          "sha256": "534f459c46446fd3578e1610c1c22a8a44d01ca3261710d3628c331c6ead5ad3"
+        },
+        {
+          "file": "Elsevier-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Elsevier-openalex-0.json",
+          "sha256": "0d758c70647ef48284e4e9d0f79018c108503fe84385a5db2c74aff0f1f5617a"
+        },
+        {
+          "file": "Elsevier-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Elsevier-openalex-1.json",
+          "sha256": "b4b12b3df3e46602f767bf59339bb78a74966d3744db25a73c8eb8dfbe2c998b"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "ACS",
+      "prefix": "10.1021",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "da51a776364f779c70d6148e2b59801fa3aa3a1a0411c7fa422aa9b870e12284",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 30,
+      "selected_dois": [
+        "10.1021/acs.biomac.6c00423",
+        "10.1021/acsami.6c06732",
+        "10.1021/acs.jpclett.6c01699"
+      ],
+      "openalex": [
+        {
+          "file": "ACS-openalex-0.json",
+          "sha256": "5785b0163d4fce3a3251628cd5e8f3fe1ff37abd0769754a4a2deb0e5abc2743",
+          "queried_dois": [
+            "10.1021/acs.analchem.6c02009",
+            "10.1021/acs.biomac.6c00423",
+            "10.1021/acs.chemrev.6c00203",
+            "10.1021/acs.iecr.6c01406",
+            "10.1021/acs.iecr.6c01819",
+            "10.1021/acs.inorgchem.6c00972",
+            "10.1021/acs.inorgchem.6c01395",
+            "10.1021/acs.inorgchem.6c02680",
+            "10.1021/acs.jafc.6c05955",
+            "10.1021/acs.jctc.6c00839",
+            "10.1021/acs.jmedchem.6c01512",
+            "10.1021/acs.jnatprod.6c00572",
+            "10.1021/acs.jpca.6c02550",
+            "10.1021/acs.jpcb.6c02809",
+            "10.1021/acs.jpcc.6c01587",
+            "10.1021/acs.jpclett.6c01699",
+            "10.1021/acs.macromol.6c00832",
+            "10.1021/acs.orglett.6c02021",
+            "10.1021/acsaelm.6c00591",
+            "10.1021/acsami.6c03718"
+          ]
+        },
+        {
+          "file": "ACS-openalex-1.json",
+          "sha256": "772b84a0975ccf9b6b0d52f92bc526df72ecf30870903297b9e54c69e4954d40",
+          "queried_dois": [
+            "10.1021/acsami.6c06702",
+            "10.1021/acsami.6c06732",
+            "10.1021/acsami.6c08004",
+            "10.1021/acsapm.6c00776",
+            "10.1021/acsapm.6c00800",
+            "10.1021/acscatal.6c03619",
+            "10.1021/acschembio.6c00377",
+            "10.1021/acselectrochem.6c00104",
+            "10.1021/acsestwater.6c00095",
+            "10.1021/acsnano.6c04851",
+            "10.1021/acsnano.6c05348",
+            "10.1021/acsomega.6c00878",
+            "10.1021/acsomega.6c03721",
+            "10.1021/cbmi.6c00087",
+            "10.1021/jacs.6c04583",
+            "10.1021/jacs.6c08562",
+            "10.1021/jacsau.6c00252",
+            "10.1021/jacsau.6c00502",
+            "10.1021/jacsau.6c00817",
+            "10.1021/nnv020i025_2096192"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "ACS-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\ACS-crossref.json",
+          "sha256": "da51a776364f779c70d6148e2b59801fa3aa3a1a0411c7fa422aa9b870e12284"
+        },
+        {
+          "file": "ACS-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\ACS-openalex-0.json",
+          "sha256": "5785b0163d4fce3a3251628cd5e8f3fe1ff37abd0769754a4a2deb0e5abc2743"
+        },
+        {
+          "file": "ACS-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\ACS-openalex-1.json",
+          "sha256": "772b84a0975ccf9b6b0d52f92bc526df72ecf30870903297b9e54c69e4954d40"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "RSC",
+      "prefix": "10.1039",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "f45e7bcd6f4b4123e173fe3df059eb0df09888e35ff812dcd3cfbea452adfb50",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 39,
+      "eligible_closed": 23,
+      "selected_dois": [
+        "10.1039/d5cy00986c",
+        "10.1039/d5nj04144a",
+        "10.1039/d6tc00900j"
+      ],
+      "openalex": [
+        {
+          "file": "RSC-openalex-0.json",
+          "sha256": "f0627f5c1974726641cb0f8549cd36972f3e08853e42eb25b5d110fc304b6f41",
+          "queried_dois": [
+            "10.1039/d5an01082a",
+            "10.1039/d5bm01797a",
+            "10.1039/d5cp03283k",
+            "10.1039/d5cp04000k",
+            "10.1039/d5cy00986c",
+            "10.1039/d5cy01063b",
+            "10.1039/d5cy01393c",
+            "10.1039/d5fo02470f",
+            "10.1039/d5ma01531f",
+            "10.1039/d5nj04144a",
+            "10.1039/d5nr04642d",
+            "10.1039/d5ob01967b",
+            "10.1039/d5qo01724f",
+            "10.1039/d5sm00782h",
+            "10.1039/d5ta08577b",
+            "10.1039/d5tb02248g",
+            "10.1039/d5tc03721b",
+            "10.1039/d6cc01391k",
+            "10.1039/d6cc01874b",
+            "10.1039/d6cc02437h"
+          ]
+        },
+        {
+          "file": "RSC-openalex-1.json",
+          "sha256": "745065607efd81bb049d18ec5bd84a3044d9cb1302a111df7af4a04aa1c664c2",
+          "queried_dois": [
+            "10.1039/d6cp00342g",
+            "10.1039/d6cp00514d",
+            "10.1039/d6ea90029a",
+            "10.1039/d6lc90041k",
+            "10.1039/d6md00463f",
+            "10.1039/d6mh00262e",
+            "10.1039/d6mh90008a",
+            "10.1039/d6nj01201a",
+            "10.1039/d6nj01564f",
+            "10.1039/d6nj01693f",
+            "10.1039/d6ob00116e",
+            "10.1039/d6ob90005d",
+            "10.1039/d6qi00806b",
+            "10.1039/d6ra00114a",
+            "10.1039/d6ra02069k",
+            "10.1039/d6ta01843b",
+            "10.1039/d6ta03228a",
+            "10.1039/d6ta03802f",
+            "10.1039/d6tc00900j"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "RSC-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\RSC-crossref.json",
+          "sha256": "f45e7bcd6f4b4123e173fe3df059eb0df09888e35ff812dcd3cfbea452adfb50"
+        },
+        {
+          "file": "RSC-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\RSC-openalex-0.json",
+          "sha256": "f0627f5c1974726641cb0f8549cd36972f3e08853e42eb25b5d110fc304b6f41"
+        },
+        {
+          "file": "RSC-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\RSC-openalex-1.json",
+          "sha256": "745065607efd81bb049d18ec5bd84a3044d9cb1302a111df7af4a04aa1c664c2"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Wiley",
+      "prefix": "10.1002",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "1a5aa3f46e93a0cc26c7b86dec7e7159c87fb9059c0b9d7f87fe09a7cd9d6eca",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 20,
+      "selected_dois": [
+        "10.1002/pds.70428",
+        "10.1002/cpe.70821",
+        "10.1002/ange.7910152"
+      ],
+      "openalex": [
+        {
+          "file": "Wiley-openalex-0.json",
+          "sha256": "e3b5476705c12c6dd360e1e819093595c6a9e9e8ec67d90fc1cf4822df619b09",
+          "queried_dois": [
+            "10.1002/adma.73853",
+            "10.1002/adom.71406",
+            "10.1002/adsc.70544",
+            "10.1002/advs.76351",
+            "10.1002/ajpa.70258",
+            "10.1002/ange.4952408",
+            "10.1002/ange.6944015",
+            "10.1002/ange.7910152",
+            "10.1002/ange.8807652",
+            "10.1002/anie.4158531",
+            "10.1002/anie.4283917",
+            "10.1002/anie.8824438",
+            "10.1002/app.71019",
+            "10.1002/app.71102",
+            "10.1002/aur.70270",
+            "10.1002/bsd2.70377",
+            "10.1002/bse.71248",
+            "10.1002/cpe.70821",
+            "10.1002/csr.70814",
+            "10.1002/ente.70557"
+          ]
+        },
+        {
+          "file": "Wiley-openalex-1.json",
+          "sha256": "819eddaa2ad435f778cc80420b73d40d4b8aae9b56fe0fc126616e2268a5d08d",
+          "queried_dois": [
+            "10.1002/epi.70368",
+            "10.1002/est2.70426",
+            "10.1002/fsn3.72056",
+            "10.1002/hed.70365",
+            "10.1002/hsr2.72739",
+            "10.1002/ijc.70620",
+            "10.1002/jbm.b.70123",
+            "10.1002/ksa.70503",
+            "10.1002/ksa.70513",
+            "10.1002/nadc.20264159310",
+            "10.1002/nadc.20264159393",
+            "10.1002/nadc.20264159494",
+            "10.1002/nadc.20264160039",
+            "10.1002/nop2.70661",
+            "10.1002/pds.70428",
+            "10.1002/ppul.71714",
+            "10.1002/qua.70252",
+            "10.1002/slct.73776",
+            "10.1002/trc2.70250",
+            "10.1002/vms3.71016"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Wiley-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Wiley-crossref.json",
+          "sha256": "1a5aa3f46e93a0cc26c7b86dec7e7159c87fb9059c0b9d7f87fe09a7cd9d6eca"
+        },
+        {
+          "file": "Wiley-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Wiley-openalex-0.json",
+          "sha256": "e3b5476705c12c6dd360e1e819093595c6a9e9e8ec67d90fc1cf4822df619b09"
+        },
+        {
+          "file": "Wiley-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Wiley-openalex-1.json",
+          "sha256": "819eddaa2ad435f778cc80420b73d40d4b8aae9b56fe0fc126616e2268a5d08d"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Springer",
+      "prefix": "10.1007",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "2d4d43237c7f902297cf17a66e6c73444ad273179ccaebeb638983dffdccdae1",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 25,
+      "selected_dois": [
+        "10.1007/s11056-026-10197-y",
+        "10.1007/s11009-026-10299-2",
+        "10.1007/s43450-026-00780-x"
+      ],
+      "openalex": [
+        {
+          "file": "Springer-openalex-0.json",
+          "sha256": "3abd9ac40f19988cf06ab17aaea89c6b08ae0c5d2f9aa0ce7be2f4202a3083ef",
+          "queried_dois": [
+            "10.1007/s00024-026-04026-8",
+            "10.1007/s00203-026-04994-4",
+            "10.1007/s00216-026-06619-7",
+            "10.1007/s00266-026-06005-9",
+            "10.1007/s00362-026-01870-7",
+            "10.1007/s00403-026-04678-5",
+            "10.1007/s00403-026-04685-6",
+            "10.1007/s00406-026-02306-x",
+            "10.1007/s00784-026-06983-9",
+            "10.1007/s10032-026-00599-1",
+            "10.1007/s10147-026-03103-1",
+            "10.1007/s10266-026-01482-5",
+            "10.1007/s10409-026-25719-x",
+            "10.1007/s10452-026-10320-3",
+            "10.1007/s10800-026-02536-w",
+            "10.1007/s10800-026-02538-8",
+            "10.1007/s11009-026-10299-2",
+            "10.1007/s11033-026-12176-0",
+            "10.1007/s11033-026-12205-y",
+            "10.1007/s11056-026-10197-y"
+          ]
+        },
+        {
+          "file": "Springer-openalex-1.json",
+          "sha256": "a1d7bf1fa96a267b21e904b0058b616a07ac2dce8e07723b67a111e69530cfde",
+          "queried_dois": [
+            "10.1007/s11225-026-10249-6",
+            "10.1007/s11663-026-04159-0",
+            "10.1007/s11708-026-1081-1",
+            "10.1007/s12194-026-01089-z",
+            "10.1007/s12247-026-10817-2",
+            "10.1007/s12303-026-00115-x",
+            "10.1007/s12530-026-09851-9",
+            "10.1007/s13304-026-02726-3",
+            "10.1007/s13369-026-11411-x",
+            "10.1007/s13592-026-01285-1",
+            "10.1007/s40998-026-01149-5",
+            "10.1007/s42235-026-00931-9",
+            "10.1007/s43450-026-00780-x",
+            "10.1007/s43621-026-03956-6",
+            "10.1007/s43937-026-00167-y",
+            "10.1007/s44245-026-00295-8",
+            "10.1007/s44274-026-00806-0",
+            "10.1007/s44374-026-00022-z",
+            "10.1007/s44466-026-00046-0",
+            "10.1007/s44470-026-00101-y"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Springer-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Springer-crossref.json",
+          "sha256": "2d4d43237c7f902297cf17a66e6c73444ad273179ccaebeb638983dffdccdae1"
+        },
+        {
+          "file": "Springer-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Springer-openalex-0.json",
+          "sha256": "3abd9ac40f19988cf06ab17aaea89c6b08ae0c5d2f9aa0ce7be2f4202a3083ef"
+        },
+        {
+          "file": "Springer-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Springer-openalex-1.json",
+          "sha256": "a1d7bf1fa96a267b21e904b0058b616a07ac2dce8e07723b67a111e69530cfde"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Nature",
+      "prefix": "10.1038",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "437196608780f0151506cfcf80acecd1e64e9538458941ec71c1a21ecbfb2b39",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 5,
+      "selected_dois": [
+        "10.1038/d41586-026-01813-0",
+        "10.1038/s41577-026-01332-z",
+        "10.1038/s41390-026-05257-0"
+      ],
+      "openalex": [
+        {
+          "file": "Nature-openalex-0.json",
+          "sha256": "a5965b5e76a99242b4e89174ca190ebabfa87637d894bc565b2c20c112d1ecef",
+          "queried_dois": [
+            "10.1038/d41586-026-01813-0",
+            "10.1038/s40494-026-02754-7",
+            "10.1038/s41375-026-03011-3",
+            "10.1038/s41380-026-03697-y",
+            "10.1038/s41390-026-05257-0",
+            "10.1038/s41392-026-02761-x",
+            "10.1038/s41408-026-01538-3",
+            "10.1038/s41409-026-02969-z",
+            "10.1038/s41413-026-00557-x",
+            "10.1038/s41431-026-02164-0",
+            "10.1038/s41467-026-74785-4",
+            "10.1038/s41467-026-74870-8",
+            "10.1038/s41523-026-00989-y",
+            "10.1038/s41545-026-00599-y",
+            "10.1038/s41563-026-02594-7",
+            "10.1038/s41577-026-01332-z",
+            "10.1038/s41592-026-03128-4",
+            "10.1038/s41598-026-58613-9",
+            "10.1038/s41598-026-58714-5",
+            "10.1038/s41598-026-59146-x"
+          ]
+        },
+        {
+          "file": "Nature-openalex-1.json",
+          "sha256": "0fb0718a8757fa3eb132c909a6317c61dba2cf02915afce48903de2fb81b80bb",
+          "queried_dois": [
+            "10.1038/s41598-026-59404-y",
+            "10.1038/s41598-026-59427-5",
+            "10.1038/s41598-026-59487-7",
+            "10.1038/s41598-026-59512-9",
+            "10.1038/s41598-026-59530-7",
+            "10.1038/s41598-026-59787-y",
+            "10.1038/s41598-026-60047-2",
+            "10.1038/s41598-026-60059-y",
+            "10.1038/s41598-026-60194-6",
+            "10.1038/s41598-026-60238-x",
+            "10.1038/s41598-026-60254-x",
+            "10.1038/s41598-026-60355-7",
+            "10.1038/s41598-026-60375-3",
+            "10.1038/s41598-026-60642-3",
+            "10.1038/s42003-026-10510-7",
+            "10.1038/s42003-026-10546-9",
+            "10.1038/s43246-026-01239-1",
+            "10.1038/s43587-026-01146-7",
+            "10.1038/s44172-026-00713-5",
+            "10.1038/s44220-026-00674-w"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Nature-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Nature-crossref.json",
+          "sha256": "437196608780f0151506cfcf80acecd1e64e9538458941ec71c1a21ecbfb2b39"
+        },
+        {
+          "file": "Nature-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Nature-openalex-0.json",
+          "sha256": "a5965b5e76a99242b4e89174ca190ebabfa87637d894bc565b2c20c112d1ecef"
+        },
+        {
+          "file": "Nature-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Nature-openalex-1.json",
+          "sha256": "0fb0718a8757fa3eb132c909a6317c61dba2cf02915afce48903de2fb81b80bb"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Science",
+      "prefix": "10.1126",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "619d129835ef0815e59dc4c609baa3454aa8f1f65d66223b801587cee9b18fb0",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 38,
+      "eligible_closed": 2,
+      "selected_dois": [
+        "10.1126/scisignal.aeb3656",
+        "10.1126/sciimmunol.adz4302"
+      ],
+      "openalex": [
+        {
+          "file": "Science-openalex-0.json",
+          "sha256": "385a691de7d50c51d4e8ec38188d282133242a6b22771662d06544448520e51c",
+          "queried_dois": [
+            "10.1126/sciadv.adr2618",
+            "10.1126/sciadv.adx0047",
+            "10.1126/sciadv.adx5046",
+            "10.1126/sciadv.ady0256",
+            "10.1126/sciadv.adz0450",
+            "10.1126/sciadv.adz2434",
+            "10.1126/sciadv.adz3351",
+            "10.1126/sciadv.aea3227",
+            "10.1126/sciadv.aea8632",
+            "10.1126/sciadv.aea9974",
+            "10.1126/sciadv.aeb1299",
+            "10.1126/sciadv.aeb5772",
+            "10.1126/sciadv.aeb7362",
+            "10.1126/sciadv.aec0059",
+            "10.1126/sciadv.aec4754",
+            "10.1126/sciadv.aec7614",
+            "10.1126/sciadv.aec8143",
+            "10.1126/sciadv.aec8210",
+            "10.1126/sciadv.aec9891",
+            "10.1126/sciadv.aed0981"
+          ]
+        },
+        {
+          "file": "Science-openalex-1.json",
+          "sha256": "4f9e766c53532462b1f4282935e4f182d59870df704150cf6f492d3d490b48d8",
+          "queried_dois": [
+            "10.1126/sciadv.aed5972",
+            "10.1126/sciadv.aed8113",
+            "10.1126/sciadv.aed8447",
+            "10.1126/sciadv.aed8616",
+            "10.1126/sciadv.aed8866",
+            "10.1126/sciadv.aee1088",
+            "10.1126/sciadv.aee1546",
+            "10.1126/sciadv.aee8580",
+            "10.1126/sciadv.aee9634",
+            "10.1126/sciadv.aef6238",
+            "10.1126/sciadv.aeg0460",
+            "10.1126/sciadv.aeg0480",
+            "10.1126/sciadv.aeg5293",
+            "10.1126/sciadv.aeg9950",
+            "10.1126/sciadv.aeh0883",
+            "10.1126/sciimmunol.adz4302",
+            "10.1126/scisignal.aeb3656",
+            "10.1126/scisignal.aed9015"
+          ]
+        }
+      ],
+      "ambiguous_dois": [
+        "10.1126/sciadv.adz2434"
+      ],
+      "requests": [
+        {
+          "file": "Science-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Science-crossref.json",
+          "sha256": "619d129835ef0815e59dc4c609baa3454aa8f1f65d66223b801587cee9b18fb0"
+        },
+        {
+          "file": "Science-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Science-openalex-0.json",
+          "sha256": "385a691de7d50c51d4e8ec38188d282133242a6b22771662d06544448520e51c"
+        },
+        {
+          "file": "Science-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Science-openalex-1.json",
+          "sha256": "4f9e766c53532462b1f4282935e4f182d59870df704150cf6f492d3d490b48d8"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "OUP",
+      "prefix": "10.1093",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "f7fd896f9aeceac732bd7e41d361c6bf699987698470e4392360c74a05adb7f7",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 39,
+      "eligible_closed": 15,
+      "selected_dois": [
+        "10.1093/sxmrev/qeag051",
+        "10.1093/milmed/usag293",
+        "10.1093/cid/ciag382"
+      ],
+      "openalex": [
+        {
+          "file": "OUP-openalex-0.json",
+          "sha256": "bb30541955ed0412b35313678fb30cc9a27cef1d34b70239271e2b09bd35f432",
+          "queried_dois": [
+            "10.1093/aesa/saag026",
+            "10.1093/ajrccm/aamag337",
+            "10.1093/ajrcmb/aanag119",
+            "10.1093/annalsats/aaoag181",
+            "10.1093/anncom/wlag030",
+            "10.1093/bics/qbag019",
+            "10.1093/bioinformatics/btag482",
+            "10.1093/bjsw/bcag111",
+            "10.1093/botlinnean/boag056",
+            "10.1093/cid/ciag382",
+            "10.1093/cvr/cvag145",
+            "10.1093/ectj/utag018",
+            "10.1093/ehjopen/oeag114",
+            "10.1093/eschf/xvag187",
+            "10.1093/femsec/fiag065",
+            "10.1093/femsec/fiag070",
+            "10.1093/g3journal/jkag170",
+            "10.1093/gbe/evag151",
+            "10.1093/genetics/iyag164",
+            "10.1093/gji/ggag209"
+          ]
+        },
+        {
+          "file": "OUP-openalex-1.json",
+          "sha256": "fa346c78d641fb006ec7c1151a6e385e6e6f1db5a10e329905876f03a0aa78cd",
+          "queried_dois": [
+            "10.1093/hr/uhag261",
+            "10.1093/jnci/djag213",
+            "10.1093/milmed/usag284",
+            "10.1093/milmed/usag293",
+            "10.1093/mmy/myag068",
+            "10.1093/mnras/stag1231",
+            "10.1093/neuonc/noag147",
+            "10.1093/notesj/gjag100",
+            "10.1093/nsr/nwag399",
+            "10.1093/plphys/kiag457",
+            "10.1093/rheumatology/keag320",
+            "10.1093/rheumatology/keag339",
+            "10.1093/rheumatology/keag344",
+            "10.1093/rheumatology/keag349",
+            "10.1093/rheumatology/keag351",
+            "10.1093/rheumatology/keag362",
+            "10.1093/sxmrev/qeag049",
+            "10.1093/sxmrev/qeag050",
+            "10.1093/sxmrev/qeag051"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "OUP-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\OUP-crossref.json",
+          "sha256": "f7fd896f9aeceac732bd7e41d361c6bf699987698470e4392360c74a05adb7f7"
+        },
+        {
+          "file": "OUP-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\OUP-openalex-0.json",
+          "sha256": "bb30541955ed0412b35313678fb30cc9a27cef1d34b70239271e2b09bd35f432"
+        },
+        {
+          "file": "OUP-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\OUP-openalex-1.json",
+          "sha256": "fa346c78d641fb006ec7c1151a6e385e6e6f1db5a10e329905876f03a0aa78cd"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Cambridge",
+      "prefix": "10.1017",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "7339eb15c3ea798b28f32270024355fa93894d85d0863273e028c476cf50842a",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 39,
+      "eligible_closed": 9,
+      "selected_dois": [
+        "10.1017/jfm.2026.11746",
+        "10.1017/s1752196326101357",
+        "10.1017/s1047951126113729"
+      ],
+      "openalex": [
+        {
+          "file": "Cambridge-openalex-0.json",
+          "sha256": "5de21263feec222211945701d8125485e5bb3b20fdada0363754939b15afc2d5",
+          "queried_dois": [
+            "10.1017/aap.2026.10157",
+            "10.1017/jfm.2026.11725",
+            "10.1017/jfm.2026.11726",
+            "10.1017/jfm.2026.11740",
+            "10.1017/jfm.2026.11742",
+            "10.1017/jfm.2026.11744",
+            "10.1017/jfm.2026.11746",
+            "10.1017/jfm.2026.11753",
+            "10.1017/jfm.2026.11755",
+            "10.1017/jfm.2026.11763",
+            "10.1017/lar.2026.10137",
+            "10.1017/nlp.2026.10030",
+            "10.1017/s0009840x26103175",
+            "10.1017/s0009840x26103205",
+            "10.1017/s0009840x26103217",
+            "10.1017/s0009840x26103229",
+            "10.1017/s0009840x26103242",
+            "10.1017/s0009840x26103291",
+            "10.1017/s0898588x26100352",
+            "10.1017/s0954579426101618"
+          ]
+        },
+        {
+          "file": "Cambridge-openalex-1.json",
+          "sha256": "0e5020ddf68970443eafe99692373c42890e7d130f874e7a914b6f2c70d3c0ad",
+          "queried_dois": [
+            "10.1017/s0956536126100960",
+            "10.1017/s1047951126111937",
+            "10.1017/s1047951126113729",
+            "10.1017/s1047951126113791",
+            "10.1017/s1355771826101368",
+            "10.1017/s1380203826100282",
+            "10.1017/s1471068426100441",
+            "10.1017/s1537592726105374",
+            "10.1017/s175219632610128x",
+            "10.1017/s1752196326101291",
+            "10.1017/s1752196326101308",
+            "10.1017/s1752196326101345",
+            "10.1017/s1752196326101357",
+            "10.1017/s1752196326101382",
+            "10.1017/s1752196326101394",
+            "10.1017/s1752196326101400",
+            "10.1017/s1752196326101412",
+            "10.1017/tam.2026.10192",
+            "10.1017/tam.2026.10194"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Cambridge-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Cambridge-crossref.json",
+          "sha256": "7339eb15c3ea798b28f32270024355fa93894d85d0863273e028c476cf50842a"
+        },
+        {
+          "file": "Cambridge-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Cambridge-openalex-0.json",
+          "sha256": "5de21263feec222211945701d8125485e5bb3b20fdada0363754939b15afc2d5"
+        },
+        {
+          "file": "Cambridge-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Cambridge-openalex-1.json",
+          "sha256": "0e5020ddf68970443eafe99692373c42890e7d130f874e7a914b6f2c70d3c0ad"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Taylor_Francis",
+      "prefix": "10.1080",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "5bfc22f491d95e2cc558c96dc5890056a08797879699762b521368d58189428d",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 39,
+      "eligible_closed": 20,
+      "selected_dois": [
+        "10.1080/03461238.2026.2694073",
+        "10.1080/13611267.2026.2690259",
+        "10.1080/08964289.2026.2658525"
+      ],
+      "openalex": [
+        {
+          "file": "Taylor_Francis-openalex-0.json",
+          "sha256": "8b291c52518ab48b15c3f937908fb5c562eab8563cd41ab61fdea599cd064897",
+          "queried_dois": [
+            "10.1080/00207543.2026.2693705",
+            "10.1080/00325481.2026.2692127",
+            "10.1080/01431161.2026.2691979",
+            "10.1080/01488376.2026.2692453",
+            "10.1080/01694243.2026.2692640",
+            "10.1080/01969722.2026.2691853",
+            "10.1080/02508281.2026.2690971",
+            "10.1080/03009742.2026.2690725",
+            "10.1080/03461238.2026.2694073",
+            "10.1080/08039488.2026.2694659",
+            "10.1080/08820139.2026.2695165",
+            "10.1080/08964289.2026.2658525",
+            "10.1080/08998280.2026.2686029",
+            "10.1080/09571264.2026.2696592",
+            "10.1080/09581596.2026.2692158",
+            "10.1080/09614524.2026.2689999",
+            "10.1080/09654313.2026.2690179",
+            "10.1080/09658211.2026.2691565",
+            "10.1080/10894160.2026.2692288",
+            "10.1080/10911359.2026.2697972"
+          ]
+        },
+        {
+          "file": "Taylor_Francis-openalex-1.json",
+          "sha256": "1dd2b3ecf344e8fcb782a7a82d9703368534a9d3a4856827234a2c4978942524",
+          "queried_dois": [
+            "10.1080/13504851.2026.2696040",
+            "10.1080/13504851.2026.2697069",
+            "10.1080/13569317.2026.2694584",
+            "10.1080/13611267.2026.2690259",
+            "10.1080/14767058.2026.2688642",
+            "10.1080/14796708.2026.2692075",
+            "10.1080/15252019.2026.2686129",
+            "10.1080/15298868.2026.2696371",
+            "10.1080/15348431.2026.2695680",
+            "10.1080/15563650.2026.2688238",
+            "10.1080/16506073.2026.2689747",
+            "10.1080/1683478x.2026.2668893",
+            "10.1080/17404622.2026.2688528",
+            "10.1080/19440049.2026.2688180",
+            "10.1080/21505594.2026.2691333",
+            "10.1080/23247797.2026.2690845",
+            "10.1080/23735082.2026.2696280",
+            "10.1080/27690148.2026.2669516",
+            "10.1080/30679125.2026.2695011"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Taylor_Francis-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Taylor_Francis-crossref.json",
+          "sha256": "5bfc22f491d95e2cc558c96dc5890056a08797879699762b521368d58189428d"
+        },
+        {
+          "file": "Taylor_Francis-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Taylor_Francis-openalex-0.json",
+          "sha256": "8b291c52518ab48b15c3f937908fb5c562eab8563cd41ab61fdea599cd064897"
+        },
+        {
+          "file": "Taylor_Francis-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Taylor_Francis-openalex-1.json",
+          "sha256": "1dd2b3ecf344e8fcb782a7a82d9703368534a9d3a4856827234a2c4978942524"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "SAGE",
+      "prefix": "10.1177",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "ca31a9a2b199443138f3afdcc622dbb1a86717670cda76ea0dc3a8167acff186",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 21,
+      "selected_dois": [
+        "10.1177/13872877261464208",
+        "10.1177/17557380261446499a",
+        "10.1177/00031348261461283"
+      ],
+      "openalex": [
+        {
+          "file": "SAGE-openalex-0.json",
+          "sha256": "34c6f2d29c3d199dfc9a3b99089ecfea4526dc52eef97d20acce4cd7badaa0d7",
+          "queried_dois": [
+            "10.1177/00031224261454367",
+            "10.1177/00031348261461283",
+            "10.1177/00099228261462810",
+            "10.1177/00178969261460623",
+            "10.1177/00207209261464689",
+            "10.1177/00225266261463251",
+            "10.1177/03008916261458950",
+            "10.1177/03601293261460149",
+            "10.1177/08438714261464413",
+            "10.1177/08438714261464437",
+            "10.1177/08903344261455174",
+            "10.1177/09544089261461303",
+            "10.1177/09544089261465097",
+            "10.1177/09596836261458234",
+            "10.1177/10442073261461135",
+            "10.1177/10659129261466665",
+            "10.1177/10775463261466214",
+            "10.1177/10775587261453480",
+            "10.1177/10944281261457337",
+            "10.1177/1329878x261455592"
+          ]
+        },
+        {
+          "file": "SAGE-openalex-1.json",
+          "sha256": "f65588db3304fa809f6331e72722a104749329fffa83943f7ed6a81fd8809e6e",
+          "queried_dois": [
+            "10.1177/13505068261463915",
+            "10.1177/13505084261464338",
+            "10.1177/13540688261461499",
+            "10.1177/13684310261463483",
+            "10.1177/13872877261464188",
+            "10.1177/13872877261464208",
+            "10.1177/14648849261465924",
+            "10.1177/14651165261463623",
+            "10.1177/1476718x261460896",
+            "10.1177/15357597261458696",
+            "10.1177/17418305261462316",
+            "10.1177/17488958261459580",
+            "10.1177/17557380261446499",
+            "10.1177/17557380261446499a",
+            "10.1177/18681026261455057",
+            "10.1177/19386400261451599",
+            "10.1177/20501579261462013",
+            "10.1177/21522715261465484",
+            "10.1177/25726641261463593",
+            "10.1177/27018466261465784"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "SAGE-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\SAGE-crossref.json",
+          "sha256": "ca31a9a2b199443138f3afdcc622dbb1a86717670cda76ea0dc3a8167acff186"
+        },
+        {
+          "file": "SAGE-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\SAGE-openalex-0.json",
+          "sha256": "34c6f2d29c3d199dfc9a3b99089ecfea4526dc52eef97d20acce4cd7badaa0d7"
+        },
+        {
+          "file": "SAGE-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\SAGE-openalex-1.json",
+          "sha256": "f65588db3304fa809f6331e72722a104749329fffa83943f7ed6a81fd8809e6e"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "BMJ",
+      "prefix": "10.1136",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "cc7acd597d4dd4d3f3d86b27f62aa42eb0720f6d1fface09d64d1416644e97e0",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 12,
+      "selected_dois": [
+        "10.1136/bmjinnov-2025-001499",
+        "10.1136/bmj-2026-053267",
+        "10.1136/thorax-2025-224563"
+      ],
+      "openalex": [
+        {
+          "file": "BMJ-openalex-0.json",
+          "sha256": "e12ccb2e0eea35a9041ae7ea24a75348dc617fe548266ada4660d0b826324219",
+          "queried_dois": [
+            "10.1136/archdischild-2026-330633",
+            "10.1136/archdischild-2026-330670",
+            "10.1136/archdischild-2026-330927",
+            "10.1136/bjo-2025-328592",
+            "10.1136/bjsports-2026-111851",
+            "10.1136/bmj-2026-053267",
+            "10.1136/bmj-2026-100025",
+            "10.1136/bmj-2026-100062",
+            "10.1136/bmj-2026-100105",
+            "10.1136/bmj-2026-100109",
+            "10.1136/bmj-2026-100118",
+            "10.1136/bmj-2026-100120",
+            "10.1136/bmj-2026-100121",
+            "10.1136/bmj-2026-100122",
+            "10.1136/bmj-2026-100127",
+            "10.1136/bmjinnov-2025-001499",
+            "10.1136/bmjqs-2026-020450",
+            "10.1136/ebnurs-2025-104407",
+            "10.1136/ebnurs-2026-104553",
+            "10.1136/flgastro-2026-103722"
+          ]
+        },
+        {
+          "file": "BMJ-openalex-1.json",
+          "sha256": "3a6a757eec18f0c008a5c646ad6b315e538eb969e4044d6c5c9f5b94bd26225e",
+          "queried_dois": [
+            "10.1136/gutjnl-2026-338156",
+            "10.1136/heartjnl-2026-327905",
+            "10.1136/jech-2025-225545",
+            "10.1136/jech-2026-226059",
+            "10.1136/jmg-2025-111461",
+            "10.1136/jnis-2026-025293",
+            "10.1136/jnis-2026-025360",
+            "10.1136/leader-2025-001513",
+            "10.1136/leader-2026-001588",
+            "10.1136/military-2026-003285",
+            "10.1136/oemed-2026-110952",
+            "10.1136/pn-2026-005198",
+            "10.1136/pn-2026-005235",
+            "10.1136/pn-2026-005241",
+            "10.1136/rapm-2026-108163",
+            "10.1136/rapm-2026-108241",
+            "10.1136/spcare-2026-006240",
+            "10.1136/thorax-2025-223756",
+            "10.1136/thorax-2025-224563",
+            "10.1136/thorax-2026-225123"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "BMJ-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\BMJ-crossref.json",
+          "sha256": "cc7acd597d4dd4d3f3d86b27f62aa42eb0720f6d1fface09d64d1416644e97e0"
+        },
+        {
+          "file": "BMJ-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\BMJ-openalex-0.json",
+          "sha256": "e12ccb2e0eea35a9041ae7ea24a75348dc617fe548266ada4660d0b826324219"
+        },
+        {
+          "file": "BMJ-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\BMJ-openalex-1.json",
+          "sha256": "3a6a757eec18f0c008a5c646ad6b315e538eb969e4044d6c5c9f5b94bd26225e"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "IEEE",
+      "prefix": "10.1109",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "71a5c673fc37bf6a8b7d2ff9382e8a7084cebe6763a9853e190e31c1a9b73d5a",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 35,
+      "selected_dois": [
+        "10.1109/jiot.2026.3678432",
+        "10.1109/jlt.2026.3687969",
+        "10.1109/jsen.2026.3689846"
+      ],
+      "openalex": [
+        {
+          "file": "IEEE-openalex-0.json",
+          "sha256": "babf19562ac7052712104a21ea52f3efc49cee1e7cfe6cf0b06946389ccf7e47",
+          "queried_dois": [
+            "10.1109/jiot.2026.3673596",
+            "10.1109/jiot.2026.3675817",
+            "10.1109/jiot.2026.3677759",
+            "10.1109/jiot.2026.3677877",
+            "10.1109/jiot.2026.3678012",
+            "10.1109/jiot.2026.3678432",
+            "10.1109/jiot.2026.3678795",
+            "10.1109/jiot.2026.3678972",
+            "10.1109/jiot.2026.3679050",
+            "10.1109/jiot.2026.3679076",
+            "10.1109/jiot.2026.3679381",
+            "10.1109/jiot.2026.3679465",
+            "10.1109/jiot.2026.3679719",
+            "10.1109/jiot.2026.3679816",
+            "10.1109/jiot.2026.3680331",
+            "10.1109/jiot.2026.3680842",
+            "10.1109/jiot.2026.3681717",
+            "10.1109/jiot.2026.3682602",
+            "10.1109/jiot.2026.3685152",
+            "10.1109/jlt.2026.3680912"
+          ]
+        },
+        {
+          "file": "IEEE-openalex-1.json",
+          "sha256": "4c8f94382ee82954e9068df59cb4ec921cc5756cf5c0f5351e3855d807f0de35",
+          "queried_dois": [
+            "10.1109/jlt.2026.3685538",
+            "10.1109/jlt.2026.3687232",
+            "10.1109/jlt.2026.3687969",
+            "10.1109/jlt.2026.3693401",
+            "10.1109/jlt.2026.3699959",
+            "10.1109/jlt.2026.3699961",
+            "10.1109/jsen.2026.3671052",
+            "10.1109/jsen.2026.3685835",
+            "10.1109/jsen.2026.3687166",
+            "10.1109/jsen.2026.3688160",
+            "10.1109/jsen.2026.3688689",
+            "10.1109/jsen.2026.3689846",
+            "10.1109/jsen.2026.3690667",
+            "10.1109/jsen.2026.3690995",
+            "10.1109/jsen.2026.3691645",
+            "10.1109/jsen.2026.3692522",
+            "10.1109/lpt.2026.3670894",
+            "10.1109/lpt.2026.3676763",
+            "10.1109/lpt.2026.3678313",
+            "10.1109/lpt.2026.3678940"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "IEEE-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\IEEE-crossref.json",
+          "sha256": "71a5c673fc37bf6a8b7d2ff9382e8a7084cebe6763a9853e190e31c1a9b73d5a"
+        },
+        {
+          "file": "IEEE-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\IEEE-openalex-0.json",
+          "sha256": "babf19562ac7052712104a21ea52f3efc49cee1e7cfe6cf0b06946389ccf7e47"
+        },
+        {
+          "file": "IEEE-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\IEEE-openalex-1.json",
+          "sha256": "4c8f94382ee82954e9068df59cb4ec921cc5756cf5c0f5351e3855d807f0de35"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "IOP",
+      "prefix": "10.1088",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "dd7d8c97afb11a7a041adec53edb9571d510b8123157ad49a3b2e7354d8143a2",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 17,
+      "selected_dois": [
+        "10.1088/2631-8695/ae72f5",
+        "10.1088/1402-4896/ae7fb8",
+        "10.1088/1361-6528/ae7807"
+      ],
+      "openalex": [
+        {
+          "file": "IOP-openalex-0.json",
+          "sha256": "7a4ed32e7442bf9a65421a11b159fded72c15fba2a08409116aeda32f8805f60",
+          "queried_dois": [
+            "10.1088/0256-307x/43/7/070709",
+            "10.1088/1361-6463/ae7a82",
+            "10.1088/1361-648x/ae76a9",
+            "10.1088/1361-648x/ae7e31",
+            "10.1088/1361-6528/ae7807",
+            "10.1088/1361-6528/ae7b3e",
+            "10.1088/1361-6552/ae786f",
+            "10.1088/1361-6552/ae7ba2",
+            "10.1088/1361-6552/ae7d79",
+            "10.1088/1361-6560/ae7954",
+            "10.1088/1361-6560/ae7cd3",
+            "10.1088/1402-4896/ae7516",
+            "10.1088/1402-4896/ae7eb0",
+            "10.1088/1402-4896/ae7ed6",
+            "10.1088/1402-4896/ae7fb8",
+            "10.1088/1572-9494/ae6ccb",
+            "10.1088/1572-9494/ae7272",
+            "10.1088/1674-1056/ae8433",
+            "10.1088/1674-1056/ae843b",
+            "10.1088/1674-1056/ae8440"
+          ]
+        },
+        {
+          "file": "IOP-openalex-1.json",
+          "sha256": "be0f2f4cf646f423687a23c8837f46f1736147982d9aa1c80483b091724624ed",
+          "queried_dois": [
+            "10.1088/1674-4527/ae6f93",
+            "10.1088/1674-4527/ae74b6",
+            "10.1088/1748-9326/ae2639",
+            "10.1088/1748-9326/ae803f",
+            "10.1088/1751-8121/ae7c40",
+            "10.1088/1751-8121/ae7c42",
+            "10.1088/1758-5090/ae7d5a",
+            "10.1088/1758-5090/ae7ed4",
+            "10.1088/1873-7005/ae7d50",
+            "10.1088/2058-9565/ae7b7b",
+            "10.1088/2058-9565/ae7b7c",
+            "10.1088/2515-7655/ae7900",
+            "10.1088/2516-1091/ae7e2c",
+            "10.1088/2631-8695/ae72f5",
+            "10.1088/2631-8695/ae7499",
+            "10.1088/2631-8695/ae78a4",
+            "10.1088/2631-8695/ae7ece",
+            "10.1088/2631-8695/ae7fd2",
+            "10.1088/2631-8695/ae7ff1",
+            "10.1088/2634-4505/ae7f4a"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "IOP-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\IOP-crossref.json",
+          "sha256": "dd7d8c97afb11a7a041adec53edb9571d510b8123157ad49a3b2e7354d8143a2"
+        },
+        {
+          "file": "IOP-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\IOP-openalex-0.json",
+          "sha256": "7a4ed32e7442bf9a65421a11b159fded72c15fba2a08409116aeda32f8805f60"
+        },
+        {
+          "file": "IOP-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\IOP-openalex-1.json",
+          "sha256": "be0f2f4cf646f423687a23c8837f46f1736147982d9aa1c80483b091724624ed"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "AIP",
+      "prefix": "10.1063",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "f36472ac77bd3049becf96dc4e1a23d9871c94cab60b432f6deac02d31189bb5",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 29,
+      "selected_dois": [
+        "10.1063/5.0336439",
+        "10.1063/5.0326264",
+        "10.1063/5.0334034"
+      ],
+      "openalex": [
+        {
+          "file": "AIP-openalex-0.json",
+          "sha256": "b1addf20a0fc2de945545bbd774d46d85389944bbc6ac2699fbde29b0e5fc475",
+          "queried_dois": [
+            "10.1063/10.0044352",
+            "10.1063/5.0300588",
+            "10.1063/5.0311687",
+            "10.1063/5.0318250",
+            "10.1063/5.0322188",
+            "10.1063/5.0323168",
+            "10.1063/5.0325171",
+            "10.1063/5.0325389",
+            "10.1063/5.0325471",
+            "10.1063/5.0326214",
+            "10.1063/5.0326264",
+            "10.1063/5.0326655",
+            "10.1063/5.0327581",
+            "10.1063/5.0329237",
+            "10.1063/5.0330476",
+            "10.1063/5.0331050",
+            "10.1063/5.0331564",
+            "10.1063/5.0332491",
+            "10.1063/5.0332798",
+            "10.1063/5.0332948"
+          ]
+        },
+        {
+          "file": "AIP-openalex-1.json",
+          "sha256": "ff12dfb4088c8d31432615037ad9091e4981b9f427a04e437c3c5e345cd518bd",
+          "queried_dois": [
+            "10.1063/5.0333070",
+            "10.1063/5.0334034",
+            "10.1063/5.0334159",
+            "10.1063/5.0334735",
+            "10.1063/5.0334963",
+            "10.1063/5.0335066",
+            "10.1063/5.0335692",
+            "10.1063/5.0335887",
+            "10.1063/5.0335907",
+            "10.1063/5.0336010",
+            "10.1063/5.0336116",
+            "10.1063/5.0336178",
+            "10.1063/5.0336269",
+            "10.1063/5.0336439",
+            "10.1063/5.0336809",
+            "10.1063/5.0337812",
+            "10.1063/5.0338649",
+            "10.1063/5.0338688",
+            "10.1063/5.0341494",
+            "10.1063/pt.b429f6ec24"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "AIP-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\AIP-crossref.json",
+          "sha256": "f36472ac77bd3049becf96dc4e1a23d9871c94cab60b432f6deac02d31189bb5"
+        },
+        {
+          "file": "AIP-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\AIP-openalex-0.json",
+          "sha256": "b1addf20a0fc2de945545bbd774d46d85389944bbc6ac2699fbde29b0e5fc475"
+        },
+        {
+          "file": "AIP-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\AIP-openalex-1.json",
+          "sha256": "ff12dfb4088c8d31432615037ad9091e4981b9f427a04e437c3c5e345cd518bd"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "APS",
+      "prefix": "10.1103",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "ae735054d697dde909399cc7fdc8b25d4d5d4e71d2b2c660303c27e17379bf05",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 38,
+      "eligible_closed": 11,
+      "selected_dois": [
+        "10.1103/ww2r-ftt2",
+        "10.1103/x86t-n64x",
+        "10.1103/tgtq-nrrt"
+      ],
+      "openalex": [
+        {
+          "file": "APS-openalex-0.json",
+          "sha256": "c0114304a635dd66ebbf64f605ad4604be93d8b556040cd1942e0e0a54f1f90b",
+          "queried_dois": [
+            "10.1103/1k1w-c7vd",
+            "10.1103/2416-zvrp",
+            "10.1103/393p-ghvk",
+            "10.1103/3vg5-vkzy",
+            "10.1103/3xxl-tkqt",
+            "10.1103/5k9s-wyzg",
+            "10.1103/5m8n-r746",
+            "10.1103/6898-s17c",
+            "10.1103/6b4m-ppcq",
+            "10.1103/8ltn-5t9z",
+            "10.1103/8msx-l8s7",
+            "10.1103/94b4-zsgb",
+            "10.1103/blb9-hrwd",
+            "10.1103/bw63-h2y4",
+            "10.1103/bxql-gzfk",
+            "10.1103/c4nr-7qj4",
+            "10.1103/c8jz-93fb",
+            "10.1103/c9yb-81kv",
+            "10.1103/dn3v-9jv3",
+            "10.1103/h6pm-chbl"
+          ]
+        },
+        {
+          "file": "APS-openalex-1.json",
+          "sha256": "abf377d9615d1eb96d9f6ae0e0f544fd012d6e642741eaa4ef374fd5cd36067f",
+          "queried_dois": [
+            "10.1103/l8fc-dp36",
+            "10.1103/m8b9-lbw3",
+            "10.1103/nr71-phqw",
+            "10.1103/physics.19.87",
+            "10.1103/physics.19.s81",
+            "10.1103/pqvw-kv92",
+            "10.1103/qtyb-ymg5",
+            "10.1103/rpkp-gk4q",
+            "10.1103/rsm1-hzc3",
+            "10.1103/sdpn-s42c",
+            "10.1103/tgtq-nrrt",
+            "10.1103/thcc-rwp4",
+            "10.1103/vyn6-l63g",
+            "10.1103/wbd1-hp6s",
+            "10.1103/ww2r-ftt2",
+            "10.1103/x86t-n64x",
+            "10.1103/ypyx-mg6r",
+            "10.1103/z6cq-trm3"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "APS-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\APS-crossref.json",
+          "sha256": "ae735054d697dde909399cc7fdc8b25d4d5d4e71d2b2c660303c27e17379bf05"
+        },
+        {
+          "file": "APS-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\APS-openalex-0.json",
+          "sha256": "c0114304a635dd66ebbf64f605ad4604be93d8b556040cd1942e0e0a54f1f90b"
+        },
+        {
+          "file": "APS-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\APS-openalex-1.json",
+          "sha256": "abf377d9615d1eb96d9f6ae0e0f544fd012d6e642741eaa4ef374fd5cd36067f"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Royal_Society",
+      "prefix": "10.1098",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "7a0fc4a443f26024e85c26cbbdb8d22f4cdb2e817c7a3d719adb9c6598f6ccca",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 39,
+      "eligible_closed": 0,
+      "selected_dois": [],
+      "openalex": [
+        {
+          "file": "Royal_Society-openalex-0.json",
+          "sha256": "5360d08febf1e545299ae4b846511f0baac3988fdc75ff1721d2cdf30fa837bf",
+          "queried_dois": [
+            "10.1098/rsbl.2026.0052",
+            "10.1098/rsbl.2026.0164",
+            "10.1098/rsif.2025.0817",
+            "10.1098/rsif.2025.0879",
+            "10.1098/rsif.2025.0959",
+            "10.1098/rsif.2025.1082",
+            "10.1098/rsif.2025.1117",
+            "10.1098/rsif.2025.1206",
+            "10.1098/rsif.2025.1296",
+            "10.1098/rsob.260058",
+            "10.1098/rspb.2025.2955",
+            "10.1098/rspb.2025.3174",
+            "10.1098/rspb.2026.0535",
+            "10.1098/rsta.2024.0482",
+            "10.1098/rsta.2024.0484",
+            "10.1098/rsta.2024.0486",
+            "10.1098/rsta.2024.0488",
+            "10.1098/rsta.2024.0489",
+            "10.1098/rsta.2024.0492",
+            "10.1098/rsta.2024.0494"
+          ]
+        },
+        {
+          "file": "Royal_Society-openalex-1.json",
+          "sha256": "fdb81dacfe697e4e645655c7410136ee3af8257a9b7e35d9bdb0670ac4814d12",
+          "queried_dois": [
+            "10.1098/rsta.2024.0500",
+            "10.1098/rsta.2025.0081",
+            "10.1098/rsta.2025.0087",
+            "10.1098/rsta.2025.0191",
+            "10.1098/rsta.2025.0375",
+            "10.1098/rsta.2026.0062",
+            "10.1098/rstb.2024.0378",
+            "10.1098/rstb.2024.0380",
+            "10.1098/rstb.2024.0381",
+            "10.1098/rstb.2024.0382",
+            "10.1098/rstb.2024.0383",
+            "10.1098/rstb.2024.0384",
+            "10.1098/rstb.2024.0386",
+            "10.1098/rstb.2024.0387",
+            "10.1098/rstb.2024.0391",
+            "10.1098/rstb.2024.0392",
+            "10.1098/rstb.2024.0393",
+            "10.1098/rstb.2024.0394",
+            "10.1098/rstb.2025.0095"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Royal_Society-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Royal_Society-crossref.json",
+          "sha256": "7a0fc4a443f26024e85c26cbbdb8d22f4cdb2e817c7a3d719adb9c6598f6ccca"
+        },
+        {
+          "file": "Royal_Society-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Royal_Society-openalex-0.json",
+          "sha256": "5360d08febf1e545299ae4b846511f0baac3988fdc75ff1721d2cdf30fa837bf"
+        },
+        {
+          "file": "Royal_Society-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Royal_Society-openalex-1.json",
+          "sha256": "fdb81dacfe697e4e645655c7410136ee3af8257a9b7e35d9bdb0670ac4814d12"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Karger",
+      "prefix": "10.1159",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "674eeadb42cc767de67f3cb7b752807701f31430ab1cb2709a7f00dd5df3e5fd",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 38,
+      "eligible_closed": 13,
+      "selected_dois": [
+        "10.1159/000553376",
+        "10.1159/000553250",
+        "10.1159/000553217"
+      ],
+      "openalex": [
+        {
+          "file": "Karger-openalex-0.json",
+          "sha256": "c0cf58336e7e58ccfd01e5b86025fb554623a13b0785b1aba86e58c5975ba8e5",
+          "queried_dois": [
+            "10.1159/000551672",
+            "10.1159/000551816",
+            "10.1159/000552218",
+            "10.1159/000552682",
+            "10.1159/000552848",
+            "10.1159/000552937",
+            "10.1159/000553064",
+            "10.1159/000553070",
+            "10.1159/000553113",
+            "10.1159/000553125",
+            "10.1159/000553142",
+            "10.1159/000553217",
+            "10.1159/000553250",
+            "10.1159/000553256",
+            "10.1159/000553258",
+            "10.1159/000553260",
+            "10.1159/000553273",
+            "10.1159/000553275",
+            "10.1159/000553278",
+            "10.1159/000553279"
+          ]
+        },
+        {
+          "file": "Karger-openalex-1.json",
+          "sha256": "b33c870d840d881a37395e08b508a98c7de1b04e02d77c3378bb986d5fae7d3d",
+          "queried_dois": [
+            "10.1159/000553285",
+            "10.1159/000553296",
+            "10.1159/000553298",
+            "10.1159/000553305",
+            "10.1159/000553308",
+            "10.1159/000553314",
+            "10.1159/000553319",
+            "10.1159/000553320",
+            "10.1159/000553325",
+            "10.1159/000553326",
+            "10.1159/000553333",
+            "10.1159/000553339",
+            "10.1159/000553340",
+            "10.1159/000553344",
+            "10.1159/000553355",
+            "10.1159/000553367",
+            "10.1159/000553368",
+            "10.1159/000553376"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "Karger-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Karger-crossref.json",
+          "sha256": "674eeadb42cc767de67f3cb7b752807701f31430ab1cb2709a7f00dd5df3e5fd"
+        },
+        {
+          "file": "Karger-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Karger-openalex-0.json",
+          "sha256": "c0cf58336e7e58ccfd01e5b86025fb554623a13b0785b1aba86e58c5975ba8e5"
+        },
+        {
+          "file": "Karger-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Karger-openalex-1.json",
+          "sha256": "b33c870d840d881a37395e08b508a98c7de1b04e02d77c3378bb986d5fae7d3d"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "Biologists",
+      "prefix": "10.1242",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "f1ec3f65639a48585be84ef5c0fd96469d3b7573b859b3fc4c7ba5e5a71a79f2",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 39,
+      "eligible_closed": 13,
+      "selected_dois": [
+        "10.1242/jcs.264795",
+        "10.1242/jeb.252895",
+        "10.1242/dev.205368"
+      ],
+      "openalex": [
+        {
+          "file": "Biologists-openalex-0.json",
+          "sha256": "ac721bf5434430b7556b59529f71904c2b7ce0cfe4c3c000fe3bc9e2fdbed8d8",
+          "queried_dois": [
+            "10.1242/bio.062383",
+            "10.1242/bio.062553",
+            "10.1242/bio.062571",
+            "10.1242/bio.062604",
+            "10.1242/bio.062634",
+            "10.1242/bio.062698",
+            "10.1242/dev.205347",
+            "10.1242/dev.205368",
+            "10.1242/dev.205458",
+            "10.1242/dev.205490",
+            "10.1242/dev.205636",
+            "10.1242/dev.205745",
+            "10.1242/dev.205836",
+            "10.1242/dev.205838",
+            "10.1242/dev.205849",
+            "10.1242/dmm.052410",
+            "10.1242/dmm.052659",
+            "10.1242/dmm.052788",
+            "10.1242/dmm.053037",
+            "10.1242/jcs.264429"
+          ]
+        },
+        {
+          "file": "Biologists-openalex-1.json",
+          "sha256": "a6a333eb8d11b65bfca60bc4fa31fc6db0e936f0cc91681d9c74fa102a110e48",
+          "queried_dois": [
+            "10.1242/jcs.264519",
+            "10.1242/jcs.264530",
+            "10.1242/jcs.264678",
+            "10.1242/jcs.264795",
+            "10.1242/jcs.264820",
+            "10.1242/jcs.264844",
+            "10.1242/jcs.264845",
+            "10.1242/jcs.264894",
+            "10.1242/jcs.264962",
+            "10.1242/jcs.265108",
+            "10.1242/jcs.265111",
+            "10.1242/jeb.251808",
+            "10.1242/jeb.251898",
+            "10.1242/jeb.252005",
+            "10.1242/jeb.252375",
+            "10.1242/jeb.252460",
+            "10.1242/jeb.252829",
+            "10.1242/jeb.252895",
+            "10.1242/jeb.252896"
+          ]
+        }
+      ],
+      "ambiguous_dois": [
+        "10.1242/jcs.264894"
+      ],
+      "requests": [
+        {
+          "file": "Biologists-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Biologists-crossref.json",
+          "sha256": "f1ec3f65639a48585be84ef5c0fd96469d3b7573b859b3fc4c7ba5e5a71a79f2"
+        },
+        {
+          "file": "Biologists-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Biologists-openalex-0.json",
+          "sha256": "ac721bf5434430b7556b59529f71904c2b7ce0cfe4c3c000fe3bc9e2fdbed8d8"
+        },
+        {
+          "file": "Biologists-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\Biologists-openalex-1.json",
+          "sha256": "a6a333eb8d11b65bfca60bc4fa31fc6db0e936f0cc91681d9c74fa102a110e48"
+        }
+      ]
+    },
+    {
+      "publisher_stratum": "PNAS",
+      "prefix": "10.1073",
+      "query": {
+        "filter": "type:journal-article,from-pub-date:2021-01-01,until-pub-date:2026-06-30",
+        "rows": 40,
+        "sort": "published",
+        "order": "desc",
+        "select": "DOI,title,publisher,container-title,published,type,license,link,relation"
+      },
+      "crossref_sha256": "b2077b01c2089d6851d8f39087d6d376091dbbf0f9ddf8b9e5e6b66c7411b91b",
+      "crossref_returned": 40,
+      "status": "SAMPLED",
+      "classified": 40,
+      "eligible_closed": 1,
+      "selected_dois": [
+        "10.1073/iti2626123"
+      ],
+      "openalex": [
+        {
+          "file": "PNAS-openalex-0.json",
+          "sha256": "c8ba0d6b4a238362621686ccd13697dc092739e0d16bcf3f696279fe05fd2c45",
+          "queried_dois": [
+            "10.1073/iti2626123",
+            "10.1073/pnas.2517454123",
+            "10.1073/pnas.2520677123",
+            "10.1073/pnas.2521642123",
+            "10.1073/pnas.2522636123",
+            "10.1073/pnas.2526798123",
+            "10.1073/pnas.2528109123",
+            "10.1073/pnas.2529768123",
+            "10.1073/pnas.2530939123",
+            "10.1073/pnas.2533994123",
+            "10.1073/pnas.2535787123",
+            "10.1073/pnas.2535920123",
+            "10.1073/pnas.2536387123",
+            "10.1073/pnas.2536520123",
+            "10.1073/pnas.2536746123",
+            "10.1073/pnas.2537087123",
+            "10.1073/pnas.2537487123",
+            "10.1073/pnas.2537976123",
+            "10.1073/pnas.2600016123",
+            "10.1073/pnas.2600341123"
+          ]
+        },
+        {
+          "file": "PNAS-openalex-1.json",
+          "sha256": "1059a3f9f5dbb0c3ae39f16a8cbbc6fe895a26ba83d2ac150dea828b448fb715",
+          "queried_dois": [
+            "10.1073/pnas.2600627123",
+            "10.1073/pnas.2601569123",
+            "10.1073/pnas.2601782123",
+            "10.1073/pnas.2602272123",
+            "10.1073/pnas.2602385123",
+            "10.1073/pnas.2603538123",
+            "10.1073/pnas.2603591123",
+            "10.1073/pnas.2605120123",
+            "10.1073/pnas.2605881123",
+            "10.1073/pnas.2606092123",
+            "10.1073/pnas.2608286123",
+            "10.1073/pnas.2609228123",
+            "10.1073/pnas.2610119123",
+            "10.1073/pnas.2611876123",
+            "10.1073/pnas.2612800123",
+            "10.1073/pnas.2612835123",
+            "10.1073/pnas.2613063123",
+            "10.1073/pnas.2615768123",
+            "10.1073/pnas.2616668123",
+            "10.1073/pnas.2617762123"
+          ]
+        }
+      ],
+      "ambiguous_dois": [],
+      "requests": [
+        {
+          "file": "PNAS-crossref.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\PNAS-crossref.json",
+          "sha256": "b2077b01c2089d6851d8f39087d6d376091dbbf0f9ddf8b9e5e6b66c7411b91b"
+        },
+        {
+          "file": "PNAS-openalex-0.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\PNAS-openalex-0.json",
+          "sha256": "c8ba0d6b4a238362621686ccd13697dc092739e0d16bcf3f696279fe05fd2c45"
+        },
+        {
+          "file": "PNAS-openalex-1.json",
+          "reused_metadata_from": "F:\\AI4S\\outputs\\AN_SI_CLOSED_20261103_v2\\sampling\\PNAS-openalex-1.json",
+          "sha256": "1059a3f9f5dbb0c3ae39f16a8cbbc6fe895a26ba83d2ac150dea828b448fb715"
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,8 @@
 
 [中文](SI_NATIVE_CORPUS_FIX_20261103.md)
 
+Subsequent correction: three Royal Society COMPLETED cases saved only peer review, while same-version PMC XML also points to Figshare SI/data that current native discovery does not follow. This is an omission. Original counts/statuses remain without implying SI completeness. See the [inventory evidence](validation/si-royal-external-inventory-20261103.json) and [independent non-OA test](SI_NON_OA_BENCHMARK_20261103.en.md). This report's merge judgment covers its listed fixes, not broad native-SI acceptance.
+
 This round addresses native acquisition defects exposed by the [120-paper benchmark](SI_SCALE_BENCHMARK_20261103.en.md), with product source `a65cc4b`. **Native routes can cover more public resources, but cannot guarantee every paper and SI file from every publisher.** Subscription/login resources require an entitled official API or session. Unpublished, removed, unverifiable or delivery-refused files may remain unavailable.
 
 Implementation alone cannot guarantee access: Crossref full-text links can still require subscription, login or a license ([official access documentation](https://www.crossref.org/documentation/retrieve-metadata/text-and-data-mining/#access-and-rate-limits)); PMC also limits which content is available for automated retrieval and reuse ([official open-subset documentation](https://pmc.ncbi.nlm.nih.gov/tools/openftlist/)).

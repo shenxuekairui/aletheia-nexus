@@ -2,6 +2,8 @@
 
 [English](SI_NATIVE_CORPUS_FIX_20261103.en.md)
 
+后续核对更正：Royal Society 三篇 `COMPLETED` 样本只保存了审稿文件；同版本 PMC XML 还引用 Figshare SI/数据，当前原生未跟进，属于发现遗漏。原始状态和计数保留，不能视为完整取得 SI。[清单证据](validation/si-royal-external-inventory-20261103.json)与[非 OA 独立实测](SI_NON_OA_BENCHMARK_20261103.md)补充了这些限制；本报告的合并判断仅针对当时列明的具体修复，不代表原生 SI 全面验收。
+
 本轮优先修复[120 篇实测](SI_SCALE_BENCHMARK_20261103.md)暴露的原生获取问题，产品代码为 `a65cc4b`。**原生路线可以覆盖更多公开资源，但不能保证取得所有出版社的全部正文和 SI。** 需要订阅或登录的资源应使用有权限的官方接口或会话；未公开、已删除、版本无法核实或源站拒绝交付的文件仍可能失败。
 
 这不是仅由实现方式决定：Crossref 的全文链接仍可能要求订阅、登录或许可，见[官方访问说明](https://www.crossref.org/documentation/retrieve-metadata/text-and-data-mining/#access-and-rate-limits)；PMC 也明确只有部分内容可供自动获取和复用，见[官方开放子集说明](https://pmc.ncbi.nlm.nih.gov/tools/openftlist/)。

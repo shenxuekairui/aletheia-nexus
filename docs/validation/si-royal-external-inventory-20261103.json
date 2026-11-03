@@ -1,0 +1,133 @@
+{
+  "scope": "Post-hoc public metadata inventory, no SI files downloaded/registered. Old benchmark statuses unchanged.",
+  "same_main_version_pmc_checks": [
+    {
+      "id": "023-Royal_Society",
+      "doi": "10.1098/rspb.2022.1062",
+      "prefix": "PMC9890115.1",
+      "same_main_source_version": true,
+      "xml_md5_matches_manifest": true,
+      "figshare_collection_dois": [
+        "10.6084/m9.figshare.c.6406324"
+      ],
+      "xml_sha256": "9d518e8cc93fc274fc0036b469fea38de30cca7de78218d293a82545d9e09cb4"
+    },
+    {
+      "id": "049-Royal_Society",
+      "doi": "10.1098/rsos.220178",
+      "prefix": "PMC9382223.1",
+      "same_main_source_version": true,
+      "xml_md5_matches_manifest": true,
+      "figshare_collection_dois": [
+        "10.6084/m9.figshare.c.6125253"
+      ],
+      "xml_sha256": "070ab1b2ddbe3ee142067d14794d205dc88bb8ebffc966276f6375b382670691"
+    },
+    {
+      "id": "075-Royal_Society",
+      "doi": "10.1098/rsbl.2023.0328",
+      "prefix": "PMC10715294.1",
+      "same_main_source_version": true,
+      "xml_md5_matches_manifest": true,
+      "figshare_collection_dois": [
+        "10.6084/m9.figshare.c.6927475"
+      ],
+      "xml_sha256": "aade4a5e966665bd4b13f3e3db456efbea27734095a2ac0809c289f74d7893ec"
+    }
+  ],
+  "public_figshare_inventory": {
+    "cases": [
+      {
+        "id": "023-Royal_Society",
+        "parent_doi": "10.1098/rspb.2022.1062",
+        "collection": 6406324,
+        "collection_doi": "10.6084/m9.figshare.c.6406324.v1",
+        "collection_title": "Supplementary material from \"What is a mammalian omnivore? Insights into terrestrial mammalian diet diversity, body mass and evolution\"",
+        "articles": [
+          {
+            "article_id": 21975235,
+            "title": "What is a mammalian omnivore Supplemental files.zip from What is a mammalian omnivore? Insights into terrestrial mammalian diet diversity, body mass and evolution",
+            "resource_doi": "10.1098/rspb.2022.1062",
+            "resource_title": "What is a mammalian omnivore? Insights into terrestrial mammalian diet diversity, body mass and evolution",
+            "doi": "10.6084/m9.figshare.21975235.v1",
+            "files": [
+              {
+                "id": 38988886,
+                "name": "rspb20221062_si_002.zip",
+                "size": 193367083,
+                "md5": "eef5e1810d9a58bd5c956626b768ba02"
+              }
+            ]
+          },
+          {
+            "article_id": 21975232,
+            "title": "Supplementary Information from What is a mammalian omnivore? Insights into terrestrial mammalian diet diversity, body mass and evolution",
+            "resource_doi": "10.1098/rspb.2022.1062",
+            "resource_title": "What is a mammalian omnivore? Insights into terrestrial mammalian diet diversity, body mass and evolution",
+            "doi": "10.6084/m9.figshare.21975232.v1",
+            "files": [
+              {
+                "id": 38988883,
+                "name": "rspb20221062_si_001.pdf",
+                "size": 1051964,
+                "md5": "fd18f8afd153f84ac53efd1d5d047dd4"
+              }
+            ]
+          }
+        ],
+        "scope": "Public API metadata inventory only; files not downloaded or registered"
+      },
+      {
+        "id": "049-Royal_Society",
+        "parent_doi": "10.1098/rsos.220178",
+        "collection": 6125253,
+        "collection_doi": "10.6084/m9.figshare.c.6125253.v2",
+        "collection_title": "Supplementary material from \"No evidence of repeated song divergence across multiple urban and non-urban populations of dark-eyed juncos (<i>Junco hyemalis</i>) in Southern California\"",
+        "articles": [
+          {
+            "article_id": 20407695,
+            "title": "Manuscript Supplementary Materials - Alternate Analyses from No evidence of repeated song divergence across multiple urban and non-urban populations of dark-eyed juncos (<i>Junco hyemalis</i>) in Southern California",
+            "resource_doi": "10.1098/rsos.220178",
+            "resource_title": "No evidence of repeated song divergence across multiple urban and non-urban populations of dark-eyed juncos (<i>Junco hyemalis</i>) in Southern California",
+            "doi": "10.6084/m9.figshare.20407695.v2",
+            "files": [
+              {
+                "id": 36709474,
+                "name": "rsos220178_si_001.docx",
+                "size": 38009,
+                "md5": "b59b20c47b815fd0de10373c1a7122f8"
+              }
+            ]
+          }
+        ],
+        "scope": "Public API metadata inventory only; files not downloaded or registered"
+      },
+      {
+        "id": "075-Royal_Society",
+        "parent_doi": "10.1098/rsbl.2023.0328",
+        "collection": 6927475,
+        "collection_doi": "10.6084/m9.figshare.c.6927475.v1",
+        "collection_title": "Supplementary material from \"Small increases in ambient temperature reduce offspring body mass in an equatorial mammal\"",
+        "articles": [
+          {
+            "article_id": 24552340,
+            "title": "All data used in the manuscript from Small increases in ambient temperature reduce offspring body mass in an equatorial mammal",
+            "resource_doi": "10.1098/rsbl.2023.0328",
+            "resource_title": "Small increases in ambient temperature reduce offspring body mass in an equatorial mammal",
+            "doi": "10.6084/m9.figshare.24552340.v1",
+            "files": [
+              {
+                "id": 43127038,
+                "name": "rsbl20230328_si_001.csv",
+                "size": 12022,
+                "md5": "ecac055bd6b87f21a4fbb9d341fd1f16"
+              }
+            ]
+          }
+        ],
+        "scope": "Public API metadata inventory only; files not downloaded or registered"
+      }
+    ]
+  },
+  "raw_root": "F:\\AI4S\\outputs\\AN_ROYAL_SI_DIAG_20261103T141706Z"
+}
