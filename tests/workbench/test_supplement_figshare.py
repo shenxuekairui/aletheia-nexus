@@ -70,6 +70,65 @@ def discover():
     return module.discover_acs_attachments(doi=DOI, title=TITLE)
 
 
+def test_doi_only_uses_official_parent_title_without_weakening_default(official):
+    assert (
+        module.discover_acs_attachments(doi=DOI, title=None)["status"]
+        == "NOT_SUPPORTED"
+    )
+    result = module.discover_acs_attachments(
+        doi=DOI, title=None, allow_publisher_title=True
+    )
+    assert result["status"] == "DISCOVERED" and not result["errors"]
+    assert result["parent_title"] == official["record"]["resource_title"]
+    assert (
+        result["items"][0]["expected_md5"] == hashlib.md5(official["body"]).hexdigest()
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("resource_doi", "10.1021/wrong"),
+        ("doi", DOI + ".s001.evil"),
+        ("is_public", False),
+        ("is_embargoed", True),
+    ],
+)
+def test_doi_only_keeps_official_identity_publication_and_embargo_gates(
+    official, field, value
+):
+    official["record"][field] = value
+    result = module.discover_acs_attachments(
+        doi=DOI, title=None, allow_publisher_title=True
+    )
+    assert not result["items"] and result["errors"]
+
+
+def test_independent_acs_can_save_without_auxiliary_metadata(
+    official, tmp_path, monkeypatch
+):
+    from aletheia_nexus.content.gate import sha256_file
+    from aletheia_nexus.workbench import standalone_supplements as independent
+
+    monkeypatch.setattr(
+        independent,
+        "get_metadata",
+        lambda *_: pytest.fail("ACS DOI-only must not depend on Crossref"),
+    )
+
+    def fetch(url, *, output_dir, **_):
+        path = output_dir / "native.part"
+        path.write_bytes(official["body"])
+        return SimpleNamespace(local_path=path, final_url=url, sha256=sha256_file(path))
+
+    library = LibraryService(tmp_path / "new-library")
+    result = independent.StandaloneSupplementService(library).acquire(
+        DOI, pmc_lookup=lambda *_: None, file_fetch=fetch
+    )
+    assert result["status"] == "COMPLETED" and result["main_status"] == "NOT_REQUESTED"
+    assert "<sub>" not in result["title"] and library.scan()["items"] == []
+
+
 def test_explicit_manifest_preserves_parent_type_checksum_and_metadata_evidence(
     official,
 ):

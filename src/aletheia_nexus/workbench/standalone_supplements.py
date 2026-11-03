@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from aletheia_nexus.acquire.discovery import discover_openalex
 from aletheia_nexus.acquire.fulltext.pmc_cloud import _pmc_ids, _version_prefixes
+from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
 from aletheia_nexus.acquire.metadata import get_metadata
 from aletheia_nexus.content.gate import sha256_file, validate_parser_input
 from aletheia_nexus.core.identifiers.doi import normalize_doi
@@ -170,25 +171,47 @@ class StandaloneSupplementService:
             raise ValueError("SI byte limit and timeout must be positive")
         if type(include_peer_review) is not bool:
             raise ValueError("include_peer_review must be boolean")
-        diagnostics, metadata, items = [], None, []
-        try:
-            model = (metadata_lookup or get_metadata)(doi)
-            metadata = asdict(model)
-            if normalize_doi(model.doi) != doi:
-                raise ValueError("DOI metadata identity mismatch")
-            if title and model.title and _title(title) != _title(model.title):
-                raise ValueError("requested SI title conflicts with DOI metadata")
-            title = model.title or title
-            metadata = {
-                key: metadata.get(key)
-                for key in ["doi", "title", "authors", "journal", "year", "publisher"]
-            }
-        except ValueError:
-            raise
-        except Exception as exc:
-            diagnostics.append(
-                {"status": "METADATA_UNAVAILABLE", "error": type(exc).__name__}
-            )
+        diagnostics, metadata, items, source_record = [], None, [], None
+        # The official ACS registry supplies a DOI-bound parent title directly.
+        publisher_metadata = (
+            metadata_lookup is None and not title and doi.startswith("10.1021/")
+        )
+        if not publisher_metadata:
+            try:
+                model = (metadata_lookup or get_metadata)(doi)
+                metadata = asdict(model)
+                if normalize_doi(model.doi) != doi:
+                    raise ValueError("DOI metadata identity mismatch")
+                if title and model.title and _title(title) != _title(model.title):
+                    raise ValueError("requested SI title conflicts with DOI metadata")
+                title = (
+                    parse_html(model.title or title or "").visible_text.strip() or None
+                )
+                if model.url:
+                    source_record = {
+                        "candidate": {
+                            "url": model.url,
+                            "host_type": "publisher",
+                            "url_type": "landing_page",
+                        }
+                    }
+                metadata = {
+                    key: metadata.get(key)
+                    for key in [
+                        "doi",
+                        "title",
+                        "authors",
+                        "journal",
+                        "year",
+                        "publisher",
+                    ]
+                }
+            except ValueError:
+                raise
+            except Exception as exc:
+                diagnostics.append(
+                    {"status": "METADATA_UNAVAILABLE", "error": type(exc).__name__}
+                )
         prefix = None
         try:
             prefix = (pmc_lookup or self._pmc_prefix)(doi, timeout)
@@ -199,12 +222,24 @@ class StandaloneSupplementService:
         discovery = discover_supplement_candidates(
             doi=doi,
             title=title,
+            source_record=source_record,
             pmc_version_prefix=prefix,
+            allow_publisher_title=True,
             timeout=timeout,
             max_bytes=max_bytes,
             page_fetch=page_fetch,
         )
         diagnostics.extend(discovery["diagnostics"])
+        title = (
+            parse_html(discovery.get("title") or title or "").visible_text.strip()
+            or None
+        )
+        if metadata is None and title:
+            metadata = {
+                "doi": doi,
+                "title": title,
+                "source": "official_attachment_metadata",
+            }
         all_candidates = discovery["items"]
         candidates = [
             item

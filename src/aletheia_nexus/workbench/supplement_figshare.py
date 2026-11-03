@@ -97,9 +97,16 @@ def file_url_allowed(url, attachment):
     return False
 
 
-def discover_acs_attachments(*, doi, title, timeout=30.0, max_bytes=100 * 1024 * 1024):
+def discover_acs_attachments(
+    *,
+    doi,
+    title,
+    timeout=30.0,
+    max_bytes=100 * 1024 * 1024,
+    allow_publisher_title=False,
+):
     doi = normalize_doi(doi)
-    if not doi.startswith("10.1021/") or not title:
+    if not doi.startswith("10.1021/") or (not title and not allow_publisher_title):
         return {"status": "NOT_SUPPORTED", "items": []}
     result = {"status": "NOT_FOUND", "items": [], "diagnostics": [], "errors": []}
     try:
@@ -115,6 +122,7 @@ def discover_acs_attachments(*, doi, title, timeout=30.0, max_bytes=100 * 1024 *
                 {"status": "PARTIAL", "error": "figshare_record_limit_reached"}
             )
         seen_records, seen_files = set(), set()
+        resolved_title = title
         from .supplements import _SUFFIXES, attachment_role
 
         for entry in listing[:MAX_RECORDS]:
@@ -127,11 +135,12 @@ def discover_acs_attachments(*, doi, title, timeout=30.0, max_bytes=100 * 1024 *
                 ):
                     raise ValueError("figshare_invalid_or_duplicate_record")
                 seen_records.add(identifier)
-                _record(entry, identifier, doi, title)
+                expected_title = resolved_title or entry.get("resource_title")
+                _record(entry, identifier, doi, expected_title)
                 detail, metadata_hash = _read_json(
                     API + f"/{identifier}", timeout=timeout
                 )
-                _record(detail, identifier, doi, title)
+                _record(detail, identifier, doi, expected_title)
                 if (
                     detail.get("is_public") is not True
                     or detail.get("is_confidential") is not False
@@ -139,6 +148,9 @@ def discover_acs_attachments(*, doi, title, timeout=30.0, max_bytes=100 * 1024 *
                     or detail.get("status") != "public"
                 ):
                     raise ValueError("figshare_record_not_public")
+                resolved_title = expected_title
+                if allow_publisher_title:
+                    result["parent_title"] = resolved_title
                 files = detail.get("files")
                 if not isinstance(files, list) or len(files) > MAX_FILES:
                     raise ValueError("figshare_file_manifest_exceeds_limit")

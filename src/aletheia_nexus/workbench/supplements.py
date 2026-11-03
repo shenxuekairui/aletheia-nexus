@@ -745,6 +745,7 @@ def discover_supplement_candidates(
     title=None,
     source_record=None,
     pmc_version_prefix=None,
+    allow_publisher_title=False,
     page_urls=None,
     max_bytes=100 * 1024 * 1024,
     timeout=30.0,
@@ -759,6 +760,7 @@ def discover_supplement_candidates(
         else _source_page_candidates(sidecar, doi)
     )
     discoveries, errors, seen, diagnostics = [], [], set(), []
+    parent_title = title
     page_fetch = page_fetch or retrieve_page
     from .supplement_pages import expand_supplement_pages
 
@@ -778,6 +780,9 @@ def discover_supplement_candidates(
                 sidecar, doi=doi, title=title, timeout=timeout
             )
         if repository["status"] != "NOT_SUPPORTED":
+            parent_title = parent_title or (repository.get("provenance") or {}).get(
+                "title"
+            )
             repository_provenance = repository.get("provenance")
             for item in repository.get("items", []):
                 discoveries.append(
@@ -799,8 +804,13 @@ def discover_supplement_candidates(
             from .supplement_figshare import discover_acs_attachments
 
             native = discover_acs_attachments(
-                doi=doi, title=title, timeout=timeout, max_bytes=max_bytes
+                doi=doi,
+                title=title,
+                timeout=timeout,
+                max_bytes=max_bytes,
+                **({"allow_publisher_title": True} if allow_publisher_title else {}),
             )
+            parent_title = parent_title or native.get("parent_title")
             discoveries.extend(native.get("items", []))
             seen.update(item["url"] for item in native.get("items", []))
             diagnostics.extend(native.get("diagnostics", []))
@@ -956,6 +966,7 @@ def discover_supplement_candidates(
             )
     return {
         "items": discoveries,
+        "title": parent_title,
         "errors": errors,
         "diagnostics": diagnostics,
         "truncated": discovery_truncated,

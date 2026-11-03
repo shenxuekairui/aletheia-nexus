@@ -23,6 +23,50 @@ def _add(keys, message):
 
 _add(
     (
+        "standalone file or role does not match its receipt",
+        "standalone receipt is outside its storage directory",
+        "invalid standalone receipt",
+        "standalone receipt DOI directory mismatch",
+        "invalid standalone filename",
+        "standalone file hash or role mismatch",
+        "standalone receipt identity mismatch",
+        "invalid standalone attachment ID",
+        "standalone attachment is missing or ambiguous",
+        "attachment transport hash mismatch",
+    ),
+    "独立附件的文件、位置或来源记录未通过完整性核对，已停止使用；请保留原件并核对保存位置。",
+)
+_add(
+    ("ambiguous PMC identity for independent SI",),
+    "同一 DOI 的 PMC 线索存在歧义，未自动选择；可以继续核对明确的官方附件入口。",
+)
+_add(
+    ("SI byte limit and timeout must be positive",),
+    "SI 单文件大小上限和网络超时必须为正数。",
+)
+_add(
+    (
+        "select a registered main article with DOI",
+        "main article is not in the selected library",
+    ),
+    "请从当前文库选择已有 DOI 和来源记录的正文；独立 SI 仍会保留。",
+)
+_add(
+    (
+        "standalone attachment DOI/title does not match the selected main article",
+        "DOI metadata identity mismatch",
+        "requested SI title conflicts with DOI metadata",
+    ),
+    "独立 SI 的 DOI 或题名与请求、所选正文不一致，未下载或关联；请核对论文身份。",
+)
+_add(
+    ("standalone SI path exceeds 240 characters",),
+    "独立 SI 保存路径超过 240 个字符，请选择较短的文库路径后重试。",
+)
+
+
+_add(
+    (
         "attachment_host_not_covered",
         "attachment_redirect_host_not_covered",
         "unsafe_attachment_redirect",
