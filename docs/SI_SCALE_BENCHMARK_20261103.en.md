@@ -2,6 +2,8 @@
 
 [中文](SI_SCALE_BENCHMARK_20261103.md)
 
+The subsequent [native fixes and independent retest](SI_NATIVE_CORPUS_FIX_20261103.en.md) cover title, format, legacy PMC URL and fallback defects. This report preserves the old source's frozen outcomes and acceptance judgment; later successes do not replace first-round scores.
+
 Completed **120 papers across 26 publisher/brand strata** against production commit `ada8b63`, using actual public network responses without changing acquisition code. **Merge is currently not recommended for the cross-publisher SI objective: confirmed RSS misassociation and page/file confusion should be fixed first.** The earlier small-cohort merge assessment does not extend to this broader acceptance protocol.
 
 ## Frozen protocol

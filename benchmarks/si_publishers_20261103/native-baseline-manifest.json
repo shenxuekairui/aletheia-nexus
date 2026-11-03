@@ -1,0 +1,558 @@
+{
+  "schema": "aletheia-nexus/si-scale-corpus/v1",
+  "seed": "AN-SI-SCALE-20261103-v1",
+  "source_commit": "ada8b63a5fe173fba5eb2438cdf9d0a41c877e81",
+  "sampling_protocol": "First 40 Europe PMC core results per prefix stratum, 2021-2024, OA and PDF; SHA-256 seeded ordering; distinct journals first; no acquisition outcome filtering. Metadata flags are not human gold.",
+  "groups": [
+    [
+      "Elsevier",
+      [
+        "10.1016"
+      ]
+    ],
+    [
+      "ACS",
+      [
+        "10.1021"
+      ]
+    ],
+    [
+      "RSC",
+      [
+        "10.1039"
+      ]
+    ],
+    [
+      "Wiley",
+      [
+        "10.1002",
+        "10.1111"
+      ]
+    ],
+    [
+      "Springer_BMC",
+      [
+        "10.1007",
+        "10.1186"
+      ]
+    ],
+    [
+      "Nature",
+      [
+        "10.1038"
+      ]
+    ],
+    [
+      "Science",
+      [
+        "10.1126"
+      ]
+    ],
+    [
+      "PLOS",
+      [
+        "10.1371"
+      ]
+    ],
+    [
+      "MDPI",
+      [
+        "10.3390"
+      ]
+    ],
+    [
+      "PNAS",
+      [
+        "10.1073"
+      ]
+    ],
+    [
+      "Frontiers",
+      [
+        "10.3389"
+      ]
+    ],
+    [
+      "OUP",
+      [
+        "10.1093"
+      ]
+    ],
+    [
+      "Cambridge",
+      [
+        "10.1017"
+      ]
+    ],
+    [
+      "Taylor_Francis",
+      [
+        "10.1080"
+      ]
+    ],
+    [
+      "SAGE",
+      [
+        "10.1177"
+      ]
+    ],
+    [
+      "BMJ",
+      [
+        "10.1136"
+      ]
+    ],
+    [
+      "IEEE",
+      [
+        "10.1109"
+      ]
+    ],
+    [
+      "IOP",
+      [
+        "10.1088"
+      ]
+    ],
+    [
+      "AIP",
+      [
+        "10.1063"
+      ]
+    ],
+    [
+      "APS",
+      [
+        "10.1103"
+      ]
+    ],
+    [
+      "eLife",
+      [
+        "10.7554"
+      ]
+    ],
+    [
+      "Karger",
+      [
+        "10.1159"
+      ]
+    ],
+    [
+      "Royal_Society",
+      [
+        "10.1098"
+      ]
+    ],
+    [
+      "PeerJ",
+      [
+        "10.7717"
+      ]
+    ],
+    [
+      "Biologists",
+      [
+        "10.1242"
+      ]
+    ],
+    [
+      "Copernicus",
+      [
+        "10.5194"
+      ]
+    ]
+  ],
+  "created_utc": "2026-11-03T09:49:46Z",
+  "limits": {
+    "case_timeout_seconds": 240,
+    "request_timeout_seconds": 20,
+    "max_si_files": 20,
+    "si_max_bytes": 104857600,
+    "workers": 2,
+    "disk_budget_bytes": 10737418240
+  },
+  "cases": [
+    {
+      "publisher_stratum": "PLOS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1371/journal.pone.0316196",
+      "pmcid": "PMC11687931",
+      "title": "Systemic immune inflammation index as a predictor of disease severity in tetanus patients: A retrospective observational study.",
+      "journal": "PloS one",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1371*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PLOS.json",
+      "id": "008-PLOS"
+    },
+    {
+      "publisher_stratum": "IEEE",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1109/access.2024.3491592",
+      "pmcid": "PMC11671125",
+      "title": "Volumetric Patch-Based Super-Resolution Reconstruction of Hyperpolarized <sup>13</sup>C Cardiac MRI.",
+      "journal": "IEEE access : practical innovations, open solutions",
+      "first_publication_date": "2024-11-04",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1109*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\IEEE.json",
+      "id": "017-IEEE"
+    },
+    {
+      "publisher_stratum": "Biologists",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1242/dmm.052074",
+      "pmcid": "PMC11603118",
+      "title": "Hippo cooperates with p53 to regulate lung airway mucous cell metaplasia.",
+      "journal": "Disease models & mechanisms",
+      "first_publication_date": "2024-11-18",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1242*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Biologists.json",
+      "id": "025-Biologists"
+    },
+    {
+      "publisher_stratum": "ACS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1021/acs.langmuir.4c03661",
+      "pmcid": "PMC11736843",
+      "title": "Electrochemical Small-Angle X-ray Scattering for Potential-Dependent Structural Analysis of Redox Enzymes.",
+      "journal": "Langmuir : the ACS journal of surfaces and colloids",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1021*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\ACS.json",
+      "id": "028-ACS"
+    },
+    {
+      "publisher_stratum": "Wiley",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1002/advs.202407868",
+      "pmcid": "PMC11848630",
+      "title": "A Smart Semi-Implantable Device Integrating Microchannel-Enhanced Sampling and Multiplex Biochemical Testing for Deep Wound Monitoring and Pathogen Identification.",
+      "journal": "Advanced science (Weinheim, Baden-Wurttemberg, Germany)",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1002* OR DOI:10.1111*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Wiley.json",
+      "id": "030-Wiley"
+    },
+    {
+      "publisher_stratum": "PNAS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1073/pnas.2411833122",
+      "pmcid": "PMC11725911",
+      "title": "Molecular basis of hemoglobin binding and heme removal in <i>Corynebacterium diphtheriae</i>.",
+      "journal": "Proceedings of the National Academy of Sciences of the United States of America",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1073*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PNAS.json",
+      "id": "036-PNAS"
+    },
+    {
+      "publisher_stratum": "Taylor_Francis",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1080/21505594.2024.2440554",
+      "pmcid": "PMC11702953",
+      "title": "Human macrophage response to the emerging enteric pathogen Aeromonas veronii: Inflammation, apoptosis, and downregulation of histones.",
+      "journal": "Virulence",
+      "first_publication_date": "2024-12-28",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1080*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Taylor_Francis.json",
+      "id": "040-Taylor_Francis"
+    },
+    {
+      "publisher_stratum": "SAGE",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1177/17562848241309870",
+      "pmcid": "PMC11686653",
+      "title": "Ten-day vonoprazan-amoxicillin dual therapy versus 14-day esomeprazole-amoxicillin dual therapy for first-line <i>Helicobacter pylori</i> eradication: a prospective multicenter randomized controlled trial.",
+      "journal": "Therapeutic advances in gastroenterology",
+      "first_publication_date": "2024-12-27",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1177*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\SAGE.json",
+      "id": "041-SAGE"
+    },
+    {
+      "publisher_stratum": "AIP",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1063/5.0046870",
+      "pmcid": "PMC8060973",
+      "title": "Effects of slope and speed of escalator on the dispersion of cough-generated droplets from a passenger.",
+      "journal": "Physics of fluids (Woodbury, N.Y. : 1994)",
+      "first_publication_date": "2021-04-02",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1063*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\AIP.json",
+      "id": "045-AIP"
+    },
+    {
+      "publisher_stratum": "PeerJ",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.7717/peerj-cs.2564",
+      "pmcid": "PMC11784761",
+      "title": "Enhancing transportation network intelligence through visual scene feature clustering analysis with 3D sensors and adaptive fuzzy control.",
+      "journal": "PeerJ. Computer science",
+      "first_publication_date": "2024-12-23",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.7717*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PeerJ.json",
+      "id": "050-PeerJ"
+    },
+    {
+      "publisher_stratum": "ACS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1021/acsptsci.4c00341",
+      "pmcid": "PMC11729430",
+      "title": "Molecular and Immunological Properties of a Chimeric Glycosyl Hydrolase 18 Based on Immunoinformatics Approaches: A Design of a New Anti-<i>Leishmania</i> Vaccine.",
+      "journal": "ACS pharmacology & translational science",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1021*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\ACS.json",
+      "id": "054-ACS"
+    },
+    {
+      "publisher_stratum": "PNAS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1073/pnas.2419610121",
+      "pmcid": "PMC11725790",
+      "title": "In situ architecture of a nucleoid-associated biomolecular co-condensate that regulates bacterial cell division.",
+      "journal": "Proceedings of the National Academy of Sciences of the United States of America",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1073*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PNAS.json",
+      "id": "062-PNAS"
+    },
+    {
+      "publisher_stratum": "BMJ",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1136/svn-2023-002779",
+      "pmcid": "PMC11791636",
+      "title": "Application of bedside HINTS, ABCD<sup>2</sup> score and truncal ataxia to differentiate cerebellar-brainstem stroke from vestibular neuritis in the emergency room.",
+      "journal": "Stroke and vascular neurology",
+      "first_publication_date": "2024-12-30",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1136*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\BMJ.json",
+      "id": "068-BMJ"
+    },
+    {
+      "publisher_stratum": "IOP",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1088/2631-7990/ad878e",
+      "pmcid": "PMC12377657",
+      "title": "3D Bioprinted Chondrogenic Gelatin Methacrylate-Poly(ethylene glycol) Diacrylate Composite Scaffolds for Intervertebral Disc Restoration.",
+      "journal": "International journal of extreme manufacturing",
+      "first_publication_date": "2024-11-19",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1088*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\IOP.json",
+      "id": "070-IOP"
+    },
+    {
+      "publisher_stratum": "eLife",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.7554/elife.93646",
+      "pmcid": "PMC11668525",
+      "title": "CaBP1 and 2 enable sustained CaV1.3 calcium currents and synaptic transmission in inner hair cells.",
+      "journal": "eLife",
+      "first_publication_date": "2024-12-24",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.7554*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\eLife.json",
+      "id": "073-eLife"
+    },
+    {
+      "publisher_stratum": "PeerJ",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.7717/peerj-cs.2471",
+      "pmcid": "PMC11784888",
+      "title": "A novel device-free Wi-Fi indoor localization using a convolutional neural network based on residual attention.",
+      "journal": "PeerJ. Computer science",
+      "first_publication_date": "2024-12-23",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.7717*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PeerJ.json",
+      "id": "076-PeerJ"
+    },
+    {
+      "publisher_stratum": "ACS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1021/acsnano.4c14100",
+      "pmcid": "PMC11752501",
+      "title": "Global Aromatic Ring Currents in Neutral Porphyrin Nanobelts.",
+      "journal": "ACS nano",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1021*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\ACS.json",
+      "id": "080-ACS"
+    },
+    {
+      "publisher_stratum": "Wiley",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1002/mabi.202400535",
+      "pmcid": "PMC11904389",
+      "title": "A Comparative Study between Thiol-Ene and Acrylate Photocrosslinkable Hyaluronic Acid Hydrogel Inks for Digital Light Processing.",
+      "journal": "Macromolecular bioscience",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1002* OR DOI:10.1111*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Wiley.json",
+      "id": "082-Wiley"
+    },
+    {
+      "publisher_stratum": "Science",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1126/sciadv.adr5920",
+      "pmcid": "PMC11654702",
+      "title": "Mechanisms underlying modulation of human GlyRα3 by Zn<sup>2+</sup> and pH.",
+      "journal": "Science advances",
+      "first_publication_date": "2024-12-18",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1126*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Science.json",
+      "id": "085-Science"
+    },
+    {
+      "publisher_stratum": "PLOS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1371/journal.pntd.0012803",
+      "pmcid": "PMC11706539",
+      "title": "MicroRNAs secreted by the parasitic nematode Brugia malayi disrupt lymphatic endothelial cell integrity.",
+      "journal": "PLoS neglected tropical diseases",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1371*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PLOS.json",
+      "id": "086-PLOS"
+    },
+    {
+      "publisher_stratum": "PNAS",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1073/pnas.2408539121",
+      "pmcid": "PMC11725925",
+      "title": "Conservation of symbiotic signaling since the most recent common ancestor of land plants.",
+      "journal": "Proceedings of the National Academy of Sciences of the United States of America",
+      "first_publication_date": "2024-12-31",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1073*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PNAS.json",
+      "id": "088-PNAS"
+    },
+    {
+      "publisher_stratum": "Frontiers",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.3389/fimmu.2024.1477993",
+      "pmcid": "PMC11703997",
+      "title": "Proton pump inhibitor effect on macrophage and neutrophil function: a systematic review.",
+      "journal": "Frontiers in immunology",
+      "first_publication_date": "2024-12-24",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.3389*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Frontiers.json",
+      "id": "089-Frontiers"
+    },
+    {
+      "publisher_stratum": "SAGE",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1177/23743735241310263",
+      "pmcid": "PMC11686624",
+      "title": "Patient Insights on Integrating Sleep Apnea Testing into Routine Stroke and TIA Care.",
+      "journal": "Journal of patient experience",
+      "first_publication_date": "2024-12-29",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1177*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\SAGE.json",
+      "id": "093-SAGE"
+    },
+    {
+      "publisher_stratum": "AIP",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1063/4.0000197",
+      "pmcid": "PMC10550338",
+      "title": "Isotope effects in dynamics of water isotopologues induced by core ionization at an x-ray free-electron laser.",
+      "journal": "Structural dynamics (Melville, N.Y.)",
+      "first_publication_date": "2023-09-01",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1063*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\AIP.json",
+      "id": "097-AIP"
+    },
+    {
+      "publisher_stratum": "PeerJ",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.7717/peerj.18740",
+      "pmcid": "PMC11674147",
+      "title": "Description of two new <i>Apseudopsis</i> species (<i>A. larnacensis</i> sp. nov and <i>A. salinus</i> sp. nov.) (Tanaidacea: Crustacea) from the Mediterranean and a biogeographic overview of the genus.",
+      "journal": "PeerJ",
+      "first_publication_date": "2024-12-24",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.7717*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\PeerJ.json",
+      "id": "102-PeerJ"
+    },
+    {
+      "publisher_stratum": "Biologists",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.1242/dmm.050583",
+      "pmcid": "PMC11524441",
+      "title": "Comparative transcriptomic analysis of articular cartilage of post-traumatic osteoarthritis models.",
+      "journal": "Disease models & mechanisms",
+      "first_publication_date": "2024-10-21",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.1242*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Biologists.json",
+      "id": "103-Biologists"
+    },
+    {
+      "publisher_stratum": "Copernicus",
+      "cohort": "metadata_SI_positive",
+      "doi": "10.5194/aab-67-163-2024",
+      "pmcid": "PMC13138611",
+      "title": "Effect of olive leaf incorporation in animal feed on broiler turkey (<i>Meleagris gallopavo</i>) growth performance, welfare, oxidative status, and blood and biochemical serum parameters.",
+      "journal": "Archives animal breeding",
+      "first_publication_date": "2024-04-17",
+      "epmc_has_suppl": "Y",
+      "epmc_open_access": "Y",
+      "query": "(DOI:10.5194*) AND HAS_SUPPL:Y AND OPEN_ACCESS:Y AND HAS_PDF:Y AND FIRST_PDATE:[2021-01-01 TO 2024-12-31]",
+      "sampling_raw": "sampling\\Copernicus.json",
+      "id": "104-Copernicus"
+    }
+  ],
+  "measurement_scope": "native_only",
+  "parent_manifest_sha256": "a4fbd89422feeef92ed3c58b06d11a1f2c4e2eacd2ff74a0b8c90742c0011790",
+  "comparison_note": "Same frozen DOI cohort; default 100 MiB native workflow, no separate publisher HTML experiment. Exposed regression, not new holdout."
+}

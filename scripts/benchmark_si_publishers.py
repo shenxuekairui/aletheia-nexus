@@ -242,6 +242,13 @@ def worker(manifest, case_id, output):
             ) and main.sidecar_sha256 == sha256_file(main.sidecar_path)
         result["integrated_seconds"] = round(time.monotonic() - started, 2)
         write(directory / "integrated-summary.json", result)
+        if manifest.get("measurement_scope") == "native_only":
+            result.update(
+                outcome="MEASURED",
+                publisher_status="NOT_SCHEDULED",
+                publisher_scope="not_scheduled_native_only",
+            )
+            return
         stage = "publisher_html"
         (directory / "stage.txt").write_text(stage, encoding="utf-8")
         publisher_started = time.monotonic()
