@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -36,7 +37,7 @@ from aletheia_nexus.processing.results import (
     revise_result,
     verify_result,
 )
-from aletheia_nexus.research_app import ResearchApplication, read_json
+from aletheia_nexus.research_app import ResearchApplication, _snapshot_paths, read_json
 from aletheia_nexus.research_planner import (
     DEFAULT_MODEL,
     draft_task,
@@ -434,14 +435,14 @@ class WorkbenchResearch:
 
     def _snapshot(self, material: dict) -> dict:
         source = material["source"]
-        destination = self.workspace / "materials" / source.identity["pdf_sha256"]
-        pdf = self.app._copy_source_file(source.pdf, destination / "paper.pdf")
-        sidecar = self.app._copy_source_file(
-            source.sidecar,
-            destination
-            / "json"
-            / (source.identity["acquisition_sidecar_sha256"] + ".acquisition.json"),
+        pdf_target, sidecar_target = _snapshot_paths(
+            self.workspace,
+            source.identity["pdf_sha256"],
+            source.identity["acquisition_sidecar_sha256"],
+            windows=os.name == "nt",
         )
+        pdf = self.app._copy_source_file(source.pdf, pdf_target)
+        sidecar = self.app._copy_source_file(source.sidecar, sidecar_target)
         source.verify()
         return {"id": material["id"], "pdf": str(pdf), "sidecar": str(sidecar)}
 
@@ -1080,7 +1081,6 @@ class WorkbenchResearch:
         # Legacy parsed artifacts can remain in the library while source PDFs
         # are snapshotted. A common ancestor supplies display-relative paths only.
         # Each explicit file has already passed the application path gate.
-        import os
 
         corpus_root = (
             Path(
@@ -1714,7 +1714,12 @@ class WorkbenchResearch:
         slug = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-_")
         if slug != name or len(slug) > 64:
             slug = (slug[:40] or "export") + "-" + digest(name)[:12]
-        report = self.app.export_research_results(paths, slug, formats)
+        # Existing callers keep text-only exports unless HTML is explicitly selected.
+        requested_formats = list(formats or ["markdown", "csv", "jsonl"])
+        text_formats = [f for f in requested_formats if f != "html"]
+        report = self.app.export_research_results(
+            paths, slug, text_formats or ["markdown"]
+        )
         directory = Path(report["directory"])
         native_files, exported_results, warnings = [], [], []
 
@@ -1780,6 +1785,50 @@ class WorkbenchResearch:
                     "image_files": images,
                 }
             )
+        if "html" in requested_formats:
+            from aletheia_nexus.processing.materials import render_page
+
+            from .visual_report import write_visual_report
+
+            results, page_images = [], {}
+            for selected in paths:
+                result = read_json(self.app.path(selected))
+                verify_result(result)
+                results.append(result)
+                for doc in result["task"]["documents"]:
+                    # Prioritize pages explicitly requested for figure/table review.
+                    requested_pages = [
+                        p
+                        for req in result["response"].get("requests", [])
+                        if req["source_id"] == doc["id"]
+                        for p in req.get("pages", [])
+                    ]
+                    requested_pages.extend(
+                        c["page"]
+                        for c in result["validation"].get("citations", [])
+                        if c.get("source_id") == doc["id"] and c.get("page")
+                    )
+                    source_images = {}
+                    try:
+                        source = self.app.check_document(doc, "direct")
+                        source.verify()
+                        for page in list(dict.fromkeys(requested_pages))[:6]:
+                            key = (result["artifact_id"], doc["id"], page)
+                            if key not in page_images:
+                                source_images[key] = render_page(
+                                    source.pdf, page, scale=1600
+                                )
+                        source.verify()
+                        page_images.update(source_images)
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        # A historical text report remains available if a source moved.
+                        warnings.append(
+                            f"可视报告的部分原页未能嵌入（{type(exc).__name__}）；已有文字与引用保留。"
+                        )
+            visual_path = write_visual_report(
+                results, directory / "report.html", page_images=page_images
+            )
+            report["outputs"].append(visual_path.name)
         manifest = {
             "schema": "aletheia-nexus/native-result-export/v1",
             "status": "PARTIAL" if warnings else "COMPLETED",
@@ -1838,7 +1887,6 @@ class WorkbenchResearch:
             selections.setdefault(key, set()).update(hit["pages"])
         if not entries:
             raise ValueError("Select evidence first")
-        import os
 
         corpus_root = Path(
             os.path.commonpath(

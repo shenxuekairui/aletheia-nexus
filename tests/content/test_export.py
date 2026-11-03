@@ -86,6 +86,16 @@ def test_export_can_replace_derived_input_containing_json_schema(tmp_path):
     assert json.loads(output.read_text(encoding="utf-8")) == updated
 
 
+def test_atomic_export_accepts_long_valid_destination(tmp_path):
+    filename_length = 245 - len(str(tmp_path)) - 1
+    if filename_length < 20:
+        pytest.skip("test root itself is too long for a Windows path fixture")
+    target = tmp_path / ("x" * (filename_length - 3) + ".md")
+    write_ai_export(target, "完整内容\n")
+    assert target.read_text(encoding="utf-8") == "完整内容\n"
+    assert not list(tmp_path.glob("*.part"))
+
+
 def test_export_and_parse_outputs_refuse_silent_overwrite(tmp_path):
     artifact = _artifact(tmp_path)
     output = tmp_path / "chunks.json"

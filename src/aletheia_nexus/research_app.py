@@ -108,6 +108,23 @@ def _lock_job_owner(path: Path, *, create=False):
     return handle
 
 
+def _snapshot_paths(workspace, pdf_hash, sidecar_hash, *, windows):
+    """Keep new Windows material copies below legacy path limits.
+
+    The shortened directory is a storage locator, never a source identity.
+    Full SHA-256 identities and immutable-copy collision checks remain unchanged.
+    Historical document locators are not rewritten or moved.
+    """
+    directory = workspace / "materials" / pdf_hash
+    sidecar = directory / "json" / (sidecar_hash + ".acquisition.json")
+    if windows and len(str(sidecar)) >= 240:
+        directory = workspace / "m" / pdf_hash[:24]
+        sidecar = directory / "json" / (sidecar_hash + ".acquisition.json")
+        if len(str(sidecar)) >= 260:
+            raise ProcessingError("workspace_path_too_long")
+    return directory / "paper.pdf", sidecar
+
+
 class ResearchApplication:
     """Explicit read roots, one output workspace, and no implicit remote permission.
 
@@ -257,18 +274,17 @@ class ResearchApplication:
         ):
             raise ValueError("invalid local OCR options")
         source = self.check_document(document, "direct")
-        destination = self.path(
-            self.workspace / "materials" / source.identity["pdf_sha256"], write=True
+        pdf_target, sidecar_target = _snapshot_paths(
+            self.workspace,
+            source.identity["pdf_sha256"],
+            source.identity["acquisition_sidecar_sha256"],
+            windows=os.name == "nt",
         )
-        pdf = self._copy_source_file(source.pdf, destination / "paper.pdf")
+        destination = self.path(pdf_target.parent, write=True)
+        pdf = self._copy_source_file(source.pdf, pdf_target)
         # Distinct declarations of the same bytes may have different identities.
         # Keep every source record, and bind its exact copy in the new artifact.
-        sidecar = self._copy_source_file(
-            source.sidecar,
-            destination
-            / "json"
-            / (source.identity["acquisition_sidecar_sha256"] + ".acquisition.json"),
-        )
+        sidecar = self._copy_source_file(source.sidecar, sidecar_target)
         backend = None
         if ocr:
             from aletheia_nexus.content.backends import (

@@ -741,7 +741,7 @@ def write_parsed_document(
     if target.exists() and not overwrite:
         raise FileExistsError(f"parsed artifact already exists: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{uuid4().hex}.part")
+    temporary = target.with_name(f".{uuid4().hex}.part")
     try:
         with temporary.open("x", encoding="utf-8") as handle:
             handle.write(serialize_parsed_document(document))
