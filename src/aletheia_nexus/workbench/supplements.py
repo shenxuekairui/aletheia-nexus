@@ -23,7 +23,7 @@ from aletheia_nexus.acquire.fulltext.resolution.identity import (
     classify_page_type,
     validate_page_identity,
 )
-from aletheia_nexus.acquire.fulltext.resolution.parser import parse_html
+from aletheia_nexus.acquire.fulltext.resolution.parser import HtmlLink, parse_html
 from aletheia_nexus.acquire.fulltext.resolution.transport import retrieve_page
 from aletheia_nexus.acquire.fulltext.transport import retrieve_to_temp
 from aletheia_nexus.acquire.fulltext.validation import inspect_pdf
@@ -208,7 +208,11 @@ def _attachment_details(link, url, *, page_url, doi, section_role):
                 return None, "publisher_attachment_identity_mismatch"
             role = role or section_role
     elif role is None:
-        role = section_role
+        role = (
+            "SUPPLEMENT"
+            if set(link.rel) & {"supplement", "supplementary"}
+            else section_role
+        )
     if role is None:
         return None, None
     if suffix not in _SUFFIXES:
@@ -236,8 +240,22 @@ def discover_attachments(
     contexts = _AttachmentSections()
     contexts.feed(html)
     found, seen, excluded = [], set(), []
-    for link in parsed.links:
-        url = urljoin(page_url, link.url)
+    # Explicit publisher metadata can carry files absent from visible anchors.
+    # It is considered only after the same sole-parent-DOI gate above.
+    links = list(parsed.links)
+    for key, value in parsed.metadata:
+        if key in {
+            "citation_supplementary_material",
+            "citation_supplementary_material_url",
+        }:
+            links.append(
+                HtmlLink(tag="meta", url=value, title_attr="Supplementary material")
+            )
+    base = urljoin(page_url, parsed.base_href) if parsed.base_href else page_url
+    if not _official_link(page_url, base):
+        base = page_url
+    for link in links:
+        url = urljoin(base, link.url)
         attachment, problem = _attachment_details(
             link,
             url,
@@ -379,6 +397,18 @@ def _known_attachment(main, directory: Path, attachment: dict, library=None):
                 and candidate.is_file()
                 and sha256_file(candidate) == receipt.get("sha256")
             ):
+                if (
+                    attachment.get("expected_size") is not None
+                    and candidate.stat().st_size != attachment["expected_size"]
+                ):
+                    continue
+                if attachment.get("expected_md5"):
+                    with candidate.open("rb") as handle:
+                        if (
+                            hashlib.file_digest(handle, "md5").hexdigest()
+                            != attachment["expected_md5"]
+                        ):
+                            continue
                 return {
                     "status": "REUSED",
                     "path": str(candidate),
@@ -391,13 +421,30 @@ def _known_attachment(main, directory: Path, attachment: dict, library=None):
     return None
 
 
-def _retrieve_official_file(url, *, source_page, diagnostics=None, **kwargs):
+def _attachment_url_allowed(source_page, url, attachment=None):
+    from .supplement_figshare import BASIS, file_url_allowed
+
+    if attachment and attachment.get("association_basis") == BASIS:
+        return file_url_allowed(url, attachment)
+    return _official_link(source_page, url)
+
+
+def _retrieve_official_file(
+    url, *, source_page, attachment=None, diagnostics=None, **kwargs
+):
     """Reuse the streaming transport, rejecting off-publisher redirects before HTTP."""
 
     class OfficialClient(httpx.Client):
         def stream(self, method, target, *args, **request_options):
-            if not _official_link(source_page, str(target)):
+            if not _attachment_url_allowed(source_page, str(target), attachment):
                 raise ValueError("attachment_redirect_host_not_covered")
+            # Public hotlink checks may require the verified article page.
+            # Send no query tokens and no browser/session cookies.
+            parts = urlsplit(source_page)
+            headers = dict(request_options.pop("headers", {}))
+            if parts.scheme == "https" and parts.hostname:
+                headers["Referer"] = f"https://{parts.netloc}{parts.path}"
+            request_options["headers"] = headers
             return super().stream(method, target, *args, **request_options)
 
     def response_observed(response):
@@ -430,7 +477,10 @@ def _source_page_candidates(sidecar, doi):
             continue
         parsed = urlsplit(url)
         host = (parsed.hostname or "").casefold()
-        if any(_under(host, d) for d in ("wiley.com", "acs.org", "science.org")):
+        pii = re.fullmatch(r"/retrieve/pii/(S\d+)", parsed.path)
+        if host == "linkinghub.elsevier.com" and pii:
+            pages.append("https://www.sciencedirect.com/science/article/pii/" + pii[1])
+        elif any(_under(host, d) for d in ("wiley.com", "acs.org", "science.org")):
             pages.append(f"{parsed.scheme}://{parsed.netloc}/doi/{doi}")
         elif _under(host, "nature.com") and parsed.path.endswith(".pdf"):
             pages.append(f"{parsed.scheme}://{parsed.netloc}{parsed.path[:-4]}")
@@ -563,6 +613,23 @@ def _acquire_supplements(
                 errors.append(
                     {"status": repository["status"], "source": "official_PMC_metadata"}
                 )
+        if not discoveries:
+            from .supplement_figshare import discover_acs_attachments
+
+            native = discover_acs_attachments(
+                doi=main.doi, title=main.title, timeout=timeout, max_bytes=max_bytes
+            )
+            discoveries.extend(native.get("items", []))
+            seen.update(item["url"] for item in native.get("items", []))
+            diagnostics.extend(native.get("diagnostics", []))
+            if native.get("items"):
+                # A successful independent publisher route supersedes earlier
+                # discovery failures; its own partial manifest stays visible.
+                diagnostics.extend(errors)
+                errors = list(native.get("errors", []))
+                repository_provenance = None
+            else:
+                diagnostics.extend(native.get("errors", []))
     for url in dict.fromkeys(candidates):
         if discoveries:
             break
@@ -716,19 +783,29 @@ def _acquire_supplements(
                     resource = _retrieve_official_file(
                         attachment["url"],
                         source_page=attachment["page"],
+                        attachment=attachment,
                         output_dir=directory,
                         max_bytes=max_bytes,
                         timeout=timeout,
                         diagnostics=file_diagnostics,
                     )
                 temporary = resource.local_path
-                if not _official_link(attachment["page"], resource.final_url) or any(
-                    not _official_link(attachment["page"], hop.to_url)
+                if not _attachment_url_allowed(
+                    attachment["page"], resource.final_url, attachment
+                ) or any(
+                    not _attachment_url_allowed(
+                        attachment["page"], hop.to_url, attachment
+                    )
                     for hop in getattr(resource, "redirects", ())
                 ):
                     raise ValueError("attachment_redirect_host_not_covered")
                 if temporary.stat().st_size > max_bytes:
                     raise ValueError("attachment_exceeds_byte_limit")
+                if (
+                    attachment.get("expected_size") is not None
+                    and temporary.stat().st_size != attachment["expected_size"]
+                ):
+                    raise ValueError("official_attachment_size_mismatch")
                 if attachment.get("expected_md5"):
                     with temporary.open("rb") as check:
                         if (
@@ -748,6 +825,9 @@ def _acquire_supplements(
                     browser is None
                     or transport == "browser_session"
                     or file_fetch is not None
+                    or attachment.get("association_basis", "").startswith(
+                        "official_ACS_Figshare"
+                    )
                 ):
                     raise
                 file_diagnostics.append(

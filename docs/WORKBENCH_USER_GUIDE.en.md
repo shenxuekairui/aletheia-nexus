@@ -24,6 +24,7 @@ The local browser opens automatically at `http://127.0.0.1:8080` by default. Lat
 AN first tries local Chrome/Edge or an existing AN runtime. Follow the UI instructions if the runtime is missing, its security version is incompatible, or configuration is invalid.
 Institutional access still requires a valid, lawful session. Users perform login and verification; AN does not automatically bypass them.
 Attachment download URLs may require separate login or verification: being able to open the main article does not mean SI access is cleared.
+This source branch strengthens native HTTP SI retrieval. Public ACS supplements can use official Figshare manifests after parent DOI/title and file-checksum checks, without opening a browser. The existing native PMC route retains priority. Explicit supplementary metadata and links on official pages are also recognized. Missing manifests, identity conflicts or institutional-access requirements retain diagnostics and the existing page/authorized-browser fallback; automatic delivery is not guaranteed. See [native SI capability and observations](SI_NATIVE_ACQUISITION.en.md).
 Keep the article and attachment verification pages open in AN's visible browser, then follow “Retrieve SI only” below.
 Local OCR requires `.[ui,ocr]`, Poppler, Tesseract, and the relevant language data. Configure RapidOCR separately using the existing image-ocr instructions.
 Original-page images also use the existing Poppler installation. Opening a complete browser PDF and downloading the original file are separate actions.

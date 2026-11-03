@@ -1,0 +1,181 @@
+{
+  "tested_at": "2026-11-03",
+  "baseline_commit": "403514f",
+  "base_for_changes": "1ac4e07",
+  "browser_enabled": false,
+  "main_download_calls": 0,
+  "model_calls": 0,
+  "timeout_seconds": 20,
+  "max_si_files": 3,
+  "max_file_bytes": 15728640,
+  "items": [
+    {
+      "doi": "10.1021/acs.jpcc.4c00353",
+      "before": "FAILED",
+      "after": "FAILED",
+      "repeated_request": [],
+      "original_unchanged": true,
+      "copied_main_unchanged": true,
+      "saved": [],
+      "remaining_errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://pubs.acs.org/doi/10.1021/acs.jpcc.4c00353"
+        },
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1021/acs.jpcc.4c00353"
+        }
+      ],
+      "discovery_diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "transport": "http",
+          "source": "official_ACS_Figshare",
+          "discovered": 0
+        }
+      ]
+    },
+    {
+      "doi": "10.1021/acsomega.6c02245",
+      "before": "FAILED",
+      "after": "COMPLETED",
+      "repeated_request": [
+        "REUSED"
+      ],
+      "original_unchanged": true,
+      "copied_main_unchanged": true,
+      "saved": [
+        {
+          "role": "SUPPLEMENT",
+          "bytes": 2111935,
+          "sha256": "160e997c0ab3a224afc9b4a2766b3b9ad84be8a921a38eb3d3c2ddea0ebcf9d7",
+          "pdf_pages": 10,
+          "transport": "http",
+          "association_basis": "official_ACS_Figshare_parent_DOI_title_and_file_manifest",
+          "metadata_file_identity": {
+            "record_id": 32556581,
+            "version": 1,
+            "file_id": 65221244,
+            "filename": "ao6c02245_si_001.pdf",
+            "computed_md5": "ea5cb8833e99e44c730c08ac0c25a4d9",
+            "size_bytes": 2111935,
+            "resource_doi": "10.1021/acsomega.6c02245",
+            "supplement_doi": "10.1021/acsomega.6c02245.s001",
+            "metadata_sha256": "f00a209f11551cac22cb378816e066435a71efa1210638106096567a5327ab4a",
+            "search_sha256": "5e92c9a97d90714bf33c679ac6ed88744d420b1d455f5e13a7ea9a12458bbca9"
+          },
+          "parent_pdf_sha256": "d13b2bd65142b4af85b4822e0f1d7b9013c0c2609d769a3b9bb0d87dff98a0c1",
+          "source_gate_passed": true,
+          "identity_status": "DECLARED"
+        }
+      ],
+      "remaining_errors": [],
+      "discovery_diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_ACS_Figshare",
+          "discovered": 1
+        },
+        {
+          "status": "FAILED",
+          "error": "官方 PMC 元数据身份、版本或开放获取状态与正文不一致",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC13294902.1.json"
+        }
+      ]
+    },
+    {
+      "doi": "10.1021/acsomega.6c08217",
+      "before": "COMPLETED",
+      "after": "COMPLETED",
+      "repeated_request": [
+        "REUSED"
+      ],
+      "original_unchanged": true,
+      "copied_main_unchanged": true,
+      "saved": [
+        {
+          "role": "SUPPLEMENT",
+          "bytes": 1678331,
+          "sha256": "788aab0dadfa13d3145d77134f249dc1ef6f20a6ec3a0783e07e899bd6cfe55d",
+          "pdf_pages": 11,
+          "transport": "http",
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "metadata_file_identity": {
+            "source": "official_pmc_cloud",
+            "version_prefix": "PMC13670801.1",
+            "metadata": {
+              "url": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC13670801.1.json",
+              "final_url": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC13670801.1.json",
+              "sha256": "4b9507ac7b412f0cd034f8cbec042132532ab86755b84954199adb964cf633c4",
+              "size_bytes": 2105
+            },
+            "xml": {
+              "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC13670801.1/PMC13670801.1.xml?md5=%5Bredacted%5D",
+              "final_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC13670801.1/PMC13670801.1.xml?md5=%5Bredacted%5D",
+              "sha256": "50ba5c05df4ccf032d02cff06a971168a3a56b696207326c0c4ccc65c6d7f57e",
+              "size_bytes": 161327
+            },
+            "doi": "10.1021/acsomega.6c08217",
+            "title": "Multivariate Optimization of Self-doped TiO2 Nanotube Synthesis for Enhanced Optical and Electronic Performance",
+            "relative_file": "ao6c08217_si_001.pdf"
+          },
+          "parent_pdf_sha256": "1d4fefde392a0d4af85fc7765efc4596d03ea68bf64a243b5de86d12b620a37a",
+          "source_gate_passed": true,
+          "identity_status": "DECLARED"
+        }
+      ],
+      "remaining_errors": [],
+      "discovery_diagnostics": []
+    },
+    {
+      "doi": "10.1021/ja0659323",
+      "before": "FAILED",
+      "after": "COMPLETED",
+      "repeated_request": [
+        "REUSED"
+      ],
+      "original_unchanged": true,
+      "copied_main_unchanged": null,
+      "saved": [
+        {
+          "role": "SUPPLEMENT",
+          "bytes": 354191,
+          "sha256": "645b20a584f0e6330d22e4755a786abd6471355f13565e3f5daf815efb21d9ab",
+          "pdf_pages": 5,
+          "transport": "http",
+          "association_basis": "official_ACS_Figshare_parent_DOI_title_and_file_manifest",
+          "metadata_file_identity": {
+            "record_id": 3037936,
+            "version": 1,
+            "file_id": 4741246,
+            "filename": "ja0659323_si_001.pdf",
+            "computed_md5": "4e9dac504e0d6230673c088b3aa2ef16",
+            "size_bytes": 354191,
+            "resource_doi": "10.1021/ja0659323",
+            "supplement_doi": "10.1021/ja0659323.s001",
+            "metadata_url": "https://api.figshare.com/v2/articles/3037936",
+            "metadata_sha256": "a9d5eef25efe4634f2d3d34df977a0bc7c8fa507cd7357608b2a0a15a49d3947",
+            "search_sha256": "187b730dec76ff36974a31f75447968cddc06c3d384cb2f4ec55a3b28055b16a"
+          },
+          "parent_pdf_sha256": "36caa292880bde083b2cc5b4ff725816436cabb75cc85d14c57858174337cdca",
+          "source_gate_passed": true,
+          "identity_status": "DECLARED"
+        }
+      ],
+      "remaining_errors": [],
+      "discovery_diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_ACS_Figshare",
+          "discovered": 1
+        }
+      ]
+    }
+  ],
+  "baseline_runtime_sources_match_public_main": true
+}

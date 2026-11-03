@@ -24,6 +24,7 @@ aletheia-nexus ui --library "$env:USERPROFILE\AN-Library" --workspace "$env:USER
 默认尝试本机 Chrome/Edge 或已有 AN 运行时；缺少运行时、安全版本不兼容或配置错误时，按界面提示配置。
 机构访问仍需有效的合法会话，登录与验证码由用户操作，不会被自动绕过。
 附件下载地址可能另行要求登录或验证：正文已经能打开，不等于 SI 入口也已放行。
+本轮源码增强了 SI 原生 HTTP 获取：ACS 公开补充材料优先通过官方 Figshare 清单核对父文 DOI、题名与文件校验值，无需打开浏览器；已有 PMC 原生路线继续优先使用。也支持官方页面明确的附件元数据与补充材料链接。没有清单、信息冲突或仍需机构访问时，保留诊断并按原有页面/授权浏览器路线处理，不保证所有 SI 均可自动取得。详见 [SI 原生能力与实测](SI_NATIVE_ACQUISITION.md)。
 遇到此提示时保留 AN 可见浏览器中的论文页与附件验证页，按下文“仅补 SI”继续处理。
 本地 OCR 需要 `.[ui,ocr]`、Poppler、Tesseract 与对应语言数据；RapidOCR 另按已有 image-ocr 说明配置。
 原页图像也使用已有 Poppler；浏览器完整 PDF 和下载原文件是独立入口。

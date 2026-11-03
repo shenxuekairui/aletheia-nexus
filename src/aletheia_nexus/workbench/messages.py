@@ -34,8 +34,46 @@ _add(
     "附件超过本次大小上限，已停止传输。请在高级获取设置中核对附件大小限制后再试；已保存文件不会被覆盖。",
 )
 _add(
-    ("official_attachment_checksum_mismatch",),
+    ("official_attachment_checksum_mismatch", "official_attachment_size_mismatch"),
     "附件内容与官方文件清单的校验值不符，未保存或关联。请保留诊断并在来源恢复后重试。",
+)
+_add(
+    ("figshare_file_exceeds_byte_limit",),
+    "官方 SI 清单中的文件超过本次大小上限，未开始下载；可调整附件大小限制后重试。",
+)
+_add(
+    (
+        "figshare_parent_doi_mismatch",
+        "figshare_parent_title_mismatch",
+        "figshare_record_not_official_ACS",
+        "figshare_record_identity_mismatch",
+    ),
+    "官方附件清单与当前父文的 DOI、题名或来源不一致，未自动关联；正文及原有附件保留。",
+)
+_add(
+    ("figshare_record_not_public", "figshare_file_not_supported"),
+    "官方附件尚未公开、仅提供外部链接或格式暂不支持，未自动下载；请检查原始附件入口。",
+)
+_add(
+    (
+        "figshare_record_limit_reached",
+        "figshare_file_limit_reached",
+        "figshare_file_manifest_exceeds_limit",
+        "figshare_metadata_exceeds_limit",
+    ),
+    "官方附件清单达到本次安全处理上限，仍有材料未核对；请查看逐项结果，不能视为全部 SI 已获取。",
+)
+_add(
+    (
+        "figshare_metadata_unexpected_response",
+        "figshare_invalid_search_response",
+        "figshare_invalid_or_duplicate_record",
+        "figshare_invalid_file",
+        "figshare_invalid_file_identity",
+        "figshare_file_checksum_missing",
+        "figshare_file_host_not_covered",
+    ),
+    "官方 SI 接口返回的记录、文件地址或校验信息不完整，未按该清单下载关联；请查看原始诊断或改用已核验的文章页入口。",
 )
 _add(
     ("browser_parent_page_not_available",),
