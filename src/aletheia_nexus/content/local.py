@@ -18,6 +18,26 @@ from aletheia_nexus.core.identifiers.doi import normalize_doi
 LOCAL_DOCUMENT_SCHEMA = "aletheia-nexus/local-document/v1"
 
 
+def reject_standalone_as_article(source):
+    """A known DOI-linked SI must not gain ARTICLE identity through a bare import."""
+    source = Path(source)
+    for path in source.parent.glob("*.standalone.json"):
+        if path.is_symlink():
+            raise ValueError("standalone source receipt must not be a symbolic link")
+        try:
+            value = json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError):
+            continue
+        if (
+            isinstance(value, dict)
+            and value.get("schema") == "aletheia-nexus/standalone-attachment-source/v1"
+            and value.get("file_name") == source.name
+        ):
+            raise ValueError(
+                "独立获取的 SI 不能作为正文导入；请先选择所属正文并关联附件。"
+            )
+
+
 def register_local_pdf(
     pdf_path: str | Path,
     *,
@@ -34,6 +54,8 @@ def register_local_pdf(
     distinct from an acquisition record's VERIFIED/MATCH assertion.
     """
     source = Path(pdf_path).resolve()
+    if role == "ARTICLE":
+        reject_standalone_as_article(source)
     if not title.strip():
         raise ValueError("a local document requires a title")
     if role not in {"ARTICLE", "SUPPLEMENT"}:

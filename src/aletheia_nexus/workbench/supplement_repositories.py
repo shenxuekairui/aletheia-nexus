@@ -200,29 +200,61 @@ def discover_pmc_attachments(
     """
     if not isinstance(source_record, dict) or not (prefix := _prefix(source_record)):
         return {"status": "NOT_SUPPORTED", "items": [], "errors": []}
+    return discover_pmc_version_attachments(
+        prefix=prefix,
+        doi=doi,
+        title=title,
+        timeout=timeout,
+        max_metadata_bytes=max_metadata_bytes,
+        max_xml_bytes=max_xml_bytes,
+        source_record=source_record,
+    )
+
+
+def discover_pmc_version_attachments(
+    *,
+    prefix,
+    doi,
+    title=None,
+    timeout=20,
+    max_metadata_bytes=1024 * 1024,
+    max_xml_bytes=5 * 1024 * 1024,
+    source_record=None,
+):
+    """Official metadata/JATS identity, without claiming a main PDF was fetched."""
+    if not isinstance(prefix, str) or not re.fullmatch(
+        r"PMC[1-9]\d*\.[1-9]\d*", prefix
+    ):
+        return {"status": "NOT_SUPPORTED", "items": [], "errors": []}
     page = f"{_BUCKET}/metadata/{prefix}.json"
-    provenance = {"source": "official_pmc_cloud", "version_prefix": prefix}
+    provenance = {
+        "source": "official_pmc_cloud",
+        "version_prefix": prefix,
+        "main_pdf_verified": source_record is not None,
+    }
     failed_checks = []
     try:
         doi = normalize_doi(doi)
-        target = source_record.get("target") or {}
-        identity = source_record.get("identity_validation") or {}
-        if not isinstance(target, dict) or not isinstance(identity, dict):
-            raise ValueError("官方 PMC 正文来源记录的身份字段不是有效对象")
-        if (
-            source_record.get("status") != "VERIFIED"
-            or identity.get("status") != "MATCH"
-            or identity.get("document_role") != "ARTICLE"
-            or normalize_doi(target.get("doi")) != doi
-        ):
-            raise ValueError("官方 PMC 附件路线需要已验证且身份一致的正文来源记录")
-        expected_title = title or target.get("expected_title")
-        if (
-            title
-            and target.get("expected_title")
-            and _title(title) != _title(target["expected_title"])
-        ):
-            raise ValueError("官方 PMC 附件的请求题名与已验证正文原题不一致")
+        expected_title = title
+        if source_record is not None:
+            target = source_record.get("target") or {}
+            identity = source_record.get("identity_validation") or {}
+            if not isinstance(target, dict) or not isinstance(identity, dict):
+                raise ValueError("官方 PMC 正文来源记录的身份字段不是有效对象")
+            if (
+                source_record.get("status") != "VERIFIED"
+                or identity.get("status") != "MATCH"
+                or identity.get("document_role") != "ARTICLE"
+                or normalize_doi(target.get("doi")) != doi
+            ):
+                raise ValueError("官方 PMC 附件路线需要已验证且身份一致的正文来源记录")
+            expected_title = title or target.get("expected_title")
+            if (
+                title
+                and target.get("expected_title")
+                and _title(title) != _title(target["expected_title"])
+            ):
+                raise ValueError("官方 PMC 附件的请求题名与已验证正文原题不一致")
         with TemporaryDirectory(prefix="aletheia-pmc-si-") as directory:
             data, metadata_evidence = _read(
                 page, directory, max_metadata_bytes, timeout

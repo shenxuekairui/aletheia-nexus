@@ -118,8 +118,12 @@ def create_server(app: ResearchApplication):
         papers: list[dict],
         authorization: str | None = None,
         resume_job_id: str | None = None,
+        si_only: bool = False,
     ) -> dict[str, Any]:
-        """Acquire up to10 public main articles by DOI (optional expected title).
+        """Acquire up to10 public papers, or si_only=true for independent SI by DOI.
+        SI-only needs no main PDF, excludes peer review by default, and saves
+        DOI-linked attachments without creating ARTICLE/parser identity. This mode
+        does not use main-PDF resume_job_id checkpoints.
         Requires server --enable-acquisition and independent local one-use grant.
         Without a grant, saves a reviewable authorization request without network.
         Approved downloads run in background; get_run_status reports per-paper
@@ -129,6 +133,8 @@ def create_server(app: ResearchApplication):
         discovery. Sources use existing identity/PDF validation, not model consent.
         """
         payload = {"papers": papers}
+        if si_only:
+            payload["si_only"] = True
         if resume_job_id is not None:
             payload["resume_job_id"] = resume_job_id
         return app.acquire_documents(payload, authorization=authorization)

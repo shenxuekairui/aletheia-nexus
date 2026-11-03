@@ -684,6 +684,285 @@ def _source_page_candidates(sidecar, doi):
     return list(dict.fromkeys(pages))
 
 
+def validate_downloaded_attachment(resource, attachment, *, max_bytes, diagnostics=()):
+    """One transport/format/manifest gate for bound and DOI-only attachments."""
+    temporary = Path(resource.local_path)
+    if not _attachment_url_allowed(
+        attachment["page"], resource.final_url, attachment
+    ) or any(
+        not _attachment_url_allowed(attachment["page"], hop.to_url, attachment)
+        for hop in getattr(resource, "redirects", ())
+    ):
+        raise ValueError("attachment_redirect_host_not_covered")
+    if temporary.stat().st_size > max_bytes:
+        raise ValueError("attachment_exceeds_byte_limit")
+    if (
+        attachment.get("expected_size") is not None
+        and temporary.stat().st_size != attachment["expected_size"]
+    ):
+        raise ValueError("official_attachment_size_mismatch")
+    if attachment.get("expected_md5"):
+        with temporary.open("rb") as check:
+            if (
+                hashlib.file_digest(check, "md5").hexdigest()
+                != attachment["expected_md5"]
+            ):
+                raise ValueError("official_attachment_checksum_mismatch")
+    from .supplement_formats import resolve_extension
+
+    delivered_suffix = Path(unquote(urlsplit(resource.final_url).path)).suffix.lower()
+    header_suffix = next(
+        (
+            d.get("filename_extension")
+            for d in reversed(diagnostics)
+            if d.get("status") == "HTTP_FILE_RESPONSE"
+        ),
+        None,
+    )
+    extension = resolve_extension(
+        temporary,
+        attachment["extension"]
+        or (header_suffix if header_suffix in _SUFFIXES else "")
+        or (delivered_suffix if delivered_suffix in _SUFFIXES else ""),
+        getattr(resource, "content_type", None),
+    )
+    validation = _validate_attachment(temporary, extension)
+    validation.update(
+        declared_extension=attachment["extension"],
+        detected_extension=extension,
+        extension_corrected=bool(
+            attachment["extension"] and attachment["extension"] != extension
+        ),
+        executed=False,
+    )
+    attachment["extension"] = extension
+    return validation
+
+
+def discover_supplement_candidates(
+    *,
+    doi,
+    title=None,
+    source_record=None,
+    pmc_version_prefix=None,
+    page_urls=None,
+    max_bytes=100 * 1024 * 1024,
+    timeout=30.0,
+    page_fetch=None,
+    browser=None,
+):
+    """Shared DOI-bound discovery, independent of possession of a main PDF."""
+    sidecar = source_record or {}
+    candidates = (
+        list(page_urls)
+        if page_urls is not None
+        else _source_page_candidates(sidecar, doi)
+    )
+    discoveries, errors, seen, diagnostics = [], [], set(), []
+    page_fetch = page_fetch or retrieve_page
+    from .supplement_pages import expand_supplement_pages
+
+    discovery_truncated = False
+    repository_provenance = None
+    if page_urls is None:
+        from .supplement_repositories import discover_pmc_attachments
+
+        if pmc_version_prefix is not None:
+            from .supplement_repositories import discover_pmc_version_attachments
+
+            repository = discover_pmc_version_attachments(
+                prefix=pmc_version_prefix, doi=doi, title=title, timeout=timeout
+            )
+        else:
+            repository = discover_pmc_attachments(
+                sidecar, doi=doi, title=title, timeout=timeout
+            )
+        if repository["status"] != "NOT_SUPPORTED":
+            repository_provenance = repository.get("provenance")
+            for item in repository.get("items", []):
+                discoveries.append(
+                    {**item, "page": item.get("page") or repository["page_url"]}
+                )
+                seen.add(item["url"])
+            for item in repository.get("diagnostics", []):
+                diagnostics.append(item)
+            errors.extend(repository.get("errors", []))
+            if repository["status"] not in {
+                "DISCOVERED",
+                "COMPLETED",
+                "NOT_FOUND",
+            } and not repository.get("errors"):
+                errors.append(
+                    {"status": repository["status"], "source": "official_PMC_metadata"}
+                )
+        if not discoveries:
+            from .supplement_figshare import discover_acs_attachments
+
+            native = discover_acs_attachments(
+                doi=doi, title=title, timeout=timeout, max_bytes=max_bytes
+            )
+            discoveries.extend(native.get("items", []))
+            seen.update(item["url"] for item in native.get("items", []))
+            diagnostics.extend(native.get("diagnostics", []))
+            if native.get("items"):
+                # A successful independent publisher route supersedes earlier
+                # discovery failures; its own partial manifest stays visible.
+                diagnostics.extend(errors)
+                errors = list(native.get("errors", []))
+                repository_provenance = None
+            else:
+                diagnostics.extend(native.get("errors", []))
+    for url in dict.fromkeys(candidates):
+        if discoveries:
+            break
+        try:
+            page = page_fetch(url, timeout=timeout, max_bytes=5 * 1024 * 1024)
+            if not page.text or page.body_truncated:
+                errors.append(
+                    {"status": "INVALID_PAGE", "page": redact_url_for_record(url)}
+                )
+                continue
+            # Automatic resolver destinations must belong to a covered official
+            # publisher. Explicit pages with publisher provenance may use the
+            # generic same-host adapter; no arbitrary untrusted host is crawled.
+            host = (urlsplit(page.final_url).hostname or "").casefold()
+            official = any(_under(host, d) for group in _OFFICIAL_GROUPS for d in group)
+            official = official or (
+                sidecar.get("candidate", {}).get("host_type") == "publisher"
+                and _official_link(sidecar["candidate"]["url"], page.final_url)
+            )
+            # An actual DOI resolver redirect establishes a publisher origin
+            # beyond the known families; attachments remain same-host only.
+            hops = getattr(page, "redirects", ())
+            official = official or (
+                url == "https://doi.org/" + doi
+                and getattr(page, "requested_url", None) == url
+                and bool(hops)
+                and hops[0].from_url == url
+                and hops[-1].to_url == page.final_url
+            )
+            if not official:
+                errors.append(
+                    {
+                        "status": "PUBLISHER_NOT_COVERED",
+                        "page": redact_url_for_record(page.final_url),
+                    }
+                )
+                continue
+            discovery = discover_attachments(
+                page.text, page.final_url, doi=doi, title=title
+            )
+            expanded = expand_supplement_pages(
+                discovery,
+                fetch=page_fetch,
+                doi=doi,
+                title=title,
+                timeout=timeout,
+            )
+            discovery_truncated |= expanded["truncated"]
+            diagnostics.extend(expanded["diagnostics"])
+            for attachment in expanded["items"]:
+                if attachment["url"] not in seen:
+                    seen.add(attachment["url"])
+                    discoveries.append(
+                        {
+                            **attachment,
+                            "page": attachment.get("page") or discovery["page_url"],
+                        }
+                    )
+            diagnostics.append(
+                {
+                    "status": discovery["status"],
+                    "page": redact_url_for_record(page.final_url),
+                    "transport": "http",
+                }
+            )
+            if discovery["status"] not in {"DISCOVERED", "NOT_FOUND"}:
+                errors.append(
+                    {
+                        "status": discovery["status"],
+                        "page": redact_url_for_record(page.final_url),
+                    }
+                )
+            if discoveries:
+                diagnostics.extend(errors)
+                errors = expanded["errors"]
+                break
+            errors.extend(expanded["errors"])
+        except Exception as exc:
+            errors.append(
+                {
+                    "status": "PAGE_FAILED",
+                    "error": type(exc).__name__,
+                    "page": redact_url_for_record(url),
+                }
+            )
+    # Use only a session the caller explicitly authorized for this task. Startup
+    # follows the existing normal launcher/lease and reuses that named profile.
+    # Existing tabs are observed only; a missing article is loaded in an owned
+    # temporary tab. Clear owned pages live until all attachment fetches finish.
+    if browser is not None and not discoveries:
+        try:
+            page = browser.page_fetch(
+                candidates[0] if candidates else "https://doi.org/" + doi,
+                timeout=timeout,
+                max_bytes=5 * 1024 * 1024,
+            )
+            discovery = discover_attachments(
+                page.text, page.final_url, doi=doi, title=title
+            )
+            expanded = expand_supplement_pages(
+                discovery,
+                fetch=browser.page_fetch,
+                doi=doi,
+                title=title,
+                timeout=timeout,
+            )
+            discovery_truncated |= expanded["truncated"]
+            diagnostics.extend(errors)
+            diagnostics.extend(expanded["diagnostics"])
+            errors = expanded["errors"]
+            diagnostics.append(
+                {
+                    "status": discovery["status"],
+                    "page": discovery.get("page_url"),
+                    "transport": getattr(page, "transport", "browser_existing_DOM"),
+                }
+            )
+            for attachment in expanded["items"]:
+                if attachment["url"] not in seen:
+                    seen.add(attachment["url"])
+                    discoveries.append(
+                        {
+                            **attachment,
+                            "page": attachment.get("page") or discovery["page_url"],
+                            "transport": "browser_session",
+                        }
+                    )
+            if discovery["status"] not in {"DISCOVERED", "NOT_FOUND"}:
+                errors.append(
+                    {"status": discovery["status"], "transport": "browser_existing_DOM"}
+                )
+        except Exception as exc:
+            errors.append(
+                {
+                    "status": "INTERACTION_REQUIRED"
+                    if str(exc) == "attachment_interaction_required"
+                    else "BROWSER_PAGE_UNAVAILABLE",
+                    "error": str(exc)
+                    if re.fullmatch(r"[a-z_]+", str(exc))
+                    else type(exc).__name__,
+                }
+            )
+    return {
+        "items": discoveries,
+        "errors": errors,
+        "diagnostics": diagnostics,
+        "truncated": discovery_truncated,
+        "repository_provenance": repository_provenance,
+    }
+
+
 def acquire_supplements(
     main_pdf,
     *,
@@ -757,11 +1036,6 @@ def _acquire_supplements(
     if type(max_files) is not int or not 1 <= max_files <= 100:
         raise ValueError("SI file limit must be 1..100")
     sidecar = json.loads(main.sidecar_path.read_text("utf-8"))
-    candidates = (
-        list(page_urls)
-        if page_urls is not None
-        else _source_page_candidates(sidecar, main.doi)
-    )
     directory = main.pdf_path.parent / "SI"
     if (
         directory.is_symlink()
@@ -776,195 +1050,21 @@ def _acquire_supplements(
         or not records.resolve().is_relative_to(directory.resolve())
     ):
         raise ValueError("unsafe_SI_record_directory")
-    discoveries, errors, seen, diagnostics = [], [], set(), []
-    page_fetch = page_fetch or retrieve_page
-    from .supplement_pages import expand_supplement_pages
-
-    discovery_truncated = False
-    repository_provenance = None
-    if page_urls is None:
-        from .supplement_repositories import discover_pmc_attachments
-
-        repository = discover_pmc_attachments(
-            sidecar, doi=main.doi, title=main.title, timeout=timeout
-        )
-        if repository["status"] != "NOT_SUPPORTED":
-            repository_provenance = repository.get("provenance")
-            for item in repository.get("items", []):
-                discoveries.append(
-                    {**item, "page": item.get("page") or repository["page_url"]}
-                )
-                seen.add(item["url"])
-            for item in repository.get("diagnostics", []):
-                diagnostics.append(item)
-            errors.extend(repository.get("errors", []))
-            if repository["status"] not in {
-                "DISCOVERED",
-                "COMPLETED",
-                "NOT_FOUND",
-            } and not repository.get("errors"):
-                errors.append(
-                    {"status": repository["status"], "source": "official_PMC_metadata"}
-                )
-        if not discoveries:
-            from .supplement_figshare import discover_acs_attachments
-
-            native = discover_acs_attachments(
-                doi=main.doi, title=main.title, timeout=timeout, max_bytes=max_bytes
-            )
-            discoveries.extend(native.get("items", []))
-            seen.update(item["url"] for item in native.get("items", []))
-            diagnostics.extend(native.get("diagnostics", []))
-            if native.get("items"):
-                # A successful independent publisher route supersedes earlier
-                # discovery failures; its own partial manifest stays visible.
-                diagnostics.extend(errors)
-                errors = list(native.get("errors", []))
-                repository_provenance = None
-            else:
-                diagnostics.extend(native.get("errors", []))
-    for url in dict.fromkeys(candidates):
-        if discoveries:
-            break
-        try:
-            page = page_fetch(url, timeout=timeout, max_bytes=5 * 1024 * 1024)
-            if not page.text or page.body_truncated:
-                errors.append(
-                    {"status": "INVALID_PAGE", "page": redact_url_for_record(url)}
-                )
-                continue
-            # Automatic resolver destinations must belong to a covered official
-            # publisher. Explicit pages with publisher provenance may use the
-            # generic same-host adapter; no arbitrary untrusted host is crawled.
-            host = (urlsplit(page.final_url).hostname or "").casefold()
-            official = any(_under(host, d) for group in _OFFICIAL_GROUPS for d in group)
-            official = official or (
-                sidecar.get("candidate", {}).get("host_type") == "publisher"
-                and _official_link(sidecar["candidate"]["url"], page.final_url)
-            )
-            # An actual DOI resolver redirect establishes a publisher origin
-            # beyond the known families; attachments remain same-host only.
-            hops = getattr(page, "redirects", ())
-            official = official or (
-                url == "https://doi.org/" + main.doi
-                and getattr(page, "requested_url", None) == url
-                and bool(hops)
-                and hops[0].from_url == url
-                and hops[-1].to_url == page.final_url
-            )
-            if not official:
-                errors.append(
-                    {
-                        "status": "PUBLISHER_NOT_COVERED",
-                        "page": redact_url_for_record(page.final_url),
-                    }
-                )
-                continue
-            discovery = discover_attachments(
-                page.text, page.final_url, doi=main.doi, title=main.title
-            )
-            expanded = expand_supplement_pages(
-                discovery,
-                fetch=page_fetch,
-                doi=main.doi,
-                title=main.title,
-                timeout=timeout,
-            )
-            discovery_truncated |= expanded["truncated"]
-            diagnostics.extend(expanded["diagnostics"])
-            for attachment in expanded["items"]:
-                if attachment["url"] not in seen:
-                    seen.add(attachment["url"])
-                    discoveries.append(
-                        {
-                            **attachment,
-                            "page": attachment.get("page") or discovery["page_url"],
-                        }
-                    )
-            diagnostics.append(
-                {
-                    "status": discovery["status"],
-                    "page": redact_url_for_record(page.final_url),
-                    "transport": "http",
-                }
-            )
-            if discovery["status"] not in {"DISCOVERED", "NOT_FOUND"}:
-                errors.append(
-                    {
-                        "status": discovery["status"],
-                        "page": redact_url_for_record(page.final_url),
-                    }
-                )
-            if discoveries:
-                diagnostics.extend(errors)
-                errors = expanded["errors"]
-                break
-            errors.extend(expanded["errors"])
-        except Exception as exc:
-            errors.append(
-                {
-                    "status": "PAGE_FAILED",
-                    "error": type(exc).__name__,
-                    "page": redact_url_for_record(url),
-                }
-            )
-    # Use only a session the caller explicitly authorized for this task. Startup
-    # follows the existing normal launcher/lease and reuses that named profile.
-    # Existing tabs are observed only; a missing article is loaded in an owned
-    # temporary tab. Clear owned pages live until all attachment fetches finish.
-    if browser is not None and not discoveries:
-        try:
-            page = browser.page_fetch(
-                candidates[0] if candidates else "https://doi.org/" + main.doi,
-                timeout=timeout,
-                max_bytes=5 * 1024 * 1024,
-            )
-            discovery = discover_attachments(
-                page.text, page.final_url, doi=main.doi, title=main.title
-            )
-            expanded = expand_supplement_pages(
-                discovery,
-                fetch=browser.page_fetch,
-                doi=main.doi,
-                title=main.title,
-                timeout=timeout,
-            )
-            discovery_truncated |= expanded["truncated"]
-            diagnostics.extend(errors)
-            diagnostics.extend(expanded["diagnostics"])
-            errors = expanded["errors"]
-            diagnostics.append(
-                {
-                    "status": discovery["status"],
-                    "page": discovery.get("page_url"),
-                    "transport": getattr(page, "transport", "browser_existing_DOM"),
-                }
-            )
-            for attachment in expanded["items"]:
-                if attachment["url"] not in seen:
-                    seen.add(attachment["url"])
-                    discoveries.append(
-                        {
-                            **attachment,
-                            "page": attachment.get("page") or discovery["page_url"],
-                            "transport": "browser_session",
-                        }
-                    )
-            if discovery["status"] not in {"DISCOVERED", "NOT_FOUND"}:
-                errors.append(
-                    {"status": discovery["status"], "transport": "browser_existing_DOM"}
-                )
-        except Exception as exc:
-            errors.append(
-                {
-                    "status": "INTERACTION_REQUIRED"
-                    if str(exc) == "attachment_interaction_required"
-                    else "BROWSER_PAGE_UNAVAILABLE",
-                    "error": str(exc)
-                    if re.fullmatch(r"[a-z_]+", str(exc))
-                    else type(exc).__name__,
-                }
-            )
+    discovery = discover_supplement_candidates(
+        doi=main.doi,
+        title=main.title,
+        source_record=sidecar,
+        page_urls=page_urls,
+        max_bytes=max_bytes,
+        timeout=timeout,
+        page_fetch=page_fetch,
+        browser=browser,
+    )
+    discoveries, errors, diagnostics = (
+        discovery[k] for k in ("items", "errors", "diagnostics")
+    )
+    discovery_truncated = discovery["truncated"]
+    repository_provenance = discovery["repository_provenance"]
     items = []
     for attachment in discoveries[:max_files]:
         known = _known_attachment(main, directory, attachment, library)
@@ -1017,59 +1117,12 @@ def _acquire_supplements(
                         diagnostics=file_diagnostics,
                     )
                 temporary = resource.local_path
-                if not _attachment_url_allowed(
-                    attachment["page"], resource.final_url, attachment
-                ) or any(
-                    not _attachment_url_allowed(
-                        attachment["page"], hop.to_url, attachment
-                    )
-                    for hop in getattr(resource, "redirects", ())
-                ):
-                    raise ValueError("attachment_redirect_host_not_covered")
-                if temporary.stat().st_size > max_bytes:
-                    raise ValueError("attachment_exceeds_byte_limit")
-                if (
-                    attachment.get("expected_size") is not None
-                    and temporary.stat().st_size != attachment["expected_size"]
-                ):
-                    raise ValueError("official_attachment_size_mismatch")
-                if attachment.get("expected_md5"):
-                    with temporary.open("rb") as check:
-                        if (
-                            hashlib.file_digest(check, "md5").hexdigest()
-                            != attachment["expected_md5"]
-                        ):
-                            raise ValueError("official_attachment_checksum_mismatch")
-                from .supplement_formats import resolve_extension
-
-                delivered_suffix = Path(
-                    unquote(urlsplit(resource.final_url).path)
-                ).suffix.lower()
-                header_suffix = next(
-                    (
-                        d.get("filename_extension")
-                        for d in reversed(file_diagnostics)
-                        if d.get("status") == "HTTP_FILE_RESPONSE"
-                    ),
-                    None,
+                validation = validate_downloaded_attachment(
+                    resource,
+                    attachment,
+                    max_bytes=max_bytes,
+                    diagnostics=file_diagnostics,
                 )
-                extension = resolve_extension(
-                    temporary,
-                    attachment["extension"]
-                    or (header_suffix if header_suffix in _SUFFIXES else "")
-                    or (delivered_suffix if delivered_suffix in _SUFFIXES else ""),
-                    getattr(resource, "content_type", None),
-                )
-                validation = _validate_attachment(temporary, extension)
-                validation.update(
-                    declared_extension=attachment["extension"],
-                    detected_extension=extension,
-                    extension_corrected=bool(
-                        attachment["extension"] and attachment["extension"] != extension
-                    ),
-                    executed=False,
-                )
-                attachment["extension"] = extension
                 return resource, validation
 
             try:

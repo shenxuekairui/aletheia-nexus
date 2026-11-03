@@ -83,6 +83,61 @@ def request():
     return {"papers": [{"doi": "10.5555/first"}, {"doi": "10.5555/second"}]}
 
 
+def test_si_only_requires_its_own_grant_and_never_calls_main_engine(
+    tmp_path, monkeypatch
+):
+    from aletheia_nexus.workbench.standalone_supplements import (
+        StandaloneSupplementService,
+    )
+
+    calls = []
+
+    def si(self, papers, *, context, **policy):
+        calls.append((papers, policy, self.library.root))
+        assert policy["max_files"] == 20 and policy["max_bytes"] == 100 * 1024**2
+        return {
+            "status": "COMPLETED",
+            "items": [],
+            "main_status": "NOT_REQUESTED",
+            "model_calls": 0,
+        }
+
+    monkeypatch.setattr(StandaloneSupplementService, "acquire_many", si)
+    app = make_app(tmp_path, network=True)
+    payload = {**request(), "si_only": True}
+    try:
+        preview = app.acquire_documents(payload)
+        assert preview["status"] == "AUTHORIZATION_REQUIRED" and not calls
+        assert "独立公开 SI" in preview["plan"]
+        token = app.authorize("acquire", request())
+        with pytest.raises(ProcessingError, match="expired_or_changed"):
+            app.acquire_documents(payload, authorization=token, background=False)
+        token = app.authorize("acquire", payload)
+        result = app.acquire_documents(payload, authorization=token, background=False)
+        assert (
+            result["status"] == "COMPLETED" and result["main_status"] == "NOT_REQUESTED"
+        )
+        assert len(calls) == 1 and calls[0][2].is_relative_to(app.workspace)
+        with pytest.raises(ProcessingError):
+            app.acquire_documents(payload, authorization=token, background=False)
+        assert not list(app.workspace.rglob("*.acquisition.json"))
+    finally:
+        app.close()
+
+
+def test_si_mode_cannot_resume_main_checkpoint_or_accept_non_boolean(tmp_path):
+    app = make_app(tmp_path, network=True)
+    try:
+        with pytest.raises(ValueError, match="boolean"):
+            app.acquire_documents({**request(), "si_only": "true"})
+        with pytest.raises(ValueError, match="checkpoints"):
+            app.acquire_documents(
+                {**request(), "si_only": True, "resume_job_id": "a" * 32}
+            )
+    finally:
+        app.close()
+
+
 def test_independent_network_switch_preview_and_scope_bound_one_use(
     tmp_path, public_network
 ):

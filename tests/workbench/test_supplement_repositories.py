@@ -74,6 +74,40 @@ def discover(source):
     return module.discover_pmc_attachments(source, doi=DOI, title=TITLE)
 
 
+def test_independent_pmc_metadata_does_not_claim_a_main_pdf(official):
+    source, state = official
+    before = deepcopy(source)
+    result = module.discover_pmc_version_attachments(
+        prefix=PREFIX, doi=DOI, title=TITLE
+    )
+    assert result["status"] == "DISCOVERED"
+    assert result["provenance"]["main_pdf_verified"] is False
+    assert len(state["calls"]) == 2
+    assert all(not url.split("?", 1)[0].endswith(".pdf") for url, _ in state["calls"])
+    assert source == before
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("doi", "10.1000/other"),
+        ("version", 2),
+        ("is_retracted", True),
+        ("is_pmc_openaccess", False),
+    ],
+)
+def test_independent_pmc_keeps_metadata_identity_and_access_gates(
+    official, field, value
+):
+    _, state = official
+    state["metadata"][field] = value
+    result = module.discover_pmc_version_attachments(
+        prefix=PREFIX, doi=DOI, title=TITLE
+    )
+    assert result["status"] == "FAILED" and not result["items"]
+    assert len(state["calls"]) == 1
+
+
 def test_explicit_jats_media_mapping_excludes_ordinary_figures_without_downloading_files(
     official,
 ):

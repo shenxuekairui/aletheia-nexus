@@ -527,6 +527,13 @@ class AcquisitionPage:
             "获取论文",
             "先确认论文身份，再交给现有可信获取引擎；正文与 SI 分别报告结果。",
         )
+        from .ui_supplements import independent_si_dialog
+
+        ui.button(
+            "单独获取 SI（无需正文）",
+            icon="attach_file",
+            on_click=guard(lambda: independent_si_dialog(self)),
+        ).props("outline")
         from .ui_acquisition_batch import AcquisitionBatchEditor
         from .ui_folders import choose_library_folder
 

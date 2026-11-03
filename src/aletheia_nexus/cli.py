@@ -962,6 +962,8 @@ def entrypoint(argv: list[str] | None = None) -> int:
             "  aletheia-nexus acquire DOI [options]\n"
             "  aletheia-nexus acquire INPUT.txt [options]\n"
             "  aletheia-nexus acquire --title TITLE [options]\n"
+            "  aletheia-nexus si acquire DOI... [--library DIRECTORY]\n"
+            "  aletheia-nexus si list|attach [options]\n"
             "  aletheia-nexus import PAPER.pdf --title TITLE --output-dir CORPUS [options]\n"
             "  aletheia-nexus parse PAPER.pdf [--doi DOI] [options]\n"
             "  aletheia-nexus parse-batch CORPUS [options]\n"
@@ -1062,6 +1064,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
         from aletheia_nexus.ui_cli import main as ui_main
 
         return ui_main(args[1:])
+    if args[0] == "si":
+        from aletheia_nexus.si_cli import main as si_main
+
+        return si_main(args[1:])
     if args[0] == "acquire":
         return main(args[1:])
     if args[0] == "research":

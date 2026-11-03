@@ -28,10 +28,21 @@ POLICY = {
     "timeout": 30,
     "keep_unverified": False,
 }
+SI_POLICY = {
+    "public_only": True,
+    "max_files": 20,
+    "max_bytes": 100 * 1024**2,
+    "timeout": 30.0,
+    "include_peer_review": False,
+}
 
 
 def public_acquisition_plan(app, payload: dict) -> dict:
-    if not isinstance(payload, dict) or payload.keys() - {"papers", "resume_job_id"}:
+    if not isinstance(payload, dict) or payload.keys() - {
+        "papers",
+        "resume_job_id",
+        "si_only",
+    }:
         raise ValueError("acquisition accepts papers and optional resume_job_id")
     papers = payload.get("papers")
     if not isinstance(papers, list) or not 1 <= len(papers) <= 10:
@@ -48,6 +59,13 @@ def public_acquisition_plan(app, payload: dict) -> dict:
         if value not in selected:
             selected.append(value)
     normalized = {"papers": selected}
+    if type(payload.get("si_only", False)) is not bool:
+        raise ValueError("si_only must be boolean")
+    si_only = payload.get("si_only", False)
+    if si_only:
+        normalized["si_only"] = True
+        if payload.get("resume_job_id") is not None:
+            raise ValueError("SI-only jobs do not use main-PDF checkpoints")
     resume = None
     if "resume_job_id" in payload:
         job_id = payload["resume_job_id"]
@@ -55,6 +73,8 @@ def public_acquisition_plan(app, payload: dict) -> dict:
             raise ValueError("invalid acquisition resume job ID")
         parent = app.path(app.workspace / "jobs" / job_id, write=True)
         saved = json.loads((parent / "acquisition-request.json").read_text("utf-8"))
+        if saved.get("si_only", False) != si_only:
+            raise ProcessingError("acquisition_resume_scope_changed")
         if saved["papers"] != selected:
             raise ProcessingError("acquisition_resume_scope_changed")
         state = app.get_run_status(job_id)
@@ -100,7 +120,7 @@ def public_acquisition_plan(app, payload: dict) -> dict:
         normalized["resume_job_id"] = job_id
     binding = {
         "request": normalized,
-        "policy": POLICY,
+        "policy": SI_POLICY if si_only else POLICY,
         "resume_checkpoint_sha256": resume["sha256"] if resume else None,
     }
     lines = [
@@ -119,6 +139,18 @@ def public_acquisition_plan(app, payload: dict) -> dict:
             lines.append(
                 "原任务未留下断点文件；本次重新获取所选范围，不自动信任或复用遗留文件。"
             )
+    if si_only:
+        lines = [
+            f"独立公开 SI 获取：{len(selected)}篇（无需先取得正文）",
+            *[
+                f"  {p['doi']} · {p.get('title', '按DOI核对附件来源')}"
+                for p in selected
+            ],
+            f"附件仅保存至：{app.workspace / 'jobs'} 下的新任务目录。",
+            "将向公共元数据/出版社服务发送上述DOI及可选题名；不发送本地论文内容。",
+            "每篇最多20份附件、每份100 MiB；只按DOI保存，不生成或声称已验证正文。",
+            "不打开浏览器、不使用机构/官方凭据、不调用AI模型；审稿材料默认排除。",
+        ]
     return {
         "payload": normalized,
         "binding": binding,
@@ -178,6 +210,29 @@ def _resume_checkpoint(app, plan: dict, directory: Path) -> Path:
 
 
 def acquire_public_documents(app, plan: dict, directory: Path, progress) -> dict:
+    if plan["payload"].get("si_only"):
+        from .workbench.library import LibraryService
+        from .workbench.standalone_supplements import StandaloneSupplementService
+
+        service = StandaloneSupplementService(
+            LibraryService(app.path(directory / "downloads", write=True))
+        )
+
+        class SIContext:
+            def checkpoint(self):
+                pass
+
+            def record(self, *_args, **_kwargs):
+                pass
+
+            def progress(self, completed=0, total=0, **data):
+                progress({"completed": completed, "total": total, **data})
+
+        return service.acquire_many(
+            plan["payload"]["papers"],
+            context=SIContext(),
+            **{key: value for key, value in SI_POLICY.items() if key != "public_only"},
+        )
     checkpoint = _resume_checkpoint(app, plan, directory)
     items = []
 

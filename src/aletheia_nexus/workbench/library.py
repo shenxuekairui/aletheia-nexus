@@ -894,6 +894,9 @@ class LibraryService:
         ):
             raise ValueError("source PDF must not be a symbolic link")
         source = supplied.resolve(strict=True)
+        from aletheia_nexus.content.local import reject_standalone_as_article
+
+        reject_standalone_as_article(source)
         if source.suffix.lower() != ".pdf":
             raise ValueError("select a PDF")
         tags = [self._tag(tag) for tag in tags]
@@ -1057,7 +1060,9 @@ class LibraryService:
                     path.unlink()
             raise
 
-    def import_attachment(self, parent_id, path, *, role="SUPPLEMENT", title=None):
+    def import_attachment(
+        self, parent_id, path, *, role="SUPPLEMENT", title=None, standalone_id=None
+    ):
         """Explicitly associate a user-selected local file; never infer a parent.
 
         PDF SI is locally DECLARED, never acquisition VERIFIED. Other attachment
@@ -1085,7 +1090,14 @@ class LibraryService:
             raise ValueError(
                 "unsupported local attachment extension; executable and active HTML files are not accepted"
             )
-        if source.stat().st_size > 200 * 1024 * 1024:
+        standalone = None
+        if standalone_id is not None:
+            from .standalone_supplements import StandaloneSupplementService
+
+            standalone = StandaloneSupplementService(self).get(standalone_id)
+            if Path(standalone["path"]) != source or standalone["role"] != role:
+                raise ValueError("standalone file or role does not match its receipt")
+        if standalone is None and source.stat().st_size > 200 * 1024 * 1024:
             raise ValueError("local attachment exceeds the 200 MiB limit")
         parent = self.get(parent_id)
         if not parent:
@@ -1093,6 +1105,8 @@ class LibraryService:
         main = validate_parser_input(
             parent["pdf_path"], sidecar_path=parent["sidecar_path"]
         )
+        if standalone is not None:
+            StandaloneSupplementService.validate_parent(standalone, main)
         validation = _validate_attachment(source, suffix)
         digest = sha256_file(source)
         if digest == main.pdf_sha256:
@@ -1123,6 +1137,25 @@ class LibraryService:
                     raise ValueError(
                         "existing attachment changed; restore it before reimport"
                     )
+                if standalone is not None:
+                    registered = self.register_attachment(
+                        main.pdf_path,
+                        target,
+                        role=role,
+                        source_record=attachment.get("source"),
+                    )
+                    with self._locked():
+                        state = self._load()
+                        info = state["attachments"][registered["id"]]
+                        info["standalone_ids"] = list(
+                            dict.fromkeys(
+                                [
+                                    *info.get("standalone_ids", []),
+                                    standalone_id,
+                                ]
+                            )
+                        )
+                        _write(self.state_path, state)
                 return {**attachment, "import_status": "ALREADY_PRESENT"}
         staging = self.state_dir / "imports" / uuid4().hex
         staging.mkdir(parents=True)
@@ -1175,6 +1208,43 @@ class LibraryService:
                 },
                 "network_access": False,
             }
+            if standalone is not None:
+                receipt = {
+                    **{
+                        k: v
+                        for k, v in standalone["record"].items()
+                        if k
+                        not in {
+                            "schema",
+                            "id",
+                            "file_name",
+                            "main_pdf",
+                            "association_status",
+                        }
+                    },
+                    "schema": "aletheia-nexus/attachment-source/v1",
+                    "status": "SAVED",
+                    "association_status": "MAIN_LINKED",
+                    "identity_status": "DECLARED",
+                    "bound_at": _now(),
+                    "parent": {
+                        "paper_id": parent_id,
+                        "article_id": main.article_id,
+                        "pdf_sha256": main.pdf_sha256,
+                        "sidecar_sha256": main.sidecar_sha256,
+                        "doi": main.doi,
+                    },
+                    "standalone_origin": {
+                        "id": standalone_id,
+                        "source_record": self._relative(standalone["source_record"]),
+                        "sha256": standalone["source_record_sha256"],
+                    },
+                    "binding_basis": "same_DOI_and_title_to_selected_main",
+                    "validation": {
+                        **validation,
+                        "parseable": suffix == ".pdf" and role == "SUPPLEMENT",
+                    },
+                }
             staged_receipt = staging / "receipt.json"
             _write(staged_receipt, receipt)
             with self._locked():
@@ -1236,6 +1306,8 @@ class LibraryService:
                     "source": str(record),
                     "registered_at": _now(),
                 }
+                if standalone is not None:
+                    info["standalone_ids"] = [standalone_id]
                 state["attachments"][attachment_id] = info
                 _write(self.state_path, state)
             return next(
@@ -1327,6 +1399,9 @@ class LibraryService:
                 "source": deepcopy(source_record),
                 "registered_at": _now(),
             }
+            previous = state["attachments"].get(attachment_id, {})
+            if previous.get("standalone_ids"):
+                info["standalone_ids"] = previous["standalone_ids"]
             state["attachments"][attachment_id] = info
             _write(self.state_path, state)
             return {"id": attachment_id, **deepcopy(info)}

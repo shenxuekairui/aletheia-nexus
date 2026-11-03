@@ -382,6 +382,13 @@ class LibraryPage:
         self.title(
             "文献库", "按目录存放正文，分类内共享 SI；标签、集合与表格视图分别保存。"
         )
+        from .ui_supplements import independent_si_dialog
+
+        ui.button(
+            "独立 SI 获取与正文关联",
+            icon="attach_file",
+            on_click=guard(lambda: independent_si_dialog(self)),
+        ).props("outline")
         all_rows = self.ctx.library.scan()["items"]
         self.library_source_view = self.ctx.settings.get("library_source_view", False)
         tags = sorted({t for row in all_rows for t in row.get("tags", [])})

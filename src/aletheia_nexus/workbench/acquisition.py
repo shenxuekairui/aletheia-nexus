@@ -1048,6 +1048,18 @@ class AcquisitionService:
                     bibliography = self._store_bibliography(item, source)
                     if bibliography is not None:
                         row["bibliography"] = bibliography
+                    if (self.root / "SI" / "independent").is_dir():
+                        from .standalone_supplements import StandaloneSupplementService
+
+                        try:
+                            row["independent_si_binding"] = StandaloneSupplementService(
+                                self.library
+                            ).bind(source.pdf_path)
+                        except Exception as exc:
+                            row["independent_si_binding"] = {
+                                "status": "FAILED",
+                                "error": type(exc).__name__,
+                            }
                     if options["include_si"]:
                         from aletheia_nexus.workbench.supplements import (
                             acquire_supplements,
