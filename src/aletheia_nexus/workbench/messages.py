@@ -90,6 +90,7 @@ _add(
         "figshare_parent_doi_mismatch",
         "figshare_parent_title_mismatch",
         "figshare_record_not_official_ACS",
+        "figshare_record_not_official_publisher",
         "figshare_record_identity_mismatch",
     ),
     "官方附件清单与当前父文的 DOI、题名或来源不一致，未自动关联；正文及原有附件保留。",

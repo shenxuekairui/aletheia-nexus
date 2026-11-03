@@ -587,9 +587,9 @@ def _attachment_url_allowed(source_page, url, attachment=None):
 
         if storage_url_allowed(attachment["url"], url):
             return True
-    from .supplement_figshare import BASIS, file_url_allowed
+    from .supplement_figshare import BASIS, PUBLISHER_BASIS, file_url_allowed
 
-    if attachment and attachment.get("association_basis") == BASIS:
+    if attachment and attachment.get("association_basis") in {BASIS, PUBLISHER_BASIS}:
         return file_url_allowed(url, attachment)
     return _official_link(source_page, url)
 
@@ -800,10 +800,21 @@ def discover_supplement_candidates(
                 errors.append(
                     {"status": repository["status"], "source": "official_PMC_metadata"}
                 )
-        if not discoveries:
-            from .supplement_figshare import discover_acs_attachments
+        if not discoveries or (
+            doi.startswith(("10.1063/", "10.1098/", "10.1080/"))
+            and not any(item["role"] == "SUPPLEMENT" for item in discoveries)
+        ):
+            from .supplement_figshare import (
+                discover_acs_attachments,
+                discover_publisher_attachments,
+            )
 
-            native = discover_acs_attachments(
+            discover_native = (
+                discover_acs_attachments
+                if doi.startswith("10.1021/")
+                else discover_publisher_attachments
+            )
+            native = discover_native(
                 doi=doi,
                 title=title,
                 timeout=timeout,

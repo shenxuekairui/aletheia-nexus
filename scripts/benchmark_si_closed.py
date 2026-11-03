@@ -7,6 +7,7 @@ processes/results. No fake main PDF, cookies, browser or paid API is used.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -20,6 +21,69 @@ from threading import Lock
 
 import httpx
 from benchmark_si_publishers import read, worker, write
+
+
+def independent(manifest, case_id, output):
+    """Exercise the actual DOI-only CLI, recording HTTP without changing it."""
+    from aletheia_nexus.core.urls import redact_url_for_record
+    from aletheia_nexus.si_cli import main as si_main
+
+    case = next(item for item in manifest["cases"] if item["id"] == case_id)
+    directory = output / "independent" / case_id
+    directory.mkdir(parents=True, exist_ok=True)
+    limits = manifest["limits"]
+    requests = []
+    original_send = httpx.Client.send
+
+    def observed(client, request, *args, **kwargs):
+        record = {
+            "method": request.method,
+            "url": redact_url_for_record(str(request.url)),
+            "host": request.url.host,
+        }
+        try:
+            response = original_send(client, request, *args, **kwargs)
+            record.update(
+                http_status=response.status_code,
+                content_type=response.headers.get("content-type"),
+            )
+            return response
+        except Exception as exc:
+            record["error_type"] = type(exc).__name__
+            raise
+        finally:
+            requests.append(record)
+
+    httpx.Client.send = observed
+    started = time.monotonic()
+    result = {"id": case_id, "doi": case["doi"], "cwd": str(Path.cwd())}
+    try:
+        with (
+            (directory / "cli.json").open("x", encoding="utf-8") as stdout,
+            (directory / "stderr.txt").open("x", encoding="utf-8") as stderr,
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
+            code = si_main(
+                [
+                    "acquire",
+                    case["doi"],
+                    "--library",
+                    str(directory / "library"),
+                    "--max-files",
+                    str(limits["max_si_files"]),
+                    "--max-bytes",
+                    str(limits["si_max_bytes"]),
+                    "--timeout",
+                    str(limits["request_timeout_seconds"]),
+                ]
+            )
+        result.update(exit_code=code, result=read(directory / "cli.json"))
+    finally:
+        httpx.Client.send = original_send
+        result["wall_seconds"] = round(time.monotonic() - started, 2)
+        write(directory / "http.json", requests)
+        write(directory / "summary.json", sanitized(result))
 
 
 def sanitized(value):
@@ -296,7 +360,12 @@ def run(manifest_path, output):
         if over_budget:
             result["status"] = "NOT_RUN_DISK_BUDGET"
         else:
-            for mode in ["probe", "main"]:
+            modes = (
+                ["si"]
+                if manifest["measurement_scope"] == "standalone_si"
+                else ["probe", "main"]
+            )
+            for mode in modes:
                 log = output / "logs" / (case["id"] + "-" + mode + ".txt")
                 log.parent.mkdir(exist_ok=True)
                 command = [
@@ -316,6 +385,9 @@ def run(manifest_path, output):
                         stdout=stream,
                         stderr=subprocess.STDOUT,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        cwd=os.path.join(os.environ["SystemRoot"], "System32")
+                        if mode == "si" and os.name == "nt"
+                        else None,
                     )
                     try:
                         process.wait(
@@ -329,7 +401,9 @@ def run(manifest_path, output):
                         process.wait()
                         result[mode + "_process"] = "TIME_LIMIT"
                 path = (
-                    output / "probes" / case["id"] / "summary.json"
+                    output / "independent" / case["id"] / "summary.json"
+                    if mode == "si"
+                    else output / "probes" / case["id"] / "summary.json"
                     if mode == "probe"
                     else output / "native/cases" / case["id"] / "result.json"
                 )
@@ -343,6 +417,7 @@ def run(manifest_path, output):
                 for directory in [
                     output / "probes" / case["id"],
                     output / "native/cases" / case["id"],
+                    output / "independent" / case["id"],
                 ]
                 for p in directory.rglob("*")
                 if p.is_file()
@@ -366,6 +441,9 @@ def run(manifest_path, output):
                         "SI_delivered": row.get("probe", {}).get(
                             "any_SI_delivered", False
                         ),
+                        "independent": row.get("si", {})
+                        .get("result", {})
+                        .get("status"),
                     }
                 ),
                 flush=True,
@@ -384,7 +462,7 @@ def run(manifest_path, output):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["run", "main", "probe"])
+    parser.add_argument("mode", choices=["run", "main", "probe", "si"])
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--case-id")
@@ -401,5 +479,7 @@ if __name__ == "__main__":
                 os.environ.pop(key, None)
         if args.mode == "main":
             worker(read(args.manifest), args.case_id, args.output / "native")
+        elif args.mode == "si":
+            independent(read(args.manifest), args.case_id, args.output)
         else:
             probe(read(args.manifest), args.case_id, args.output)

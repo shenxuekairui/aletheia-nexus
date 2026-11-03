@@ -1,4 +1,4 @@
-"""Public ACS supplementary manifests, without browser or credential use.
+"""Official publisher supplementary manifests, without credentials or a browser.
 
 Only exact parent DOI/title, ACS-hosted records and publisher supplement DOIs
 authorize files. The generic attachment pipeline still owns saving/registration.
@@ -22,6 +22,19 @@ from aletheia_nexus.core.identifiers.doi import normalize_doi
 
 API = "https://api.figshare.com/v2/articles"
 BASIS = "official_ACS_Figshare_parent_DOI_title_and_file_manifest"
+PUBLISHER_BASIS = "official_publisher_Figshare_parent_DOI_title_and_file_manifest"
+# Each portal is a publisher's documented supplementary-material repository.
+# Never infer publisher authority from a generic figshare.com upload.
+PUBLISHERS = {
+    "ACS": ("10.1021/", "acs.figshare.com", r"pstorage-acs-\d+"),
+    "AIP": (
+        "10.1063/",
+        "aip.figshare.com",
+        r"figshare-production-eu-aip-storage\d+-eu-west-1",
+    ),
+    "Royal_Society": ("10.1098/", "rs.figshare.com", r"pstorage-rs-\d+"),
+    "Taylor_Francis": ("10.1080/", "tandf.figshare.com", r"pstorage-tf-[a-zA-Z0-9]+"),
+}
 MAX_RECORDS = 10
 MAX_FILES = 64
 MAX_JSON_BYTES = 2 * 1024 * 1024
@@ -57,11 +70,18 @@ def _title(value):
     )
 
 
-def _record(record, identifier, doi, title):
+def _record(record, identifier, doi, title, publisher="ACS"):
     if not isinstance(record, dict) or record.get("id") != identifier:
         raise ValueError("figshare_record_identity_mismatch")
+    supplement_pattern = (
+        re.escape(doi) + r"\.s\d+"
+        if publisher == "ACS"
+        else r"10\.60893/figshare\.[a-z]+\." + str(identifier) + r"(?:\.v[1-9]\d*)?"
+        if publisher == "AIP"
+        else r"10\.6084/m9\.figshare\." + str(identifier) + r"(?:\.v[1-9]\d*)?"
+    )
     if normalize_doi(record.get("resource_doi", "")) != doi or not re.fullmatch(
-        re.escape(doi) + r"\.s\d+", normalize_doi(record.get("doi", ""))
+        supplement_pattern, normalize_doi(record.get("doi", ""))
     ):
         raise ValueError("figshare_parent_doi_mismatch")
     if not _title(title) or _title(record.get("resource_title")) != _title(title):
@@ -69,13 +89,17 @@ def _record(record, identifier, doi, title):
     page = urlsplit(record.get("url_public_html", ""))
     if (
         page.scheme != "https"
-        or page.netloc != "acs.figshare.com"
+        or page.netloc != PUBLISHERS[publisher][1]
         or not page.path.startswith("/articles/")
         or page.path.rstrip("/").rsplit("/", 1)[-1] != str(identifier)
         or page.query
         or page.fragment
     ):
-        raise ValueError("figshare_record_not_official_ACS")
+        raise ValueError(
+            "figshare_record_not_official_ACS"
+            if publisher == "ACS"
+            else "figshare_record_not_official_publisher"
+        )
 
 
 def file_url_allowed(url, attachment):
@@ -83,16 +107,28 @@ def file_url_allowed(url, attachment):
     parts = urlsplit(url)
     if parts.scheme != "https" or parts.fragment:
         return False
-    file_id = str(attachment.get("evidence", {}).get("file_id", ""))
-    name = attachment.get("evidence", {}).get("filename", "")
+    evidence = attachment.get("evidence", {})
+    publisher = evidence.get("publisher", "ACS")
+    if publisher not in PUBLISHERS:
+        return False
+    file_id = str(evidence.get("file_id", ""))
+    name = evidence.get("filename", "")
     if not re.fullmatch(r"[1-9]\d*", file_id) or not name:
         return False
     if parts.netloc == "ndownloader.figshare.com":
         return parts.path == "/files/" + file_id and not parts.query
     if parts.netloc == "s3-eu-west-1.amazonaws.com":
         path = unquote(parts.path)
+        # Figshare's AIP storage removes spaces from the public manifest name.
+        names = {name, name.replace(" ", "")} if publisher == "AIP" else {name}
         return bool(
-            re.fullmatch(r"/pstorage-acs-\d+/" + file_id + "/" + re.escape(name), path)
+            any(
+                re.fullmatch(
+                    "/" + PUBLISHERS[publisher][2] + "/" + file_id + "/" + re.escape(n),
+                    path,
+                )
+                for n in names
+            )
         )
     return False
 
@@ -105,8 +141,40 @@ def discover_acs_attachments(
     max_bytes=100 * 1024 * 1024,
     allow_publisher_title=False,
 ):
+    return _discover_attachments(
+        doi=doi,
+        title=title,
+        timeout=timeout,
+        max_bytes=max_bytes,
+        allow_publisher_title=allow_publisher_title,
+        publisher="ACS",
+    )
+
+
+def discover_publisher_attachments(*, doi, title, **kwargs):
+    """Use the same manifest rules for supported official publisher portals."""
     doi = normalize_doi(doi)
-    if not doi.startswith("10.1021/") or (not title and not allow_publisher_title):
+    for publisher, (prefix, _, _) in PUBLISHERS.items():
+        if publisher != "ACS" and doi.startswith(prefix):
+            return _discover_attachments(
+                doi=doi, title=title, publisher=publisher, **kwargs
+            )
+    return {"status": "NOT_SUPPORTED", "items": []}
+
+
+def _discover_attachments(
+    *,
+    doi,
+    title,
+    publisher,
+    timeout=30.0,
+    max_bytes=100 * 1024 * 1024,
+    allow_publisher_title=False,
+):
+    doi = normalize_doi(doi)
+    if not doi.startswith(PUBLISHERS[publisher][0]) or (
+        not title and not allow_publisher_title
+    ):
         return {"status": "NOT_SUPPORTED", "items": []}
     result = {"status": "NOT_FOUND", "items": [], "diagnostics": [], "errors": []}
     try:
@@ -136,11 +204,11 @@ def discover_acs_attachments(
                     raise ValueError("figshare_invalid_or_duplicate_record")
                 seen_records.add(identifier)
                 expected_title = resolved_title or entry.get("resource_title")
-                _record(entry, identifier, doi, expected_title)
+                _record(entry, identifier, doi, expected_title, publisher)
                 detail, metadata_hash = _read_json(
                     API + f"/{identifier}", timeout=timeout
                 )
-                _record(detail, identifier, doi, expected_title)
+                _record(detail, identifier, doi, expected_title, publisher)
                 if (
                     detail.get("is_public") is not True
                     or detail.get("is_confidential") is not False
@@ -196,15 +264,28 @@ def discover_acs_attachments(
                             "metadata_sha256": metadata_hash,
                             "search_sha256": search_hash,
                         }
+                        if publisher != "ACS":
+                            evidence["publisher"] = publisher
                         item = {
                             "url": file.get("download_url"),
                             "page": detail["url_public_html"],
-                            "role": attachment_role(name) or "SUPPLEMENT",
+                            "role": attachment_role(
+                                name
+                                + " "
+                                + (
+                                    detail.get("title", "")
+                                    if publisher != "ACS"
+                                    else ""
+                                )
+                            )
+                            or "SUPPLEMENT",
                             "extension": extension,
                             "label": name,
                             "expected_md5": checksum.casefold(),
                             "expected_size": size,
-                            "association_basis": BASIS,
+                            "association_basis": BASIS
+                            if publisher == "ACS"
+                            else PUBLISHER_BASIS,
                             "evidence": evidence,
                         }
                         if not isinstance(item["url"], str) or not file_url_allowed(
@@ -244,7 +325,7 @@ def discover_acs_attachments(
         {
             "status": result["status"],
             "transport": "http",
-            "source": "official_ACS_Figshare",
+            "source": f"official_{publisher}_Figshare",
             "discovered": len(result["items"]),
         }
     )

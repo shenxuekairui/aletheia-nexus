@@ -20,8 +20,12 @@ def independent_si_dialog(page):
             .classes("w-full")
         )
         with ui.row().classes("w-full"):
-            limit = ui.number("每篇最多附件数", value=20, min=1, max=100, step=1)
-            maximum = ui.number("单文件上限（MiB）", value=100, min=1, max=2048, step=1)
+            limit = ui.number(
+                "每篇最多附件数", value=20, min=1, max=100, step=1
+            ).classes("w-48")
+            maximum = ui.number(
+                "单文件上限（MiB）", value=100, min=1, max=2048, step=1
+            ).classes("w-48")
             peer_review = ui.checkbox("同时获取审稿材料", value=False)
         ui.label(
             "默认只尝试公开原生路线，不调用 AI；保存附件不等于已解析其内容。"
