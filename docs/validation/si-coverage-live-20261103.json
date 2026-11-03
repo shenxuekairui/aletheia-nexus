@@ -1,0 +1,1654 @@
+{
+  "schema": "aletheia-nexus/si-coverage-validation/v1",
+  "date": "2026-11-03",
+  "baseline_commit": "8c1c9ba",
+  "branch": "feat/si-publisher-coverage",
+  "local_raw_root": "F:\\AI4S\\outputs\\AN_SI_COVERAGE_20261103",
+  "browser_started": false,
+  "paid_model_calls": 0,
+  "limits": {
+    "max_files": 20,
+    "max_bytes": 26214400,
+    "timeout_seconds": [
+      15,
+      20
+    ]
+  },
+  "engineering": {
+    "new_cases": 95,
+    "page_templates": 27,
+    "format_response_cases": 14,
+    "real_engine_fixture_cases": 5,
+    "full_result": "4136 passed, 148 skipped in 302.40s",
+    "installed_from_system32": "95 passed in 5.08s"
+  },
+  "wheel": {
+    "wheel": "F:\\AI4S\\tmp\\an-si-coverage-wheel\\aletheia_nexus-0.8.2-py3-none-any.whl",
+    "sha256": "217181e8ee9aba90fbd8ba5e3aff1eaf1430f14153f7ad61e3f1738ab42576de",
+    "python_files": 228,
+    "source_mismatches": []
+  },
+  "baseline_source_matches": true,
+  "plos": {
+    "doi": "10.1371/journal.pone.0039704",
+    "baseline_native_initial": {
+      "local_raw": "baseline-plos-native\\result.json",
+      "status": "FAILED",
+      "discovered": 0,
+      "truncated": false,
+      "original_unchanged": null,
+      "errors": [
+        {
+          "status": "FAILED",
+          "error": "Timed out while requesting https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/PMC3384632.1.xml?md5=%5Bredacted%5D",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC3384632.1.json"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://journals.plos.org/plosone/article?id=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "files": []
+    },
+    "baseline_native_retake": {
+      "local_raw": "baseline-plos-native\\result-retake.json",
+      "status": "PARTIAL",
+      "discovered": 7,
+      "truncated": false,
+      "original_unchanged": null,
+      "errors": [
+        {
+          "status": "FAILED",
+          "error": "官方 PMC 补充材料的文件类型尚未支持",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC3384632.1.json"
+        },
+        {
+          "status": "FAILED",
+          "error": "官方 PMC 补充材料的文件类型尚未支持",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC3384632.1.json"
+        },
+        {
+          "status": "FAILED",
+          "error": "官方 PMC 补充材料的文件类型尚未支持",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC3384632.1.json"
+        },
+        {
+          "status": "FAILED",
+          "error": "官方 PMC 补充材料的文件类型尚未支持",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC3384632.1.json"
+        },
+        {
+          "status": "FAILED",
+          "error": "官方 PMC 补充材料的文件类型尚未支持",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC3384632.1.json"
+        }
+      ],
+      "diagnostics": [],
+      "files": [
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-01.xls",
+          "suffix": ".xls",
+          "size_bytes": 25600,
+          "sha256": "c65cbecaeed29b15484029c999998117473c2188648d58f0dfe26b19287e013d",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s001.xls?md5=%5Bredacted%5D",
+          "source_url_sha256": "8577e807d77221069d8c62055019bdbf3dbdcd134a5f4ecd99c61a1581950c34",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-02.xls",
+          "suffix": ".xls",
+          "size_bytes": 3004416,
+          "sha256": "be36c71e6f65293f83ee79dbf32edbeeacbd45d3df92b89c78cac08fc78d9071",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s003.xls?md5=%5Bredacted%5D",
+          "source_url_sha256": "117bd0ee1ff255ba70a1c5958d44ca53828cc07def1a8a01d9662b2969d1c053",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-03.xls",
+          "suffix": ".xls",
+          "size_bytes": 43520,
+          "sha256": "62b27c7d4ed12d69d267bf0f50e7c5caed196b0dd04a6f650cff574b020d21af",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s004.xls?md5=%5Bredacted%5D",
+          "source_url_sha256": "4003376511cecf63a6cb1329772806383309c68dc70c5e25e5408fe4b889cb27",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-04.xls",
+          "suffix": ".xls",
+          "size_bytes": 69632,
+          "sha256": "6952bdb55f123f267500cc59923cd43d694f7b1b9d7bd4f4ba1680a7a5b49998",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s005.xls?md5=%5Bredacted%5D",
+          "source_url_sha256": "fe4ec4cba85de2b6b439af1d0560c12813ccb6c84cf06d9a40ad874dabe7e68f",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-05.xls",
+          "suffix": ".xls",
+          "size_bytes": 2151424,
+          "sha256": "af03b50f1a894a063d6785fdb194005be51151b816c066fcbde068dbb80f16de",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s006.xls?md5=%5Bredacted%5D",
+          "source_url_sha256": "eeef7851059e365df56fba5597d1fbeaaca0fb4343cd90d184190b9ffb30b53b",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-06.xls",
+          "suffix": ".xls",
+          "size_bytes": 38400,
+          "sha256": "b3c53b4e85de94605a780d3d9bd17b64e697f9c1a9ae95280b316ff5c3abafef",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s007.xls?md5=%5Bredacted%5D",
+          "source_url_sha256": "27394a46c5f297386f404aedbb2a9cea07591a81643feb30a8ea50484818d575",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-07.xls",
+          "suffix": ".xls",
+          "size_bytes": 41472,
+          "sha256": "35e14be9c53f7642fae9a423f3f45dcffa02bc5d7f1c56f24c99df3ab8dd6ab4",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s008.xls?md5=%5Bredacted%5D",
+          "source_url_sha256": "21648b376d1a6c49becd22a6c48959e0e062ae627b39d7b7a5d1426eeb060ef1",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        }
+      ]
+    },
+    "baseline_publisher": {
+      "local_raw": "baseline-plos-publisher\\result.json",
+      "status": "NOT_FOUND",
+      "discovered": 0,
+      "truncated": false,
+      "original_unchanged": null,
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://journals.plos.org/plosone/article?id=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "files": []
+    },
+    "new_publisher_initial": {
+      "local_raw": "publisher-live\\10.1371_journal.pone.0039704\\result.json",
+      "status": "FAILED",
+      "discovered": 12,
+      "truncated": false,
+      "original_unchanged": true,
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "page": "https://journals.plos.org/plosone/article?id=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "files": []
+    },
+    "new_publisher_final": {
+      "local_raw": "publisher-plos-final\\result.json",
+      "status": "COMPLETED",
+      "discovered": 12,
+      "truncated": false,
+      "original_unchanged": null,
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "page": "https://journals.plos.org/plosone/article?id=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "files": [
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-01.xls",
+          "suffix": ".xls",
+          "size_bytes": 25600,
+          "sha256": "c65cbecaeed29b15484029c999998117473c2188648d58f0dfe26b19287e013d",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "f3eb446e762cb5857f361f77e8cda1c8d338ccda4895d918ca749dc68c16bec8",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-01.doc",
+          "suffix": ".doc",
+          "size_bytes": 34304,
+          "sha256": "e4897d274f669b8577e5606dcfd314491cdb865fa6893b7f891dd54b988be794",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "878b67369c091a8a6bdfd75ff670585389954ea893d021c1b7659c3c0f83dd3a",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-02.xls",
+          "suffix": ".xls",
+          "size_bytes": 3004416,
+          "sha256": "be36c71e6f65293f83ee79dbf32edbeeacbd45d3df92b89c78cac08fc78d9071",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "cee856b55a3356273944204567105438ee08c7b12b441edad2383ce45df487fa",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-03.xls",
+          "suffix": ".xls",
+          "size_bytes": 43520,
+          "sha256": "62b27c7d4ed12d69d267bf0f50e7c5caed196b0dd04a6f650cff574b020d21af",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "44248e0128e38519fa3fde104313108e9279cd92e1e5bbdd3e69029538287ac7",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-04.xls",
+          "suffix": ".xls",
+          "size_bytes": 69632,
+          "sha256": "6952bdb55f123f267500cc59923cd43d694f7b1b9d7bd4f4ba1680a7a5b49998",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "4aea071cbaa626969cbf59fe4eac458dbb58bd96449314ce6913d8b13d6b5354",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-05.xls",
+          "suffix": ".xls",
+          "size_bytes": 2151424,
+          "sha256": "af03b50f1a894a063d6785fdb194005be51151b816c066fcbde068dbb80f16de",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "627ca82f5d73f66277737c0b9de47097115c1bb37e27e16d2ecf8eeb77e048eb",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-06.xls",
+          "suffix": ".xls",
+          "size_bytes": 38400,
+          "sha256": "b3c53b4e85de94605a780d3d9bd17b64e697f9c1a9ae95280b316ff5c3abafef",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "a5120f8f22f55c1faa61950bbb11f9b1f60419a4a60d04b1355c8b37f3d08df3",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-07.xls",
+          "suffix": ".xls",
+          "size_bytes": 41472,
+          "sha256": "35e14be9c53f7642fae9a423f3f45dcffa02bc5d7f1c56f24c99df3ab8dd6ab4",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "69deaac670f67cd22a05b43a6bf61481a9b7015196393a819d25c287fc63a0bf",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-02.doc",
+          "suffix": ".doc",
+          "size_bytes": 45568,
+          "sha256": "e1e2621975bae25d92e3abb6a0f2fe95b4822160484be18454e6fd0b1d85e677",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "8fdcdf1d737117652ecb0fed894180ddcd7afd85b43347faf3fbb34ca0e96f09",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-03.doc",
+          "suffix": ".doc",
+          "size_bytes": 31744,
+          "sha256": "8936c30cc020da5a6add4310c470398b3ad31e92828f5ebe6ec371230cbf747c",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "8d4b6bc7a5f4774e598bfe5f44c237a324c6d4f69c79f1212dad842a2f4838a1",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-04.doc",
+          "suffix": ".doc",
+          "size_bytes": 35840,
+          "sha256": "3af5eb37e125428029e41c84c9d35e923967dd762c6329eb31ed9cc96c236f5e",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "27bbb40a585fe8cb519d59cc2864a01132f94a1bd132d6c7295c0425c5e1d8d6",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-05.doc",
+          "suffix": ".doc",
+          "size_bytes": 30720,
+          "sha256": "74be4476ddfb3f6016f490fa509f2c988b2bcb04f9090301f1bb35b9b41d18e4",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "8fd396510c1a16912554d73275f5920d2b7e61c38a11ed5f122f0d0b0b964331",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        }
+      ]
+    },
+    "new_publisher_reuse": {
+      "local_raw": "publisher-plos-final\\reuse.json",
+      "status": "COMPLETED",
+      "discovered": 12,
+      "truncated": false,
+      "original_unchanged": null,
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "page": "https://journals.plos.org/plosone/article?id=%5Bredacted%5D",
+          "transport": "http"
+        }
+      ],
+      "files": [
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-01.xls",
+          "suffix": ".xls",
+          "size_bytes": 25600,
+          "sha256": "c65cbecaeed29b15484029c999998117473c2188648d58f0dfe26b19287e013d",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "f3eb446e762cb5857f361f77e8cda1c8d338ccda4895d918ca749dc68c16bec8",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-01.doc",
+          "suffix": ".doc",
+          "size_bytes": 34304,
+          "sha256": "e4897d274f669b8577e5606dcfd314491cdb865fa6893b7f891dd54b988be794",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "878b67369c091a8a6bdfd75ff670585389954ea893d021c1b7659c3c0f83dd3a",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-02.xls",
+          "suffix": ".xls",
+          "size_bytes": 3004416,
+          "sha256": "be36c71e6f65293f83ee79dbf32edbeeacbd45d3df92b89c78cac08fc78d9071",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "cee856b55a3356273944204567105438ee08c7b12b441edad2383ce45df487fa",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-03.xls",
+          "suffix": ".xls",
+          "size_bytes": 43520,
+          "sha256": "62b27c7d4ed12d69d267bf0f50e7c5caed196b0dd04a6f650cff574b020d21af",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "44248e0128e38519fa3fde104313108e9279cd92e1e5bbdd3e69029538287ac7",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-04.xls",
+          "suffix": ".xls",
+          "size_bytes": 69632,
+          "sha256": "6952bdb55f123f267500cc59923cd43d694f7b1b9d7bd4f4ba1680a7a5b49998",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "4aea071cbaa626969cbf59fe4eac458dbb58bd96449314ce6913d8b13d6b5354",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-05.xls",
+          "suffix": ".xls",
+          "size_bytes": 2151424,
+          "sha256": "af03b50f1a894a063d6785fdb194005be51151b816c066fcbde068dbb80f16de",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "627ca82f5d73f66277737c0b9de47097115c1bb37e27e16d2ecf8eeb77e048eb",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-06.xls",
+          "suffix": ".xls",
+          "size_bytes": 38400,
+          "sha256": "b3c53b4e85de94605a780d3d9bd17b64e697f9c1a9ae95280b316ff5c3abafef",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "a5120f8f22f55c1faa61950bbb11f9b1f60419a4a60d04b1355c8b37f3d08df3",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-07.xls",
+          "suffix": ".xls",
+          "size_bytes": 41472,
+          "sha256": "35e14be9c53f7642fae9a423f3f45dcffa02bc5d7f1c56f24c99df3ab8dd6ab4",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "69deaac670f67cd22a05b43a6bf61481a9b7015196393a819d25c287fc63a0bf",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "xls",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-02.doc",
+          "suffix": ".doc",
+          "size_bytes": 45568,
+          "sha256": "e1e2621975bae25d92e3abb6a0f2fe95b4822160484be18454e6fd0b1d85e677",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "8fdcdf1d737117652ecb0fed894180ddcd7afd85b43347faf3fbb34ca0e96f09",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-03.doc",
+          "suffix": ".doc",
+          "size_bytes": 31744,
+          "sha256": "8936c30cc020da5a6add4310c470398b3ad31e92828f5ebe6ec371230cbf747c",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "8d4b6bc7a5f4774e598bfe5f44c237a324c6d4f69c79f1212dad842a2f4838a1",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-04.doc",
+          "suffix": ".doc",
+          "size_bytes": 35840,
+          "sha256": "3af5eb37e125428029e41c84c9d35e923967dd762c6329eb31ed9cc96c236f5e",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "27bbb40a585fe8cb519d59cc2864a01132f94a1bd132d6c7295c0425c5e1d8d6",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        },
+        {
+          "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti__SI-05.doc",
+          "suffix": ".doc",
+          "size_bytes": 30720,
+          "sha256": "74be4476ddfb3f6016f490fa509f2c988b2bcb04f9090301f1bb35b9b41d18e4",
+          "role": "SUPPLEMENT",
+          "status": "REUSED",
+          "source_url": "https://journals.plos.org/plosone/article/file?type=%5Bredacted%5D&id=%5Bredacted%5D",
+          "source_url_sha256": "8fd396510c1a16912554d73275f5920d2b7e61c38a11ed5f122f0d0b0b964331",
+          "final_host": "corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com",
+          "parent": {
+            "article_id": "doi:10.1371/journal.pone.0039704",
+            "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+            "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+            "doi": "10.1371/journal.pone.0039704"
+          },
+          "association_basis": "sole_scholarly_DOI_on_official_page_and_explicit_attachment_link",
+          "validation": {
+            "type": "doc",
+            "parseable": false,
+            "opened": false
+          }
+        }
+      ]
+    },
+    "integrated": {
+      "task_status": "COMPLETED",
+      "main_status": "VERIFIED",
+      "main_resumed": false,
+      "main_pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+      "attachments": {
+        "local_raw": "plos-integrated\\integrated-si.json",
+        "status": "COMPLETED",
+        "discovered": 12,
+        "truncated": false,
+        "original_unchanged": null,
+        "errors": [],
+        "diagnostics": [],
+        "files": [
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-01.xls",
+            "suffix": ".xls",
+            "size_bytes": 25600,
+            "sha256": "c65cbecaeed29b15484029c999998117473c2188648d58f0dfe26b19287e013d",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s001.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "8577e807d77221069d8c62055019bdbf3dbdcd134a5f4ecd99c61a1581950c34",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-01.doc",
+            "suffix": ".doc",
+            "size_bytes": 34304,
+            "sha256": "e4897d274f669b8577e5606dcfd314491cdb865fa6893b7f891dd54b988be794",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s002.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "a3702c16ca55a7b115155292c275ac35cf0acb4c72dfd20e1af08e7e23e90dd0",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-02.xls",
+            "suffix": ".xls",
+            "size_bytes": 3004416,
+            "sha256": "be36c71e6f65293f83ee79dbf32edbeeacbd45d3df92b89c78cac08fc78d9071",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s003.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "117bd0ee1ff255ba70a1c5958d44ca53828cc07def1a8a01d9662b2969d1c053",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-03.xls",
+            "suffix": ".xls",
+            "size_bytes": 43520,
+            "sha256": "62b27c7d4ed12d69d267bf0f50e7c5caed196b0dd04a6f650cff574b020d21af",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s004.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "4003376511cecf63a6cb1329772806383309c68dc70c5e25e5408fe4b889cb27",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-04.xls",
+            "suffix": ".xls",
+            "size_bytes": 69632,
+            "sha256": "6952bdb55f123f267500cc59923cd43d694f7b1b9d7bd4f4ba1680a7a5b49998",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s005.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "fe4ec4cba85de2b6b439af1d0560c12813ccb6c84cf06d9a40ad874dabe7e68f",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-05.xls",
+            "suffix": ".xls",
+            "size_bytes": 2151424,
+            "sha256": "af03b50f1a894a063d6785fdb194005be51151b816c066fcbde068dbb80f16de",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s006.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "eeef7851059e365df56fba5597d1fbeaaca0fb4343cd90d184190b9ffb30b53b",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-06.xls",
+            "suffix": ".xls",
+            "size_bytes": 38400,
+            "sha256": "b3c53b4e85de94605a780d3d9bd17b64e697f9c1a9ae95280b316ff5c3abafef",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s007.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "27394a46c5f297386f404aedbb2a9cea07591a81643feb30a8ea50484818d575",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-07.xls",
+            "suffix": ".xls",
+            "size_bytes": 41472,
+            "sha256": "35e14be9c53f7642fae9a423f3f45dcffa02bc5d7f1c56f24c99df3ab8dd6ab4",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s008.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "21648b376d1a6c49becd22a6c48959e0e062ae627b39d7b7a5d1426eeb060ef1",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-02.doc",
+            "suffix": ".doc",
+            "size_bytes": 45568,
+            "sha256": "e1e2621975bae25d92e3abb6a0f2fe95b4822160484be18454e6fd0b1d85e677",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s009.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "c5759d0c6e907010dc3815e6eac5397581696b347cf8b817610972e36462b590",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-03.doc",
+            "suffix": ".doc",
+            "size_bytes": 31744,
+            "sha256": "8936c30cc020da5a6add4310c470398b3ad31e92828f5ebe6ec371230cbf747c",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s010.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "555c1d8aa3725b92d65e85d88a5e2065ba8e437c210f14a7bfc80b8ef2e617c2",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-04.doc",
+            "suffix": ".doc",
+            "size_bytes": 35840,
+            "sha256": "3af5eb37e125428029e41c84c9d35e923967dd762c6329eb31ed9cc96c236f5e",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s011.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "433cd461e438c4cd99d1050168c3796e15d43f8b0c96a4947c5bf661da990eaf",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-05.doc",
+            "suffix": ".doc",
+            "size_bytes": 30720,
+            "sha256": "74be4476ddfb3f6016f490fa509f2c988b2bcb04f9090301f1bb35b9b41d18e4",
+            "role": "SUPPLEMENT",
+            "status": "SAVED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s012.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "65c82783fee0bda4a091667a120e7ca37906cb38203132ae4c1b2da669e40b5c",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          }
+        ]
+      }
+    },
+    "integrated_reuse": {
+      "task_status": "COMPLETED",
+      "main_status": "VERIFIED",
+      "main_resumed": true,
+      "main_pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+      "attachments": {
+        "local_raw": "plos-integrated\\integrated_reuse-si.json",
+        "status": "COMPLETED",
+        "discovered": 12,
+        "truncated": false,
+        "original_unchanged": null,
+        "errors": [],
+        "diagnostics": [],
+        "files": [
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-01.xls",
+            "suffix": ".xls",
+            "size_bytes": 25600,
+            "sha256": "c65cbecaeed29b15484029c999998117473c2188648d58f0dfe26b19287e013d",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s001.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "8577e807d77221069d8c62055019bdbf3dbdcd134a5f4ecd99c61a1581950c34",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-01.doc",
+            "suffix": ".doc",
+            "size_bytes": 34304,
+            "sha256": "e4897d274f669b8577e5606dcfd314491cdb865fa6893b7f891dd54b988be794",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s002.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "a3702c16ca55a7b115155292c275ac35cf0acb4c72dfd20e1af08e7e23e90dd0",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-02.xls",
+            "suffix": ".xls",
+            "size_bytes": 3004416,
+            "sha256": "be36c71e6f65293f83ee79dbf32edbeeacbd45d3df92b89c78cac08fc78d9071",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s003.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "117bd0ee1ff255ba70a1c5958d44ca53828cc07def1a8a01d9662b2969d1c053",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-03.xls",
+            "suffix": ".xls",
+            "size_bytes": 43520,
+            "sha256": "62b27c7d4ed12d69d267bf0f50e7c5caed196b0dd04a6f650cff574b020d21af",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s004.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "4003376511cecf63a6cb1329772806383309c68dc70c5e25e5408fe4b889cb27",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-04.xls",
+            "suffix": ".xls",
+            "size_bytes": 69632,
+            "sha256": "6952bdb55f123f267500cc59923cd43d694f7b1b9d7bd4f4ba1680a7a5b49998",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s005.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "fe4ec4cba85de2b6b439af1d0560c12813ccb6c84cf06d9a40ad874dabe7e68f",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-05.xls",
+            "suffix": ".xls",
+            "size_bytes": 2151424,
+            "sha256": "af03b50f1a894a063d6785fdb194005be51151b816c066fcbde068dbb80f16de",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s006.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "eeef7851059e365df56fba5597d1fbeaaca0fb4343cd90d184190b9ffb30b53b",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-06.xls",
+            "suffix": ".xls",
+            "size_bytes": 38400,
+            "sha256": "b3c53b4e85de94605a780d3d9bd17b64e697f9c1a9ae95280b316ff5c3abafef",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s007.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "27394a46c5f297386f404aedbb2a9cea07591a81643feb30a8ea50484818d575",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-07.xls",
+            "suffix": ".xls",
+            "size_bytes": 41472,
+            "sha256": "35e14be9c53f7642fae9a423f3f45dcffa02bc5d7f1c56f24c99df3ab8dd6ab4",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s008.xls?md5=%5Bredacted%5D",
+            "source_url_sha256": "21648b376d1a6c49becd22a6c48959e0e062ae627b39d7b7a5d1426eeb060ef1",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "xls",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-02.doc",
+            "suffix": ".doc",
+            "size_bytes": 45568,
+            "sha256": "e1e2621975bae25d92e3abb6a0f2fe95b4822160484be18454e6fd0b1d85e677",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s009.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "c5759d0c6e907010dc3815e6eac5397581696b347cf8b817610972e36462b590",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-03.doc",
+            "suffix": ".doc",
+            "size_bytes": 31744,
+            "sha256": "8936c30cc020da5a6add4310c470398b3ad31e92828f5ebe6ec371230cbf747c",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s010.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "555c1d8aa3725b92d65e85d88a5e2065ba8e437c210f14a7bfc80b8ef2e617c2",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-04.doc",
+            "suffix": ".doc",
+            "size_bytes": 35840,
+            "sha256": "3af5eb37e125428029e41c84c9d35e923967dd762c6329eb31ed9cc96c236f5e",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s011.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "433cd461e438c4cd99d1050168c3796e15d43f8b0c96a4947c5bf661da990eaf",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          },
+          {
+            "filename": "2012-PLoS ONE-Transcriptome Sequencing and Comparative Analysis of Saccharina japonica (Laminariales, Phaeophyceae) under Blue Light Inducti--ce543f7611-b56a4a18329a__SI-05.doc",
+            "suffix": ".doc",
+            "size_bytes": 30720,
+            "sha256": "74be4476ddfb3f6016f490fa509f2c988b2bcb04f9090301f1bb35b9b41d18e4",
+            "role": "SUPPLEMENT",
+            "status": "REUSED",
+            "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC3384632.1/pone.0039704.s012.doc?md5=%5Bredacted%5D",
+            "source_url_sha256": "65c82783fee0bda4a091667a120e7ca37906cb38203132ae4c1b2da669e40b5c",
+            "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+            "parent": {
+              "article_id": "doi:10.1371/journal.pone.0039704",
+              "pdf_sha256": "b56a4a18329ae9b0baf6c8a8b429ebf2f0731ac4936ad44ebf91ec793fbc33fd",
+              "sidecar_sha256": "11f78fafffdcc535bb61a9e658d884ea43fcd3bda2ca5c04e88099b81a17d352",
+              "doi": "10.1371/journal.pone.0039704"
+            },
+            "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+            "validation": {
+              "type": "doc",
+              "parseable": false,
+              "opened": false
+            }
+          }
+        ]
+      }
+    },
+    "cross_route_same_bytes": true,
+    "total_bytes": 5552640,
+    "formats": {
+      ".xls": 7,
+      ".doc": 5
+    }
+  },
+  "other_publishers": [
+    {
+      "doi": "10.1002/cctc.202201687",
+      "local_raw": "publisher-live\\10.1002_cctc.202201687\\result.json",
+      "status": "FAILED",
+      "discovered": 0,
+      "truncated": false,
+      "original_unchanged": true,
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://chemistry-europe.onlinelibrary.wiley.com/doi/10.1002/cctc.202201687"
+        },
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1002/cctc.202201687"
+        }
+      ],
+      "diagnostics": [],
+      "files": []
+    },
+    {
+      "doi": "10.1039/d4cc01176g",
+      "local_raw": "publisher-live\\10.1039_d4cc01176g\\result.json",
+      "status": "FAILED",
+      "discovered": 0,
+      "truncated": false,
+      "original_unchanged": true,
+      "errors": [
+        {
+          "status": "PAGE_FAILED",
+          "error": "AcquisitionAccessBlockedError",
+          "page": "https://doi.org/10.1039/d4cc01176g"
+        }
+      ],
+      "diagnostics": [],
+      "files": []
+    },
+    {
+      "doi": "10.1007/s11814-019-0365-0",
+      "local_raw": "publisher-live\\10.1007_s11814-019-0365-0\\result.json",
+      "status": "NOT_FOUND",
+      "discovered": 0,
+      "truncated": false,
+      "original_unchanged": true,
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "NOT_FOUND",
+          "page": "https://link.springer.com/article/10.1007/s11814-019-0365-0",
+          "transport": "http"
+        },
+        {
+          "status": "NOT_FOUND",
+          "page": "https://link.springer.com/article/10.1007/s11814-019-0365-0",
+          "transport": "http"
+        }
+      ],
+      "files": []
+    },
+    {
+      "doi": "10.3390/nano13050931",
+      "local_raw": "publisher-live\\10.3390_nano13050931\\result.json",
+      "status": "FAILED",
+      "discovered": 0,
+      "truncated": false,
+      "original_unchanged": true,
+      "errors": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://www.mdpi.com/2079-4991/13/5/931"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://www.mdpi.com/2079-4991/13/5/931",
+          "transport": "http"
+        }
+      ],
+      "files": []
+    },
+    {
+      "doi": "10.1016/j.elecom.2022.107204",
+      "local_raw": "publisher-live\\10.1016_j.elecom.2022.107204\\result.json",
+      "status": "FAILED",
+      "discovered": 0,
+      "truncated": false,
+      "original_unchanged": true,
+      "errors": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S1388248122000066"
+        }
+      ],
+      "diagnostics": [
+        {
+          "status": "IDENTITY_NOT_CONFIRMED",
+          "page": "https://linkinghub.elsevier.com/retrieve/pii/S1388248122000066",
+          "transport": "http"
+        }
+      ],
+      "files": []
+    },
+    {
+      "doi": "10.1021/acsomega.6c02245",
+      "local_raw": "regression-live\\10.1021_acsomega.6c02245\\result.json",
+      "status": "COMPLETED",
+      "discovered": 1,
+      "truncated": false,
+      "original_unchanged": null,
+      "errors": [],
+      "diagnostics": [
+        {
+          "status": "DISCOVERED",
+          "transport": "http",
+          "source": "official_ACS_Figshare",
+          "discovered": 1
+        },
+        {
+          "status": "FAILED",
+          "error": "官方 PMC 元数据身份、版本或开放获取状态与正文不一致",
+          "page": "https://pmc-oa-opendata.s3.amazonaws.com/metadata/PMC13294902.1.json"
+        }
+      ],
+      "files": [
+        {
+          "filename": "2026-ACS Omega-Interfacial Chemistry of Phosphate-Functionalized Self-Doped TiO_ _sub_2__sub__ Nanotube for Electrochemical Detection of Met__SI-01.pdf",
+          "suffix": ".pdf",
+          "size_bytes": 2111935,
+          "sha256": "160e997c0ab3a224afc9b4a2766b3b9ad84be8a921a38eb3d3c2ddea0ebcf9d7",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://ndownloader.figshare.com/files/65221244",
+          "source_url_sha256": "8c7705fe24691209e8e70c58643bee17a9323bd4dbca5bc5c6427a5bff96a34c",
+          "final_host": "s3-eu-west-1.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1021/acsomega.6c02245",
+            "pdf_sha256": "d13b2bd65142b4af85b4822e0f1d7b9013c0c2609d769a3b9bb0d87dff98a0c1",
+            "sidecar_sha256": "0fba0baeac8d3220f05799a7aa87e6817cbc6e81c0976dc51a632601e93e0a04",
+            "doi": "10.1021/acsomega.6c02245"
+          },
+          "association_basis": "official_ACS_Figshare_parent_DOI_title_and_file_manifest",
+          "validation": {
+            "type": "pdf",
+            "page_count": 10,
+            "parseable": true
+          }
+        }
+      ]
+    },
+    {
+      "doi": "10.1126/sciadv.aeb1911",
+      "local_raw": "regression-live\\10.1126_sciadv.aeb1911\\result.json",
+      "status": "COMPLETED",
+      "discovered": 1,
+      "truncated": false,
+      "original_unchanged": null,
+      "errors": [],
+      "diagnostics": [],
+      "files": [
+        {
+          "filename": "2026-Science Advances-Electrochemical conversion of oxalic acid to glycolic acid via oxygen vacancy–mediated tandem catalysis--362959a364-__SI-01.pdf",
+          "suffix": ".pdf",
+          "size_bytes": 3114573,
+          "sha256": "0116327ab34dde239dc04f01d1c25f489da2644ec966a2e49fecdeb4ac34d153",
+          "role": "SUPPLEMENT",
+          "status": "SAVED",
+          "source_url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC12922741.1/sciadv.aeb1911_sm.pdf?md5=%5Bredacted%5D",
+          "source_url_sha256": "592b116e3e3d3f4530c15b7aba62988c6877d90875584400a5119e4244880d57",
+          "final_host": "pmc-oa-opendata.s3.amazonaws.com",
+          "parent": {
+            "article_id": "doi:10.1126/sciadv.aeb1911",
+            "pdf_sha256": "5aa3a1f9577a1f9aa881564f83144895b5272a3291343aa6c1662a45f07607f2",
+            "sidecar_sha256": "15cad53a187d35580fc14a75ee904341e2b97d8805735187a6e6c58e70561189",
+            "doi": "10.1126/sciadv.aeb1911"
+          },
+          "association_basis": "official_PMC_metadata_DOI_and_JATS_explicit_supplementary_material",
+          "validation": {
+            "type": "pdf",
+            "page_count": 53,
+            "parseable": true
+          }
+        }
+      ]
+    }
+  ]
+}

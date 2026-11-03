@@ -133,6 +133,8 @@ use “Retry selected failed papers / Retrieve SI only” later for that paper. 
 Pause and cancellation take effect at safe boundaries; transfers and authorized model requests already started may still finish.
 
 Main-text progress counts paper requests; attachments and parsing count actual files, so a paper may have several SI files.
+With SI enabled, successful main-text verification continues into multi-file attachment collection. Supported formats include PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, RTF, OpenDocument, CSV/TSV, text, ZIP/GZIP and applicable image/audio/video formats. Saving a file does not imply content parsing: only PDFs with the SUPPLEMENT role enter existing PDF SI parsing. Source data, peer-review files and reporting summaries retain separate roles.
+The advanced SI file limit defaults to 20 and allows up to 100; the per-file byte cap is separate. More discovered files or explicitly unsupported attachments keep coverage incomplete. Adjust limits and use SI-only recovery; successful files are reused after source/hash checks. Archives are not extracted and files are not executed. See [SI rules, publisher adapters and observations](SI_PUBLISHER_COVERAGE.en.md).
 “All main texts verified” does not mean the task is finished: check translation, naming, or parsing and wait for its terminal state.
 After each paper's main-text and SI attempts, the selected workflow translates missing titles, synchronizes main/attachment naming, and parses before starting the next paper.
 These postprocessing failures retain their reasons without turning an already verified main text into an acquisition failure.

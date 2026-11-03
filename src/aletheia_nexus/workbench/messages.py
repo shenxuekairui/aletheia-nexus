@@ -337,16 +337,32 @@ _add(
     "压缩包已加密，当前不能验证其内容。请取得可读取的官方附件或保留在外部；系统未尝试破解密码。",
 )
 _add(
-    ("invalid_office_attachment", "invalid_legacy_excel_attachment"),
+    (
+        "invalid_office_attachment",
+        "invalid_legacy_excel_attachment",
+        "invalid_legacy_office_attachment",
+    ),
     "附件内容与所声明的办公文档格式不符。请确认下载完整、扩展名正确，并检查是否误存了登录页面。",
+)
+_add(
+    ("attachment_type_not_confirmed",),
+    "附件已响应，但无法确认文件格式。请从官方页面核对并手动保存；系统未将它登记为有效附件。",
+)
+_add(
+    ("invalid_supplement_landing_page",),
+    "补充材料目录页没有返回完整网页。请稍后重试或从官方文章页打开附件。",
 )
 _add(
     ("binary_content_in_text_attachment",),
     "附件声明为文本，却包含二进制内容。请核对文件类型和真实扩展名后重新导入。",
 )
 _add(
-    ("invalid_png_attachment", "invalid_jpeg_attachment"),
+    ("invalid_png_attachment", "invalid_jpeg_attachment", "invalid_image_attachment"),
     "图片内容与扩展名不符或文件不完整。请检查原始图片后重新选择。",
+)
+_add(
+    ("invalid_rtf_attachment", "invalid_compressed_attachment"),
+    "附件内容与声明的文件格式不符。请核对官方原文件和下载完整性；系统未打开或解压它。",
 )
 _add(
     (

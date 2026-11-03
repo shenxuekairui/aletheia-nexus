@@ -2,6 +2,8 @@
 
 [中文](SI_NATIVE_ACQUISITION.md)
 
+Subsequent generic rules, multiple formats/files and main-acquisition integration have separate [cross-publisher observations](SI_PUBLISHER_COVERAGE.en.md). This document preserves the original ACS improvement cohort.
+
 Developed from `1ac4e07` on `feat/si-native-reliability`. “Native” means built-in HTTP, structured manifests and page parsing, without model-invented links or manual assistant downloads. The source retains development version 0.8.2; this does not establish publication.
 
 ## Changes

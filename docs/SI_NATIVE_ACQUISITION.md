@@ -2,6 +2,8 @@
 
 [English](SI_NATIVE_ACQUISITION.en.md)
 
+后续通用规则、多格式、多份 SI 与原文获取集成的改动和独立实测见 [SI 跨出版社能力验收](SI_PUBLISHER_COVERAGE.md)；下文保留本轮 ACS 增强时的原始口径。
+
 本次从 `1ac4e07` 开发，分支 `feat/si-native-reliability`。这里的“原生”指程序内置 HTTP、结构化清单和页面解析能力；不是模型推测链接或依赖助手手工下载。版本号仍为开发中的 0.8.2，不表示已发布。
 
 ## 原有缺口与改动

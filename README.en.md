@@ -31,6 +31,8 @@ Today, much of this context is scattered across browser tabs, download folders, 
 | Revise and reuse results | Move between results and source locations, preserve revisions, and export Markdown, CSV, JSONL and relevant provenance |
 | Let other AI tools use the library | Call acquisition, parsing, search, research and result tools through local MCP, using the same underlying services |
 
+Main-text acquisition can also collect multiple SI files, including PDFs, spreadsheets, Word documents and archives. Saved attachments retain provenance; failures and truncation remain explicit. Generic page rules and publisher adapters depend on source access conditions. See the [workbench guide](docs/WORKBENCH_USER_GUIDE.en.md) and [SI implementation and observations](docs/SI_PUBLISHER_COVERAGE.en.md).
+
 Materials can accumulate through one continuous workflow:
 
 ```text
